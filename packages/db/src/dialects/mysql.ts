@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, gte, inArray, lt, lte, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/mysql2'
 import { migrate } from 'drizzle-orm/mysql2/migrator'
 import mysql from 'mysql2/promise'
@@ -230,23 +230,9 @@ export function createMysqlDatabase(options: {
           })
         })
       },
-      async setPassword(userId, passwordHash) {
-        const res = await db
-          .update(account)
-          .set({ password: passwordHash })
-          .where(and(eq(account.userId, userId), eq(account.providerId, CREDENTIAL_PROVIDER)))
-        if (affected(res) === 0) {
-          await db.insert(account).values({
-            id: randomUUID(),
-            accountId: userId,
-            providerId: CREDENTIAL_PROVIDER,
-            userId,
-            password: passwordHash,
-          })
-        }
-      },
-      async deleteAllExcept(email) {
-        return affected(await db.delete(user).where(ne(user.email, email)))
+      async exists() {
+        const rows = await db.select({ id: user.id }).from(user).limit(1)
+        return rows.length > 0
       },
     },
   }

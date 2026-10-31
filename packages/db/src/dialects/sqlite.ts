@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import BetterSqlite3 from 'better-sqlite3'
-import { and, asc, desc, eq, gte, lt, lte, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, lt, lte, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { sqlitePathFromUrl } from '../dialect'
@@ -238,26 +238,8 @@ export function createSqliteDatabase(options: {
             .run()
         })
       },
-      async setPassword(userId, passwordHash) {
-        const updated = db
-          .update(account)
-          .set({ password: passwordHash })
-          .where(and(eq(account.userId, userId), eq(account.providerId, CREDENTIAL_PROVIDER)))
-          .run().changes
-        if (updated === 0) {
-          db.insert(account)
-            .values({
-              id: randomUUID(),
-              accountId: userId,
-              providerId: CREDENTIAL_PROVIDER,
-              userId,
-              password: passwordHash,
-            })
-            .run()
-        }
-      },
-      async deleteAllExcept(email) {
-        return db.delete(user).where(ne(user.email, email)).run().changes
+      async exists() {
+        return db.select({ id: user.id }).from(user).limit(1).get() !== undefined
       },
     },
   }

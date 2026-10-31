@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { ensureAdmin } from '../admin'
+import { createFirstAdmin, needsSetup } from '../admin'
 import type { Database } from '../types'
 
 const minutes = (n: number) => n * 60_000
@@ -156,24 +156,39 @@ export function describeDatabaseContract(
     })
 
     describe('admin', () => {
-      it('creates, syncs and prunes users from credentials', async () => {
-        const creds = { email: 'Admin@Example.com', password: 'correct horse battery' }
+      const first = { name: 'Ada', email: 'Admin@Example.com', password: 'correct horse battery' }
 
-        expect(await ensureAdmin(db, creds)).toEqual({ action: 'created', removedOtherUsers: 0 })
-        expect(await ensureAdmin(db, creds)).toEqual({ action: 'unchanged', removedOtherUsers: 0 })
+      it('registers the first admin only once', async () => {
+        expect(await needsSetup(db)).toBe(true)
+        expect(await createFirstAdmin(db, first)).toBe(true)
+        expect(await needsSetup(db)).toBe(false)
 
-        const before = await db.admin.findByEmail('admin@example.com')
-        expect(before?.passwordHash).toBeTruthy()
+        const stored = await db.admin.findByEmail('admin@example.com')
+        expect(stored?.passwordHash).toBeTruthy()
+        expect(stored?.passwordHash).not.toContain(first.password)
 
-        const changed = await ensureAdmin(db, { ...creds, password: 'another passphrase 1' })
-        expect(changed.action).toBe('password-updated')
-        const after = await db.admin.findByEmail('admin@example.com')
-        expect(after?.id).toBe(before?.id)
-        expect(after?.passwordHash).not.toBe(before?.passwordHash)
+        // Setup is closed: a second registration changes nothing.
+        const second = { name: 'Eve', email: 'eve@example.com', password: 'another passphrase 1' }
+        expect(await createFirstAdmin(db, second)).toBe(false)
+        expect(await db.admin.findByEmail('eve@example.com')).toBeNull()
+        expect(await db.admin.findByEmail('admin@example.com')).toMatchObject({ id: stored?.id })
+      })
 
-        const moved = await ensureAdmin(db, { ...creds, email: 'new@example.com' })
-        expect(moved).toEqual({ action: 'created', removedOtherUsers: 1 })
-        expect(await db.admin.findByEmail('admin@example.com')).toBeNull()
+      it('lets exactly one of several concurrent setups win', async () => {
+        const attempts = ['a', 'b', 'c', 'd'].map((n) =>
+          createFirstAdmin(db, {
+            name: n,
+            email: `${n}@example.com`,
+            password: 'long enough pass',
+          }),
+        )
+        const results = await Promise.all(attempts)
+        expect(results.filter(Boolean)).toHaveLength(1)
+
+        const winners = await Promise.all(
+          ['a', 'b', 'c', 'd'].map((n) => db.admin.findByEmail(`${n}@example.com`)),
+        )
+        expect(winners.filter(Boolean)).toHaveLength(1)
       })
     })
   })

@@ -36,11 +36,7 @@ describe('env', () => {
         TRUSTED_ORIGINS: 'https://a.test, https://b.test,',
       }).TRUSTED_ORIGINS,
     ).toEqual(['https://a.test', 'https://b.test'])
-    const boot = {
-      BETTER_AUTH_SECRET: secret,
-      ADMIN_EMAIL: 'a@b.co',
-      ADMIN_PASSWORD: 'long-enough-1',
-    }
+    const boot = { BETTER_AUTH_SECRET: secret }
     expect(parseBootstrapEnv(boot).RUN_MIGRATIONS).toBe(true)
     expect(parseBootstrapEnv({ ...boot, RUN_MIGRATIONS: 'false' }).RUN_MIGRATIONS).toBe(false)
   })
@@ -48,17 +44,26 @@ describe('env', () => {
   it('lists every problem at once', () => {
     const error = (() => {
       try {
-        parseBootstrapEnv({ BETTER_AUTH_SECRET: 'short', ADMIN_EMAIL: 'nope' })
+        parseBootstrapEnv({ BETTER_AUTH_SECRET: 'short', RUN_MIGRATIONS: 'maybe' })
       } catch (e) {
         return e as EnvError
       }
     })()
     expect(error).toBeInstanceOf(EnvError)
     expect(error!.issues.map((i) => i.split(':')[0]).sort()).toEqual([
-      'ADMIN_EMAIL',
-      'ADMIN_PASSWORD',
       'BETTER_AUTH_SECRET',
+      'RUN_MIGRATIONS',
     ])
+  })
+
+  it('never takes admin credentials from the environment', () => {
+    const env = parseBootstrapEnv({
+      BETTER_AUTH_SECRET: secret,
+      ADMIN_EMAIL: 'admin@example.com',
+      ADMIN_PASSWORD: 'long-enough-1',
+    })
+    expect(env).not.toHaveProperty('ADMIN_EMAIL')
+    expect(env).not.toHaveProperty('ADMIN_PASSWORD')
   })
 
   it('rejects an unknown dialect', () => {
