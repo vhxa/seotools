@@ -1,0 +1,26 @@
+# One container runs the web app and the worker, with SQLite stored in the `seotools-data` volume.
+#
+#   cp .env.example .env     # then edit ADMIN_* and BETTER_AUTH_SECRET
+#   docker compose up -d
+#
+# To build the image from source instead of pulling it, run: docker compose up -d --build
+services:
+  seotools:
+    image: ${SEOTOOLS_IMAGE:-ghcr.io/botaroikawa/seotools:latest}
+    build: .
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    env_file: .env
+    environment:
+      # The container always listens on 3000; PORT above only picks the host port.
+      PORT: 3000
+      # Overrides the value from .env, which is meant for running outside Docker.
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-file:/data/seotools.db}
+    volumes:
+      - seotools-data:/data
+    # Gives the worker time to finish running jobs on `docker compose stop`.
+    stop_grace_period: 40s
+
+volumes:
+  seotools-data:

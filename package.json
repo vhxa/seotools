@@ -1,0 +1,37 @@
+{
+  "name": "seotools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Open source, self-hosted SEO toolkit.",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm db:bootstrap && turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @seotools/db generate",
+    "db:check": "pnpm --filter @seotools/db check",
+    "db:bootstrap": "pnpm --filter @seotools/worker bootstrap"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "eslint-config-next": "^16.4.3",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "turbo": "^2.11.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules
+.next
+dist
+coverage
+.turbo
+pnpm-lock.yaml
+LICENSE
+packages/db/migrations
+apps/web/components/ui
