@@ -2,4 +2,252 @@
 
 # seotools
 
-Created in [T3 Code](https://t3.codes).
+Open source, self-hosted SEO toolkit. One container, no Redis, runs anywhere Docker does — from a
+Raspberry Pi to a VPS.
+
+> **Status: skeleton.** This first phase ships the platform (web app, background worker, auth,
+> database, deployment). The SEO tools themselves come next.
+
+- **Web** — Next.js (App Router) with shadcn/ui, single-admin login via [better-auth](https://better-auth.com).
+- **Worker** — processes background jobs stored in your database. No Redis or external queue.
+- **Database** — SQLite by default (zero setup), PostgreSQL or MySQL by changing `DATABASE_URL`.
+  Migrations run automatically on startup.
+- **Notifications (base)** — email via SMTP ([nodemailer](https://nodemailer.com)) or
+  [Resend](https://resend.com). The admin panel to configure them is coming; the encrypted settings
+  storage and the `mail.send` job are already in place.
+- **Multi-arch image** — `linux/amd64` and `linux/arm64`, published to GHCR.
+
+## Quick start (Docker Compose)
+
+```bash
+git clone https://github.com/botaroikawa/seotools.git && cd seotools
+cp .env.example .env
+```
+
+Edit `.env` and set at least:
+
+| Variable             | What to put                                                          |
+| -------------------- | -------------------------------------------------------------------- |
+| `ADMIN_EMAIL`        | Email you will log in with                                           |
+| `ADMIN_PASSWORD`     | A long password (8+ characters)                                      |
+| `BETTER_AUTH_SECRET` | Random secret, 32+ chars: `openssl rand -base64 32`                  |
+| `BETTER_AUTH_URL`    | The URL you will open in the browser, e.g. `https://seo.example.com` |
+
+```bash
+docker compose up -d
+```
+
+Open <http://localhost:3000> and sign in. The dashboard shows the database and worker status and
+lets you enqueue an example job, so you can see the whole pipeline working.
+
+Data lives in the `seotools-data` volume (`/data` in the container). To build the image yourself
+instead of pulling it, use `docker compose up -d --build`.
+
+## Configuration
+
+All configuration is through environment variables. See [`.env.example`](.env.example) for the
+annotated list.
+
+| Variable                  | Default                  | Description                                                             |
+| ------------------------- | ------------------------ | ----------------------------------------------------------------------- |
+| `ADMIN_EMAIL`             | —                        | **Required.** Admin login.                                              |
+| `ADMIN_PASSWORD`          | —                        | **Required.** Admin password.                                           |
+| `BETTER_AUTH_SECRET`      | —                        | **Required.** 32+ chars. Signs sessions.                                |
+| `BETTER_AUTH_URL`         | `http://localhost:3000`  | Public URL of the app. Must match the browser's address.                |
+| `TRUSTED_ORIGINS`         | —                        | Extra comma-separated origins allowed to call the auth API.             |
+| `SETTINGS_ENCRYPTION_KEY` | `BETTER_AUTH_SECRET`     | Key for secrets saved from the admin panel (SMTP password, Resend key). |
+| `DATABASE_URL`            | `file:/data/seotools.db` | `file:…` (SQLite), `postgres://…` or `mysql://…`.                       |
+| `DATABASE_DIALECT`        | inferred                 | `sqlite` \| `pg` \| `mysql`. Only if it can't be inferred from the URL. |
+| `RUN_MIGRATIONS`          | `true`                   | Apply pending migrations at startup.                                    |
+| `PORT`                    | `3000`                   | HTTP port (in Compose: the host port; the container always uses 3000).  |
+| `LOG_LEVEL`               | `info`                   | `fatal` … `trace`, or `silent`.                                         |
+| `WORKER_CONCURRENCY`      | `2`                      | Jobs processed in parallel.                                             |
+| `WORKER_POLL_INTERVAL_MS` | `1000`                   | How often an idle worker looks for jobs.                                |
+| `JOB_LOCK_TIMEOUT_MS`     | `300000`                 | A job running longer than this is assumed orphaned and re-queued.       |
+| `SEOTOOLS_MODE`           | `all`                    | Docker only: `all`, `web`, `worker` or `migrate` (see below).           |
+
+### The admin account
+
+There is exactly one user, defined by `ADMIN_EMAIL` and `ADMIN_PASSWORD`. On every start seotools
+makes the database match them:
+
+- First start: the account is created.
+- Changed `ADMIN_PASSWORD`: the password is updated (the old one stops working).
+- Changed `ADMIN_EMAIL`: the new account is created and **any other user is deleted**, so the old
+  email can no longer log in.
+
+Public sign-up is disabled.
+
+### Changing `BETTER_AUTH_SECRET`
+
+Rotating it signs everyone out. It is also the default key that encrypts secrets saved from the
+admin panel, so after a rotation those settings can't be decrypted. Set `SETTINGS_ENCRYPTION_KEY` to
+the **old** secret first (or to any fixed 32+ char value from the start) to keep them readable.
+
+## Deploying
+
+The image is `ghcr.io/botaroikawa/seotools`. Tags: `latest` (main), `edge`, `sha-<commit>` and, for
+releases, `1.2.3` / `1.2` / `1`.
+
+> A package published to GHCR is **private** until you make it public (GitHub → Packages →
+> seotools → Package settings → Change visibility). Do that once so anyone can `docker pull`
+> without logging in.
+
+### VPS with Docker Compose
+
+Follow the quick start, then put a reverse proxy with HTTPS in front of port 3000 (Caddy, Traefik,
+nginx…). Set `BETTER_AUTH_URL` to the public `https://` URL — login fails if it doesn't match.
+
+Caddy example:
+
+```
+seo.example.com {
+    reverse_proxy localhost:3000
+}
+```
+
+### Dokploy / Coolify
+
+Both can deploy either the prebuilt image or this repository's `Dockerfile` (or `docker-compose.yml`).
+
+1. Create an application from the image `ghcr.io/botaroikawa/seotools:latest` (or from this Git repo).
+2. Set the environment variables: `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `BETTER_AUTH_SECRET`, and
+   `BETTER_AUTH_URL` = the domain you assign to the app (with `https://`).
+3. Add a **persistent volume** mounted at `/data` (this is where SQLite lives — without it you lose
+   your data on every redeploy).
+4. Expose container port **3000** and attach your domain.
+
+The image has a built-in health check (`/api/health`), which both platforms pick up.
+
+### Raspberry Pi (arm64)
+
+Use a 64-bit OS (Raspberry Pi OS 64-bit or Ubuntu Server) with Docker installed, then follow the quick
+start. Docker pulls the `arm64` variant automatically; nothing is compiled on the device. SQLite is
+the right choice here. Keep the volume on reliable storage (an SSD, or a good SD card).
+
+### PostgreSQL or MySQL
+
+Set `DATABASE_URL` in `.env` and Compose will use it instead of SQLite:
+
+```bash
+# PostgreSQL (tested on 17)
+DATABASE_URL=postgres://seotools:secret@db:5432/seotools
+# MySQL (tested on 8.4). Needs FOR UPDATE SKIP LOCKED: MySQL 8+, MariaDB 10.6+ (untested)
+DATABASE_URL=mysql://seotools:secret@db:3306/seotools
+```
+
+Create the (empty) database first; migrations create the tables. The `/data` volume is then unused.
+
+### Running web and worker separately
+
+By default one container runs both, so the UI and the job processor always live and die together
+(if either process crashes, the container exits and your orchestrator restarts it).
+
+With PostgreSQL or MySQL you can scale them independently using the same image:
+
+```yaml
+services:
+  web:
+    image: ghcr.io/botaroikawa/seotools:latest
+    environment: { SEOTOOLS_MODE: web } # migrates, then serves the UI
+    env_file: .env
+    ports: ['3000:3000']
+  worker:
+    image: ghcr.io/botaroikawa/seotools:latest
+    environment: { SEOTOOLS_MODE: worker } # processes jobs; does not migrate
+    env_file: .env
+    depends_on: { web: { condition: service_healthy } }
+```
+
+### Backups
+
+- **SQLite:** stop the container (or use `sqlite3 seotools.db ".backup 'copy.db'"`) and copy the file
+  from the volume. A plain `cp` while the app is writing can produce a corrupt copy.
+  ```bash
+  docker run --rm -v seotools_seotools-data:/data -v "$PWD":/backup debian:trixie-slim \
+    cp -a /data /backup/seotools-data-$(date +%F)
+  ```
+  (Volume name is `<compose project>_seotools-data`; check with `docker volume ls`.)
+- **PostgreSQL / MySQL:** use `pg_dump` / `mysqldump` as usual.
+
+### Health check
+
+`GET /api/health` is public and returns:
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "db": { "ok": true, "dialect": "sqlite" },
+  "worker": { "ok": true, "lastSeen": "…" }
+}
+```
+
+`status` is `ok`, `degraded` (database fine, worker hasn't checked in for 30 s; still HTTP 200) or
+`down` (database unreachable; HTTP 503). Add `?require=worker` to also get a 503 when the worker is
+missing — the Docker health check does this in `all` mode.
+
+## Development
+
+Requirements: Node.js 24 and [pnpm](https://pnpm.io) 12 (`corepack enable` or `npm i -g pnpm`).
+
+```bash
+pnpm install
+cp .env.example .env
+# edit .env: set the ADMIN_* values and BETTER_AUTH_SECRET, and uncomment
+#   DATABASE_URL=file:../../data/seotools.db
+# so that web and worker share one SQLite file
+pnpm dev          # applies migrations, then runs web (:3000) and worker with hot reload
+```
+
+| Command                                                     | What it does                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------ |
+| `pnpm dev`                                                  | Migrate, then run web + worker in watch mode           |
+| `pnpm build`                                                | Build everything (Next standalone + worker bundle)     |
+| `pnpm lint` / `pnpm typecheck`                              | ESLint / TypeScript                                    |
+| `pnpm format` / `pnpm format:check`                         | Prettier                                               |
+| `pnpm test`                                                 | Vitest                                                 |
+| `pnpm --filter @seotools/db generate --name <what_changed>` | Generate Drizzle migrations for **all three** dialects |
+| `pnpm db:check`                                             | Verify the migration files are consistent              |
+
+PostgreSQL and MySQL tests are skipped unless you provide databases:
+
+```bash
+TEST_POSTGRES_URL=postgres://postgres:test@localhost:5432/seotools \
+TEST_MYSQL_URL=mysql://root:test@localhost:3306/seotools \
+pnpm test
+```
+
+CI runs them against real Postgres and MySQL services.
+
+### Layout
+
+```
+apps/
+  web/        Next.js app: UI, /api/health, better-auth routes, server actions
+  worker/     Job runner + handlers (example.echo, mail.send); also the bootstrap CLI
+packages/
+  core/       Env validation, logger, job types, settings encryption, mail (SMTP + Resend)
+  db/         Drizzle schemas + migrations for sqlite/pg/mysql, repositories, admin sync
+docker/       Container entrypoint and healthcheck
+```
+
+### How it fits together
+
+- **Jobs** are rows in the `jobs` table. The worker claims due rows atomically
+  (`FOR UPDATE SKIP LOCKED` on Postgres/MySQL, an immediate transaction on SQLite), retries failures
+  with exponential backoff, recovers jobs left `running` by a crashed worker, and writes a heartbeat
+  that `/api/health` reads. To add a job: register its type and payload schema in
+  `packages/core/src/jobs.ts` and a handler in `apps/worker/src/handlers/`.
+- **One schema per dialect.** Drizzle tables are dialect-specific, so there is a schema file and a
+  migrations folder for each of SQLite, PostgreSQL and MySQL. When you change a schema, change all
+  three and run `pnpm --filter @seotools/db generate --name <description>`. The shared contract test in
+  `packages/db/src/test/contract.ts` runs against every dialect.
+- **Email settings** are stored as JSON in the `settings` table, encrypted with AES-256-GCM
+  (`SETTINGS_ENCRYPTION_KEY`, or `BETTER_AUTH_SECRET`). `getMailer(settings)` in `@seotools/core`
+  builds a nodemailer or Resend client from them; the `mail.send` job uses it.
+
+## License
+
+[GNU AGPL-3.0](LICENSE). If you run a modified version as a network service, you must offer its
+source to the users of that service.

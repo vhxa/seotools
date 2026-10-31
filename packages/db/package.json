@@ -1,0 +1,29 @@
+{
+  "name": "@seotools/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./test": "./src/test/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "generate": "node scripts/generate.mjs",
+    "check": "drizzle-kit check --config drizzle.sqlite.config.ts && drizzle-kit check --config drizzle.pg.config.ts && drizzle-kit check --config drizzle.mysql.config.ts"
+  },
+  "dependencies": {
+    "@seotools/core": "workspace:*",
+    "better-auth": "^1.7.14",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
+    "mysql2": "^3.24.6",
+    "postgres": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24.0.0",
+    "drizzle-kit": "^0.31.11"
+  }
+}

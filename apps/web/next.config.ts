@@ -1,0 +1,24 @@
+import { fileURLToPath } from 'node:url'
+import { loadEnvConfig } from '@next/env'
+import type { NextConfig } from 'next'
+import pkg from '../../package.json' with { type: 'json' }
+
+// Next only reads .env from apps/web; load the monorepo-root .env too (dev only, no-op in prod).
+const rootDir = fileURLToPath(new URL('../..', import.meta.url))
+// `forceReload`: Next already loaded apps/web/.env once and caches that result.
+loadEnvConfig(rootDir, process.env.NODE_ENV !== 'production', undefined, true)
+
+const config: NextConfig = {
+  // Self-contained server (.next/standalone) for the Docker image.
+  output: 'standalone',
+  // Trace dependencies from the monorepo root so workspace packages are included.
+  outputFileTracingRoot: rootDir,
+  // Workspace packages ship TypeScript sources.
+  transpilePackages: ['@seotools/core', '@seotools/db'],
+  // Native / driver packages must be required at runtime, not bundled.
+  serverExternalPackages: ['better-sqlite3', 'postgres', 'mysql2', 'pino', 'nodemailer', 'resend'],
+  env: { APP_VERSION: pkg.version },
+  poweredByHeader: false,
+}
+
+export default config
