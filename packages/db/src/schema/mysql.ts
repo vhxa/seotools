@@ -137,6 +137,27 @@ export const domains = mysqlTable(
   (t) => [index('domains_company_id_idx').on(t.companyId)],
 )
 
+/**
+ * The icon of a domain, fetched by the worker from the site itself. A row exists once the domain
+ * has been checked: `data` is `null` when the site has no icon. `data` is base64 so the three
+ * dialects store it as plain text.
+ */
+export const domainFavicons = mysqlTable(
+  'domain_favicons',
+  {
+    domainId: id('domain_id')
+      .primaryKey()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    contentType: varchar('content_type', { length: 100 }),
+    data: longtext('data'),
+    /** Changes when the image does: it versions the URL the browser caches the icon under. */
+    hash: varchar('hash', { length: 64 }),
+    sourceUrl: text('source_url'),
+    nextCheckAt: ts('next_check_at').notNull(),
+  },
+  (t) => [index('domain_favicons_due_idx').on(t.nextCheckAt)],
+)
+
 /** One row per domain once its crawl settings have been saved; until then, the defaults apply. */
 export const crawlSettings = mysqlTable('crawl_settings', {
   domainId: id('domain_id')

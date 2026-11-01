@@ -15,6 +15,7 @@ import {
   lte,
   ne,
   notInArray,
+  or,
   sql,
 } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
@@ -28,6 +29,7 @@ import {
   crawlResultColumns,
   crawlRobotsColumn,
   crawlViewScope,
+  faviconRow,
   foldCrawlCounts,
   groupDomains,
   newCrawlLinkRow,
@@ -37,6 +39,7 @@ import {
   toCrawl,
   toCrawlSchedule,
   toCrawlUrl,
+  toDomainFavicon,
   toJob,
   truncateError,
 } from '../mapping'
@@ -52,6 +55,7 @@ const {
   account,
   companies,
   domains,
+  domainFavicons,
   crawlSettings,
   crawlSchedules,
   crawls,
@@ -730,6 +734,48 @@ export function createSqliteDatabase(options: {
         db.update(crawlSchedules)
           .set({ lastOutcome: outcome })
           .where(eq(crawlSchedules.id, id))
+          .run()
+      },
+    },
+
+    favicons: {
+      async get(domainId) {
+        const row = db
+          .select()
+          .from(domainFavicons)
+          .where(eq(domainFavicons.domainId, domainId))
+          .get()
+        return row ? toDomainFavicon(row) : null
+      },
+      async versions() {
+        const rows = db
+          .select({ domainId: domainFavicons.domainId, hash: domainFavicons.hash })
+          .from(domainFavicons)
+          .where(isNotNull(domainFavicons.hash))
+          .all()
+        return new Map(rows.flatMap((row) => (row.hash ? [[row.domainId, row.hash] as const] : [])))
+      },
+      async due({ now, limit }) {
+        return db
+          .select({ id: domains.id, host: domains.host })
+          .from(domains)
+          .leftJoin(domainFavicons, eq(domainFavicons.domainId, domains.id))
+          .where(or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)))
+          .orderBy(asc(domains.createdAt), asc(domains.id))
+          .limit(limit)
+          .all()
+      },
+      async save({ domainId, icon, nextCheckAt }) {
+        const { domainId: _domainId, ...values } = faviconRow(domainId, icon, nextCheckAt)
+        db.insert(domainFavicons)
+          .values({ domainId, ...values })
+          .onConflictDoUpdate({ target: domainFavicons.domainId, set: values })
+          .run()
+      },
+      async defer({ domainId, nextCheckAt }) {
+        db.insert(domainFavicons)
+          .values({ domainId, nextCheckAt })
+          .onConflictDoUpdate({ target: domainFavicons.domainId, set: { nextCheckAt } })
           .run()
       },
     },

@@ -134,6 +134,27 @@ export const domains = pgTable(
   (t) => [index('domains_company_id_idx').on(t.companyId)],
 )
 
+/**
+ * The icon of a domain, fetched by the worker from the site itself. A row exists once the domain
+ * has been checked: `data` is `null` when the site has no icon. `data` is base64 so the three
+ * dialects store it as plain text.
+ */
+export const domainFavicons = pgTable(
+  'domain_favicons',
+  {
+    domainId: text('domain_id')
+      .primaryKey()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    contentType: text('content_type'),
+    data: text('data'),
+    /** Changes when the image does: it versions the URL the browser caches the icon under. */
+    hash: text('hash'),
+    sourceUrl: text('source_url'),
+    nextCheckAt: ts('next_check_at').notNull(),
+  },
+  (t) => [index('domain_favicons_due_idx').on(t.nextCheckAt)],
+)
+
 /** One row per domain once its crawl settings have been saved; until then, the defaults apply. */
 export const crawlSettings = pgTable('crawl_settings', {
   domainId: text('domain_id')

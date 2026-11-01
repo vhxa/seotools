@@ -821,6 +821,96 @@ export function describeDatabaseContract(
       })
     })
 
+    describe('favicons', () => {
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 255, 128, 7])
+      const icon = (data = png) => ({
+        contentType: 'image/png',
+        data,
+        sourceUrl: 'https://acme.com/icon.png',
+      })
+      const setupDomain = async (host = 'acme.com') => {
+        const created = await createCompany(db, { name: `Owner of ${host}`, domain: host })
+        if (!created.ok) throw new Error('company not created')
+        return created.domain.id
+      }
+
+      it('lists the domains that were never checked', async () => {
+        const now = new Date()
+        const first = await setupDomain('first.com')
+        const second = await setupDomain('second.com')
+        const due = await db.favicons.due({ now, limit: 10 })
+        expect(due.toSorted((a, b) => a.host.localeCompare(b.host))).toEqual([
+          { id: first, host: 'first.com' },
+          { id: second, host: 'second.com' },
+        ])
+        expect(await db.favicons.due({ now, limit: 1 })).toHaveLength(1)
+      })
+
+      it('stores the bytes of an icon exactly and versions them by content', async () => {
+        const domainId = await setupDomain()
+        const nextCheckAt = new Date(Date.now() + minutes(60))
+        await db.favicons.save({ domainId, icon: icon(), nextCheckAt })
+
+        const stored = await db.favicons.get(domainId)
+        expect(stored).toMatchObject({
+          domainId,
+          contentType: 'image/png',
+          sourceUrl: 'https://acme.com/icon.png',
+        })
+        expect(stored?.data.equals(png)).toBe(true)
+        expect(stored?.hash).toMatch(/^[0-9a-f]{16}$/)
+        expect((await db.favicons.versions()).get(domainId)).toBe(stored?.hash)
+
+        // The same image keeps its version; another image changes it.
+        await db.favicons.save({ domainId, icon: icon(), nextCheckAt })
+        expect((await db.favicons.get(domainId))?.hash).toBe(stored?.hash)
+        await db.favicons.save({ domainId, icon: icon(Buffer.from([...png, 1])), nextCheckAt })
+        expect((await db.favicons.get(domainId))?.hash).not.toBe(stored?.hash)
+      })
+
+      it('is not due again until its next check', async () => {
+        const domainId = await setupDomain()
+        const now = new Date()
+        await db.favicons.save({
+          domainId,
+          icon: icon(),
+          nextCheckAt: new Date(+now + minutes(60)),
+        })
+        expect(await db.favicons.due({ now, limit: 10 })).toEqual([])
+        expect(await db.favicons.due({ now: new Date(+now + minutes(61)), limit: 10 })).toEqual([
+          { id: domainId, host: 'acme.com' },
+        ])
+      })
+
+      it('records that a site has no icon, and drops the one it had', async () => {
+        const domainId = await setupDomain()
+        const now = new Date()
+        await db.favicons.save({ domainId, icon: icon(), nextCheckAt: now })
+        await db.favicons.save({ domainId, icon: null, nextCheckAt: new Date(+now + minutes(60)) })
+
+        expect(await db.favicons.get(domainId)).toBeNull()
+        expect((await db.favicons.versions()).has(domainId)).toBe(false)
+        // Checked, so it waits for its next check instead of being retried at once.
+        expect(await db.favicons.due({ now, limit: 10 })).toEqual([])
+      })
+
+      it('keeps the icon it has when a check could not tell', async () => {
+        const domainId = await setupDomain()
+        const now = new Date()
+        await db.favicons.save({ domainId, icon: icon(), nextCheckAt: now })
+        await db.favicons.defer({ domainId, nextCheckAt: new Date(+now + minutes(60)) })
+
+        expect((await db.favicons.get(domainId))?.data.equals(png)).toBe(true)
+        expect(await db.favicons.due({ now, limit: 10 })).toEqual([])
+
+        // Deferring a domain that was never checked also stops it from being due.
+        const other = await setupDomain('other.com')
+        await db.favicons.defer({ domainId: other, nextCheckAt: new Date(+now + minutes(60)) })
+        expect(await db.favicons.due({ now, limit: 10 })).toEqual([])
+        expect(await db.favicons.get(other)).toBeNull()
+      })
+    })
+
     describe('admin', () => {
       const first = { name: 'Ada', email: 'Admin@Example.com', password: 'correct horse battery' }
 

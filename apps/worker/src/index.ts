@@ -12,12 +12,14 @@ import {
 } from '@seotools/core'
 import { createDatabase } from '@seotools/db'
 import pkg from '../package.json' with { type: 'json' }
+import { createHttpFetcher } from './crawl/fetcher'
+import { createFaviconRefresher } from './favicon/refresh'
 import { handlers } from './handlers'
 import { createCrawlRunHandler } from './handlers/crawl-run'
 import { createRunner } from './runner'
 import { runDueSchedules } from './scheduler'
 
-/** How often due crawl schedules are looked for. Runs are not expected to the second. */
+/** How often due crawl schedules and favicon checks are looked for. Nothing runs to the second. */
 const SCHEDULER_INTERVAL_MS = 30_000
 
 async function main() {
@@ -72,6 +74,17 @@ async function main() {
   void tickScheduler()
   const scheduler = setInterval(tickScheduler, SCHEDULER_INTERVAL_MS)
 
+  // Icons are looked for on the same beat as schedules: cheap when nothing is due.
+  const favicons = createFaviconRefresher({
+    db,
+    log: log.child({ lane: 'favicon' }),
+    appVersion: pkg.version,
+    createFetcher: (config) =>
+      createHttpFetcher({ ...config, allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS }),
+  })
+  void favicons.tick()
+  const faviconTimer = setInterval(() => void favicons.tick(), SCHEDULER_INTERVAL_MS)
+
   let stopping = false
   const shutdown = async (signal: string) => {
     if (stopping) return
@@ -79,8 +92,9 @@ async function main() {
     log.info({ signal }, 'shutting down')
     clearInterval(heartbeat)
     clearInterval(scheduler)
+    clearInterval(faviconTimer)
     // Crawls resume from their stored queue, so they don't need the grace period to finish.
-    await Promise.all([runner.stop(), crawlRunner.stop(0)])
+    await Promise.all([runner.stop(), crawlRunner.stop(0), favicons.stop()])
     await db.close()
     process.exit(0)
   }

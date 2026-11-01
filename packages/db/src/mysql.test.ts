@@ -24,6 +24,7 @@ describeDatabaseContract(
           'crawl_schedules',
           'crawl_settings',
           'priority_urls',
+          'domain_favicons',
           'domains',
           'companies',
         ]) {

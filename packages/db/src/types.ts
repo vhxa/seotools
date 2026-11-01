@@ -291,6 +291,34 @@ export interface CrawlScheduleRepository {
   recordOutcome(input: { id: string; outcome: CrawlScheduleOutcome }): Promise<void>
 }
 
+/** An icon as the worker found it on the site. */
+export interface FaviconImage {
+  /** Sniffed from the bytes, not taken from the server's header. */
+  contentType: string
+  data: Buffer
+  /** Where it was fetched from: a URL, or `data:` for an icon embedded in the page. */
+  sourceUrl: string
+}
+
+export interface DomainFavicon extends FaviconImage {
+  domainId: string
+  /** Changes when the image does: it versions the URL the browser caches the icon under. */
+  hash: string
+}
+
+export interface FaviconRepository {
+  /** The icon of a domain, or `null` when it has none (or has not been checked yet). */
+  get(domainId: string): Promise<DomainFavicon | null>
+  /** The `hash` of the icon of every domain that has one, by domain id. */
+  versions(): Promise<Map<string, string>>
+  /** Domains never checked, or whose next check is due. Oldest domains first. */
+  due(input: { now: Date; limit: number }): Promise<{ id: string; host: string }[]>
+  /** Stores the outcome of a check. `icon: null` means the site has none. */
+  save(input: { domainId: string; icon: FaviconImage | null; nextCheckAt: Date }): Promise<void>
+  /** A check that could not tell (the site was unreachable): keeps the icon and tries again later. */
+  defer(input: { domainId: string; nextCheckAt: Date }): Promise<void>
+}
+
 export interface Database {
   readonly dialect: Dialect
   readonly jobs: JobRepository
@@ -302,6 +330,7 @@ export interface Database {
   readonly crawls: CrawlRepository
   readonly priorityUrls: PriorityUrlRepository
   readonly crawlSchedules: CrawlScheduleRepository
+  readonly favicons: FaviconRepository
   /** Drizzle instance and auth tables, for better-auth's drizzle adapter. */
   readonly orm: { db: unknown; schema: Record<string, unknown> }
   /** Rejects if the database is unreachable. */
