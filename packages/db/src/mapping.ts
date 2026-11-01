@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   JOB_TYPES,
   crawlUrlHash,
@@ -17,6 +18,8 @@ import type {
   CrawlUrlResult,
   CrawlUrlView,
   Domain,
+  DomainFavicon,
+  FaviconImage,
   NewCrawlUrl,
 } from './types'
 
@@ -224,4 +227,33 @@ export function newestPerUrl(rows: CrawlUrl[]): CrawlUrl[] {
     }
   }
   return [...newest.values()]
+}
+
+/** The columns of `domain_favicons` for a check's outcome; `icon: null` is "the site has none". */
+export function faviconRow(domainId: string, icon: FaviconImage | null, nextCheckAt: Date) {
+  return {
+    domainId,
+    contentType: icon?.contentType ?? null,
+    data: icon ? icon.data.toString('base64') : null,
+    hash: icon ? createHash('sha256').update(icon.data).digest('hex').slice(0, 16) : null,
+    sourceUrl: icon?.sourceUrl ?? null,
+    nextCheckAt,
+  }
+}
+
+export function toDomainFavicon(row: {
+  domainId: string
+  contentType: string | null
+  data: string | null
+  hash: string | null
+  sourceUrl: string | null
+}): DomainFavicon | null {
+  if (row.data === null || row.contentType === null || row.hash === null) return null
+  return {
+    domainId: row.domainId,
+    contentType: row.contentType,
+    data: Buffer.from(row.data, 'base64'),
+    hash: row.hash,
+    sourceUrl: row.sourceUrl ?? '',
+  }
 }

@@ -130,6 +130,14 @@ describe('createHttpFetcher', () => {
     f.close()
   })
 
+  it('cuts the body at a smaller limit when asked to', async () => {
+    const f = fetcher({ timeoutMs: 10_000 })
+    const response = await f.fetch(`${origin}/huge`, { signal, readBody: 'force', maxBytes: 4096 })
+    f.close()
+    expect(response.truncated).toBe(true)
+    expect(response.body?.length).toBe(4096)
+  })
+
   it('gives up after the timeout', async () => {
     const f = fetcher({ timeoutMs: 50 })
     await expect(f.fetch(`${origin}/slow`, { signal })).rejects.toMatchObject({

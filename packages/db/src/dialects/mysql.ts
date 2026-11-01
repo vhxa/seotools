@@ -12,6 +12,7 @@ import {
   lte,
   ne,
   notInArray,
+  or,
   sql,
 } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/mysql2'
@@ -25,6 +26,7 @@ import {
   crawlResultColumns,
   crawlRobotsColumn,
   crawlViewScope,
+  faviconRow,
   foldCrawlCounts,
   groupDomains,
   newCrawlLinkRow,
@@ -34,6 +36,7 @@ import {
   toCrawl,
   toCrawlSchedule,
   toCrawlUrl,
+  toDomainFavicon,
   toJob,
   truncateError,
 } from '../mapping'
@@ -49,6 +52,7 @@ const {
   account,
   companies,
   domains,
+  domainFavicons,
   crawlSettings,
   crawlSchedules,
   crawls,
@@ -702,6 +706,45 @@ export function createMysqlDatabase(options: {
           .update(crawlSchedules)
           .set({ lastOutcome: outcome })
           .where(eq(crawlSchedules.id, id))
+      },
+    },
+
+    favicons: {
+      async get(domainId) {
+        const [row] = await db
+          .select()
+          .from(domainFavicons)
+          .where(eq(domainFavicons.domainId, domainId))
+        return row ? toDomainFavicon(row) : null
+      },
+      async versions() {
+        const rows = await db
+          .select({ domainId: domainFavicons.domainId, hash: domainFavicons.hash })
+          .from(domainFavicons)
+          .where(isNotNull(domainFavicons.hash))
+        return new Map(rows.flatMap((row) => (row.hash ? [[row.domainId, row.hash] as const] : [])))
+      },
+      async due({ now, limit }) {
+        return await db
+          .select({ id: domains.id, host: domains.host })
+          .from(domains)
+          .leftJoin(domainFavicons, eq(domainFavicons.domainId, domains.id))
+          .where(or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)))
+          .orderBy(asc(domains.createdAt), asc(domains.id))
+          .limit(limit)
+      },
+      async save({ domainId, icon, nextCheckAt }) {
+        const { domainId: _domainId, ...values } = faviconRow(domainId, icon, nextCheckAt)
+        await db
+          .insert(domainFavicons)
+          .values({ domainId, ...values })
+          .onDuplicateKeyUpdate({ set: values })
+      },
+      async defer({ domainId, nextCheckAt }) {
+        await db
+          .insert(domainFavicons)
+          .values({ domainId, nextCheckAt })
+          .onDuplicateKeyUpdate({ set: { nextCheckAt } })
       },
     },
   }

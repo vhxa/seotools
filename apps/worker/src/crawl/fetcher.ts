@@ -37,7 +37,12 @@ export class FetchError extends Error {
 export interface Fetcher {
   fetch(
     url: string,
-    options: { signal: AbortSignal; readBody?: 'auto' | 'force' },
+    options: {
+      signal: AbortSignal
+      readBody?: 'auto' | 'force'
+      /** Stops reading the body here (the response is then `truncated`). Defaults by `readBody`. */
+      maxBytes?: number
+    },
   ): Promise<FetchedResponse>
   close(): void
 }
@@ -177,7 +182,7 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
       httpsAgent.destroy()
     },
 
-    async fetch(url, { signal, readBody = 'auto' }) {
+    async fetch(url, { signal, readBody = 'auto', maxBytes }) {
       const started = Date.now()
       const elapsed = () => Date.now() - started
       const { hostname, protocol } = new URL(url)
@@ -221,7 +226,7 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
                 response.destroy()
                 return finish(null, false)
               }
-              const limit = readBody === 'force' ? MAX_SITEMAP_BYTES : MAX_BODY_BYTES
+              const limit = maxBytes ?? (readBody === 'force' ? MAX_SITEMAP_BYTES : MAX_BODY_BYTES)
               readLimited(decompressed(response), limit)
                 .then(({ body, truncated }) => {
                   if (truncated) response.destroy()

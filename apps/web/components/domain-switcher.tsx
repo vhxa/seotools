@@ -1,9 +1,10 @@
 'use client'
 
-import { CheckIcon, ChevronsUpDownIcon, GlobeIcon, PlusIcon } from 'lucide-react'
+import { CheckIcon, ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { DomainIcon } from '@/components/domain-icon'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,10 +21,17 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 
+export interface SwitcherDomain {
+  id: string
+  host: string
+  /** Hash of the stored favicon, or `null` when the site has none (yet). */
+  faviconVersion: string | null
+}
+
 export interface SwitcherCompany {
   id: string
   name: string
-  domains: { id: string; host: string }[]
+  domains: SwitcherDomain[]
 }
 
 /**
@@ -40,6 +48,7 @@ export function DomainSwitcher({ companies }: { companies: SwitcherCompany[] }) 
   const current = companies.find((company) =>
     company.domains.some((domain) => domain.host === currentHost),
   )
+  const currentDomain = current?.domains.find((domain) => domain.host === currentHost)
 
   // Switching keeps the section you are in: /domains/a.com/audits → /domains/b.com/audits.
   const currentBase = `/domains/${currentHost}`
@@ -61,9 +70,10 @@ export function DomainSwitcher({ companies }: { companies: SwitcherCompany[] }) 
               />
             }
           >
-            <span className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-              <GlobeIcon className="size-4" />
-            </span>
+            <DomainIcon
+              host={currentDomain?.host ?? ''}
+              version={currentDomain?.faviconVersion ?? null}
+            />
             {current && currentHost ? (
               <span className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{currentHost}</span>
@@ -85,12 +95,9 @@ export function DomainSwitcher({ companies }: { companies: SwitcherCompany[] }) 
                 {index > 0 && <DropdownMenuSeparator />}
                 <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
                 {company.domains.map((domain) => (
-                  <DropdownMenuItem
-                    key={domain.id}
-                    render={<Link href={hrefFor(domain.host)} />}
-                    className="justify-between"
-                  >
-                    {domain.host}
+                  <DropdownMenuItem key={domain.id} render={<Link href={hrefFor(domain.host)} />}>
+                    <DomainIcon host={domain.host} version={domain.faviconVersion} size="sm" />
+                    <span className="flex-1 truncate">{domain.host}</span>
                     {domain.host === currentHost && <CheckIcon />}
                   </DropdownMenuItem>
                 ))}

@@ -6,7 +6,7 @@ SEO Tools is an open-source application with a set of features for monitoring an
 
 ```
 apps/web/            # Next.js app: UI, login + first-run setup + onboarding, /api/health, better-auth routes, server actions
-apps/worker/         # Background job runner + handlers (example.echo, mail.send, crawl.run), crawler, crawl scheduler; also the bootstrap CLI (migrations)
+apps/worker/         # Background job runner + handlers (example.echo, mail.send, crawl.run), crawler, crawl scheduler, favicon refresher; also the bootstrap CLI (migrations)
 packages/core/       # Shared logic: env validation, logger, job types, settings encryption, mail (SMTP + Resend), crawl types and URL rules
 packages/db/         # Database layer: Drizzle schemas, migrations and repositories for SQLite, PostgreSQL and MySQL
 docker/              # Container entrypoint and healthcheck
