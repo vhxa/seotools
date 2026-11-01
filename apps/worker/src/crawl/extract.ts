@@ -1,4 +1,10 @@
-import { normalizeCrawlUrl, type CrawlLinkKind } from '@seotools/core'
+import {
+  normalizeCrawlUrl,
+  type CrawlLinkKind,
+  type FeedSummary,
+  type OpenSearchSummary,
+  type SitemapSummary,
+} from '@seotools/core'
 import { Parser } from 'htmlparser2'
 
 export interface ExtractedLink {
@@ -16,11 +22,18 @@ export interface ExtractedHtml {
   botRobots: Record<string, string>
   canonical: string | null
   hreflang: { lang: string; url: string }[]
+  /** What the page announces with `<link rel="alternate">`. They are in `links` as well. */
+  feeds: string[]
+  /** What the page announces with `<link rel="search">`. They are in `links` as well. */
+  openSearch: string[]
   links: ExtractedLink[]
 }
 
 const MAX_H1 = 10
 const MAX_HREFLANG = 500
+const MAX_ANNOUNCED_FILES = 10
+const FEED_TYPE = /^application\/(rss|atom)\+xml\b/i
+const OPENSEARCH_TYPE = /^application\/opensearchdescription\+xml\b/i
 
 type AttributeRule = readonly [attribute: string, kind: CrawlLinkKind, list?: 'srcset']
 
@@ -119,6 +132,8 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
     botRobots: {},
     canonical: null,
     hreflang: [],
+    feeds: [],
+    openSearch: [],
     links: [],
   }
   let base = pageUrl
@@ -146,6 +161,14 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
   const onLink = (attributes: Record<string, string>) => {
     const rel = (attributes.rel ?? '').toLowerCase().split(/\s+/)
     const href = attributes.href
+    const announced = href === undefined ? null : normalizeCrawlUrl(href, base)
+    const type = attributes.type ?? ''
+    if (announced && rel.includes('alternate') && FEED_TYPE.test(type)) {
+      if (result.feeds.length < MAX_ANNOUNCED_FILES) result.feeds.push(announced)
+    }
+    if (announced && rel.includes('search') && OPENSEARCH_TYPE.test(type)) {
+      if (result.openSearch.length < MAX_ANNOUNCED_FILES) result.openSearch.push(announced)
+    }
     if (rel.includes('canonical')) {
       add(href, 'canonical')
       const url = href === undefined ? null : normalizeCrawlUrl(href, base)
@@ -316,13 +339,32 @@ export interface ParsedSitemap {
   urls: string[]
   /** Further sitemaps, from a sitemap index. */
   sitemaps: string[]
+  /** `null`: this is not a sitemap, whatever else it may be. */
+  format: SitemapSummary['format']
+  /** `<url>` or `<sitemap>` elements: unlike `urls`, it does not count images and alternates. */
+  entries: number
+  /** The most recent `<lastmod>`, as ISO 8601. */
+  lastModified: string | null
+}
+
+/** The later of a date kept as ISO 8601 and one as a site wrote it, ignoring what is not a date. */
+function newestDate(current: string | null, candidate: string): string | null {
+  const time = Date.parse(candidate.trim())
+  if (Number.isNaN(time)) return current
+  return current !== null && Date.parse(current) >= time ? current : new Date(time).toISOString()
 }
 
 const SITEMAP_ENTRY_LOCS = new Set(['image:loc', 'video:content_loc', 'video:player_loc'])
 
 /** Parses an XML sitemap or sitemap index, or a plain-text sitemap (one URL per line). */
 export function parseSitemap(content: string, base: string): ParsedSitemap {
-  const parsed: ParsedSitemap = { urls: [], sitemaps: [] }
+  const parsed: ParsedSitemap = {
+    urls: [],
+    sitemaps: [],
+    format: null,
+    entries: 0,
+    lastModified: null,
+  }
   const push = (into: string[], raw: string) => {
     const url = normalizeCrawlUrl(raw, base)
     if (url) into.push(url)
@@ -332,6 +374,8 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
     for (const line of content.split(/\r?\n/)) {
       if (/^https?:\/\//i.test(line.trim())) push(parsed.urls, line)
     }
+    if (parsed.urls.length > 0) parsed.format = 'text'
+    parsed.entries = parsed.urls.length
     return parsed
   }
 
@@ -341,6 +385,10 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
     {
       onopentag(rawName, attributes) {
         const name = rawName.toLowerCase()
+        if (stack.length === 0) {
+          if (name === 'urlset') parsed.format = 'urlset'
+          if (name === 'sitemapindex') parsed.format = 'index'
+        }
         stack.push(name)
         text = ''
         if (name === 'xhtml:link' && attributes.href) push(parsed.urls, attributes.href)
@@ -355,6 +403,14 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
         if (name === 'loc' && parent === 'sitemap') push(parsed.sitemaps, text)
         else if (name === 'loc' && parent === 'url') push(parsed.urls, text)
         else if (SITEMAP_ENTRY_LOCS.has(name)) push(parsed.urls, text)
+        else if (name === 'lastmod' && (parent === 'url' || parent === 'sitemap')) {
+          parsed.lastModified = newestDate(parsed.lastModified, text)
+        } else if (
+          (name === 'url' && parent === 'urlset') ||
+          (name === 'sitemap' && parent === 'sitemapindex')
+        ) {
+          parsed.entries++
+        }
         text = ''
       },
     },
@@ -374,4 +430,97 @@ export function parseRobotsSitemaps(robotsTxt: string, base: string): string[] {
     if (url) urls.push(url)
   }
   return urls
+}
+
+const collapseOrNull = (text: string) => collapse(text) || null
+
+/** What an RSS, Atom or RDF feed says of itself. `null` if the document is not a feed. */
+export function parseFeed(content: string): FeedSummary | null {
+  let summary: FeedSummary | null = null
+  const stack: string[] = []
+  let text = ''
+  const parser = new Parser(
+    {
+      onopentag(rawName) {
+        const name = rawName.toLowerCase()
+        if (stack.length === 0) {
+          const format =
+            name === 'rss' ? 'rss' : name === 'feed' ? 'atom' : name === 'rdf:rdf' ? 'rdf' : null
+          if (format) summary = { format, title: null, items: 0, lastModified: null }
+        }
+        stack.push(name)
+        text = ''
+      },
+      ontext(chunk) {
+        text += chunk
+      },
+      onclosetag(rawName) {
+        const name = rawName.toLowerCase()
+        stack.pop()
+        const current = summary as FeedSummary | null
+        if (current) {
+          const parent = stack[stack.length - 1]
+          if (name === 'item' || name === 'entry') current.items++
+          if (name === 'title' && !current.title && (parent === 'channel' || parent === 'feed')) {
+            current.title = collapseOrNull(text)
+          }
+          if (FEED_DATES.has(name)) current.lastModified = newestDate(current.lastModified, text)
+        }
+        text = ''
+      },
+    },
+    { xmlMode: true, decodeEntities: true },
+  )
+  parser.write(content)
+  parser.end()
+  return summary
+}
+
+const FEED_DATES = new Set(['pubdate', 'lastbuilddate', 'updated', 'published', 'dc:date'])
+
+const MAX_OPENSEARCH_TEMPLATES = 10
+
+/** What an OpenSearch description says of itself. `null` if the document is not one. */
+export function parseOpenSearch(content: string): OpenSearchSummary | null {
+  let summary: OpenSearchSummary | null = null
+  let depth = 0
+  let text = ''
+  const parser = new Parser(
+    {
+      onopentag(rawName, attributes) {
+        const name = rawName.toLowerCase()
+        if (depth === 0 && name.endsWith('opensearchdescription')) {
+          summary = { shortName: null, description: null, templates: [] }
+        }
+        depth++
+        text = ''
+        const current = summary as OpenSearchSummary | null
+        if (
+          current &&
+          name.endsWith('url') &&
+          attributes.template &&
+          current.templates.length < MAX_OPENSEARCH_TEMPLATES
+        ) {
+          current.templates.push(attributes.template)
+        }
+      },
+      ontext(chunk) {
+        text += chunk
+      },
+      onclosetag(rawName) {
+        const name = rawName.toLowerCase()
+        depth--
+        const current = summary as OpenSearchSummary | null
+        if (current && name.endsWith('shortname')) current.shortName = collapseOrNull(text)
+        if (current && name.endsWith('description') && depth === 1) {
+          current.description = collapseOrNull(text)
+        }
+        text = ''
+      },
+    },
+    { xmlMode: true, decodeEntities: true },
+  )
+  parser.write(content)
+  parser.end()
+  return summary
 }

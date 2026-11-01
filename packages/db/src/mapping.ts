@@ -2,8 +2,12 @@ import { createHash } from 'node:crypto'
 import {
   JOB_TYPES,
   crawlUrlHash,
+  enabledExtraFiles,
+  type CrawlFileData,
   type CrawlPageData,
   type CrawlRobotsFiles,
+  type CrawlSettings,
+  type ExtraCrawlFileKind,
   type Job,
   type JobStatus,
 } from '@seotools/core'
@@ -12,6 +16,8 @@ import type {
   CompanyWithDomains,
   Crawl,
   CrawlCounts,
+  CrawlFile,
+  CrawlFileCheck,
   CrawlLink,
   CrawlSchedule,
   CrawlUrl,
@@ -20,6 +26,7 @@ import type {
   Domain,
   DomainFavicon,
   FaviconImage,
+  NewCrawlFile,
   NewCrawlUrl,
 } from './types'
 
@@ -257,3 +264,81 @@ export function toDomainFavicon(row: {
     sourceUrl: row.sourceUrl ?? '',
   }
 }
+
+// --- crawl settings ------------------------------------------------------
+
+export type CrawlSettingsRow = Omit<CrawlSettings, 'optionalFiles'> & {
+  optionalFiles: string | null
+  domainId: string
+  updatedAt: Date
+}
+
+export const toCrawlSettings = ({
+  domainId: _domainId,
+  updatedAt: _updatedAt,
+  optionalFiles,
+  ...row
+}: CrawlSettingsRow): CrawlSettings => ({
+  ...row,
+  optionalFiles: (parseJson(optionalFiles) ?? []) as CrawlSettings['optionalFiles'],
+})
+
+/** The extra crawl files turned on in each stored settings row, leaving out rows with none. */
+export function enabledFilesByDomain(rows: CrawlSettingsRow[]): Map<string, ExtraCrawlFileKind[]> {
+  const enabled = new Map<string, ExtraCrawlFileKind[]>()
+  for (const row of rows) {
+    const kinds = enabledExtraFiles(toCrawlSettings(row))
+    if (kinds.length > 0) enabled.set(row.domainId, kinds)
+  }
+  return enabled
+}
+
+export const crawlSettingsColumns = ({ optionalFiles, ...settings }: CrawlSettings) => ({
+  ...settings,
+  optionalFiles: JSON.stringify(optionalFiles),
+})
+
+// --- crawl files ---------------------------------------------------------
+
+/** Sorted here rather than in SQL because each dialect collates text differently. */
+export const byUrl = (a: { url: string }, b: { url: string }) =>
+  a.url < b.url ? -1 : a.url > b.url ? 1 : 0
+
+export type CrawlFileRow = Omit<CrawlFile, 'data' | 'kind'> & { data: string | null; kind: string }
+
+export const toCrawlFile = ({ data, ...row }: CrawlFileRow): CrawlFile => ({
+  ...(row as Omit<CrawlFile, 'data'>),
+  data: data === null ? null : (parseJson(data) as CrawlFileData),
+})
+
+export const toCrawlFileCheck = (row: {
+  domainId: string
+  nextCheckAt: Date
+  requestedAt: Date | null
+  checkedAt: Date | null
+  outcome: string | null
+}): CrawlFileCheck => row as CrawlFileCheck
+
+/** Everything but the key: what replaces the row of a URL. Whatever the site sent has to fit. */
+export function crawlFileColumns(file: NewCrawlFile) {
+  return {
+    url: file.url,
+    kind: file.kind,
+    statusCode: file.statusCode,
+    contentType: cleanText(file.contentType, MAX_CONTENT_TYPE_LENGTH),
+    redirectTo: file.redirectTo,
+    bytes: file.bytes === null ? null : Math.min(file.bytes, MAX_INT),
+    truncated: file.truncated,
+    body: cleanText(file.body, Number.MAX_SAFE_INTEGER),
+    error: file.error === null ? null : truncateError(cleanText(file.error)),
+    data: file.data === null ? null : JSON.stringify(file.data),
+    via: file.via,
+    fetchedAt: file.fetchedAt,
+  }
+}
+
+export const crawlFileRow = (domainId: string, file: NewCrawlFile) => ({
+  domainId,
+  urlHash: crawlUrlHash(file.url),
+  ...crawlFileColumns(file),
+})

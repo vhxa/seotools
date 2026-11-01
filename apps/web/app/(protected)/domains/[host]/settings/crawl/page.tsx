@@ -1,9 +1,6 @@
 import { defaultCrawlerUserAgent } from '@seotools/core'
-import { ArrowLeftIcon } from 'lucide-react'
-import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { CrawlSettingsForm } from '@/components/crawl/crawl-settings-form'
-import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
 import { requireDomain } from '@/lib/workspace'
@@ -23,29 +20,18 @@ export default async function CrawlSettingsPage({ params }: { params: Promise<{ 
   const settings = await (await getDb()).crawls.settings(domain.id)
 
   return (
-    <main className="grid gap-6">
-      <div>
-        <Link
-          href={`/domains/${domain.host}/jobs`}
-          className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-        >
-          <ArrowLeftIcon />
-          {t('back')}
-        </Link>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('title')}</CardTitle>
-          <CardDescription>{t('description', { host: domain.host })}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CrawlSettingsForm
-            host={domain.host}
-            settings={settings}
-            defaultUserAgent={defaultCrawlerUserAgent(process.env.APP_VERSION)}
-          />
-        </CardContent>
-      </Card>
-    </main>
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('title')}</CardTitle>
+        <CardDescription>{t('description', { host: domain.host })}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <CrawlSettingsForm
+          host={domain.host}
+          settings={settings}
+          defaultUserAgent={defaultCrawlerUserAgent(process.env.APP_VERSION)}
+        />
+      </CardContent>
+    </Card>
   )
 }

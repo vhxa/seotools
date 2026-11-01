@@ -7,7 +7,7 @@ import {
 } from '@seotools/core'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createFirstAdmin, needsSetup } from '../admin'
-import type { CrawlUrlResult, Database, NewCrawlUrl } from '../types'
+import type { CrawlUrlResult, Database, NewCrawlFile, NewCrawlUrl } from '../types'
 import { addDomain, createCompany } from '../workspace'
 
 const minutes = (n: number) => n * 60_000
@@ -385,6 +385,41 @@ export function describeDatabaseContract(
         expect(await db.crawls.settings(domainId)).toEqual(custom)
         await db.crawls.saveSettings(domainId, { ...custom, concurrency: 8 })
         expect((await db.crawls.settings(domainId)).concurrency).toBe(8)
+
+        const withFiles = {
+          ...custom,
+          optionalFiles: ['ads', 'feed'] as const,
+          indexNowKey: 'abcd1234',
+        }
+        await db.crawls.saveSettings(domainId, {
+          ...withFiles,
+          optionalFiles: [...withFiles.optionalFiles],
+        })
+        expect(await db.crawls.settings(domainId)).toMatchObject({
+          optionalFiles: ['ads', 'feed'],
+          indexNowKey: 'abcd1234',
+        })
+      })
+
+      it('lists the extra files each domain turned on', async () => {
+        const first = await domain('first.com')
+        const second = await domain('second.com')
+        const third = await domain('third.com')
+
+        expect((await db.crawls.enabledFiles()).size).toBe(0)
+
+        const base = await db.crawls.settings(first)
+        await db.crawls.saveSettings(first, { ...base, optionalFiles: ['feed', 'ads'] })
+        await db.crawls.saveSettings(second, { ...base, indexNowKey: 'abcd1234' })
+        // Saved, but with nothing turned on: no different from a domain with no row.
+        await db.crawls.saveSettings(third, base)
+
+        expect(await db.crawls.enabledFiles()).toEqual(
+          new Map([
+            [first, ['ads', 'feed']],
+            [second, ['indexnow']],
+          ]),
+        )
       })
 
       it('starts a crawl together with the job that runs it', async () => {
@@ -818,6 +853,168 @@ export function describeDatabaseContract(
         const [saved] = await db.crawlSchedules.list(domainId)
         expect(saved?.lastOutcome).toBe('skipped-active')
         expect(saved?.lastRunAt).toBeInstanceOf(Date)
+      })
+    })
+
+    describe('crawl files', () => {
+      const at = new Date('2026-06-15T10:00:00.000Z')
+      const later = new Date('2026-06-15T11:00:00.000Z')
+
+      const domain = async () => {
+        const created = await createCompany(db, { name: 'Acme', domain: 'example.com' })
+        if (!created.ok) throw new Error('setup failed')
+        return created.domain.id
+      }
+      const file = (overrides: Partial<NewCrawlFile> = {}): NewCrawlFile => ({
+        url: 'https://example.com/robots.txt',
+        kind: 'robots',
+        statusCode: 200,
+        contentType: 'text/plain',
+        redirectTo: null,
+        bytes: 25,
+        truncated: false,
+        body: 'User-agent: *',
+        error: null,
+        data: null,
+        via: 'crawl',
+        fetchedAt: at,
+        ...overrides,
+      })
+
+      it('keeps one row per URL, replaced by each request', async () => {
+        const domainId = await domain()
+        await db.crawlFiles.save(domainId, [file()])
+        await db.crawlFiles.save(domainId, [
+          file({
+            statusCode: null,
+            body: null,
+            error: 'TIMEOUT',
+            via: 'refresh',
+            fetchedAt: later,
+          }),
+        ])
+        const [stored, ...rest] = await db.crawlFiles.list(domainId)
+        expect(rest).toEqual([])
+        expect(stored).toMatchObject({
+          domainId,
+          statusCode: null,
+          body: null,
+          error: 'TIMEOUT',
+          via: 'refresh',
+          fetchedAt: later,
+        })
+      })
+
+      it('lists by kind, sorted by URL, and round-trips the data', async () => {
+        const domainId = await domain()
+        const data = {
+          sitemap: { format: 'urlset' as const, entries: 3, lastModified: '2026-01-01T00:00:00Z' },
+        }
+        await db.crawlFiles.save(domainId, [
+          file({ url: 'https://example.com/z.xml', kind: 'sitemap', body: null, data }),
+          file(),
+          file({ url: 'https://example.com/a.xml', kind: 'sitemap', body: null, truncated: true }),
+        ])
+
+        const sitemaps = await db.crawlFiles.list(domainId, ['sitemap'])
+        expect(sitemaps.map((row) => row.url)).toEqual([
+          'https://example.com/a.xml',
+          'https://example.com/z.xml',
+        ])
+        expect(sitemaps[0]?.truncated).toBe(true)
+        expect(sitemaps[1]?.data).toEqual(data)
+        expect(await db.crawlFiles.list(domainId)).toHaveLength(3)
+      })
+
+      it('makes whatever a site sends fit', async () => {
+        const domainId = await domain()
+        await db.crawlFiles.save(domainId, [
+          file({ body: 'a\u0000b', bytes: 5_000_000_000, contentType: 'x'.repeat(1000) }),
+        ])
+        const [stored] = await db.crawlFiles.list(domainId)
+        expect(stored?.body).toBe('ab')
+        expect(stored?.bytes).toBe(2_147_483_647)
+        expect(stored?.contentType).toHaveLength(255)
+      })
+
+      it('holds a large body', async () => {
+        const domainId = await domain()
+        const body = 'x'.repeat(512 * 1024)
+        await db.crawlFiles.save(domainId, [file({ body })])
+        expect((await db.crawlFiles.list(domainId))[0]?.body).toHaveLength(body.length)
+      })
+
+      it('prunes what no request reached, except the kinds it is told to keep', async () => {
+        const domainId = await domain()
+        await db.crawlFiles.save(domainId, [
+          file({ url: 'https://example.com/old.txt', kind: 'llms' }),
+          file({ url: 'https://example.com/old.xml', kind: 'sitemap' }),
+          file({ url: 'https://example.com/new.txt', kind: 'llms', fetchedAt: later }),
+        ])
+        expect(await db.crawlFiles.prune({ domainId, before: later, keepKinds: ['sitemap'] })).toBe(
+          1,
+        )
+        expect((await db.crawlFiles.list(domainId)).map((row) => row.url)).toEqual([
+          'https://example.com/new.txt',
+          'https://example.com/old.xml',
+        ])
+        expect(await db.crawlFiles.prune({ domainId, before: later })).toBe(1)
+      })
+
+      it('makes a domain due until it is checked, and again when asked', async () => {
+        const domainId = await domain()
+        const next = new Date(at.getTime() + 86_400_000)
+        expect(await db.crawlFiles.getCheck(domainId)).toBeNull()
+        expect(await db.crawlFiles.dueChecks({ now: at, limit: 10 })).toEqual([
+          { id: domainId, host: 'example.com' },
+        ])
+
+        await db.crawlFiles.finishCheck({
+          domainId,
+          outcome: 'ok',
+          checkedAt: at,
+          nextCheckAt: next,
+        })
+        expect(await db.crawlFiles.dueChecks({ now: at, limit: 10 })).toEqual([])
+        expect(await db.crawlFiles.dueChecks({ now: next, limit: 10 })).toHaveLength(1)
+
+        await db.crawlFiles.requestCheck({ domainId, now: later })
+        expect(await db.crawlFiles.getCheck(domainId)).toMatchObject({
+          requestedAt: later,
+          nextCheckAt: later,
+          outcome: 'ok',
+          checkedAt: at,
+        })
+        expect(await db.crawlFiles.dueChecks({ now: later, limit: 10 })).toHaveLength(1)
+
+        await db.crawlFiles.finishCheck({
+          domainId,
+          outcome: 'unreachable',
+          checkedAt: later,
+          nextCheckAt: next,
+        })
+        expect(await db.crawlFiles.getCheck(domainId)).toMatchObject({
+          requestedAt: null,
+          outcome: 'unreachable',
+          checkedAt: later,
+          nextCheckAt: next,
+        })
+      })
+
+      it('lets one of several workers claim a check, including a first one', async () => {
+        const domainId = await domain()
+        const claim = () => db.crawlFiles.claimCheck({ domainId, now: at, retryAt: later })
+        const results = await Promise.all([claim(), claim(), claim()])
+        expect(results.filter(Boolean)).toHaveLength(1)
+        expect(await db.crawlFiles.dueChecks({ now: at, limit: 10 })).toEqual([])
+        expect((await db.crawlFiles.getCheck(domainId))?.nextCheckAt).toEqual(later)
+
+        await db.crawlFiles.requestCheck({ domainId, now: at })
+        await db.crawlFiles.deferCheck({ domainId, nextCheckAt: later })
+        expect(await db.crawlFiles.getCheck(domainId)).toMatchObject({
+          requestedAt: null,
+          nextCheckAt: later,
+        })
       })
     })
 

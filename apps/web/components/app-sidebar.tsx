@@ -3,16 +3,27 @@
 import {
   ActivityIcon,
   CalendarClockIcon,
+  ChevronRightIcon,
+  FileCode2Icon,
   FileTextIcon,
   LayoutDashboardIcon,
+  SettingsIcon,
   type LucideIcon,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { useState } from 'react'
 import { DomainSwitcher, type SwitcherCompany } from '@/components/domain-switcher'
 import { Logo } from '@/components/logo'
 import { NavUser, type NavUserData } from '@/components/nav-user'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Sidebar,
   SidebarContent,
@@ -24,15 +35,87 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
+  useSidebar,
 } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 
-interface NavItem {
+interface NavLink {
   label: string
   href: string
   icon: LucideIcon
   /** Active only on this exact path, not on its sub-pages. */
   exact?: boolean
+}
+
+interface NavSection {
+  label: string
+  icon: LucideIcon
+  links: { label: string; href: string }[]
+}
+
+type NavItem = NavLink | NavSection
+
+const isActive = (link: { href: string; exact?: boolean }, pathname: string) =>
+  pathname === link.href || (!link.exact && pathname.startsWith(`${link.href}/`))
+
+/**
+ * Options that unfold in place. A sidebar collapsed to icons has no room for that, so there they
+ * open as a menu beside it.
+ */
+function NavCollapsible({ section, pathname }: { section: NavSection; pathname: string }) {
+  const { state, isMobile } = useSidebar()
+  const active = section.links.some((link) => isActive(link, pathname))
+  const [open, setOpen] = useState(active)
+
+  if (state === 'collapsed' && !isMobile) {
+    return (
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<SidebarMenuButton isActive={active} tooltip={section.label} />}
+          >
+            <section.icon />
+            <span>{section.label}</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start">
+            {section.links.map((link) => (
+              <DropdownMenuItem key={link.href} render={<Link href={link.href} />}>
+                {link.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    )
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+      <CollapsibleTrigger render={<SidebarMenuButton tooltip={section.label} />}>
+        <section.icon />
+        <span>{section.label}</span>
+        <ChevronRightIcon className={cn('ml-auto transition-transform', open && 'rotate-90')} />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          {section.links.map((link) => (
+            <SidebarMenuSubItem key={link.href}>
+              <SidebarMenuSubButton
+                render={<Link href={link.href} />}
+                isActive={isActive(link, pathname)}
+              >
+                <span>{link.label}</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  )
 }
 
 function NavGroup({
@@ -49,20 +132,22 @@ function NavGroup({
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton
-                render={<Link href={item.href} />}
-                isActive={
-                  pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`))
-                }
-                tooltip={item.label}
-              >
-                <item.icon />
-                <span>{item.label}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+          {items.map((item) =>
+            'links' in item ? (
+              <NavCollapsible key={item.label} section={item} pathname={pathname} />
+            ) : (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  render={<Link href={item.href} />}
+                  isActive={isActive(item, pathname)}
+                  tooltip={item.label}
+                >
+                  <item.icon />
+                  <span>{item.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ),
+          )}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
@@ -83,12 +168,14 @@ export function AppSidebar({
   version?: string
 }) {
   const t = useTranslations('Sidebar')
+  const tFiles = useTranslations('CrawlFiles.extra.kinds')
   const pathname = usePathname()
   const { host } = useParams<{ host?: string }>()
   // Only a tracked domain counts: a 404 host must not get links of its own.
-  const activeHost = companies
+  const activeDomain = companies
     .flatMap((company) => company.domains)
-    .find((domain) => domain.host === host)?.host
+    .find((domain) => domain.host === host)
+  const activeHost = activeDomain?.host
 
   const domainItems: NavItem[] = activeHost
     ? [
@@ -99,10 +186,25 @@ export function AppSidebar({
           exact: true,
         },
         { label: t('pages'), href: `/domains/${activeHost}/pages`, icon: FileTextIcon },
+        {
+          label: t('crawlFiles'),
+          icon: FileCode2Icon,
+          links: [
+            { label: t('robots'), href: `/domains/${activeHost}/crawl-files/robots` },
+            { label: t('sitemaps'), href: `/domains/${activeHost}/crawl-files/sitemaps` },
+            { label: t('llms'), href: `/domains/${activeHost}/crawl-files/llms` },
+            // One per file the domain turned on in its settings.
+            ...(activeDomain?.extraFiles ?? []).map((kind) => ({
+              label: tFiles(`${kind}.name`),
+              href: `/domains/${activeHost}/crawl-files/${kind}`,
+            })),
+          ],
+        },
         { label: t('scheduledJobs'), href: `/domains/${activeHost}/jobs`, icon: CalendarClockIcon },
+        { label: t('settings'), href: `/domains/${activeHost}/settings`, icon: SettingsIcon },
       ]
     : []
-  const instanceItems: NavItem[] = [{ label: t('system'), href: '/system', icon: ActivityIcon }]
+  const instanceItems: NavLink[] = [{ label: t('system'), href: '/system', icon: ActivityIcon }]
 
   return (
     <Sidebar collapsible="icon">

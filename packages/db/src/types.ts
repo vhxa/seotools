@@ -1,4 +1,7 @@
 import type {
+  CrawlFileData,
+  CrawlFileKind,
+  ExtraCrawlFileKind,
   CrawlFrequency,
   CrawlLinkKind,
   CrawlPageData,
@@ -183,6 +186,8 @@ export interface CrawlRepository {
   /** The saved settings of a domain, or the defaults if it has none. */
   settings(domainId: string): Promise<CrawlSettings>
   saveSettings(domainId: string, settings: CrawlSettings): Promise<void>
+  /** The extra crawl files each domain turned on, by domain id. Domains with none are left out. */
+  enabledFiles(): Promise<Map<string, ExtraCrawlFileKind[]>>
 
   /**
    * Creates a crawl and the job that runs it, together. A domain has one active crawl at most:
@@ -319,6 +324,73 @@ export interface FaviconRepository {
   defer(input: { domainId: string; nextCheckAt: Date }): Promise<void>
 }
 
+/** What a request for a crawl file answered. */
+export interface NewCrawlFile {
+  url: string
+  kind: CrawlFileKind
+  /** `null` when it never answered: see `error`. */
+  statusCode: number | null
+  contentType: string | null
+  redirectTo: string | null
+  bytes: number | null
+  /** The file is larger than what was read or kept of it. */
+  truncated: boolean
+  body: string | null
+  error: string | null
+  data: CrawlFileData | null
+  /** What requested it. */
+  via: 'crawl' | 'refresh'
+  fetchedAt: Date
+}
+
+export interface CrawlFile extends NewCrawlFile {
+  domainId: string
+  urlHash: string
+}
+
+export type CrawlFileCheckOutcome = 'ok' | 'unreachable'
+
+export interface CrawlFileCheck {
+  domainId: string
+  nextCheckAt: Date
+  /** Someone asked for a refresh and it has not finished yet. */
+  requestedAt: Date | null
+  checkedAt: Date | null
+  outcome: CrawlFileCheckOutcome | null
+}
+
+export interface CrawlFileRepository {
+  /** Sorted by URL. All kinds unless told otherwise. */
+  list(domainId: string, kinds?: readonly CrawlFileKind[]): Promise<CrawlFile[]>
+  /** Each file replaces the row of its URL, if there is one. */
+  save(domainId: string, files: NewCrawlFile[]): Promise<void>
+  /** Removes the files no request reached since `before`: they are gone from the site. */
+  prune(input: {
+    domainId: string
+    before: Date
+    keepKinds?: readonly CrawlFileKind[]
+  }): Promise<number>
+  getCheck(domainId: string): Promise<CrawlFileCheck | null>
+  /** Makes a domain due now, and flags that someone is waiting for the outcome. */
+  requestCheck(input: { domainId: string; now: Date }): Promise<void>
+  /** Domains never checked, or whose next check is due. Oldest domains first. */
+  dueChecks(input: { now: Date; limit: number }): Promise<{ id: string; host: string }[]>
+  /**
+   * Takes a due check, moving it to `retryAt` in case this worker dies halfway. Only one of several
+   * workers gets `true` for a check.
+   */
+  claimCheck(input: { domainId: string; now: Date; retryAt: Date }): Promise<boolean>
+  /** Stores how a check went, and when the next one is due. */
+  finishCheck(input: {
+    domainId: string
+    outcome: CrawlFileCheckOutcome
+    checkedAt: Date
+    nextCheckAt: Date
+  }): Promise<void>
+  /** A check that did not happen (a crawl is taking care of it), so nobody waits for it. */
+  deferCheck(input: { domainId: string; nextCheckAt: Date }): Promise<void>
+}
+
 export interface Database {
   readonly dialect: Dialect
   readonly jobs: JobRepository
@@ -331,6 +403,7 @@ export interface Database {
   readonly priorityUrls: PriorityUrlRepository
   readonly crawlSchedules: CrawlScheduleRepository
   readonly favicons: FaviconRepository
+  readonly crawlFiles: CrawlFileRepository
   /** Drizzle instance and auth tables, for better-auth's drizzle adapter. */
   readonly orm: { db: unknown; schema: Record<string, unknown> }
   /** Rejects if the database is unreachable. */

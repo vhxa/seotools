@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./crawl/files": "./src/crawl/files.ts",
     "./crawl/schedule": "./src/crawl/schedule.ts",
     "./crawl/settings": "./src/crawl/settings.ts"
   },

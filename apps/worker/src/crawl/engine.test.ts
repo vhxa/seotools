@@ -414,9 +414,9 @@ describe('settings', () => {
     const site = fakeSite({})
     const started = Date.now()
     await crawlWith(site)
-    // 12 seeds at 50 per second need at least 11 intervals of 20 ms.
-    expect(site.requests).toHaveLength(12)
-    expect(Date.now() - started).toBeGreaterThanOrEqual(11 * 20 - 5)
+    // 16 seeds at 50 per second need at least 15 intervals of 20 ms.
+    expect(site.requests).toHaveLength(16)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(15 * 20 - 5)
   })
 
   it('applies the retention of the domain when a crawl ends', async () => {
@@ -621,7 +621,7 @@ describe('interruptions', () => {
     const homeRequests = site.requests.filter((url) => url === 'https://example.com/')
     expect(homeRequests).toHaveLength(1)
     for (let i = 0; i < 40; i++) expect(site.requests).toContain(`https://example.com/p${i}`)
-    expect((await db.crawls.get(crawl!.id))?.urlsCount).toBe(52)
+    expect((await db.crawls.get(crawl!.id))?.urlsCount).toBe(56)
   })
 
   it('remembers on resume that it had reached the limit', async () => {
@@ -683,5 +683,191 @@ describe('interruptions', () => {
     })
     expect(summary?.status).toBe('completed')
     expect(await db.crawls.nextQueued(crawl!.id, 10)).toEqual([])
+  })
+})
+
+describe('crawl files', () => {
+  const text = (body: string, type = 'text/plain'): Partial<FetchedResponse> => ({
+    statusCode: 200,
+    headers: { 'content-type': type },
+    body: Buffer.from(body),
+  })
+  const filesOf = async (kind?: Parameters<typeof db.crawlFiles.list>[1]) =>
+    await db.crawlFiles.list(domainId, kind)
+  const enable = async (changes: Partial<Awaited<ReturnType<typeof db.crawls.settings>>>) =>
+    await db.crawls.saveSettings(domainId, { ...(await db.crawls.settings(domainId)), ...changes })
+
+  it('keeps what every file answered, without counting any as a page', async () => {
+    const site = fakeSite({
+      'https://example.com/': html('<title>Home</title>'),
+      'http://example.com/': moved('https://example.com/'),
+      'https://example.com/robots.txt': text(
+        'User-agent: *\nSitemap: https://example.com/custom.xml',
+      ),
+      'https://example.com/custom.xml': {
+        ...text(
+          '<urlset><url><loc>https://example.com/a</loc><lastmod>2026-02-03</lastmod></url></urlset>',
+          'application/xml',
+        ),
+      },
+      'https://example.com/a': html('<title>A</title>'),
+      'https://example.com/llms.txt': text('# Acme\n> Anvils\n## Docs\n- [Doc](/doc.md)'),
+      // A site answering any path with its home page: that is not an llms-full.txt.
+      'https://example.com/llms-full.txt': html('<title>Home</title>'),
+    })
+    const { crawl } = await crawlWith(site)
+
+    expect(crawl.status).toBe('completed')
+    const pages = await urls(crawl.id, 'pages')
+    expect(pages).toContain('https://example.com/a')
+    expect(pages).not.toContain('https://example.com/llms-full.txt')
+
+    const files = await filesOf()
+    const byUrl = (url: string) => files.find((file) => file.url === url)
+    expect(byUrl('https://example.com/robots.txt')).toMatchObject({
+      kind: 'robots',
+      statusCode: 200,
+      body: 'User-agent: *\nSitemap: https://example.com/custom.xml',
+      via: 'crawl',
+    })
+    expect(byUrl('http://example.com/robots.txt')).toMatchObject({ statusCode: 404, body: null })
+    expect(byUrl('https://example.com/custom.xml')).toMatchObject({
+      kind: 'sitemap',
+      body: null,
+      data: {
+        sitemap: { format: 'urlset', entries: 1, lastModified: '2026-02-03T00:00:00.000Z' },
+      },
+    })
+    expect(byUrl('https://example.com/sitemap.xml')).toMatchObject({ statusCode: 404, data: null })
+    expect(byUrl('https://example.com/llms.txt')).toMatchObject({ kind: 'llms', statusCode: 200 })
+    expect(byUrl('https://example.com/llms-full.txt')).toMatchObject({
+      kind: 'llms-full',
+      statusCode: 200,
+      body: null,
+    })
+    // The URLs of the site's own page are never mistaken for files.
+    expect(byUrl('https://example.com/a')).toBeUndefined()
+  })
+
+  it('follows the links of an llms.txt', async () => {
+    const site = fakeSite({
+      'https://example.com/llms.txt': text(
+        '# Acme\n## Docs\n- [Doc](/doc.md)\n- [Ext](https://other.com/x)',
+      ),
+      'https://example.com/doc.md': text('# Doc', 'text/markdown'),
+    })
+    const { crawl } = await crawlWith(site)
+    expect(site.requests).toContain('https://example.com/doc.md')
+    expect(site.requests).not.toContain('https://other.com/x')
+    expect(
+      await db.crawls.linkSources(crawl.id, crawlUrlHash('https://example.com/doc.md')),
+    ).toEqual([{ url: 'https://example.com/llms.txt', kind: 'llms' }])
+  })
+
+  it('reads a moved file as what it is, where it landed', async () => {
+    const site = fakeSite({
+      'https://example.com/llms.txt': moved('https://example.com/docs/llms.txt'),
+      'https://example.com/docs/llms.txt': text('# Acme'),
+    })
+    await crawlWith(site)
+    const files = await filesOf(['llms'])
+    expect(files.find((file) => file.url === 'https://example.com/llms.txt')).toMatchObject({
+      statusCode: 301,
+      redirectTo: 'https://example.com/docs/llms.txt',
+    })
+    expect(files.find((file) => file.url === 'https://example.com/docs/llms.txt')).toMatchObject({
+      statusCode: 200,
+      body: '# Acme',
+    })
+  })
+
+  it('only requests the optional files a domain enabled', async () => {
+    await enable({ optionalFiles: ['ads', 'feed'], indexNowKey: 'abcd1234' })
+    const site = fakeSite({
+      'https://example.com/': html(
+        '<link rel="alternate" type="application/rss+xml" href="/blog/rss"><link rel="search" type="application/opensearchdescription+xml" href="/os.xml">',
+      ),
+      'https://example.com/ads.txt': text('google.com, pub-1, DIRECT'),
+      'https://example.com/abcd1234.txt': text('abcd1234'),
+      'https://example.com/blog/rss': text(
+        '<rss><channel><title>Blog</title><item><pubDate>Mon, 02 Feb 2026 00:00:00 GMT</pubDate></item></channel></rss>',
+        'application/rss+xml',
+      ),
+    })
+    await crawlWith(site)
+
+    expect(site.requests).toContain('https://example.com/ads.txt')
+    expect(site.requests).not.toContain('https://example.com/humans.txt')
+    const files = await filesOf()
+    expect(files.find((file) => file.kind === 'ads' && file.statusCode === 200)).toBeDefined()
+    expect(files.find((file) => file.kind === 'indexnow' && file.statusCode === 200)?.body).toBe(
+      'abcd1234',
+    )
+    expect(files.find((file) => file.url === 'https://example.com/blog/rss')).toMatchObject({
+      kind: 'feed',
+      data: {
+        feed: {
+          format: 'rss',
+          title: 'Blog',
+          items: 1,
+          lastModified: '2026-02-02T00:00:00.000Z',
+        },
+      },
+    })
+    // OpenSearch was not asked for: to this crawl, that link is like any other.
+    expect(files.some((file) => file.kind === 'opensearch')).toBe(false)
+  })
+
+  it('records a file that could not be reached', async () => {
+    const site = fakeSite({
+      'https://example.com/robots.txt': () => new FetchError('ECONNRESET', 'reset'),
+    })
+    await crawlWith(site)
+    const files = await filesOf(['robots'])
+    expect(files.find((file) => file.url === 'https://example.com/robots.txt')).toMatchObject({
+      statusCode: null,
+      error: 'ECONNRESET: reset',
+    })
+  })
+
+  it('removes the files that are gone, and pushes the daily refresh back', async () => {
+    await db.crawlFiles.save(domainId, [
+      {
+        url: 'https://example.com/old-sitemap.xml',
+        kind: 'sitemap',
+        statusCode: 200,
+        contentType: null,
+        redirectTo: null,
+        bytes: null,
+        truncated: false,
+        body: null,
+        error: null,
+        data: null,
+        via: 'refresh',
+        fetchedAt: new Date(Date.now() - 86_400_000),
+      },
+    ])
+    await crawlWith(fakeSite({}))
+    const files = await filesOf(['sitemap'])
+    expect(files.some((file) => file.url.endsWith('old-sitemap.xml'))).toBe(false)
+    const check = await db.crawlFiles.getCheck(domainId)
+    expect(check?.outcome).toBe('ok')
+    expect(check?.nextCheckAt.getTime()).toBeGreaterThan(Date.now() + 23 * 3_600_000)
+  })
+
+  it('does not touch them on a priority crawl', async () => {
+    await db.priorityUrls.add({ domainId, url: 'https://example.com/a' })
+    const site = fakeSite({ 'https://example.com/a': html('<title>A</title>') })
+    await crawlWith(site, 'priority')
+    expect(site.requests).toEqual(['https://example.com/a'])
+    expect(await filesOf()).toEqual([])
+    expect(await db.crawlFiles.getCheck(domainId)).toBeNull()
+  })
+
+  it('reads a file as such even if it is marked as priority', async () => {
+    await db.priorityUrls.add({ domainId, url: 'https://example.com/llms.txt' })
+    await crawlWith(fakeSite({ 'https://example.com/llms.txt': text('# Acme') }))
+    const [file] = (await filesOf(['llms'])).filter((row) => row.statusCode === 200)
+    expect(file?.body).toBe('# Acme')
   })
 })

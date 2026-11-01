@@ -24,11 +24,16 @@ import { sqlitePathFromUrl } from '../dialect'
 import {
   CREDENTIAL_PROVIDER,
   EMPTY_COUNTS,
+  byUrl,
   chunk,
   crawlJobValues,
   crawlResultColumns,
   crawlRobotsColumn,
   crawlViewScope,
+  crawlFileColumns,
+  crawlFileRow,
+  crawlSettingsColumns,
+  enabledFilesByDomain,
   faviconRow,
   foldCrawlCounts,
   groupDomains,
@@ -39,6 +44,9 @@ import {
   toCrawl,
   toCrawlSchedule,
   toCrawlUrl,
+  toCrawlFile,
+  toCrawlFileCheck,
+  toCrawlSettings,
   toDomainFavicon,
   toJob,
   truncateError,
@@ -56,6 +64,8 @@ const {
   companies,
   domains,
   domainFavicons,
+  crawlFileChecks,
+  crawlFiles,
   crawlSettings,
   crawlSchedules,
   crawls,
@@ -372,11 +382,15 @@ export function createSqliteDatabase(options: {
           .where(eq(crawlSettings.domainId, domainId))
           .get()
         if (!row) return { ...DEFAULT_CRAWL_SETTINGS }
-        const { domainId: _domainId, updatedAt: _updatedAt, ...settings } = row
-        return settings
+        return toCrawlSettings(row)
       },
 
-      async saveSettings(domainId, values) {
+      async enabledFiles() {
+        return enabledFilesByDomain(db.select().from(crawlSettings).all())
+      },
+
+      async saveSettings(domainId, input) {
+        const values = crawlSettingsColumns(input)
         const updatedAt = new Date()
         db.insert(crawlSettings)
           .values({ domainId, ...values, updatedAt })
@@ -734,6 +748,97 @@ export function createSqliteDatabase(options: {
         db.update(crawlSchedules)
           .set({ lastOutcome: outcome })
           .where(eq(crawlSchedules.id, id))
+          .run()
+      },
+    },
+
+    crawlFiles: {
+      async list(domainId, kinds) {
+        const rows = db
+          .select()
+          .from(crawlFiles)
+          .where(
+            and(
+              eq(crawlFiles.domainId, domainId),
+              kinds ? inArray(crawlFiles.kind, [...kinds]) : undefined,
+            ),
+          )
+          .all()
+        return rows.map(toCrawlFile).sort(byUrl)
+      },
+      async save(domainId, files) {
+        for (const file of files) {
+          db.insert(crawlFiles)
+            .values(crawlFileRow(domainId, file))
+            .onConflictDoUpdate({
+              target: [crawlFiles.domainId, crawlFiles.urlHash],
+              set: crawlFileColumns(file),
+            })
+            .run()
+        }
+      },
+      async prune({ domainId, before, keepKinds }) {
+        const result = db
+          .delete(crawlFiles)
+          .where(
+            and(
+              eq(crawlFiles.domainId, domainId),
+              lt(crawlFiles.fetchedAt, before),
+              keepKinds?.length ? notInArray(crawlFiles.kind, [...keepKinds]) : undefined,
+            ),
+          )
+          .run()
+        return result.changes
+      },
+      async getCheck(domainId) {
+        const row = db
+          .select()
+          .from(crawlFileChecks)
+          .where(eq(crawlFileChecks.domainId, domainId))
+          .get()
+        return row ? toCrawlFileCheck(row) : null
+      },
+      async requestCheck({ domainId, now }) {
+        const values = { nextCheckAt: now, requestedAt: now }
+        db.insert(crawlFileChecks)
+          .values({ domainId, ...values })
+          .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
+          .run()
+      },
+      async dueChecks({ now, limit }) {
+        return db
+          .select({ id: domains.id, host: domains.host })
+          .from(domains)
+          .leftJoin(crawlFileChecks, eq(crawlFileChecks.domainId, domains.id))
+          .where(or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)))
+          .orderBy(asc(domains.createdAt), asc(domains.id))
+          .limit(limit)
+          .all()
+      },
+      async claimCheck({ domainId, now, retryAt }) {
+        // A domain never checked has no row yet: its first check is due as of now.
+        db.insert(crawlFileChecks)
+          .values({ domainId, nextCheckAt: now })
+          .onConflictDoNothing()
+          .run()
+        const result = db
+          .update(crawlFileChecks)
+          .set({ nextCheckAt: retryAt })
+          .where(and(eq(crawlFileChecks.domainId, domainId), lte(crawlFileChecks.nextCheckAt, now)))
+          .run()
+        return result.changes > 0
+      },
+      async finishCheck({ domainId, outcome, checkedAt, nextCheckAt }) {
+        const values = { outcome, checkedAt, nextCheckAt, requestedAt: null }
+        db.insert(crawlFileChecks)
+          .values({ domainId, ...values })
+          .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
+          .run()
+      },
+      async deferCheck({ domainId, nextCheckAt }) {
+        db.update(crawlFileChecks)
+          .set({ nextCheckAt, requestedAt: null })
+          .where(eq(crawlFileChecks.domainId, domainId))
           .run()
       },
     },

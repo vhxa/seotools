@@ -29,7 +29,10 @@ export type CrawlUrlState = 'queued' | 'done' | 'skipped'
  */
 export type CrawlUrlKind = 'page' | 'redirect' | 'resource' | 'unknown'
 
-/** How a URL entered the crawl. `robots` and `sitemap-file` are never counted as pages. */
+/**
+ * How a URL entered the crawl. `robots`, `sitemap-file` and the rest of the crawl files
+ * (`crawlFileKindOf`) are never counted as pages.
+ */
 export const CRAWL_URL_SOURCES = [
   'seed',
   'link',
@@ -38,6 +41,15 @@ export const CRAWL_URL_SOURCES = [
   'sitemap-file',
   'robots',
   'priority',
+  'llms',
+  'llms-full',
+  'ads',
+  'app-ads',
+  'security',
+  'humans',
+  'feed',
+  'opensearch',
+  'indexnow',
 ] as const
 export type CrawlUrlSource = (typeof CRAWL_URL_SOURCES)[number]
 
@@ -58,6 +70,7 @@ export const CRAWL_LINK_KINDS = [
   'http-header',
   'redirect',
   'sitemap',
+  'llms',
   'other',
 ] as const
 export type CrawlLinkKind = (typeof CRAWL_LINK_KINDS)[number]

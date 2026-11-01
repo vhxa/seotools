@@ -175,6 +175,9 @@ export const crawlSettings = mysqlTable('crawl_settings', {
   maxUrls: int('max_urls'),
   /** `null` keeps the results of every crawl. */
   retainCrawls: int('retain_crawls'),
+  /** JSON array of `OptionalCrawlFile`. `null`: none. */
+  optionalFiles: longtext('optional_files'),
+  indexNowKey: varchar('index_now_key', { length: 128 }),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
 
@@ -310,4 +313,54 @@ export const priorityUrls = mysqlTable(
     createdAt: ts('created_at').notNull().$defaultFn(now),
   },
   (t) => [primaryKey({ columns: [t.domainId, t.urlHash] })],
+)
+
+/**
+ * What a domain's files for crawlers answered the last time they were requested, by a crawl or a
+ * refresh. There is no history: each request replaces the row of its URL.
+ */
+export const crawlFiles = mysqlTable(
+  'crawl_files',
+  {
+    domainId: id('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    urlHash: varchar('url_hash', { length: 32 }).notNull(),
+    url: text('url').notNull(),
+    kind: varchar('kind', { length: 32 }).notNull(),
+    statusCode: int('status_code'),
+    contentType: varchar('content_type', { length: 255 }),
+    redirectTo: text('redirect_to'),
+    bytes: int('bytes'),
+    /** The file is larger than what was read or kept of it. */
+    truncated: boolean('truncated').notNull().default(false),
+    /** Sitemaps have no body here: they can be huge, and `data` says what matters of them. */
+    body: longtext('body'),
+    error: text('error'),
+    /** JSON (`CrawlFileData`). */
+    data: longtext('data'),
+    via: varchar('via', { length: 16, enum: ['crawl', 'refresh'] }).notNull(),
+    fetchedAt: ts('fetched_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.domainId, t.urlHash] }),
+    index('crawl_files_kind_idx').on(t.domainId, t.kind),
+  ],
+)
+
+/** When a domain's files are next refreshed. A domain without a row is due at once. */
+export const crawlFileChecks = mysqlTable(
+  'crawl_file_checks',
+  {
+    domainId: id('domain_id')
+      .primaryKey()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    nextCheckAt: ts('next_check_at').notNull(),
+    /** Someone asked for a refresh and it has not finished yet. */
+    requestedAt: ts('requested_at'),
+    checkedAt: ts('checked_at'),
+    /** How the last refresh went. */
+    outcome: varchar('outcome', { length: 16, enum: ['ok', 'unreachable'] }),
+  },
+  (t) => [index('crawl_file_checks_due_idx').on(t.nextCheckAt)],
 )

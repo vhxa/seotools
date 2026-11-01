@@ -1,14 +1,12 @@
 import { CRAWL_TYPES, type CrawlType } from '@seotools/core'
 import type { CrawlSchedule } from '@seotools/db'
-import { SettingsIcon } from 'lucide-react'
-import Link from 'next/link'
 import { getFormatter, getLocale, getTranslations } from 'next-intl/server'
 import { cancelCrawlAction } from '@/app/(protected)/domains/[host]/actions'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { ScheduleForm, type ScheduleFormValues } from '@/components/crawl/schedule-form'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -83,18 +81,9 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
 
   return (
     <main className="grid gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="grid gap-1">
-          <h1 className="text-2xl font-semibold">{t('title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('description')}</p>
-        </div>
-        <Link
-          href={`/domains/${domain.host}/jobs/settings`}
-          className={buttonVariants({ variant: 'outline' })}
-        >
-          <SettingsIcon />
-          {t('settings')}
-        </Link>
+      <div className="grid gap-1">
+        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 
       {active && <ActiveCrawl host={domain.host} crawl={active} />}

@@ -18,6 +18,9 @@ Raspberry Pi to a VPS.
 - **Crawler** — full crawls that request every URL of a domain (from the home page, its sitemaps
   and everything linked anywhere, ignoring `robots.txt` and meta robots on purpose, since auditing
   them is the point), crawls of pages marked as priority, and recurring schedules for both.
+- **Crawl files** — what a site publishes for crawlers, kept up to date by crawls and a daily check:
+  `robots.txt` with the access of each AI bot, sitemaps and `llms.txt`, plus `ads.txt`, `app-ads.txt`,
+  `security.txt`, `humans.txt`, feeds, OpenSearch and the IndexNow key when a domain enables them.
 - **Multi-arch image** — `linux/amd64` and `linux/arm64`, published to GHCR.
 
 ## Quick start (Docker Compose)
