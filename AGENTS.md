@@ -5,7 +5,7 @@ SEO Tools is an open-source application with a set of features for monitoring an
 ## Repository structure
 
 ```
-apps/web/            # Next.js app: UI, login + first-run setup, /api/health, better-auth routes, server actions
+apps/web/            # Next.js app: UI, login + first-run setup + onboarding, /api/health, better-auth routes, server actions
 apps/worker/         # Background job runner + handlers (example.echo, mail.send); also the bootstrap CLI (migrations)
 packages/core/       # Shared logic: env validation, logger, job types, settings encryption, mail (SMTP + Resend)
 packages/db/         # Database layer: Drizzle schemas, migrations and repositories for SQLite, PostgreSQL and MySQL
@@ -29,6 +29,7 @@ The most important third-party packages are:
 | `next`, `react`                        | web          | Web framework and UI runtime                                |
 | `better-auth`                          | web, db      | Email/password sessions, sign-up disabled                   |
 | `shadcn`, `@base-ui/react`             | web          | UI components                                               |
+| `next-intl`                            | web          | i18n (messages in `apps/web/messages`)                      |
 | `tailwindcss`                          | web          | Styling                                                     |
 | `drizzle-orm`, `drizzle-kit`           | db           | Query layer and migration generation for all three dialects |
 | `better-sqlite3`, `postgres`, `mysql2` | db, worker   | Database drivers (`better-sqlite3` is the only native one)  |
@@ -41,7 +42,8 @@ The most important third-party packages are:
 
 - **Auth and users:** the app is multi-user with roles. First-run setup creates the first user, who is an admin, but that user is not special: more admins and users with other roles can be created, and the first user's admin role can be revoked like anyone else's. Never write code that assumes a single admin or treats the first user differently after setup. Users can reset their password from within the app.
 - **UI:** use shadcn by default whenever an existing component or primitive covers the need.
-- **i18n:** the UI is internationalized. Every user-facing string must be translatable; never hardcode copy in components.
+- **Companies and domains:** domains are grouped by company (an agency's client) and each feature works on one domain at a time. The active domain is the `/domains/[host]` route segment, never a cookie or global state. Every page and server action scoped to a domain starts with `requireDomain(host)` (`apps/web/lib/workspace.ts`) and its tables reference `domains.id`; that function is the single place where per-company/per-domain permissions will be enforced. Hosts are stored normalized by `normalizeDomain` (`@seotools/core`): `example.com`, no scheme, no `www.`, no path, always with a dot. Only instance-wide pages (`/system`) live outside a domain.
+- **i18n:** the UI is internationalized (`next-intl`, locale from `Accept-Language`, no URL prefix). Every user-facing string must be translatable; never hardcode copy in components. Add each message to **both** `apps/web/messages/en.json` and `es.json` (a test fails if their keys or ICU arguments differ) and read it with `useTranslations` / `getTranslations`, including error messages returned by server actions. Data stored in the database (job payloads, etc.) is not UI copy.
 
 ### Outbound requests (crawling)
 
@@ -52,7 +54,7 @@ The most important third-party packages are:
 ## Development
 
 ```bash
-pnpm install
+pnpm install   # pnpm 12 fails on dependencies with build scripts until they are listed in `allowBuilds` (pnpm-workspace.yaml)
 cp .env.example .env
 # edit .env: set BETTER_AUTH_SECRET (openssl rand -base64 32) and uncomment
 # DATABASE_URL=file:../../data/seotools.db so web and worker share one SQLite file
@@ -113,7 +115,7 @@ TEST_MYSQL_URL=mysql://root:test@localhost:3306/seotools \
 pnpm test
 ```
 
-These tests **wipe the tables** of the database they point to. Use a throwaway database, never your dev data.
+These tests **wipe the tables** of the database they point to. Use a throwaway database, never your dev data. Each dialect's `reset` (`sqlite.test.ts`, `postgres.test.ts`, `mysql.test.ts`) lists the tables by hand: add every new table to all three.
 
 A change to the database layer is not done until the contract passes on all three dialects.
 

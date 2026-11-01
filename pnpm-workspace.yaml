@@ -4,6 +4,10 @@ packages:
 allowBuilds:
   esbuild: true
   unrs-resolver: true
+  # Pulled in by next-intl; both ship prebuilt binaries via optional dependencies, so their
+  # install scripts are not needed.
+  '@parcel/watcher': false
+  '@swc/core': false
 minimumReleaseAgeExclude:
   - resend@6.37.0
   - lucide-react@1.66.0

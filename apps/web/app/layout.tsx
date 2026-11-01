@@ -1,14 +1,19 @@
 import type { ReactNode } from 'react'
 import { Geist } from 'next/font/google'
+import { NextIntlClientProvider } from 'next-intl'
+import { getLocale } from 'next-intl/server'
 import { cn } from '@/lib/utils'
 import './globals.css'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const locale = await getLocale()
   return (
-    <html lang="en" className={cn('font-sans', geist.variable)}>
-      <body>{children}</body>
+    <html lang={locale} className={cn('font-sans', geist.variable)}>
+      <body>
+        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+      </body>
     </html>
   )
 }

@@ -36,8 +36,11 @@ docker compose up -d
 ```
 
 Open <http://localhost:3000>. The first time, it asks you to create the admin account (name,
-email and password) and signs you in. The dashboard shows the database and worker status and lets
-you enqueue an example job, so you can see the whole pipeline working.
+email and password), signs you in, and then asks for your first company and domain (`example.com`,
+without `https://` or `www.`). Domains are grouped by company, like an agency groups them by
+client, and you switch between them from the selector in the header. The **System** page shows the
+database and worker status and lets you enqueue an example job, so you can see the whole pipeline
+working.
 
 Data lives in the `seotools-data` volume (`/data` in the container). To build the image yourself
 instead of pulling it, use `docker compose up -d --build`.

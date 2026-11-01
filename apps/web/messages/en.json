@@ -1,0 +1,119 @@
+{
+  "Common": {
+    "cancel": "Cancel",
+    "signOut": "Sign out"
+  },
+  "NotFound": {
+    "title": "Page not found",
+    "description": "The page you are looking for does not exist, or you do not have access to it.",
+    "back": "Back to home"
+  },
+  "Login": {
+    "metaTitle": "Sign in · seotools",
+    "description": "Sign in with the admin account.",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "invalidCredentials": "Invalid email or password",
+    "genericError": "Something went wrong. Please try again."
+  },
+  "Setup": {
+    "metaTitle": "Set up · seotools",
+    "title": "Welcome to seotools",
+    "description": "Create the admin account to get started.",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "submit": "Create admin account",
+    "submitting": "Creating account…",
+    "errors": {
+      "nameRequired": "Enter a name.",
+      "invalidEmail": "Enter a valid email address.",
+      "passwordLength": "The password must be {min}–{max} characters long.",
+      "passwordMismatch": "The passwords do not match."
+    }
+  },
+  "CompanyFields": {
+    "companyLabel": "Company",
+    "companyPlaceholder": "Acme Inc.",
+    "companyHint": "The client or organization that owns the domain.",
+    "domainLabel": "Domain",
+    "domainPlaceholder": "example.com",
+    "domainHint": "Only the domain, without https:// or www.",
+    "errors": {
+      "invalidName": "Enter a company name of up to {max} characters.",
+      "invalidDomain": "Enter a valid domain, like example.com.",
+      "domainTaken": "{host} is already being tracked.",
+      "companyNotFound": "That company no longer exists."
+    }
+  },
+  "Onboarding": {
+    "metaTitle": "Get started · seotools",
+    "title": "Add your first domain",
+    "description": "Domains are grouped by company, like an agency groups them by client. You can add more companies and domains at any time.",
+    "submit": "Continue",
+    "submitting": "Saving…"
+  },
+  "NewCompany": {
+    "metaTitle": "Add company · seotools",
+    "title": "Add a company",
+    "description": "A new company starts with one domain. You can add more later.",
+    "submit": "Add company",
+    "submitting": "Saving…"
+  },
+  "NewDomain": {
+    "metaTitle": "Add domain · seotools",
+    "title": "Add a domain",
+    "description": "Track another domain for an existing company.",
+    "companyLabel": "Company",
+    "submit": "Add domain",
+    "submitting": "Saving…"
+  },
+  "DomainSwitcher": {
+    "placeholder": "Select a domain",
+    "label": "Switch domain",
+    "addDomain": "Add domain",
+    "addCompany": "Add company"
+  },
+  "Header": {
+    "system": "System"
+  },
+  "DomainHome": {
+    "metaTitle": "{host} · seotools",
+    "company": "Company: {company}",
+    "emptyTitle": "Nothing to show yet",
+    "emptyDescription": "Audits and monitoring for {host} will appear here as features are added."
+  },
+  "System": {
+    "metaTitle": "System · seotools",
+    "database": "Database",
+    "connected": "connected",
+    "worker": "Worker",
+    "online": "online",
+    "offline": "offline",
+    "seen": "seen {when}",
+    "never": "never",
+    "jobs": "Jobs",
+    "jobCounts": "{pending} pending · {running} running · {completed} done · {failed} failed",
+    "queueTitle": "Job queue",
+    "queueDescription": "Jobs live in the database and are processed by the worker. No Redis needed.",
+    "enqueue": "Enqueue example job",
+    "columns": {
+      "job": "Job",
+      "type": "Type",
+      "status": "Status",
+      "attempts": "Attempts",
+      "created": "Created",
+      "result": "Result"
+    },
+    "empty": "No jobs yet. Enqueue one to see the worker in action.",
+    "status": {
+      "pending": "pending",
+      "running": "running",
+      "completed": "completed",
+      "failed": "failed"
+    }
+  }
+}

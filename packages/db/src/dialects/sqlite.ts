@@ -6,11 +6,11 @@ import { and, asc, desc, eq, gte, lt, lte, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { sqlitePathFromUrl } from '../dialect'
-import { CREDENTIAL_PROVIDER, EMPTY_COUNTS, toJob, truncateError } from '../mapping'
+import { CREDENTIAL_PROVIDER, EMPTY_COUNTS, groupDomains, toJob, truncateError } from '../mapping'
 import * as schema from '../schema/sqlite'
 import type { Database } from '../types'
 
-const { jobs, workerHeartbeats, settings, user, account } = schema
+const { jobs, workerHeartbeats, settings, user, account, companies, domains } = schema
 
 export function createSqliteDatabase(options: {
   url: string
@@ -240,6 +240,45 @@ export function createSqliteDatabase(options: {
       },
       async exists() {
         return db.select({ id: user.id }).from(user).limit(1).get() !== undefined
+      },
+    },
+
+    companies: {
+      async list() {
+        // Domains first: every domain read has its company, so the second read can't miss one.
+        const domainRows = db.select().from(domains).all()
+        const companyRows = db.select().from(companies).all()
+        return groupDomains(companyRows, domainRows)
+      },
+      async get(id) {
+        return db.select().from(companies).where(eq(companies.id, id)).get() ?? null
+      },
+      async create({ name, host }) {
+        const now = new Date()
+        const company = { id: randomUUID(), name, createdAt: now }
+        const domain = { id: randomUUID(), companyId: company.id, host, createdAt: now }
+        db.transaction((tx) => {
+          tx.insert(companies).values(company).run()
+          tx.insert(domains).values(domain).run()
+        })
+        return { company, domain }
+      },
+    },
+
+    domains: {
+      async findByHost(host) {
+        const row = db
+          .select({ domain: domains, company: companies })
+          .from(domains)
+          .innerJoin(companies, eq(domains.companyId, companies.id))
+          .where(eq(domains.host, host))
+          .get()
+        return row ? { ...row.domain, company: row.company } : null
+      },
+      async add({ companyId, host }) {
+        const domain = { id: randomUUID(), companyId, host, createdAt: new Date() }
+        db.insert(domains).values(domain).run()
+        return domain
       },
     },
   }

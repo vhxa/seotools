@@ -3,11 +3,11 @@ import { and, asc, desc, eq, gte, lt, lte, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import postgres from 'postgres'
-import { CREDENTIAL_PROVIDER, EMPTY_COUNTS, toJob, truncateError } from '../mapping'
+import { CREDENTIAL_PROVIDER, EMPTY_COUNTS, groupDomains, toJob, truncateError } from '../mapping'
 import * as schema from '../schema/pg'
 import type { Database } from '../types'
 
-const { jobs, workerHeartbeats, settings, user, account } = schema
+const { jobs, workerHeartbeats, settings, user, account, companies, domains } = schema
 
 export function createPgDatabase(options: {
   url: string
@@ -220,6 +220,45 @@ export function createPgDatabase(options: {
       async exists() {
         const rows = await db.select({ id: user.id }).from(user).limit(1)
         return rows.length > 0
+      },
+    },
+
+    companies: {
+      async list() {
+        // Domains first: every domain read has its company, so the second read can't miss one.
+        const domainRows = await db.select().from(domains)
+        const companyRows = await db.select().from(companies)
+        return groupDomains(companyRows, domainRows)
+      },
+      async get(id) {
+        const [row] = await db.select().from(companies).where(eq(companies.id, id))
+        return row ?? null
+      },
+      async create({ name, host }) {
+        const now = new Date()
+        const company = { id: randomUUID(), name, createdAt: now }
+        const domain = { id: randomUUID(), companyId: company.id, host, createdAt: now }
+        await db.transaction(async (tx) => {
+          await tx.insert(companies).values(company)
+          await tx.insert(domains).values(domain)
+        })
+        return { company, domain }
+      },
+    },
+
+    domains: {
+      async findByHost(host) {
+        const [row] = await db
+          .select({ domain: domains, company: companies })
+          .from(domains)
+          .innerJoin(companies, eq(domains.companyId, companies.id))
+          .where(eq(domains.host, host))
+        return row ? { ...row.domain, company: row.company } : null
+      },
+      async add({ companyId, host }) {
+        const domain = { id: randomUUID(), companyId, host, createdAt: new Date() }
+        await db.insert(domains).values(domain)
+        return domain
       },
     },
   }
