@@ -1,4 +1,4 @@
-import { ensureAdmin } from '@seotools/db'
+import { createFirstAdmin } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createAuth, type Auth } from './auth'
@@ -11,13 +11,13 @@ const env = {
   BETTER_AUTH_URL: 'http://localhost:3000',
   TRUSTED_ORIGINS: [],
 }
-const admin = { email: 'admin@example.com', password: 'a-long-admin-password' }
+const admin = { name: 'Admin', email: 'admin@example.com', password: 'a-long-admin-password' }
 
 let db: Database
 let auth: Auth
 beforeEach(async () => {
   db = await createTestDatabase()
-  await ensureAdmin(db, admin)
+  await createFirstAdmin(db, admin)
   auth = createAuth(db, env)
 })
 afterEach(async () => {
@@ -25,8 +25,10 @@ afterEach(async () => {
 })
 
 describe('admin auth (better-auth)', () => {
-  it('signs in the env admin and issues a session token', async () => {
-    const res = await auth.api.signInEmail({ body: admin })
+  it('signs in the registered admin and issues a session token', async () => {
+    const res = await auth.api.signInEmail({
+      body: { email: admin.email, password: admin.password },
+    })
     expect(res.user.email).toBe(admin.email)
     expect(res.token).toBeTruthy()
   })
@@ -47,14 +49,5 @@ describe('admin auth (better-auth)', () => {
       }),
     ).rejects.toThrow()
     expect(await db.admin.findByEmail('attacker@example.com')).toBeNull()
-  })
-
-  it('follows a changed ADMIN_PASSWORD and revokes the old one', async () => {
-    await ensureAdmin(db, { ...admin, password: 'brand-new-password-1' })
-    await expect(auth.api.signInEmail({ body: admin })).rejects.toThrow()
-    const res = await auth.api.signInEmail({
-      body: { email: admin.email, password: 'brand-new-password-1' },
-    })
-    expect(res.user.email).toBe(admin.email)
   })
 })

@@ -1,6 +1,6 @@
 # One container runs the web app and the worker, with SQLite stored in the `seotools-data` volume.
 #
-#   cp .env.example .env     # then edit ADMIN_* and BETTER_AUTH_SECRET
+#   cp .env.example .env     # then set BETTER_AUTH_SECRET and BETTER_AUTH_URL
 #   docker compose up -d
 #
 # To build the image from source instead of pulling it, run: docker compose up -d --build

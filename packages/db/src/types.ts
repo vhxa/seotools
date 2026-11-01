@@ -40,11 +40,11 @@ export interface AdminAccount {
 }
 
 export interface AdminRepository {
+  /** Whether any user exists. While none does, the app offers the first-run setup. */
+  exists(): Promise<boolean>
   findByEmail(email: string): Promise<AdminAccount | null>
+  /** Creates the user and its credential account together. Rejects if the id or email is taken. */
   create(input: { id: string; email: string; name: string; passwordHash: string }): Promise<void>
-  setPassword(userId: string, passwordHash: string): Promise<void>
-  /** Removes every user whose email differs (their sessions/accounts cascade). */
-  deleteAllExcept(email: string): Promise<number>
 }
 
 export interface Database {

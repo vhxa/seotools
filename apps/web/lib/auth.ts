@@ -5,10 +5,11 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { nextCookies } from 'better-auth/next-js'
 import { getDb } from './db'
 import { getEnv } from './env'
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from './password'
 
 /**
- * Single-admin auth. The admin user is created from ADMIN_EMAIL / ADMIN_PASSWORD at startup
- * (see `bootstrap` in @seotools/db), so public sign-up is disabled.
+ * Email/password auth. The first user registers on the first-run /setup page (see
+ * `createFirstAdmin` in @seotools/db), so better-auth's public sign-up stays disabled.
  */
 export function createAuth(db: Database, env: WebEnv, plugins: BetterAuthPlugin[] = []) {
   return betterAuth({
@@ -23,7 +24,8 @@ export function createAuth(db: Database, env: WebEnv, plugins: BetterAuthPlugin[
     emailAndPassword: {
       enabled: true,
       disableSignUp: true,
-      minPasswordLength: 8,
+      minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxPasswordLength: MAX_PASSWORD_LENGTH,
     },
     session: { expiresIn: 60 * 60 * 24 * 7 },
     plugins,

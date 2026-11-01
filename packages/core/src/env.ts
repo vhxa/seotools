@@ -48,9 +48,6 @@ export const workerEnvSchema = commonEnvSchema.extend({
 
 export const bootstrapEnvSchema = commonEnvSchema.extend({
   RUN_MIGRATIONS: bool.default(true),
-  ADMIN_EMAIL: z.string().email(),
-  ADMIN_PASSWORD: z.string().min(8, 'must be at least 8 characters'),
-  ADMIN_NAME: z.string().min(1).default('Admin'),
 })
 
 export type CommonEnv = z.infer<typeof commonEnvSchema>

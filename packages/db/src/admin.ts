@@ -1,47 +1,42 @@
-import { randomUUID } from 'node:crypto'
-import { hashPassword, verifyPassword } from 'better-auth/crypto'
+import { hashPassword } from 'better-auth/crypto'
 import type { Database } from './types'
 
-export interface AdminCredentials {
+/**
+ * The first admin always gets this id. Two setup requests that race past the "no users yet"
+ * check then collide on the primary key, so the database guarantees only one of them wins
+ * on every dialect without needing locks.
+ */
+const FIRST_ADMIN_ID = 'first-admin'
+
+export interface FirstAdminInput {
   email: string
   password: string
-  name?: string
+  name: string
 }
 
-export type EnsureAdminResult = {
-  action: 'created' | 'password-updated' | 'unchanged'
-  removedOtherUsers: number
+/** True while no user exists yet, i.e. the app is waiting for its first admin to register. */
+export async function needsSetup(db: Database): Promise<boolean> {
+  return !(await db.admin.exists())
 }
 
 /**
- * Makes the database match the ADMIN_* environment variables. The env admin is the only
- * user that exists (sign-ups are disabled): it is created or has its password synced, and
- * any other user is removed so a changed ADMIN_EMAIL revokes the old account.
+ * Registers the first admin. Returns `false`, without touching anything, when a user already
+ * exists: setup is only available once, so this can't be used to add accounts afterwards.
  */
-export async function ensureAdmin(
-  db: Database,
-  creds: AdminCredentials,
-): Promise<EnsureAdminResult> {
-  const email = creds.email.trim().toLowerCase()
-  const existing = await db.admin.findByEmail(email)
+export async function createFirstAdmin(db: Database, input: FirstAdminInput): Promise<boolean> {
+  if (!(await needsSetup(db))) return false
 
-  let action: EnsureAdminResult['action'] = 'unchanged'
-  if (!existing) {
+  try {
     await db.admin.create({
-      id: randomUUID(),
-      email,
-      name: creds.name ?? 'Admin',
-      passwordHash: await hashPassword(creds.password),
+      id: FIRST_ADMIN_ID,
+      email: input.email.trim().toLowerCase(),
+      name: input.name.trim(),
+      passwordHash: await hashPassword(input.password),
     })
-    action = 'created'
-  } else if (
-    !existing.passwordHash ||
-    !(await verifyPassword({ hash: existing.passwordHash, password: creds.password }))
-  ) {
-    await db.admin.setPassword(existing.id, await hashPassword(creds.password))
-    action = 'password-updated'
+    return true
+  } catch (error) {
+    // Lost the race against a concurrent setup request: the other one created the admin.
+    if (!(await needsSetup(db))) return false
+    throw error
   }
-
-  const removedOtherUsers = await db.admin.deleteAllExcept(email)
-  return { action, removedOtherUsers }
 }

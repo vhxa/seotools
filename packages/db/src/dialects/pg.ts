@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gte, lt, lte, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, lt, lte, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import postgres from 'postgres'
@@ -217,28 +217,9 @@ export function createPgDatabase(options: {
           })
         })
       },
-      async setPassword(userId, passwordHash) {
-        const updated = await db
-          .update(account)
-          .set({ password: passwordHash })
-          .where(and(eq(account.userId, userId), eq(account.providerId, CREDENTIAL_PROVIDER)))
-          .returning({ id: account.id })
-        if (updated.length === 0) {
-          await db.insert(account).values({
-            id: randomUUID(),
-            accountId: userId,
-            providerId: CREDENTIAL_PROVIDER,
-            userId,
-            password: passwordHash,
-          })
-        }
-      },
-      async deleteAllExcept(email) {
-        const removed = await db
-          .delete(user)
-          .where(ne(user.email, email))
-          .returning({ id: user.id })
-        return removed.length
+      async exists() {
+        const rows = await db.select({ id: user.id }).from(user).limit(1)
+        return rows.length > 0
       },
     },
   }

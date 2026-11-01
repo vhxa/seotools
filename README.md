@@ -28,8 +28,6 @@ Edit `.env` and set at least:
 
 | Variable             | What to put                                                          |
 | -------------------- | -------------------------------------------------------------------- |
-| `ADMIN_EMAIL`        | Email you will log in with                                           |
-| `ADMIN_PASSWORD`     | A long password (8+ characters)                                      |
 | `BETTER_AUTH_SECRET` | Random secret, 32+ chars: `openssl rand -base64 32`                  |
 | `BETTER_AUTH_URL`    | The URL you will open in the browser, e.g. `https://seo.example.com` |
 
@@ -37,8 +35,9 @@ Edit `.env` and set at least:
 docker compose up -d
 ```
 
-Open <http://localhost:3000> and sign in. The dashboard shows the database and worker status and
-lets you enqueue an example job, so you can see the whole pipeline working.
+Open <http://localhost:3000>. The first time, it asks you to create the admin account (name,
+email and password) and signs you in. The dashboard shows the database and worker status and lets
+you enqueue an example job, so you can see the whole pipeline working.
 
 Data lives in the `seotools-data` volume (`/data` in the container). To build the image yourself
 instead of pulling it, use `docker compose up -d --build`.
@@ -50,8 +49,6 @@ annotated list.
 
 | Variable                  | Default                  | Description                                                             |
 | ------------------------- | ------------------------ | ----------------------------------------------------------------------- |
-| `ADMIN_EMAIL`             | —                        | **Required.** Admin login.                                              |
-| `ADMIN_PASSWORD`          | —                        | **Required.** Admin password.                                           |
 | `BETTER_AUTH_SECRET`      | —                        | **Required.** 32+ chars. Signs sessions.                                |
 | `BETTER_AUTH_URL`         | `http://localhost:3000`  | Public URL of the app. Must match the browser's address.                |
 | `TRUSTED_ORIGINS`         | —                        | Extra comma-separated origins allowed to call the auth API.             |
@@ -68,15 +65,17 @@ annotated list.
 
 ### The admin account
 
-There is exactly one user, defined by `ADMIN_EMAIL` and `ADMIN_PASSWORD`. On every start seotools
-makes the database match them:
+The admin account is never configured through environment variables. The first time the app is
+opened it shows a setup page where you register the admin (name, email, password) and signs you in.
+From then on that page is closed and every visit goes to the login form. Public sign-up is disabled.
 
-- First start: the account is created.
-- Changed `ADMIN_PASSWORD`: the password is updated (the old one stops working).
-- Changed `ADMIN_EMAIL`: the new account is created and **any other user is deleted**, so the old
-  email can no longer log in.
+Whoever opens a fresh install first becomes its admin, so register right after deploying — before
+you share the URL or open the port to the internet.
 
-Public sign-up is disabled.
+There is no password reset yet. While the admin is the only user, you can recover from a lost
+password by deleting the row in the `user` table; the setup page comes back on the next visit. Its sessions and credentials are removed with it, but
+SQLite only cascades when foreign keys are on, so run `PRAGMA foreign_keys = ON;` first in the
+`sqlite3` shell.
 
 ### Changing `BETTER_AUTH_SECRET`
 
@@ -111,8 +110,8 @@ seo.example.com {
 Both can deploy either the prebuilt image or this repository's `Dockerfile` (or `docker-compose.yml`).
 
 1. Create an application from the image `ghcr.io/botaroikawa/seotools:latest` (or from this Git repo).
-2. Set the environment variables: `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `BETTER_AUTH_SECRET`, and
-   `BETTER_AUTH_URL` = the domain you assign to the app (with `https://`).
+2. Set the environment variables: `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` = the domain you
+   assign to the app (with `https://`).
 3. Add a **persistent volume** mounted at `/data` (this is where SQLite lives — without it you lose
    your data on every redeploy).
 4. Expose container port **3000** and attach your domain.
@@ -194,7 +193,7 @@ Requirements: Node.js 24 and [pnpm](https://pnpm.io) 12 (`corepack enable` or `n
 ```bash
 pnpm install
 cp .env.example .env
-# edit .env: set the ADMIN_* values and BETTER_AUTH_SECRET, and uncomment
+# edit .env: set BETTER_AUTH_SECRET, and uncomment
 #   DATABASE_URL=file:../../data/seotools.db
 # so that web and worker share one SQLite file
 pnpm dev          # applies migrations, then runs web (:3000) and worker with hot reload
@@ -228,7 +227,7 @@ apps/
   worker/     Job runner + handlers (example.echo, mail.send); also the bootstrap CLI
 packages/
   core/       Env validation, logger, job types, settings encryption, mail (SMTP + Resend)
-  db/         Drizzle schemas + migrations for sqlite/pg/mysql, repositories, admin sync
+  db/         Drizzle schemas + migrations for sqlite/pg/mysql, repositories, first-run admin
 docker/       Container entrypoint and healthcheck
 ```
 

@@ -2,8 +2,9 @@ import { getSessionCookie } from 'better-auth/cookies'
 import { NextResponse, type NextRequest } from 'next/server'
 
 /**
- * Optimistic gate: bounces visitors without a session cookie to /login. It only checks the
- * cookie exists; the real session validation happens in `requireSession()`.
+ * Optimistic gate: bounces visitors without a session cookie to /login (which in turn sends a
+ * fresh install on to /setup). It only checks the cookie exists; the real session validation
+ * happens in `requireSession()`.
  */
 export function proxy(request: NextRequest) {
   if (!getSessionCookie(request)) {
@@ -13,5 +14,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|login|_next/static|_next/image|favicon.ico|icon.svg).*)'],
+  matcher: ['/((?!api|login|setup|_next/static|_next/image|favicon.ico|icon.svg).*)'],
 }
