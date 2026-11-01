@@ -6,6 +6,7 @@
 .git
 .github
 data
+apps/*/data
 .env
 .env.*
 !.env.example
