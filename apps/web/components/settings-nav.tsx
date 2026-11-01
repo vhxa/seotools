@@ -1,6 +1,6 @@
 'use client'
 
-import { RadarIcon, type LucideIcon } from 'lucide-react'
+import { RadarIcon, StarIcon, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -8,7 +8,10 @@ import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 /** The sections of a domain's settings. Each one is a route under `/domains/[host]/settings`. */
-const SECTIONS: readonly { id: 'crawl'; icon: LucideIcon }[] = [{ id: 'crawl', icon: RadarIcon }]
+const SECTIONS: readonly { id: 'crawl' | 'priority'; icon: LucideIcon }[] = [
+  { id: 'crawl', icon: RadarIcon },
+  { id: 'priority', icon: StarIcon },
+]
 
 /** A column beside the section on wide screens, and a row above it on narrow ones. */
 export function SettingsNav({ host }: { host: string }) {

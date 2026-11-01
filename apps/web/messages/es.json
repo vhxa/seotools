@@ -175,14 +175,12 @@
     "views": {
       "pages": "Páginas",
       "other": "Otras URLs",
-      "external": "Externas",
-      "priority": "Prioritarias"
+      "external": "Externas"
     },
     "viewHints": {
       "pages": "URLs de esta web que respondieron con HTML, sea cual sea su estado. Son las que cuentan como páginas.",
       "other": "Redirecciones, imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps y URLs que no respondieron.",
-      "external": "URLs de otros sitios enlazadas desde esta web. Se registran, pero nunca se piden ni se cuentan.",
-      "priority": "Páginas que pide el rastreo prioritario, con su resultado más reciente de cualquier rastreo."
+      "external": "URLs de otros sitios enlazadas desde esta web. Se registran, pero nunca se piden ni se cuentan."
     },
     "columns": {
       "url": "URL",
@@ -192,15 +190,7 @@
     "emptyView": "Todavía no hay nada aquí.",
     "priority": {
       "mark": "Marcar como prioritaria",
-      "unmark": "Quitar de prioritarias",
-      "addLabel": "Añadir una página prioritaria",
-      "addPlaceholder": "/precios o https://{host}/precios",
-      "add": "Añadir"
-    },
-    "pagination": {
-      "summary": "Página {page, number} de {pages, number}",
-      "previous": "Anterior",
-      "next": "Siguiente"
+      "unmark": "Quitar de prioritarias"
     }
   },
   "Jobs": {
@@ -256,7 +246,8 @@
     "description": "Todo lo que se puede configurar de {host}.",
     "navLabel": "Secciones de ajustes",
     "sections": {
-      "crawl": "Rastreo"
+      "crawl": "Rastreo",
+      "priority": "Páginas prioritarias"
     }
   },
   "CrawlSettings": {
@@ -701,5 +692,25 @@
         }
       }
     }
+  },
+  "Pagination": {
+    "summary": "Página {page, number} de {pages, number}",
+    "previous": "Anterior",
+    "next": "Siguiente"
+  },
+  "PrioritySettings": {
+    "metaTitle": "Páginas prioritarias · {host} · seotools",
+    "title": "Páginas prioritarias",
+    "description": "Páginas de {host} que pide el rastreo prioritario, con su resultado más reciente de cualquier rastreo. Si marcas una página con la estrella en la lista de Páginas, también aparece aquí.",
+    "columns": {
+      "url": "URL",
+      "status": "Estado",
+      "detail": "Detalle",
+      "added": "Añadida"
+    },
+    "empty": "Todavía no hay páginas prioritarias.",
+    "addLabel": "Añadir una página prioritaria",
+    "addPlaceholder": "/precios o https://{host}/precios",
+    "add": "Añadir"
   }
 }
