@@ -2,7 +2,7 @@ import { createLogger, retryDelayMs, type Job } from '@seotools/core'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRunner } from './runner'
-import { PermanentJobError, type JobHandler } from './types'
+import { JobInterruptedError, PermanentJobError, type JobHandler } from './types'
 import { exampleEcho } from './handlers/example-echo'
 import { mailSend } from './handlers/mail-send'
 
@@ -124,6 +124,66 @@ describe('runner', () => {
     await runner.idle()
 
     expect(await db.jobs.get(job.id)).toMatchObject({ status: 'completed', attempts: 2 })
+  })
+
+  it('keeps renewing the lock of a job that takes longer than the lock timeout', async () => {
+    const lockTimeoutMs = 90
+    const runner = runnerWith(
+      {
+        slow: async () => {
+          await new Promise((r) => setTimeout(r, lockTimeoutMs * 4))
+          return 'done'
+        },
+      },
+      { lockTimeoutMs, staleCheckIntervalMs: 10, pollIntervalMs: 5 },
+    )
+    const job = await db.jobs.enqueue({ type: 'slow' })
+
+    runner.start()
+    await vi.waitFor(async () => expect((await db.jobs.get(job.id))?.status).toBe('completed'), {
+      timeout: 5000,
+    })
+    await runner.stop()
+
+    // A stolen job would have gone through a second attempt.
+    expect((await db.jobs.get(job.id))?.attempts).toBe(1)
+  })
+
+  it('only claims the job types of its lane', async () => {
+    const crawl = await db.jobs.enqueue({ type: 'crawl' })
+    const mail = await db.jobs.enqueue({ type: 'mail' })
+    const ok = { crawl: async () => 'c', mail: async () => 'm' }
+
+    const crawlLane = runnerWith(ok, { types: ['crawl'] })
+    await crawlLane.tick()
+    await crawlLane.idle()
+    expect((await db.jobs.get(crawl.id))?.status).toBe('completed')
+    expect((await db.jobs.get(mail.id))?.status).toBe('pending')
+
+    const crawl2 = await db.jobs.enqueue({ type: 'crawl' })
+    const otherLane = runnerWith(ok, { excludeTypes: ['crawl'] })
+    await otherLane.tick()
+    await otherLane.idle()
+    expect((await db.jobs.get(mail.id))?.status).toBe('completed')
+    expect((await db.jobs.get(crawl2.id))?.status).toBe('pending')
+  })
+
+  it('hands back an interrupted job without spending an attempt', async () => {
+    const runner = runnerWith({
+      long: async () => {
+        throw new JobInterruptedError()
+      },
+    })
+    const job = await db.jobs.enqueue({ type: 'long', maxAttempts: 1 })
+
+    await runner.tick()
+    await runner.idle()
+
+    expect(await db.jobs.get(job.id)).toMatchObject({
+      status: 'pending',
+      attempts: 0,
+      lastError: null,
+    })
   })
 
   it('stop() waits for in-flight jobs', async () => {

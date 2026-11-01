@@ -82,6 +82,8 @@
     "mobileTitle": "Navigation",
     "mobileDescription": "Main navigation and domain selector.",
     "overview": "Overview",
+    "pages": "Pages",
+    "scheduledJobs": "Scheduled jobs",
     "instance": "Instance",
     "system": "System"
   },
@@ -119,6 +121,196 @@
       "running": "running",
       "completed": "completed",
       "failed": "failed"
+    }
+  },
+  "Crawl": {
+    "type": {
+      "full": "Full crawl",
+      "priority": "Priority pages crawl"
+    },
+    "start": {
+      "full": "Run full crawl",
+      "priority": "Run priority crawl"
+    },
+    "cancel": "Cancel",
+    "progressLabel": "Crawl progress",
+    "progress": "{done, number} of {total, number} URLs requested · {pages, plural, one {# page} other {# pages}} · {external, number} external",
+    "status": {
+      "pending": "pending",
+      "running": "running",
+      "completed": "completed",
+      "incomplete": "incomplete",
+      "failed": "failed",
+      "cancelled": "cancelled"
+    },
+    "errors": {
+      "alreadyRunning": "This domain already has a crawl in progress.",
+      "noPriorityUrls": "There are no priority pages yet. Mark some in Pages first.",
+      "invalidPriorityUrl": "Enter a URL of {host}, like /pricing or https://{host}/pricing.",
+      "invalidSchedule": "Check the frequency, day and time of the schedule."
+    }
+  },
+  "Pages": {
+    "metaTitle": "Pages · {host} · seotools",
+    "title": "Pages",
+    "lastCrawl": "Last full crawl finished {when}.",
+    "neverCrawled": "This domain has not been crawled yet.",
+    "incomplete": {
+      "title": "The last crawl stopped at its URL limit",
+      "description": "It requested {urls, number} URLs and there were more. These figures do not cover the whole site.",
+      "settings": "Raise the limit in the crawl settings."
+    },
+    "stats": {
+      "total": "Pages found",
+      "correct": "Correct pages",
+      "issues": "Pages with issues",
+      "soon": "Available once issue detection arrives."
+    },
+    "viewsLabel": "Views",
+    "views": {
+      "pages": "Pages",
+      "other": "Other URLs",
+      "external": "External",
+      "priority": "Priority"
+    },
+    "viewHints": {
+      "pages": "URLs of this site that answered with HTML, whatever their status. These are the ones counted as pages.",
+      "other": "Redirects, images, stylesheets, scripts, PDFs, robots.txt, sitemaps and URLs that did not answer.",
+      "external": "URLs on other sites linked from this one. They are recorded, but never requested or counted.",
+      "priority": "Pages the priority crawl requests, with their most recent result from any crawl."
+    },
+    "columns": {
+      "url": "URL",
+      "status": "Status",
+      "detail": "Detail"
+    },
+    "emptyView": "Nothing here yet.",
+    "priority": {
+      "mark": "Mark as priority",
+      "unmark": "Remove from priority",
+      "addLabel": "Add a priority page",
+      "addPlaceholder": "/pricing or https://{host}/pricing",
+      "add": "Add"
+    },
+    "pagination": {
+      "summary": "Page {page, number} of {pages, number}",
+      "previous": "Previous",
+      "next": "Next"
+    }
+  },
+  "Jobs": {
+    "metaTitle": "Scheduled jobs · {host} · seotools",
+    "title": "Scheduled jobs",
+    "description": "Run each type of crawl now or on a recurring schedule. A domain runs one crawl at a time.",
+    "settings": "Crawl settings",
+    "typeDescriptions": {
+      "full": "Requests every URL of the site: from the home page, the sitemaps and everything linked anywhere, ignoring robots.txt and meta robots.",
+      "priority": "Requests only the pages marked as priority in Pages, without following their links."
+    },
+    "schedule": {
+      "enabled": "Run on a schedule",
+      "frequency": "Frequency",
+      "frequencies": {
+        "hourly": "Every hour",
+        "daily": "Every day",
+        "weekly": "Every week",
+        "monthly": "Every month"
+      },
+      "dayOfWeek": "Day of the week",
+      "dayOfMonth": "Day of the month",
+      "time": "Time",
+      "minuteOfHour": "At the minute of",
+      "timeZoneHint": "Times are in {timeZone}.",
+      "hourlyHint": "Only the minutes count: it runs every hour at that minute.",
+      "save": "Save schedule",
+      "saved": "Saved.",
+      "nextRun": "Next run: {when}.",
+      "lastOutcome": {
+        "started": "Last run started {when}.",
+        "skipped-active": "Last run skipped {when}: another crawl was in progress.",
+        "skipped-empty": "Last run skipped {when}: no priority pages marked."
+      }
+    },
+    "history": {
+      "title": "Recent crawls",
+      "type": "Type",
+      "status": "Status",
+      "trigger": "Started by",
+      "started": "Started",
+      "pages": "Pages",
+      "urls": "URLs",
+      "external": "External",
+      "triggers": {
+        "manual": "Manual",
+        "schedule": "Schedule"
+      },
+      "empty": "No crawls yet."
+    }
+  },
+  "CrawlSettings": {
+    "metaTitle": "Crawl settings · {host} · seotools",
+    "back": "Scheduled jobs",
+    "title": "Crawl settings",
+    "description": "How crawls of {host} behave. Changes apply from the next crawl.",
+    "rendering": {
+      "label": "Page rendering",
+      "hint": "A headless browser finds links that only exist after running JavaScript. It is not available yet.",
+      "modes": {
+        "http": "HTTP only",
+        "headless": "Headless browser (coming soon)",
+        "both": "HTTP and headless browser, recommended (coming soon)"
+      }
+    },
+    "userAgent": {
+      "label": "User-Agent",
+      "hint": "Leave it empty to use the default one. Change it if a firewall blocks the crawler."
+    },
+    "concurrency": {
+      "label": "Simultaneous requests",
+      "hint": "How many requests can be in progress at once."
+    },
+    "requestsPerSecond": {
+      "label": "Requests per second",
+      "hint": "The most requests per second this domain receives."
+    },
+    "timeout": {
+      "label": "Timeout (seconds)",
+      "hint": "How long to wait for a URL before giving up on it."
+    },
+    "maxRetries": {
+      "label": "Retries",
+      "hint": "Extra attempts after a network error, 429 or 503."
+    },
+    "maxUrls": {
+      "label": "URL limit",
+      "hint": "Most URLs of the site a full crawl requests. Past it, the crawl ends as incomplete. Leave it empty for no limit, at the risk of a site with endless URLs."
+    },
+    "retention": {
+      "label": "Crawl results to keep",
+      "modes": {
+        "latest": "The latest crawls",
+        "current": "Only the current one",
+        "all": "All of them"
+      },
+      "hints": {
+        "latest": "Allows comparing crawls, with a bounded database size.",
+        "current": "The lightest option. Comparing crawls URL by URL will not be possible.",
+        "all": "Nothing is ever deleted, so the database grows without limit."
+      },
+      "countLabel": "How many of each type",
+      "countHint": "Older ones keep their summary but lose their results per URL."
+    },
+    "save": "Save settings",
+    "saved": "Saved.",
+    "errors": {
+      "renderingUnavailable": "That rendering mode is not available yet.",
+      "userAgent": "The User-Agent can only have plain characters, up to {max}.",
+      "concurrency": "Simultaneous requests must be between {min} and {max}.",
+      "requestsPerSecond": "Requests per second must be between {min} and {max}.",
+      "timeout": "The timeout must be between {min} and {max} seconds.",
+      "maxRetries": "Retries must be between {min} and {max}.",
+      "maxUrls": "The URL limit must be between {min} and {max}, or empty for no limit.",
+      "retainCrawls": "The number of crawls to keep must be between {min} and {max}."
     }
   }
 }

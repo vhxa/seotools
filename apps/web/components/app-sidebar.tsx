@@ -1,6 +1,12 @@
 'use client'
 
-import { ActivityIcon, LayoutDashboardIcon, type LucideIcon } from 'lucide-react'
+import {
+  ActivityIcon,
+  CalendarClockIcon,
+  FileTextIcon,
+  LayoutDashboardIcon,
+  type LucideIcon,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -92,6 +98,8 @@ export function AppSidebar({
           icon: LayoutDashboardIcon,
           exact: true,
         },
+        { label: t('pages'), href: `/domains/${activeHost}/pages`, icon: FileTextIcon },
+        { label: t('scheduledJobs'), href: `/domains/${activeHost}/jobs`, icon: CalendarClockIcon },
       ]
     : []
   const instanceItems: NavItem[] = [{ label: t('system'), href: '/system', icon: ActivityIcon }]

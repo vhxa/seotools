@@ -1,6 +1,13 @@
+import {
+  DEFAULT_CRAWL_SETTINGS,
+  JOB_TYPES,
+  crawlUrlHash,
+  type CrawlRecurrence,
+  type CrawlUrlKind,
+} from '@seotools/core'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createFirstAdmin, needsSetup } from '../admin'
-import type { Database } from '../types'
+import type { CrawlUrlResult, Database, NewCrawlUrl } from '../types'
 import { addDomain, createCompany } from '../workspace'
 
 const minutes = (n: number) => n * 60_000
@@ -112,6 +119,51 @@ export function describeDatabaseContract(
         expect((await db.jobs.get(recoverable.id))?.status).toBe('pending')
         expect((await db.jobs.get(exhausted.id))?.status).toBe('failed')
         expect((await db.jobs.get(fresh.id))?.status).toBe('running')
+      })
+
+      it('claims only the requested types', async () => {
+        const mail = await db.jobs.enqueue({ type: 'mail' })
+        const crawl = await db.jobs.enqueue({ type: 'crawl' })
+
+        const lane = await db.jobs.claim({ workerId: 'w', limit: 10, types: ['crawl'] })
+        expect(lane.map((j) => j.id)).toEqual([crawl.id])
+
+        const crawl2 = await db.jobs.enqueue({ type: 'crawl' })
+        const others = await db.jobs.claim({ workerId: 'w', limit: 10, excludeTypes: ['crawl'] })
+        expect(others.map((j) => j.id)).toEqual([mail.id])
+        expect((await db.jobs.get(crawl2.id))?.status).toBe('pending')
+      })
+
+      it('renewing a lock keeps a long job from being taken for orphaned', async () => {
+        const longAgo = new Date(Date.now() - minutes(30))
+        const job = await db.jobs.enqueue({ type: 't', runAt: new Date(longAgo.getTime() - 1000) })
+        await db.jobs.claim({ workerId: 'w1', limit: 1, now: longAgo })
+
+        await db.jobs.renewLock({ id: job.id, workerId: 'intruder' })
+        await db.jobs.renewLock({ id: job.id, workerId: 'w1' })
+
+        const lockedBefore = new Date(Date.now() - minutes(5))
+        expect(await db.jobs.requeueStale({ lockedBefore })).toBe(0)
+        expect((await db.jobs.get(job.id))?.status).toBe('running')
+      })
+
+      it('releases a job without spending an attempt, only for the lock owner', async () => {
+        const job = await db.jobs.enqueue({ type: 't' })
+        await db.jobs.claim({ workerId: 'w1', limit: 1 })
+
+        await db.jobs.release({ id: job.id, workerId: 'intruder' })
+        expect((await db.jobs.get(job.id))?.status).toBe('running')
+
+        await db.jobs.release({ id: job.id, workerId: 'w1' })
+        expect(await db.jobs.get(job.id)).toMatchObject({
+          status: 'pending',
+          attempts: 0,
+          lockedBy: null,
+        })
+        expect((await db.jobs.claim({ workerId: 'w2', limit: 1 }))[0]).toMatchObject({
+          id: job.id,
+          attempts: 1,
+        })
       })
 
       it('lists newest first and counts by status', async () => {
@@ -263,6 +315,509 @@ export function describeDatabaseContract(
         const list = await db.companies.list()
         expect(list).toHaveLength(1)
         expect(list[0]!.domains).toHaveLength(1)
+      })
+    })
+
+    describe('crawls', () => {
+      const newUrl = (url: string, overrides: Partial<NewCrawlUrl> = {}): NewCrawlUrl => ({
+        url,
+        urlHash: crawlUrlHash(url),
+        scope: 'internal',
+        source: 'link',
+        depth: 1,
+        ...overrides,
+      })
+      const result = (kind: CrawlUrlKind, overrides: Partial<CrawlUrlResult> = {}) => ({
+        kind,
+        statusCode: 200,
+        contentType: 'text/html',
+        redirectTo: null,
+        title: null,
+        metaRobots: null,
+        xRobotsTag: null,
+        canonical: null,
+        responseTimeMs: 12,
+        bytes: 100,
+        error: null,
+        data: null,
+        ...overrides,
+      })
+
+      async function domain(host = 'acme.com') {
+        const created = await createCompany(db, { name: host, domain: host })
+        if (!created.ok) throw new Error('setup failed')
+        return created.domain.id
+      }
+
+      async function startCrawl(domainId: string, type: 'full' | 'priority' = 'full') {
+        const crawl = await db.crawls.start({ domainId, type, trigger: 'manual' })
+        if (!crawl) throw new Error('crawl did not start')
+        return crawl
+      }
+
+      /** A finished full crawl with one page, for retention tests. */
+      async function finishedCrawl(domainId: string, url = 'https://acme.com/') {
+        const crawl = await startCrawl(domainId)
+        await db.crawls.addUrls(crawl.id, [newUrl(url)])
+        await db.crawls.recordResult({
+          crawlId: crawl.id,
+          urlHash: crawlUrlHash(url),
+          result: result('page'),
+        })
+        await db.crawls.finish(crawl.id, { status: 'completed' })
+        // Retention orders by creation time, which has millisecond resolution.
+        await new Promise((r) => setTimeout(r, 5))
+        return crawl
+      }
+
+      it('uses the defaults until a domain saves its settings', async () => {
+        const domainId = await domain()
+        expect(await db.crawls.settings(domainId)).toEqual(DEFAULT_CRAWL_SETTINGS)
+
+        const custom = {
+          ...DEFAULT_CRAWL_SETTINGS,
+          userAgent: 'MyBot/1.0',
+          concurrency: 4,
+          maxUrls: null,
+          retainCrawls: null,
+        }
+        await db.crawls.saveSettings(domainId, custom)
+        expect(await db.crawls.settings(domainId)).toEqual(custom)
+        await db.crawls.saveSettings(domainId, { ...custom, concurrency: 8 })
+        expect((await db.crawls.settings(domainId)).concurrency).toBe(8)
+      })
+
+      it('starts a crawl together with the job that runs it', async () => {
+        const domainId = await domain()
+        const crawl = await startCrawl(domainId)
+
+        expect(crawl).toMatchObject({
+          domainId,
+          type: 'full',
+          status: 'pending',
+          trigger: 'manual',
+        })
+        expect(await db.jobs.get(crawl.jobId)).toMatchObject({
+          type: JOB_TYPES.crawlRun,
+          status: 'pending',
+          payload: { crawlId: crawl.id },
+        })
+        expect((await db.crawls.active(domainId))?.id).toBe(crawl.id)
+      })
+
+      it('allows one active crawl per domain, whatever its type', async () => {
+        const domainId = await domain()
+        const otherDomainId = await domain('other.com')
+        const crawl = await startCrawl(domainId)
+
+        expect(await db.crawls.start({ domainId, type: 'priority', trigger: 'manual' })).toBeNull()
+        expect(await db.crawls.list(domainId)).toHaveLength(1)
+        expect((await db.jobs.countByStatus()).pending).toBe(1)
+        expect(
+          await db.crawls.start({ domainId: otherDomainId, type: 'full', trigger: 'manual' }),
+        ).not.toBeNull()
+
+        await db.crawls.finish(crawl.id, { status: 'completed' })
+        expect(await db.crawls.active(domainId)).toBeNull()
+        expect(
+          await db.crawls.start({ domainId, type: 'priority', trigger: 'schedule' }),
+        ).toMatchObject({ type: 'priority', trigger: 'schedule' })
+      })
+
+      it('lets exactly one of several concurrent starts win', async () => {
+        const domainId = await domain()
+        const results = await Promise.all(
+          [1, 2, 3, 4].map(() => db.crawls.start({ domainId, type: 'full', trigger: 'manual' })),
+        )
+        expect(results.filter(Boolean)).toHaveLength(1)
+        expect(await db.crawls.list(domainId)).toHaveLength(1)
+        expect((await db.jobs.countByStatus()).pending).toBe(1)
+      })
+
+      it('runs, cancels and finishes only while active', async () => {
+        const domainId = await domain()
+        const crawl = await startCrawl(domainId)
+
+        const running = await db.crawls.markRunning(crawl.id)
+        expect(running?.status).toBe('running')
+        expect(running?.startedAt).toBeInstanceOf(Date)
+
+        expect(await db.crawls.cancel(crawl.id)).toBe(true)
+        expect(await db.crawls.cancel(crawl.id)).toBe(false)
+        expect(await db.crawls.markRunning(crawl.id)).toBeNull()
+        expect(await db.crawls.finish(crawl.id, { status: 'completed' })).toBe(false)
+        expect(await db.crawls.get(crawl.id)).toMatchObject({ status: 'cancelled' })
+        expect((await db.crawls.get(crawl.id))?.finishedAt).toBeInstanceOf(Date)
+      })
+
+      it('queues internal URLs shallowest first and only records external ones', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        await db.crawls.addUrls(id, [
+          newUrl('https://acme.com/deep', { depth: 3 }),
+          newUrl('https://acme.com/', { depth: 0, source: 'seed' }),
+          newUrl('https://elsewhere.org/', { scope: 'external' }),
+        ])
+        // Adding a URL again is a no-op.
+        await db.crawls.addUrls(id, [newUrl('https://acme.com/', { depth: 9 })])
+
+        const queued = await db.crawls.nextQueued(id, 10)
+        expect(queued.map((u) => u.url)).toEqual(['https://acme.com/', 'https://acme.com/deep'])
+        expect(queued[0]).toMatchObject({ depth: 0, source: 'seed', scope: 'internal' })
+        expect(await db.crawls.nextQueued(id, 1)).toHaveLength(1)
+        expect(await db.crawls.knownUrls(id)).toHaveLength(3)
+      })
+
+      it('records a result with what it discovered, atomically and idempotently', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const home = 'https://acme.com/'
+        const about = 'https://acme.com/about'
+        const outside = 'https://elsewhere.org/'
+        await db.crawls.addUrls(id, [newUrl(home, { depth: 0 })])
+
+        const record = () =>
+          db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(home),
+            result: result('page', {
+              title: 'Home',
+              metaRobots: 'noindex',
+              xRobotsTag: 'nofollow',
+              canonical: home,
+              data: { h1: ['Welcome'], hreflang: [{ lang: 'es', url: `${home}es` }] },
+            }),
+            urls: [newUrl(about), newUrl(outside, { scope: 'external' })],
+            links: [
+              { sourceHash: crawlUrlHash(home), targetHash: crawlUrlHash(about), kind: 'anchor' },
+              { sourceHash: crawlUrlHash(home), targetHash: crawlUrlHash(outside), kind: 'anchor' },
+              { sourceHash: crawlUrlHash(home), targetHash: crawlUrlHash(outside), kind: 'image' },
+            ],
+          })
+        await record()
+        await record()
+
+        expect((await db.crawls.nextQueued(id, 10)).map((u) => u.url)).toEqual([about])
+        expect(await db.crawls.countUrls(id)).toEqual({
+          urlsCount: 2,
+          urlsDoneCount: 1,
+          pagesCount: 1,
+          externalCount: 1,
+        })
+        const [page] = await db.crawls.listUrls({
+          crawlId: id,
+          view: 'pages',
+          limit: 10,
+          offset: 0,
+        })
+        expect(page).toMatchObject({
+          url: home,
+          state: 'done',
+          statusCode: 200,
+          title: 'Home',
+          metaRobots: 'noindex',
+          xRobotsTag: 'nofollow',
+          canonical: home,
+          data: { h1: ['Welcome'], hreflang: [{ lang: 'es', url: `${home}es` }] },
+        })
+        expect(page?.fetchedAt).toBeInstanceOf(Date)
+
+        const sources = await db.crawls.linkSources(id, crawlUrlHash(outside))
+        expect(sources.map((s) => s.kind).sort()).toEqual(['anchor', 'image'])
+        expect(new Set(sources.map((s) => s.url))).toEqual(new Set([home]))
+      })
+
+      it('stores what a website sends, however odd', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const url = 'https://acme.com/'
+        await db.crawls.addUrls(id, [newUrl(url)])
+        await db.crawls.recordResult({
+          crawlId: id,
+          urlHash: crawlUrlHash(url),
+          result: result('page', {
+            title: `nul\u0000 byte 🦄 ${'x'.repeat(5000)}`,
+            contentType: `text/html; ${'y'.repeat(500)}`,
+            bytes: 5_000_000_000,
+          }),
+        })
+        await db.crawls.saveRobots(id, {
+          'https://acme.com': { status: 200, body: 'User-agent: *\u0000\nDisallow: /' },
+        })
+
+        const [page] = await db.crawls.listUrls({ crawlId: id, view: 'pages', limit: 1, offset: 0 })
+        expect(page?.title).toMatch(/^nul byte 🦄 x+$/)
+        expect(page?.title).toHaveLength(2048)
+        expect(page?.contentType).toHaveLength(255)
+        expect(page?.bytes).toBe(2_147_483_647)
+        expect((await db.crawls.get(id))?.robots).toEqual({
+          'https://acme.com': { status: 200, body: 'User-agent: *\nDisallow: /' },
+        })
+      })
+
+      it('separates pages, the rest of the site and external URLs', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const urls = {
+          page: 'https://acme.com/',
+          image: 'https://acme.com/a.png',
+          moved: 'https://acme.com/moved',
+          external: 'https://elsewhere.org/',
+        }
+        await db.crawls.addUrls(id, [
+          newUrl(urls.page),
+          newUrl(urls.image),
+          newUrl(urls.moved),
+          newUrl(urls.external, { scope: 'external' }),
+        ])
+        for (const [url, kind] of [
+          [urls.page, 'page'],
+          [urls.image, 'resource'],
+          [urls.moved, 'redirect'],
+        ] as const) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(url),
+            result: result(kind),
+          })
+        }
+        const view = async (view: 'pages' | 'other' | 'external') =>
+          (await db.crawls.listUrls({ crawlId: id, view, limit: 10, offset: 0 })).map((u) => u.url)
+
+        expect(await view('pages')).toEqual([urls.page])
+        expect((await view('other')).sort()).toEqual([urls.image, urls.moved].sort())
+        expect(await view('external')).toEqual([urls.external])
+
+        // External URLs never count towards the pages or URLs of the site.
+        expect(await db.crawls.finish(id, { status: 'completed' })).toBe(true)
+        expect(await db.crawls.get(id)).toMatchObject({
+          status: 'completed',
+          pagesCount: 1,
+          urlsCount: 3,
+          urlsDoneCount: 3,
+          externalCount: 1,
+        })
+      })
+
+      it('pages through a view in a stable order', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const urls = ['a', 'b', 'c', 'd', 'e'].map((p) => `https://acme.com/${p}`)
+        await db.crawls.addUrls(
+          id,
+          urls.map((url) => newUrl(url)),
+        )
+        for (const url of urls) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(url),
+            result: result('page'),
+          })
+        }
+        const page = async (offset: number) =>
+          (await db.crawls.listUrls({ crawlId: id, view: 'pages', limit: 2, offset })).map(
+            (u) => u.url,
+          )
+        expect(await page(0)).toEqual(urls.slice(0, 2))
+        expect(await page(2)).toEqual(urls.slice(2, 4))
+        expect(await page(4)).toEqual(urls.slice(4))
+      })
+
+      it('finds the latest usable crawl of a type', async () => {
+        const domainId = await domain()
+        expect(await db.crawls.latestWithResults(domainId, 'full')).toBeNull()
+
+        const good = await finishedCrawl(domainId)
+        const failed = await startCrawl(domainId)
+        await db.crawls.finish(failed.id, { status: 'failed', error: 'boom' })
+        const priority = await startCrawl(domainId, 'priority')
+        await db.crawls.finish(priority.id, { status: 'completed' })
+        const running = await startCrawl(domainId)
+
+        expect((await db.crawls.latestWithResults(domainId, 'full'))?.id).toBe(good.id)
+        expect((await db.crawls.latestWithResults(domainId, 'priority'))?.id).toBe(priority.id)
+
+        await db.crawls.finish(running.id, { status: 'incomplete' })
+        expect((await db.crawls.latestWithResults(domainId, 'full'))?.id).toBe(running.id)
+      })
+
+      it('prunes old results but keeps the summary of every crawl', async () => {
+        const domainId = await domain()
+        const oldest = await finishedCrawl(domainId)
+        const middle = await finishedCrawl(domainId)
+        const newest = await finishedCrawl(domainId)
+        const priority = await startCrawl(domainId, 'priority')
+        await db.crawls.finish(priority.id, { status: 'completed' })
+
+        expect(await db.crawls.prune({ domainId, type: 'full', keep: null })).toBe(0)
+        expect(await db.crawls.prune({ domainId, type: 'full', keep: 2 })).toBe(1)
+        expect(await db.crawls.prune({ domainId, type: 'full', keep: 2 })).toBe(0)
+
+        expect(await db.crawls.get(oldest.id)).toMatchObject({ pruned: true, pagesCount: 1 })
+        expect(await db.crawls.knownUrls(oldest.id)).toEqual([])
+        expect(await db.crawls.knownUrls(middle.id)).toHaveLength(1)
+        expect(await db.crawls.knownUrls(newest.id)).toHaveLength(1)
+        expect((await db.crawls.get(priority.id))?.pruned).toBe(false)
+
+        await db.crawls.prune({ domainId, type: 'full', keep: 1 })
+        expect((await db.crawls.latestWithResults(domainId, 'full'))?.id).toBe(newest.id)
+      })
+
+      it('never lets a failed crawl push out good results', async () => {
+        const domainId = await domain()
+        const good = await finishedCrawl(domainId)
+        const failed = await startCrawl(domainId)
+        await db.crawls.addUrls(failed.id, [newUrl('https://acme.com/partial')])
+        await db.crawls.finish(failed.id, { status: 'failed', error: 'boom' })
+
+        expect(await db.crawls.prune({ domainId, type: 'full', keep: 1 })).toBe(1)
+        expect(await db.crawls.knownUrls(good.id)).toHaveLength(1)
+        expect(await db.crawls.knownUrls(failed.id)).toEqual([])
+      })
+
+      it('fails active crawls whose job has given up', async () => {
+        const domainId = await domain()
+        const { id, jobId } = await startCrawl(domainId)
+        const otherDomainId = await domain('other.com')
+        const healthy = await startCrawl(otherDomainId)
+
+        await db.jobs.claim({ workerId: 'w', limit: 1 })
+        expect(await db.crawls.failOrphaned()).toBe(0)
+
+        await db.jobs.fail({ id: jobId, workerId: 'w', error: 'out of attempts' })
+        expect(await db.crawls.failOrphaned()).toBe(1)
+        expect(await db.crawls.get(id)).toMatchObject({
+          status: 'failed',
+          error: 'out of attempts',
+        })
+        expect(await db.crawls.active(domainId)).toBeNull()
+        expect((await db.crawls.get(healthy.id))?.status).toBe('pending')
+      })
+
+      it('finds the most recent result of a URL across crawls', async () => {
+        const domainId = await domain()
+        const url = 'https://acme.com/'
+        const first = await finishedCrawl(domainId, url)
+        await new Promise((r) => setTimeout(r, 5))
+        const second = await finishedCrawl(domainId, url)
+
+        const [latest, ...rest] = await db.crawls.latestResults(domainId, [crawlUrlHash(url)])
+        expect(rest).toEqual([])
+        expect(latest?.crawlId).toBe(second.id)
+        expect(latest?.crawlId).not.toBe(first.id)
+        expect(await db.crawls.latestResults(domainId, [])).toEqual([])
+        expect(await db.crawls.latestResults(domainId, ['missing'])).toEqual([])
+      })
+    })
+
+    describe('priority URLs', () => {
+      it('keeps one entry per URL, per domain', async () => {
+        const a = await createCompany(db, { name: 'A', domain: 'a.com' })
+        const b = await createCompany(db, { name: 'B', domain: 'b.com' })
+        if (!a.ok || !b.ok) throw new Error('setup failed')
+        const url = 'https://a.com/pricing'
+
+        await db.priorityUrls.add({ domainId: a.domain.id, url })
+        await db.priorityUrls.add({ domainId: a.domain.id, url })
+        await db.priorityUrls.add({ domainId: b.domain.id, url })
+
+        expect(await db.priorityUrls.list(a.domain.id)).toMatchObject([
+          { url, urlHash: crawlUrlHash(url) },
+        ])
+        await db.priorityUrls.remove({ domainId: a.domain.id, urlHash: crawlUrlHash(url) })
+        expect(await db.priorityUrls.list(a.domain.id)).toEqual([])
+        expect(await db.priorityUrls.list(b.domain.id)).toHaveLength(1)
+      })
+    })
+
+    describe('crawl schedules', () => {
+      const recurrence: CrawlRecurrence = {
+        frequency: 'weekly',
+        hour: 4,
+        minute: 30,
+        dayOfWeek: 2,
+        dayOfMonth: 1,
+        timeZone: 'Europe/Madrid',
+      }
+
+      async function domain() {
+        const created = await createCompany(db, { name: 'Acme', domain: 'acme.com' })
+        if (!created.ok) throw new Error('setup failed')
+        return created.domain.id
+      }
+
+      it('keeps one schedule per domain and type', async () => {
+        const domainId = await domain()
+        const nextRunAt = new Date(Date.now() + minutes(60))
+        const input = { ...recurrence, domainId, enabled: true, nextRunAt }
+        await db.crawlSchedules.save({ ...input, type: 'full' })
+        await db.crawlSchedules.save({ ...input, type: 'full', hour: 5 })
+        await db.crawlSchedules.save({ ...input, type: 'priority', frequency: 'hourly' })
+
+        const list = await db.crawlSchedules.list(domainId)
+        expect(list).toHaveLength(2)
+        expect(list.find((s) => s.type === 'full')).toMatchObject({
+          ...recurrence,
+          hour: 5,
+          enabled: true,
+          lastRunAt: null,
+          lastOutcome: null,
+        })
+        expect(list.find((s) => s.type === 'priority')?.frequency).toBe('hourly')
+      })
+
+      it('only reports enabled schedules that are due', async () => {
+        const domainId = await domain()
+        const now = new Date()
+        const base = { ...recurrence, domainId, type: 'full' as const }
+        await db.crawlSchedules.save({
+          ...base,
+          enabled: true,
+          nextRunAt: new Date(now.getTime() - 1000),
+        })
+        expect(await db.crawlSchedules.due({ now, limit: 10 })).toHaveLength(1)
+
+        await db.crawlSchedules.save({
+          ...base,
+          enabled: false,
+          nextRunAt: new Date(now.getTime() - 1000),
+        })
+        expect(await db.crawlSchedules.due({ now, limit: 10 })).toEqual([])
+
+        await db.crawlSchedules.save({
+          ...base,
+          enabled: true,
+          nextRunAt: new Date(now.getTime() + 1000),
+        })
+        expect(await db.crawlSchedules.due({ now, limit: 10 })).toEqual([])
+      })
+
+      it('lets only one worker advance a due schedule', async () => {
+        const domainId = await domain()
+        const now = new Date()
+        const expectedNextRunAt = new Date(now.getTime() - 1000)
+        await db.crawlSchedules.save({
+          ...recurrence,
+          domainId,
+          type: 'full',
+          enabled: true,
+          nextRunAt: expectedNextRunAt,
+        })
+        const [schedule] = await db.crawlSchedules.due({ now, limit: 1 })
+        const nextRunAt = new Date(now.getTime() + minutes(60))
+
+        const results = await Promise.all(
+          [1, 2, 3].map(() =>
+            db.crawlSchedules.advance({ id: schedule!.id, expectedNextRunAt, nextRunAt, now }),
+          ),
+        )
+        expect(results.filter(Boolean)).toHaveLength(1)
+        expect(await db.crawlSchedules.due({ now, limit: 1 })).toEqual([])
+
+        await db.crawlSchedules.recordOutcome({ id: schedule!.id, outcome: 'skipped-active' })
+        const [saved] = await db.crawlSchedules.list(domainId)
+        expect(saved?.lastOutcome).toBe('skipped-active')
+        expect(saved?.lastRunAt).toBeInstanceOf(Date)
       })
     })
 

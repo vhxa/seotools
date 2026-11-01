@@ -18,6 +18,12 @@ describeDatabaseContract(
           'worker_heartbeats',
           'settings',
           'user',
+          'crawl_links',
+          'crawl_urls',
+          'crawls',
+          'crawl_schedules',
+          'crawl_settings',
+          'priority_urls',
           'domains',
           'companies',
         ]) {

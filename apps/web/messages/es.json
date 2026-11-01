@@ -82,6 +82,8 @@
     "mobileTitle": "Navegación",
     "mobileDescription": "Navegación principal y selector de dominio.",
     "overview": "Resumen",
+    "pages": "Páginas",
+    "scheduledJobs": "Tareas programadas",
     "instance": "Instancia",
     "system": "Sistema"
   },
@@ -119,6 +121,196 @@
       "running": "en curso",
       "completed": "completado",
       "failed": "fallido"
+    }
+  },
+  "Crawl": {
+    "type": {
+      "full": "Rastreo completo",
+      "priority": "Rastreo de páginas prioritarias"
+    },
+    "start": {
+      "full": "Lanzar rastreo completo",
+      "priority": "Lanzar rastreo prioritario"
+    },
+    "cancel": "Cancelar",
+    "progressLabel": "Progreso del rastreo",
+    "progress": "{done, number} de {total, number} URLs pedidas · {pages, plural, one {# página} other {# páginas}} · {external, plural, one {# externa} other {# externas}}",
+    "status": {
+      "pending": "en cola",
+      "running": "en curso",
+      "completed": "completado",
+      "incomplete": "incompleto",
+      "failed": "fallido",
+      "cancelled": "cancelado"
+    },
+    "errors": {
+      "alreadyRunning": "Este dominio ya tiene un rastreo en curso.",
+      "noPriorityUrls": "Todavía no hay páginas prioritarias. Márcalas primero en Páginas.",
+      "invalidPriorityUrl": "Introduce una URL de {host}, como /precios o https://{host}/precios.",
+      "invalidSchedule": "Revisa la frecuencia, el día y la hora de la programación."
+    }
+  },
+  "Pages": {
+    "metaTitle": "Páginas · {host} · seotools",
+    "title": "Páginas",
+    "lastCrawl": "El último rastreo completo terminó {when}.",
+    "neverCrawled": "Este dominio todavía no se ha rastreado.",
+    "incomplete": {
+      "title": "El último rastreo se detuvo en su límite de URLs",
+      "description": "Pidió {urls, number} URLs y había más. Estas cifras no cubren toda la web.",
+      "settings": "Sube el límite en los ajustes de rastreo."
+    },
+    "stats": {
+      "total": "Páginas encontradas",
+      "correct": "Páginas correctas",
+      "issues": "Páginas con issues",
+      "soon": "Disponible cuando llegue la detección de issues."
+    },
+    "viewsLabel": "Vistas",
+    "views": {
+      "pages": "Páginas",
+      "other": "Otras URLs",
+      "external": "Externas",
+      "priority": "Prioritarias"
+    },
+    "viewHints": {
+      "pages": "URLs de esta web que respondieron con HTML, sea cual sea su estado. Son las que cuentan como páginas.",
+      "other": "Redirecciones, imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps y URLs que no respondieron.",
+      "external": "URLs de otros sitios enlazadas desde esta web. Se registran, pero nunca se piden ni se cuentan.",
+      "priority": "Páginas que pide el rastreo prioritario, con su resultado más reciente de cualquier rastreo."
+    },
+    "columns": {
+      "url": "URL",
+      "status": "Estado",
+      "detail": "Detalle"
+    },
+    "emptyView": "Todavía no hay nada aquí.",
+    "priority": {
+      "mark": "Marcar como prioritaria",
+      "unmark": "Quitar de prioritarias",
+      "addLabel": "Añadir una página prioritaria",
+      "addPlaceholder": "/precios o https://{host}/precios",
+      "add": "Añadir"
+    },
+    "pagination": {
+      "summary": "Página {page, number} de {pages, number}",
+      "previous": "Anterior",
+      "next": "Siguiente"
+    }
+  },
+  "Jobs": {
+    "metaTitle": "Tareas programadas · {host} · seotools",
+    "title": "Tareas programadas",
+    "description": "Lanza cada tipo de rastreo ahora o de forma recurrente. Un dominio ejecuta un solo rastreo a la vez.",
+    "settings": "Ajustes de rastreo",
+    "typeDescriptions": {
+      "full": "Pide todas las URLs de la web: desde la portada, los sitemaps y todo lo enlazado en cualquier parte, sin hacer caso a robots.txt ni a meta robots.",
+      "priority": "Pide solo las páginas marcadas como prioritarias en Páginas, sin seguir sus enlaces."
+    },
+    "schedule": {
+      "enabled": "Ejecutar de forma programada",
+      "frequency": "Frecuencia",
+      "frequencies": {
+        "hourly": "Cada hora",
+        "daily": "Cada día",
+        "weekly": "Cada semana",
+        "monthly": "Cada mes"
+      },
+      "dayOfWeek": "Día de la semana",
+      "dayOfMonth": "Día del mes",
+      "time": "Hora",
+      "minuteOfHour": "En el minuto de",
+      "timeZoneHint": "Las horas están en {timeZone}.",
+      "hourlyHint": "Solo cuentan los minutos: se ejecuta cada hora en ese minuto.",
+      "save": "Guardar programación",
+      "saved": "Guardado.",
+      "nextRun": "Próxima ejecución: {when}.",
+      "lastOutcome": {
+        "started": "La última ejecución empezó {when}.",
+        "skipped-active": "La última ejecución se omitió {when}: había otro rastreo en curso.",
+        "skipped-empty": "La última ejecución se omitió {when}: no hay páginas prioritarias marcadas."
+      }
+    },
+    "history": {
+      "title": "Rastreos recientes",
+      "type": "Tipo",
+      "status": "Estado",
+      "trigger": "Iniciado por",
+      "started": "Inicio",
+      "pages": "Páginas",
+      "urls": "URLs",
+      "external": "Externas",
+      "triggers": {
+        "manual": "Manual",
+        "schedule": "Programación"
+      },
+      "empty": "Todavía no hay rastreos."
+    }
+  },
+  "CrawlSettings": {
+    "metaTitle": "Ajustes de rastreo · {host} · seotools",
+    "back": "Tareas programadas",
+    "title": "Ajustes de rastreo",
+    "description": "Cómo se comportan los rastreos de {host}. Los cambios se aplican desde el siguiente rastreo.",
+    "rendering": {
+      "label": "Renderizado de páginas",
+      "hint": "Un navegador headless encuentra enlaces que solo existen tras ejecutar JavaScript. Todavía no está disponible.",
+      "modes": {
+        "http": "Solo HTTP",
+        "headless": "Navegador headless (próximamente)",
+        "both": "HTTP y navegador headless, recomendado (próximamente)"
+      }
+    },
+    "userAgent": {
+      "label": "User-Agent",
+      "hint": "Déjalo vacío para usar el predeterminado. Cámbialo si un firewall bloquea el rastreador."
+    },
+    "concurrency": {
+      "label": "Peticiones simultáneas",
+      "hint": "Cuántas peticiones pueden estar en curso a la vez."
+    },
+    "requestsPerSecond": {
+      "label": "Peticiones por segundo",
+      "hint": "El máximo de peticiones por segundo que recibe este dominio."
+    },
+    "timeout": {
+      "label": "Tiempo de espera (segundos)",
+      "hint": "Cuánto se espera a una URL antes de darla por fallida."
+    },
+    "maxRetries": {
+      "label": "Reintentos",
+      "hint": "Intentos adicionales tras un error de red, un 429 o un 503."
+    },
+    "maxUrls": {
+      "label": "Límite de URLs",
+      "hint": "Máximo de URLs de la web que pide un rastreo completo. Al alcanzarlo, el rastreo termina como incompleto. Déjalo vacío para no poner límite, con el riesgo de una web con URLs infinitas."
+    },
+    "retention": {
+      "label": "Resultados de rastreos que se conservan",
+      "modes": {
+        "latest": "Los últimos rastreos",
+        "current": "Solo el actual",
+        "all": "Todos"
+      },
+      "hints": {
+        "latest": "Permite comparar rastreos, con un tamaño de base de datos acotado.",
+        "current": "La opción más ligera. No se podrán comparar rastreos URL a URL.",
+        "all": "Nunca se borra nada, así que la base de datos crece sin límite."
+      },
+      "countLabel": "Cuántos de cada tipo",
+      "countHint": "Los anteriores conservan su resumen, pero pierden los resultados por URL."
+    },
+    "save": "Guardar ajustes",
+    "saved": "Guardado.",
+    "errors": {
+      "renderingUnavailable": "Ese modo de renderizado todavía no está disponible.",
+      "userAgent": "El User-Agent solo admite caracteres simples, hasta {max}.",
+      "concurrency": "Las peticiones simultáneas deben estar entre {min} y {max}.",
+      "requestsPerSecond": "Las peticiones por segundo deben estar entre {min} y {max}.",
+      "timeout": "El tiempo de espera debe estar entre {min} y {max} segundos.",
+      "maxRetries": "Los reintentos deben estar entre {min} y {max}.",
+      "maxUrls": "El límite de URLs debe estar entre {min} y {max}, o vacío para no poner límite.",
+      "retainCrawls": "El número de rastreos que se conservan debe estar entre {min} y {max}."
     }
   }
 }

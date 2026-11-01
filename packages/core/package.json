@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./crawl/schedule": "./src/crawl/schedule.ts",
+    "./crawl/settings": "./src/crawl/settings.ts"
   },
   "scripts": {
     "lint": "eslint .",

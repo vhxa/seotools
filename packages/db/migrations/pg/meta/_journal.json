@@ -15,6 +15,13 @@
       "when": 1793521220315,
       "tag": "0001_companies_and_domains",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793530184532,
+      "tag": "0002_crawls",
+      "breakpoints": true
     }
   ]
 }

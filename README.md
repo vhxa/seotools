@@ -5,8 +5,8 @@
 Open source, self-hosted SEO toolkit. One container, no Redis, runs anywhere Docker does — from a
 Raspberry Pi to a VPS.
 
-> **Status: skeleton.** This first phase ships the platform (web app, background worker, auth,
-> database, deployment). The SEO tools themselves come next.
+> **Status: early.** The platform (web app, background worker, auth, database, deployment) and the
+> site crawler are in place. The SEO audits built on top of the crawl come next.
 
 - **Web** — Next.js (App Router) with shadcn/ui, single-admin login via [better-auth](https://better-auth.com).
 - **Worker** — processes background jobs stored in your database. No Redis or external queue.
@@ -15,6 +15,9 @@ Raspberry Pi to a VPS.
 - **Notifications (base)** — email via SMTP ([nodemailer](https://nodemailer.com)) or
   [Resend](https://resend.com). The admin panel to configure them is coming; the encrypted settings
   storage and the `mail.send` job are already in place.
+- **Crawler** — full crawls that request every URL of a domain (from the home page, its sitemaps
+  and everything linked anywhere, ignoring `robots.txt` and meta robots on purpose, since auditing
+  them is the point), crawls of pages marked as priority, and recurring schedules for both.
 - **Multi-arch image** — `linux/amd64` and `linux/arm64`, published to GHCR.
 
 ## Quick start (Docker Compose)
@@ -50,21 +53,23 @@ instead of pulling it, use `docker compose up -d --build`.
 All configuration is through environment variables. See [`.env.example`](.env.example) for the
 annotated list.
 
-| Variable                  | Default                  | Description                                                             |
-| ------------------------- | ------------------------ | ----------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET`      | —                        | **Required.** 32+ chars. Signs sessions.                                |
-| `BETTER_AUTH_URL`         | `http://localhost:3000`  | Public URL of the app. Must match the browser's address.                |
-| `TRUSTED_ORIGINS`         | —                        | Extra comma-separated origins allowed to call the auth API.             |
-| `SETTINGS_ENCRYPTION_KEY` | `BETTER_AUTH_SECRET`     | Key for secrets saved from the admin panel (SMTP password, Resend key). |
-| `DATABASE_URL`            | `file:/data/seotools.db` | `file:…` (SQLite), `postgres://…` or `mysql://…`.                       |
-| `DATABASE_DIALECT`        | inferred                 | `sqlite` \| `pg` \| `mysql`. Only if it can't be inferred from the URL. |
-| `RUN_MIGRATIONS`          | `true`                   | Apply pending migrations at startup.                                    |
-| `PORT`                    | `3000`                   | HTTP port (in Compose: the host port; the container always uses 3000).  |
-| `LOG_LEVEL`               | `info`                   | `fatal` … `trace`, or `silent`.                                         |
-| `WORKER_CONCURRENCY`      | `2`                      | Jobs processed in parallel.                                             |
-| `WORKER_POLL_INTERVAL_MS` | `1000`                   | How often an idle worker looks for jobs.                                |
-| `JOB_LOCK_TIMEOUT_MS`     | `300000`                 | A job running longer than this is assumed orphaned and re-queued.       |
-| `SEOTOOLS_MODE`           | `all`                    | Docker only: `all`, `web`, `worker` or `migrate` (see below).           |
+| Variable                         | Default                  | Description                                                              |
+| -------------------------------- | ------------------------ | ------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET`             | —                        | **Required.** 32+ chars. Signs sessions.                                 |
+| `BETTER_AUTH_URL`                | `http://localhost:3000`  | Public URL of the app. Must match the browser's address.                 |
+| `TRUSTED_ORIGINS`                | —                        | Extra comma-separated origins allowed to call the auth API.              |
+| `SETTINGS_ENCRYPTION_KEY`        | `BETTER_AUTH_SECRET`     | Key for secrets saved from the admin panel (SMTP password, Resend key).  |
+| `DATABASE_URL`                   | `file:/data/seotools.db` | `file:…` (SQLite), `postgres://…` or `mysql://…`.                        |
+| `DATABASE_DIALECT`               | inferred                 | `sqlite` \| `pg` \| `mysql`. Only if it can't be inferred from the URL.  |
+| `RUN_MIGRATIONS`                 | `true`                   | Apply pending migrations at startup.                                     |
+| `PORT`                           | `3000`                   | HTTP port (in Compose: the host port; the container always uses 3000).   |
+| `LOG_LEVEL`                      | `info`                   | `fatal` … `trace`, or `silent`.                                          |
+| `WORKER_CONCURRENCY`             | `2`                      | Jobs processed in parallel.                                              |
+| `WORKER_POLL_INTERVAL_MS`        | `1000`                   | How often an idle worker looks for jobs.                                 |
+| `JOB_LOCK_TIMEOUT_MS`            | `300000`                 | A job running longer than this is assumed orphaned and re-queued.        |
+| `CRAWL_CONCURRENCY`              | `2`                      | Crawls running in parallel, in slots separate from other jobs.           |
+| `CRAWLER_ALLOW_PRIVATE_NETWORKS` | `false`                  | Let the crawler reach private addresses, to audit sites on your network. |
+| `SEOTOOLS_MODE`                  | `all`                    | Docker only: `all`, `web`, `worker` or `migrate` (see below).            |
 
 ### The admin account
 

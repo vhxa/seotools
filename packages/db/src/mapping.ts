@@ -1,5 +1,24 @@
-import type { Job, JobStatus } from '@seotools/core'
-import type { Company, CompanyWithDomains, Domain } from './types'
+import {
+  JOB_TYPES,
+  crawlUrlHash,
+  type CrawlPageData,
+  type CrawlRobotsFiles,
+  type Job,
+  type JobStatus,
+} from '@seotools/core'
+import type {
+  Company,
+  CompanyWithDomains,
+  Crawl,
+  CrawlCounts,
+  CrawlLink,
+  CrawlSchedule,
+  CrawlUrl,
+  CrawlUrlResult,
+  CrawlUrlView,
+  Domain,
+  NewCrawlUrl,
+} from './types'
 
 export interface JobRow {
   id: string
@@ -64,4 +83,145 @@ export function groupDomains(companies: Company[], domains: Domain[]): CompanyWi
       ),
     }))
     .sort((a, b) => byName.compare(a.name, b.name) || a.createdAt.getTime() - b.createdAt.getTime())
+}
+
+// --- crawls --------------------------------------------------------------
+
+export type CrawlRow = Omit<Crawl, 'robots'> & { robots: string | null }
+export type CrawlUrlRow = Omit<CrawlUrl, 'data' | 'source' | 'scope' | 'kind' | 'state'> & {
+  data: string | null
+  source: string
+  scope: string
+  kind: string
+  state: string
+}
+export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
+
+export const toCrawl = ({ robots, ...row }: CrawlRow): Crawl => ({
+  ...row,
+  robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
+})
+
+export const toCrawlUrl = ({ data, ...row }: CrawlUrlRow): CrawlUrl => ({
+  ...(row as Omit<CrawlUrl, 'data'>),
+  data: data === null ? null : (parseJson(data) as CrawlPageData),
+})
+
+export const toCrawlSchedule = ({
+  updatedAt: _updatedAt,
+  ...row
+}: CrawlScheduleRow): CrawlSchedule => row
+
+/** The job that runs a crawl, ready for insertion alongside it. */
+export function crawlJobValues(crawlId: string, jobId: string, now: Date) {
+  return {
+    id: jobId,
+    type: JOB_TYPES.crawlRun,
+    payload: JSON.stringify({ crawlId }),
+    runAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+const MAX_TEXT_LENGTH = 2048
+const MAX_CONTENT_TYPE_LENGTH = 255
+const MAX_INT = 2_147_483_647
+
+/**
+ * Whatever a website sends ends up here, so it has to fit: control characters are removed (Postgres
+ * refuses NUL in text) and values are cut to length, without splitting a surrogate pair.
+ */
+export function cleanText(value: string, max?: number): string
+export function cleanText(value: string | null | undefined, max?: number): string | null
+export function cleanText(value: string | null | undefined, max = MAX_TEXT_LENGTH): string | null {
+  if (value === null || value === undefined) return null
+  // eslint-disable-next-line no-control-regex -- removing control characters is the point
+  const cut = value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').slice(0, max)
+  // `slice` may have cut an emoji in half, and a lone surrogate is not valid UTF-8.
+  return /[\ud800-\udbff]$/.test(cut) ? cut.slice(0, -1) : cut
+}
+
+/** The values of a result as columns, trimmed to what the database accepts. */
+export function crawlResultColumns(result: CrawlUrlResult, now: Date) {
+  return {
+    state: 'done' as const,
+    kind: result.kind,
+    statusCode: result.statusCode,
+    contentType: cleanText(result.contentType, MAX_CONTENT_TYPE_LENGTH),
+    redirectTo: result.redirectTo,
+    title: cleanText(result.title),
+    metaRobots: cleanText(result.metaRobots),
+    xRobotsTag: cleanText(result.xRobotsTag),
+    canonical: cleanText(result.canonical),
+    responseTimeMs:
+      result.responseTimeMs === null ? null : Math.min(result.responseTimeMs, MAX_INT),
+    bytes: result.bytes === null ? null : Math.min(result.bytes, MAX_INT),
+    error: result.error === null ? null : truncateError(cleanText(result.error)),
+    data: result.data === null ? null : JSON.stringify(result.data),
+    fetchedAt: now,
+  }
+}
+
+export const crawlRobotsColumn = (robots: CrawlRobotsFiles) =>
+  JSON.stringify(
+    Object.fromEntries(
+      Object.entries(robots).map(([origin, { status, body }]) => [
+        origin,
+        { status, body: cleanText(body, Number.MAX_SAFE_INTEGER) },
+      ]),
+    ),
+  )
+
+/** External URLs are recorded, never requested, so they don't enter the queue. */
+export const newCrawlUrlRow = (crawlId: string, url: NewCrawlUrl) => ({
+  crawlId,
+  ...url,
+  state: url.scope === 'internal' ? ('queued' as const) : ('skipped' as const),
+})
+
+export const newCrawlLinkRow = (crawlId: string, link: CrawlLink) => ({ crawlId, ...link })
+
+export function priorityUrlRow(domainId: string, url: string, now: Date) {
+  return { domainId, url, urlHash: crawlUrlHash(url), createdAt: now }
+}
+
+/** Folds `count(*) group by scope, kind, state` into the counters of a crawl. */
+export function foldCrawlCounts(
+  rows: { scope: string; kind: string; state: string; count: unknown }[],
+): CrawlCounts {
+  const counts: CrawlCounts = { pagesCount: 0, urlsCount: 0, urlsDoneCount: 0, externalCount: 0 }
+  for (const row of rows) {
+    const count = Number(row.count)
+    if (row.scope === 'external') {
+      counts.externalCount += count
+      continue
+    }
+    counts.urlsCount += count
+    if (row.state === 'done') counts.urlsDoneCount += count
+    if (row.kind === 'page') counts.pagesCount += count
+  }
+  return counts
+}
+
+export const crawlViewScope = (view: CrawlUrlView) =>
+  view === 'external' ? ('external' as const) : ('internal' as const)
+
+/** Multi-row inserts are split so they stay under every driver's parameter limit. */
+export function chunk<T>(items: T[], size = 500): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
+  return chunks
+}
+
+/** Keeps the most recently fetched result of each URL. */
+export function newestPerUrl(rows: CrawlUrl[]): CrawlUrl[] {
+  const newest = new Map<string, CrawlUrl>()
+  for (const row of rows) {
+    const current = newest.get(row.urlHash)
+    if (!current || (row.fetchedAt?.getTime() ?? 0) > (current.fetchedAt?.getTime() ?? 0)) {
+      newest.set(row.urlHash, row)
+    }
+  }
+  return [...newest.values()]
 }

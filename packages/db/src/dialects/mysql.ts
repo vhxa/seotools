@@ -1,13 +1,61 @@
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  ne,
+  notInArray,
+  sql,
+} from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/mysql2'
 import { migrate } from 'drizzle-orm/mysql2/migrator'
 import mysql from 'mysql2/promise'
-import { CREDENTIAL_PROVIDER, EMPTY_COUNTS, groupDomains, toJob, truncateError } from '../mapping'
+import {
+  CREDENTIAL_PROVIDER,
+  EMPTY_COUNTS,
+  chunk,
+  crawlJobValues,
+  crawlResultColumns,
+  crawlRobotsColumn,
+  crawlViewScope,
+  foldCrawlCounts,
+  groupDomains,
+  newCrawlLinkRow,
+  newCrawlUrlRow,
+  newestPerUrl,
+  priorityUrlRow,
+  toCrawl,
+  toCrawlSchedule,
+  toCrawlUrl,
+  toJob,
+  truncateError,
+} from '../mapping'
+import { DEFAULT_CRAWL_SETTINGS, type CrawlLinkKind } from '@seotools/core'
 import * as schema from '../schema/mysql'
-import type { Database } from '../types'
+import type { Database, NewCrawlUrl } from '../types'
 
-const { jobs, workerHeartbeats, settings, user, account, companies, domains } = schema
+const {
+  jobs,
+  workerHeartbeats,
+  settings,
+  user,
+  account,
+  companies,
+  domains,
+  crawlSettings,
+  crawlSchedules,
+  crawls,
+  crawlUrls,
+  crawlLinks,
+  priorityUrls,
+} = schema
 
 /** mysql2 resolves writes to `[ResultSetHeader, …]`. */
 const affected = (res: unknown) => (res as [{ affectedRows: number }])[0].affectedRows
@@ -80,7 +128,7 @@ export function createMysqlDatabase(options: {
         return counts
       },
 
-      async claim({ workerId, limit, now = new Date() }) {
+      async claim({ workerId, limit, now = new Date(), types, excludeTypes }) {
         // FOR UPDATE SKIP LOCKED (MySQL 8+, MariaDB 10.6+) under READ COMMITTED: no gap locks, so
         // concurrent workers get disjoint rows instead of blocking each other's ranges.
         const claimed = await db.transaction(
@@ -91,7 +139,12 @@ export function createMysqlDatabase(options: {
             // column encoders, so dates are serialized consistently).
             const [idRows] = (await tx.execute(
               sql`select ${jobs.id} as id from ${jobs} force index (jobs_claim_idx)
-                where ${and(eq(jobs.status, 'pending'), lte(jobs.runAt, now))}
+                where ${and(
+                  eq(jobs.status, 'pending'),
+                  lte(jobs.runAt, now),
+                  types ? inArray(jobs.type, [...types]) : undefined,
+                  excludeTypes ? notInArray(jobs.type, [...excludeTypes]) : undefined,
+                )}
                 order by ${jobs.runAt}, ${jobs.createdAt} limit ${limit}
                 for update skip locked`,
             )) as unknown as [{ id: string }[]]
@@ -141,6 +194,26 @@ export function createMysqlDatabase(options: {
             status: retryAt ? 'pending' : 'failed',
             ...(retryAt ? { runAt: retryAt } : {}),
             lastError: truncateError(error),
+            lockedAt: null,
+            lockedBy: null,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(jobs.id, id), eq(jobs.status, 'running'), eq(jobs.lockedBy, workerId)))
+      },
+
+      async renewLock({ id, workerId, now = new Date() }) {
+        await db
+          .update(jobs)
+          .set({ lockedAt: now, updatedAt: now })
+          .where(and(eq(jobs.id, id), eq(jobs.status, 'running'), eq(jobs.lockedBy, workerId)))
+      },
+
+      async release({ id, workerId }) {
+        await db
+          .update(jobs)
+          .set({
+            status: 'pending',
+            attempts: sql`${jobs.attempts} - 1`,
             lockedAt: null,
             lockedBy: null,
             updatedAt: new Date(),
@@ -260,6 +333,10 @@ export function createMysqlDatabase(options: {
     },
 
     domains: {
+      async get(id) {
+        const [row] = await db.select().from(domains).where(eq(domains.id, id))
+        return row ?? null
+      },
       async findByHost(host) {
         const [row] = await db
           .select({ domain: domains, company: companies })
@@ -272,6 +349,359 @@ export function createMysqlDatabase(options: {
         const domain = { id: randomUUID(), companyId, host, createdAt: new Date() }
         await db.insert(domains).values(domain)
         return domain
+      },
+    },
+
+    crawls: {
+      async settings(domainId) {
+        const row = (
+          await db.select().from(crawlSettings).where(eq(crawlSettings.domainId, domainId))
+        )[0]
+        if (!row) return { ...DEFAULT_CRAWL_SETTINGS }
+        const { domainId: _domainId, updatedAt: _updatedAt, ...settings } = row
+        return settings
+      },
+
+      async saveSettings(domainId, values) {
+        const updatedAt = new Date()
+        await db
+          .insert(crawlSettings)
+          .values({ domainId, ...values, updatedAt })
+          .onDuplicateKeyUpdate({ set: { ...values, updatedAt } })
+      },
+
+      async start({ domainId, type, trigger }) {
+        const now = new Date()
+        const id = randomUUID()
+        const jobId = randomUUID()
+        try {
+          await db.transaction(async (tx) => {
+            await tx.insert(jobs).values(crawlJobValues(id, jobId, now))
+            await tx
+              .insert(crawls)
+              .values({ id, domainId, type, trigger, jobId, activeKey: domainId, createdAt: now })
+          })
+        } catch (error) {
+          // Lost the race on the unique `active_key`: some other crawl of this domain is active.
+          if (await this.active(domainId)) return null
+          throw error
+        }
+        return this.get(id)
+      },
+
+      async get(id) {
+        const row = (await db.select().from(crawls).where(eq(crawls.id, id)))[0]
+        return row ? toCrawl(row) : null
+      },
+
+      async active(domainId) {
+        const row = (await db.select().from(crawls).where(eq(crawls.activeKey, domainId)))[0]
+        return row ? toCrawl(row) : null
+      },
+
+      async list(domainId, { limit = 20 } = {}) {
+        const rows = await db
+          .select()
+          .from(crawls)
+          .where(eq(crawls.domainId, domainId))
+          .orderBy(desc(crawls.createdAt))
+          .limit(limit)
+        return rows.map(toCrawl)
+      },
+
+      async latestWithResults(domainId, type) {
+        const row = (
+          await db
+            .select()
+            .from(crawls)
+            .where(
+              and(
+                eq(crawls.domainId, domainId),
+                eq(crawls.type, type),
+                inArray(crawls.status, ['completed', 'incomplete']),
+                eq(crawls.pruned, false),
+              ),
+            )
+            .orderBy(desc(crawls.createdAt))
+            .limit(1)
+        )[0]
+        return row ? toCrawl(row) : null
+      },
+
+      async markRunning(id) {
+        const startedAt = new Date()
+        await db
+          .update(crawls)
+          .set({ status: 'running', startedAt })
+          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey), isNull(crawls.startedAt)))
+        await db
+          .update(crawls)
+          .set({ status: 'running' })
+          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
+        const crawl = await this.get(id)
+        return crawl && crawl.status === 'running' ? crawl : null
+      },
+
+      async updateCounts(id, counts) {
+        await db
+          .update(crawls)
+          .set(counts)
+          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
+      },
+
+      async saveRobots(id, robots) {
+        await db
+          .update(crawls)
+          .set({ robots: crawlRobotsColumn(robots) })
+          .where(eq(crawls.id, id))
+      },
+
+      async finish(id, { status, error }) {
+        const counts = await this.countUrls(id)
+        const result = await db
+          .update(crawls)
+          .set({
+            ...counts,
+            status,
+            error: error === undefined ? null : truncateError(error),
+            activeKey: null,
+            finishedAt: new Date(),
+          })
+          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
+        return affected(result) > 0
+      },
+
+      async cancel(id) {
+        const result = await db
+          .update(crawls)
+          .set({ status: 'cancelled', activeKey: null, finishedAt: new Date() })
+          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
+        return affected(result) > 0
+      },
+
+      async failOrphaned() {
+        const orphans = await db
+          .select({ id: crawls.id, jobError: jobs.lastError })
+          .from(crawls)
+          .innerJoin(jobs, eq(crawls.jobId, jobs.id))
+          .where(and(isNotNull(crawls.activeKey), inArray(jobs.status, ['failed', 'completed'])))
+        let failed = 0
+        for (const orphan of orphans) {
+          const ended = await this.finish(orphan.id, {
+            status: 'failed',
+            error: orphan.jobError ?? 'The crawl job ended unexpectedly',
+          })
+          if (ended) failed++
+        }
+        return failed
+      },
+
+      async prune({ domainId, type, keep }) {
+        const candidates = await db
+          .select({ id: crawls.id, status: crawls.status })
+          .from(crawls)
+          .where(
+            and(
+              eq(crawls.domainId, domainId),
+              eq(crawls.type, type),
+              isNull(crawls.activeKey),
+              eq(crawls.pruned, false),
+            ),
+          )
+          .orderBy(desc(crawls.createdAt))
+        let usable = 0
+        const expired = candidates
+          .filter((crawl) => {
+            if (crawl.status !== 'completed' && crawl.status !== 'incomplete') return true
+            usable++
+            return keep !== null && usable > keep
+          })
+          .map((crawl) => crawl.id)
+        if (expired.length === 0) return 0
+        await db.transaction(async (tx) => {
+          await tx.delete(crawlLinks).where(inArray(crawlLinks.crawlId, expired))
+          await tx.delete(crawlUrls).where(inArray(crawlUrls.crawlId, expired))
+          await tx.update(crawls).set({ pruned: true }).where(inArray(crawls.id, expired))
+        })
+        return expired.length
+      },
+
+      async addUrls(crawlId, urls) {
+        for (const batch of chunk(urls)) {
+          await db
+            .insert(crawlUrls)
+            .ignore()
+            .values(batch.map((url) => newCrawlUrlRow(crawlId, url)))
+        }
+      },
+
+      async nextQueued(crawlId, limit) {
+        const rows = await db
+          .select({
+            url: crawlUrls.url,
+            urlHash: crawlUrls.urlHash,
+            scope: crawlUrls.scope,
+            source: crawlUrls.source,
+            depth: crawlUrls.depth,
+          })
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.state, 'queued')))
+          .orderBy(asc(crawlUrls.depth))
+          .limit(limit)
+        return rows as NewCrawlUrl[]
+      },
+
+      async knownUrls(crawlId) {
+        return await db
+          .select({ urlHash: crawlUrls.urlHash, scope: crawlUrls.scope })
+          .from(crawlUrls)
+          .where(eq(crawlUrls.crawlId, crawlId))
+      },
+
+      async recordResult({ crawlId, urlHash, result, urls = [], links = [] }) {
+        const columns = crawlResultColumns(result, new Date())
+        await db.transaction(async (tx) => {
+          for (const batch of chunk(urls)) {
+            await tx
+              .insert(crawlUrls)
+              .ignore()
+              .values(batch.map((url) => newCrawlUrlRow(crawlId, url)))
+          }
+          for (const batch of chunk(links)) {
+            await tx
+              .insert(crawlLinks)
+              .ignore()
+              .values(batch.map((link) => newCrawlLinkRow(crawlId, link)))
+          }
+          await tx
+            .update(crawlUrls)
+            .set(columns)
+            .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, urlHash)))
+        })
+      },
+
+      async countUrls(crawlId) {
+        const rows = await db
+          .select({
+            scope: crawlUrls.scope,
+            kind: crawlUrls.kind,
+            state: crawlUrls.state,
+            count: sql<number>`count(*)`,
+          })
+          .from(crawlUrls)
+          .where(eq(crawlUrls.crawlId, crawlId))
+          .groupBy(crawlUrls.scope, crawlUrls.kind, crawlUrls.state)
+        return foldCrawlCounts(rows)
+      },
+
+      async listUrls({ crawlId, view, limit, offset }) {
+        const kind =
+          view === 'pages'
+            ? eq(crawlUrls.kind, 'page')
+            : view === 'other'
+              ? ne(crawlUrls.kind, 'page')
+              : undefined
+        const rows = await db
+          .select()
+          .from(crawlUrls)
+          .where(
+            and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.scope, crawlViewScope(view)), kind),
+          )
+          .orderBy(asc(crawlUrls.depth), asc(crawlUrls.url))
+          .limit(limit)
+          .offset(offset)
+        return rows.map(toCrawlUrl)
+      },
+
+      async linkSources(crawlId, targetHash) {
+        const rows = await db
+          .select({ url: crawlUrls.url, kind: crawlLinks.kind })
+          .from(crawlLinks)
+          .innerJoin(
+            crawlUrls,
+            and(
+              eq(crawlUrls.crawlId, crawlLinks.crawlId),
+              eq(crawlUrls.urlHash, crawlLinks.sourceHash),
+            ),
+          )
+          .where(and(eq(crawlLinks.crawlId, crawlId), eq(crawlLinks.targetHash, targetHash)))
+        return rows as { url: string; kind: CrawlLinkKind }[]
+      },
+
+      async latestResults(domainId, urlHashes) {
+        if (urlHashes.length === 0) return []
+        const rows = await db
+          .select({ row: crawlUrls })
+          .from(crawlUrls)
+          .innerJoin(crawls, eq(crawls.id, crawlUrls.crawlId))
+          .where(
+            and(
+              eq(crawls.domainId, domainId),
+              inArray(crawlUrls.urlHash, urlHashes),
+              eq(crawlUrls.state, 'done'),
+            ),
+          )
+        return newestPerUrl(rows.map(({ row }) => toCrawlUrl(row)))
+      },
+    },
+
+    priorityUrls: {
+      async list(domainId) {
+        return await db
+          .select()
+          .from(priorityUrls)
+          .where(eq(priorityUrls.domainId, domainId))
+          .orderBy(asc(priorityUrls.createdAt), asc(priorityUrls.urlHash))
+      },
+      async add({ domainId, url }) {
+        await db
+          .insert(priorityUrls)
+          .ignore()
+          .values(priorityUrlRow(domainId, url, new Date()))
+      },
+      async remove({ domainId, urlHash }) {
+        await db
+          .delete(priorityUrls)
+          .where(and(eq(priorityUrls.domainId, domainId), eq(priorityUrls.urlHash, urlHash)))
+      },
+    },
+
+    crawlSchedules: {
+      async list(domainId) {
+        const rows = await db
+          .select()
+          .from(crawlSchedules)
+          .where(eq(crawlSchedules.domainId, domainId))
+        return rows.map(toCrawlSchedule)
+      },
+      async save({ domainId, type, ...values }) {
+        const updatedAt = new Date()
+        await db
+          .insert(crawlSchedules)
+          .values({ id: randomUUID(), domainId, type, ...values, updatedAt })
+          .onDuplicateKeyUpdate({ set: { ...values, updatedAt } })
+      },
+      async due({ now, limit }) {
+        const rows = await db
+          .select()
+          .from(crawlSchedules)
+          .where(and(eq(crawlSchedules.enabled, true), lte(crawlSchedules.nextRunAt, now)))
+          .orderBy(asc(crawlSchedules.nextRunAt))
+          .limit(limit)
+        return rows.map(toCrawlSchedule)
+      },
+      async advance({ id, expectedNextRunAt, nextRunAt, now }) {
+        const result = await db
+          .update(crawlSchedules)
+          .set({ nextRunAt, lastRunAt: now })
+          .where(and(eq(crawlSchedules.id, id), eq(crawlSchedules.nextRunAt, expectedNextRunAt)))
+        return affected(result) > 0
+      },
+      async recordOutcome({ id, outcome }) {
+        await db
+          .update(crawlSchedules)
+          .set({ lastOutcome: outcome })
+          .where(eq(crawlSchedules.id, id))
       },
     },
   }

@@ -5,7 +5,9 @@ import {
   int,
   longtext,
   mysqlTable,
+  primaryKey,
   text,
+  uniqueIndex,
   varchar,
 } from 'drizzle-orm/mysql-core'
 
@@ -133,4 +135,158 @@ export const domains = mysqlTable(
     createdAt: ts('created_at').notNull().$defaultFn(now),
   },
   (t) => [index('domains_company_id_idx').on(t.companyId)],
+)
+
+/** One row per domain once its crawl settings have been saved; until then, the defaults apply. */
+export const crawlSettings = mysqlTable('crawl_settings', {
+  domainId: id('domain_id')
+    .primaryKey()
+    .references(() => domains.id, { onDelete: 'cascade' }),
+  renderingMode: varchar('rendering_mode', { length: 16, enum: ['http', 'headless', 'both'] })
+    .notNull()
+    .default('http'),
+  userAgent: varchar('user_agent', { length: 255 }),
+  concurrency: int('concurrency').notNull(),
+  requestsPerSecond: int('requests_per_second').notNull(),
+  timeoutMs: int('timeout_ms').notNull(),
+  maxRetries: int('max_retries').notNull(),
+  /** `null` means no limit. */
+  maxUrls: int('max_urls'),
+  /** `null` keeps the results of every crawl. */
+  retainCrawls: int('retain_crawls'),
+  updatedAt: ts('updated_at').notNull().$defaultFn(now),
+})
+
+export const crawlSchedules = mysqlTable(
+  'crawl_schedules',
+  {
+    id: id('id').primaryKey(),
+    domainId: id('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    type: varchar('type', { length: 16, enum: ['full', 'priority'] }).notNull(),
+    enabled: boolean('enabled').notNull(),
+    frequency: varchar('frequency', {
+      length: 16,
+      enum: ['hourly', 'daily', 'weekly', 'monthly'],
+    }).notNull(),
+    hour: int('hour').notNull(),
+    minute: int('minute').notNull(),
+    dayOfWeek: int('day_of_week').notNull(),
+    dayOfMonth: int('day_of_month').notNull(),
+    timeZone: varchar('time_zone', { length: 100 }).notNull(),
+    nextRunAt: ts('next_run_at').notNull(),
+    lastRunAt: ts('last_run_at'),
+    lastOutcome: varchar('last_outcome', {
+      length: 16,
+      enum: ['started', 'skipped-active', 'skipped-empty'],
+    }),
+    updatedAt: ts('updated_at').notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex('crawl_schedules_domain_type_idx').on(t.domainId, t.type),
+    index('crawl_schedules_due_idx').on(t.enabled, t.nextRunAt),
+  ],
+)
+
+export const crawls = mysqlTable(
+  'crawls',
+  {
+    id: id('id').primaryKey(),
+    domainId: id('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    type: varchar('type', { length: 16, enum: ['full', 'priority'] }).notNull(),
+    status: varchar('status', {
+      length: 16,
+      enum: ['pending', 'running', 'completed', 'incomplete', 'failed', 'cancelled'],
+    })
+      .notNull()
+      .default('pending'),
+    trigger: varchar('trigger', { length: 16, enum: ['manual', 'schedule'] }).notNull(),
+    jobId: id('job_id').notNull(),
+    /** The domain id while the crawl is active, `null` after: unique, so one per domain at most. */
+    activeKey: id('active_key').unique(),
+    pagesCount: int('pages_count').notNull().default(0),
+    urlsCount: int('urls_count').notNull().default(0),
+    urlsDoneCount: int('urls_done_count').notNull().default(0),
+    externalCount: int('external_count').notNull().default(0),
+    robots: longtext('robots'),
+    /** Whether the results per URL were pruned by the domain's retention setting. */
+    pruned: boolean('pruned').notNull().default(false),
+    error: text('error'),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+    startedAt: ts('started_at'),
+    finishedAt: ts('finished_at'),
+  },
+  (t) => [index('crawls_domain_created_idx').on(t.domainId, t.type, t.createdAt)],
+)
+
+/** Every URL of a crawl: the queue of what is left to fetch, and the result of what was. */
+export const crawlUrls = mysqlTable(
+  'crawl_urls',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    urlHash: varchar('url_hash', { length: 32 }).notNull(),
+    url: text('url').notNull(),
+    scope: varchar('scope', { length: 16, enum: ['internal', 'external'] }).notNull(),
+    state: varchar('state', { length: 16, enum: ['queued', 'done', 'skipped'] }).notNull(),
+    kind: varchar('kind', { length: 16, enum: ['page', 'redirect', 'resource', 'unknown'] })
+      .notNull()
+      .default('unknown'),
+    source: varchar('source', { length: 16 }).notNull(),
+    depth: int('depth').notNull(),
+    statusCode: int('status_code'),
+    contentType: varchar('content_type', { length: 255 }),
+    redirectTo: text('redirect_to'),
+    title: text('title'),
+    metaRobots: text('meta_robots'),
+    xRobotsTag: text('x_robots_tag'),
+    canonical: text('canonical'),
+    responseTimeMs: int('response_time_ms'),
+    bytes: int('bytes'),
+    error: text('error'),
+    /** JSON (`CrawlPageData`): everything extracted that has no column of its own. */
+    data: longtext('data'),
+    fetchedAt: ts('fetched_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.urlHash] }),
+    index('crawl_urls_queue_idx').on(t.crawlId, t.state, t.depth),
+    index('crawl_urls_view_idx').on(t.crawlId, t.scope, t.kind, t.depth),
+    index('crawl_urls_hash_idx').on(t.urlHash),
+  ],
+)
+
+/** Which URL of a crawl links to which, and how. External targets are recorded here too. */
+export const crawlLinks = mysqlTable(
+  'crawl_links',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    sourceHash: varchar('source_hash', { length: 32 }).notNull(),
+    targetHash: varchar('target_hash', { length: 32 }).notNull(),
+    kind: varchar('kind', { length: 16 }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.sourceHash, t.targetHash, t.kind] }),
+    index('crawl_links_target_idx').on(t.crawlId, t.targetHash),
+  ],
+)
+
+/** The URLs marked as priority from the panel. They survive crawls, so they hang off the domain. */
+export const priorityUrls = mysqlTable(
+  'priority_urls',
+  {
+    domainId: id('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    urlHash: varchar('url_hash', { length: 32 }).notNull(),
+    url: text('url').notNull(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [primaryKey({ columns: [t.domainId, t.urlHash] })],
 )

@@ -6,8 +6,8 @@ SEO Tools is an open-source application with a set of features for monitoring an
 
 ```
 apps/web/            # Next.js app: UI, login + first-run setup + onboarding, /api/health, better-auth routes, server actions
-apps/worker/         # Background job runner + handlers (example.echo, mail.send); also the bootstrap CLI (migrations)
-packages/core/       # Shared logic: env validation, logger, job types, settings encryption, mail (SMTP + Resend)
+apps/worker/         # Background job runner + handlers (example.echo, mail.send, crawl.run), crawler, crawl scheduler; also the bootstrap CLI (migrations)
+packages/core/       # Shared logic: env validation, logger, job types, settings encryption, mail (SMTP + Resend), crawl types and URL rules
 packages/db/         # Database layer: Drizzle schemas, migrations and repositories for SQLite, PostgreSQL and MySQL
 docker/              # Container entrypoint and healthcheck
 .github/workflows/   # CI and Docker image workflows
@@ -35,6 +35,7 @@ The most important third-party packages are:
 | `better-sqlite3`, `postgres`, `mysql2` | db, worker   | Database drivers (`better-sqlite3` is the only native one)  |
 | `zod`                                  | core         | Environment validation                                      |
 | `pino`                                 | core         | Structured logging                                          |
+| `htmlparser2`                          | worker       | HTML and sitemap parsing in the crawler                     |
 | `nodemailer`, `resend`                 | core         | Email delivery (SMTP or Resend API)                         |
 | `turbo`, `vitest`, `tsdown`            | root, worker | Task orchestration, tests, worker bundling                  |
 
@@ -47,9 +48,17 @@ The most important third-party packages are:
 
 ### Outbound requests (crawling)
 
-- The crawler **does not obey `robots.txt` when deciding what to fetch**: it must be able to request every URL of the site being audited.
-- It **does evaluate `robots.txt`** and reports, per URL, whether crawling/indexing would be allowed. That result is audit data, never a reason to skip a request.
-- User-agent, timeouts, concurrency, per-domain rate limits and SSRF protection are not decided yet. Do not pick defaults on your own; ask first.
+- The crawler **does not obey `robots.txt`, meta robots or `nofollow` when deciding what to fetch**: it must be able to request every URL of the site being audited.
+- It **does record** `robots.txt`, meta robots and `X-Robots-Tag`, so that a later feature can report per URL and per bot whether crawling/indexing would be allowed. That data is for the audit, never a reason to skip a request.
+- A site is the tracked host and its `www.` variant, over HTTP and HTTPS on default ports. Other subdomains are domains of their own. External URLs are recorded with who links to them, but are never requested or counted as pages.
+- Crawl settings are per domain (`DEFAULT_CRAWL_SETTINGS` in `@seotools/core`): User-Agent, 2 simultaneous requests, 5 per second, 30 s timeout, 2 retries, 100,000 URLs (past it, the crawl ends `incomplete`).
+- Every outbound request goes through `createHttpFetcher` (`apps/worker/src/crawl/fetcher.ts`), which refuses non-public addresses when connecting, unless `CRAWLER_ALLOW_PRIVATE_NETWORKS` is set. Never fetch a user-controlled URL any other way.
+
+### Jobs
+
+- Jobs that may outlast `JOB_LOCK_TIMEOUT_MS` are safe: the runner renews the locks of what it is running. Handlers must still be resumable, since a job can be retried after a crash; throw `JobInterruptedError` to hand one back on shutdown without spending an attempt.
+- Crawls run in their own lane (`CRAWL_CONCURRENCY`, `crawl.run` jobs), so that they cannot hold up other jobs.
+- A domain has one active crawl at most, enforced by the unique `crawls.active_key`. Start crawls with `db.crawls.start`, which creates the crawl and its job together; never enqueue `crawl.run` directly.
 
 ## Development
 
@@ -104,7 +113,7 @@ pnpm exec vitest run -t "admin"      # filter by test name
 
 ### Database contract (SQLite, PostgreSQL, MySQL)
 
-`packages/db/src/test/contract.ts` defines the behaviour every dialect must provide (jobs queue, heartbeats, settings, first admin) and runs once per dialect.
+`packages/db/src/test/contract.ts` defines the behaviour every dialect must provide (jobs queue, heartbeats, settings, companies and domains, crawls, first admin) and runs once per dialect.
 
 - SQLite always runs, on an in-memory database (`createTestDatabase()` from `@seotools/db/test`).
 - PostgreSQL and MySQL are **skipped** unless you provide a database. CI runs them against real services.
@@ -158,6 +167,7 @@ Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`…), squash-me
 
 - `strict`, plus `noUncheckedIndexedAccess`, `noImplicitOverride` and `verbatimModuleSyntax` (`tsconfig.base.json`).
 - Import shared types from `@seotools/core` (env, jobs) and `@seotools/db` (repositories) instead of redeclaring them.
+- Client components may only import types from `@seotools/core`: its entry point pulls in Node-only code, which breaks `next build` but not `pnpm typecheck`. For values, add a subpath export of a pure module (e.g. `@seotools/core/crawl/settings`).
 - Never use `any`: `@typescript-eslint/no-explicit-any` is an error. Prefer `unknown` and narrow it.
 - Type-only imports are inline: `import { x, type Y } from '…'` (enforced).
 - Unused variables and arguments are errors unless prefixed with `_`.
@@ -180,7 +190,7 @@ ESLint ignores `packages/db/migrations/**` and `apps/web/components/ui/**` (gene
 - Admin credentials never come from environment variables. The first admin is registered on `/setup` through `createFirstAdmin`, which refuses to run once any user exists. Never re-enable better-auth sign-up.
 - `proxy.ts` only checks that a session cookie exists. Every protected page and **every server action** must call `requireSession()` itself; a layout does not protect actions.
 - A valid session is not authorization. Pages and server actions restricted to a role (e.g. admin) must also check the user's role on the server.
-- Use Drizzle's operators, which parameterize values. The only raw `sql` in `@seotools/db` is `select 1` and the MySQL job-claim query, which interpolate Drizzle columns, never user input.
+- Use Drizzle's operators, which parameterize values. The only raw `sql` in `@seotools/db` is `select 1`, `count(*)`, the attempt decrement in `jobs.release` and the MySQL job-claim query, which interpolate Drizzle columns, never user input.
 - Validate at the boundaries: the environment with the zod schemas in `@seotools/core/env`, job payloads with their schema in `packages/core/src/jobs.ts`, and form input in the server action before touching the database.
 - Secrets saved from the admin panel (SMTP password, Resend key) go through the `settings` repository with `encrypted: true` (AES-256-GCM, key `SETTINGS_ENCRYPTION_KEY` or `BETTER_AUTH_SECRET`). Never log them.
 - `GET /api/health` is public: it reports status only. Error details stay in the server logs.

@@ -2,6 +2,7 @@ import { hostname } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import {
   EnvError,
+  JOB_TYPES,
   WORKER_HEARTBEAT_INTERVAL_MS,
   createLogger,
   createSettings,
@@ -10,8 +11,14 @@ import {
   settingsKeyFrom,
 } from '@seotools/core'
 import { createDatabase } from '@seotools/db'
+import pkg from '../package.json' with { type: 'json' }
 import { handlers } from './handlers'
+import { createCrawlRunHandler } from './handlers/crawl-run'
 import { createRunner } from './runner'
+import { runDueSchedules } from './scheduler'
+
+/** How often due crawl schedules are looked for. Runs are not expected to the second. */
+const SCHEDULER_INTERVAL_MS = 30_000
 
 async function main() {
   const env = parseWorkerEnv()
@@ -28,17 +35,42 @@ async function main() {
   await beat()
   const heartbeat = setInterval(beat, WORKER_HEARTBEAT_INTERVAL_MS)
 
-  const runner = createRunner({
+  const shared = {
     db,
-    handlers,
     workerId,
-    log,
     getMailer: () => getMailer(settings),
-    concurrency: env.WORKER_CONCURRENCY,
     pollIntervalMs: env.WORKER_POLL_INTERVAL_MS,
     lockTimeoutMs: env.JOB_LOCK_TIMEOUT_MS,
+  }
+  const crawlTypes = [JOB_TYPES.crawlRun]
+  const runner = createRunner({
+    ...shared,
+    log,
+    handlers,
+    concurrency: env.WORKER_CONCURRENCY,
+    excludeTypes: crawlTypes,
+  })
+  // A crawl can take hours, so crawls get slots of their own: they must not hold up other jobs.
+  const crawlRunner = createRunner({
+    ...shared,
+    log: log.child({ lane: 'crawl' }),
+    handlers: {
+      [JOB_TYPES.crawlRun]: createCrawlRunHandler({
+        db,
+        allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
+        appVersion: pkg.version,
+      }),
+    },
+    concurrency: env.CRAWL_CONCURRENCY,
+    types: crawlTypes,
   })
   runner.start()
+  crawlRunner.start()
+
+  const tickScheduler = () =>
+    runDueSchedules(db, log).catch((err) => log.error({ err }, 'crawl scheduler failed'))
+  void tickScheduler()
+  const scheduler = setInterval(tickScheduler, SCHEDULER_INTERVAL_MS)
 
   let stopping = false
   const shutdown = async (signal: string) => {
@@ -46,7 +78,9 @@ async function main() {
     stopping = true
     log.info({ signal }, 'shutting down')
     clearInterval(heartbeat)
-    await runner.stop()
+    clearInterval(scheduler)
+    // Crawls resume from their stored queue, so they don't need the grace period to finish.
+    await Promise.all([runner.stop(), crawlRunner.stop(0)])
     await db.close()
     process.exit(0)
   }
