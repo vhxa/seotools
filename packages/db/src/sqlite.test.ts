@@ -10,7 +10,7 @@ describeDatabaseContract('sqlite', async () => {
     reset: async () => {
       const raw = (db.orm.db as { $client: { exec: (sql: string) => void } }).$client
       raw.exec(
-        'delete from jobs; delete from worker_heartbeats; delete from settings; delete from user;',
+        'delete from jobs; delete from worker_heartbeats; delete from settings; delete from user; delete from domains; delete from companies;',
       )
     },
   }

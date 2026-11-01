@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { authClient } from '@/lib/auth-client'
 
 export function LoginForm() {
+  const t = useTranslations('Login')
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -22,7 +24,9 @@ export function LoginForm() {
       password: String(form.get('password')),
     })
     if (error) {
-      setError(error.message ?? 'Invalid email or password')
+      setError(
+        error.code === 'INVALID_EMAIL_OR_PASSWORD' ? t('invalidCredentials') : t('genericError'),
+      )
       setPending(false)
       return
     }
@@ -33,11 +37,11 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="grid gap-4">
       <div className="grid gap-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t('email')}</Label>
         <Input id="email" name="email" type="email" autoComplete="username" required autoFocus />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">{t('password')}</Label>
         <Input
           id="password"
           name="password"
@@ -52,7 +56,7 @@ export function LoginForm() {
         </p>
       )}
       <Button type="submit" disabled={pending}>
-        {pending ? 'Signing in…' : 'Sign in'}
+        {pending ? t('submitting') : t('submit')}
       </Button>
     </form>
   )

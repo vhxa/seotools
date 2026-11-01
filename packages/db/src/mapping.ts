@@ -1,4 +1,5 @@
 import type { Job, JobStatus } from '@seotools/core'
+import type { Company, CompanyWithDomains, Domain } from './types'
 
 export interface JobRow {
   id: string
@@ -40,3 +41,27 @@ export const EMPTY_COUNTS: Record<JobStatus, number> = {
 }
 
 export const CREDENTIAL_PROVIDER = 'credential'
+
+const byName = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
+
+/**
+ * Nests domains under their company. Sorting happens here rather than in SQL because each
+ * dialect collates text differently. Domains whose company is missing (deleted between the two
+ * reads) are dropped.
+ */
+export function groupDomains(companies: Company[], domains: Domain[]): CompanyWithDomains[] {
+  const byCompany = new Map<string, Domain[]>()
+  for (const domain of domains) {
+    const list = byCompany.get(domain.companyId)
+    if (list) list.push(domain)
+    else byCompany.set(domain.companyId, [domain])
+  }
+  return companies
+    .map((company) => ({
+      ...company,
+      domains: (byCompany.get(company.id) ?? []).sort((a, b) =>
+        a.host < b.host ? -1 : a.host > b.host ? 1 : 0,
+      ),
+    }))
+    .sort((a, b) => byName.compare(a.name, b.name) || a.createdAt.getTime() - b.createdAt.getTime())
+}

@@ -12,5 +12,5 @@ export async function enqueueExampleJob() {
     type: JOB_TYPES.exampleEcho,
     payload: { message: 'Hello from the web UI', delayMs: 2000 },
   })
-  revalidatePath('/')
+  revalidatePath('/system')
 }

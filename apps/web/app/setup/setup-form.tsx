@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { useActionState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,12 +9,13 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/lib/password'
 import { createAdmin, type SetupState } from './actions'
 
 export function SetupForm() {
+  const t = useTranslations('Setup')
   const [state, formAction, pending] = useActionState<SetupState, FormData>(createAdmin, {})
 
   return (
     <form action={formAction} className="grid gap-4">
       <div className="grid gap-2">
-        <Label htmlFor="name">Name</Label>
+        <Label htmlFor="name">{t('name')}</Label>
         <Input
           id="name"
           name="name"
@@ -24,7 +26,7 @@ export function SetupForm() {
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t('email')}</Label>
         <Input
           id="email"
           name="email"
@@ -35,7 +37,7 @@ export function SetupForm() {
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">{t('password')}</Label>
         <Input
           id="password"
           name="password"
@@ -47,7 +49,7 @@ export function SetupForm() {
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="confirmPassword">Confirm password</Label>
+        <Label htmlFor="confirmPassword">{t('confirmPassword')}</Label>
         <Input
           id="confirmPassword"
           name="confirmPassword"
@@ -64,7 +66,7 @@ export function SetupForm() {
         </p>
       )}
       <Button type="submit" disabled={pending}>
-        {pending ? 'Creating account…' : 'Create admin account'}
+        {pending ? t('submitting') : t('submit')}
       </Button>
     </form>
   )

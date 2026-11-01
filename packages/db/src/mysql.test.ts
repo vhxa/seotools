@@ -13,7 +13,14 @@ describeDatabaseContract(
     return {
       db,
       reset: async () => {
-        for (const table of ['jobs', 'worker_heartbeats', 'settings', 'user']) {
+        for (const table of [
+          'jobs',
+          'worker_heartbeats',
+          'settings',
+          'user',
+          'domains',
+          'companies',
+        ]) {
           await conn.query(`delete from \`${table}\``)
         }
       },

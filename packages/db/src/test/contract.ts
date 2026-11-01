@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createFirstAdmin, needsSetup } from '../admin'
 import type { Database } from '../types'
+import { addDomain, createCompany } from '../workspace'
 
 const minutes = (n: number) => n * 60_000
 
@@ -152,6 +153,116 @@ export function describeDatabaseContract(
         expect(await db.settings.get('k')).toEqual({ value: 'v2', encrypted: true })
         await db.settings.delete('k')
         expect(await db.settings.get('k')).toBeNull()
+      })
+    })
+
+    describe('companies and domains', () => {
+      it('creates a company with its first domain, normalized', async () => {
+        const result = await createCompany(db, {
+          name: '  Acme   Corp ',
+          domain: 'https://www.Acme.COM/blog',
+        })
+        expect(result).toMatchObject({
+          ok: true,
+          company: { name: 'Acme Corp' },
+          domain: { host: 'acme.com' },
+        })
+        if (!result.ok) return
+
+        expect(result.domain.companyId).toBe(result.company.id)
+        expect(await db.companies.get(result.company.id)).toMatchObject({ name: 'Acme Corp' })
+        expect(await db.companies.get('missing')).toBeNull()
+        expect(await db.domains.findByHost('acme.com')).toMatchObject({
+          id: result.domain.id,
+          company: { id: result.company.id, name: 'Acme Corp' },
+        })
+        expect(await db.domains.findByHost('www.acme.com')).toBeNull()
+      })
+
+      it('rejects invalid input without writing anything', async () => {
+        expect(await createCompany(db, { name: '   ', domain: 'acme.com' })).toEqual({
+          ok: false,
+          reason: 'invalid-name',
+        })
+        expect(await createCompany(db, { name: 'x'.repeat(101), domain: 'acme.com' })).toEqual({
+          ok: false,
+          reason: 'invalid-name',
+        })
+        expect(await createCompany(db, { name: 'Acme', domain: 'not a domain' })).toEqual({
+          ok: false,
+          reason: 'invalid-domain',
+        })
+        expect(await db.companies.list()).toEqual([])
+      })
+
+      it('lists companies by name with their domains by host', async () => {
+        const zeta = await createCompany(db, { name: 'Zeta', domain: 'zeta.io' })
+        const acme = await createCompany(db, { name: 'acme', domain: 'shop.acme.com' })
+        if (!zeta.ok || !acme.ok) throw new Error('setup failed')
+        await addDomain(db, { companyId: acme.company.id, domain: 'acme.com' })
+        await addDomain(db, { companyId: acme.company.id, domain: 'blog.acme.com' })
+
+        const list = await db.companies.list()
+        expect(list.map((c) => c.name)).toEqual(['acme', 'Zeta'])
+        expect(list[0]!.domains.map((d) => d.host)).toEqual([
+          'acme.com',
+          'blog.acme.com',
+          'shop.acme.com',
+        ])
+        expect(list[1]!.domains.map((d) => d.host)).toEqual(['zeta.io'])
+      })
+
+      it('keeps a domain unique across all companies, leaving no half-created company', async () => {
+        const first = await createCompany(db, { name: 'Acme', domain: 'acme.com' })
+        if (!first.ok) throw new Error('setup failed')
+        const other = await createCompany(db, { name: 'Other', domain: 'other.com' })
+        if (!other.ok) throw new Error('setup failed')
+
+        // Same host, typed differently: still taken.
+        expect(await createCompany(db, { name: 'Rival', domain: 'https://WWW.acme.com' })).toEqual({
+          ok: false,
+          reason: 'domain-taken',
+        })
+        expect(await addDomain(db, { companyId: other.company.id, domain: 'acme.com' })).toEqual({
+          ok: false,
+          reason: 'domain-taken',
+        })
+        expect((await db.companies.list()).map((c) => c.name)).toEqual(['Acme', 'Other'])
+      })
+
+      it('rolls back the company when its domain cannot be stored', async () => {
+        const first = await createCompany(db, { name: 'Acme', domain: 'acme.com' })
+        if (!first.ok) throw new Error('setup failed')
+
+        // Bypass the policy check: the database itself must refuse and undo the company insert.
+        await expect(db.companies.create({ name: 'Rival', host: 'acme.com' })).rejects.toThrow()
+        expect((await db.companies.list()).map((c) => c.name)).toEqual(['Acme'])
+      })
+
+      it('rejects adding a domain to a company that does not exist', async () => {
+        expect(await addDomain(db, { companyId: 'missing', domain: 'acme.com' })).toEqual({
+          ok: false,
+          reason: 'company-not-found',
+        })
+        expect(await addDomain(db, { companyId: 'missing', domain: '???' })).toEqual({
+          ok: false,
+          reason: 'invalid-domain',
+        })
+      })
+
+      it('lets exactly one of several concurrent registrations of a domain win', async () => {
+        const results = await Promise.all(
+          ['a', 'b', 'c', 'd'].map((n) =>
+            createCompany(db, { name: `Company ${n}`, domain: 'race.com' }),
+          ),
+        )
+        expect(results.filter((r) => r.ok)).toHaveLength(1)
+        expect(results.filter((r) => !r.ok)).toEqual(
+          Array(3).fill({ ok: false, reason: 'domain-taken' }),
+        )
+        const list = await db.companies.list()
+        expect(list).toHaveLength(1)
+        expect(list[0]!.domains).toHaveLength(1)
       })
     })
 

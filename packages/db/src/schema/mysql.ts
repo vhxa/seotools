@@ -114,3 +114,23 @@ export const settings = mysqlTable('settings', {
   encrypted: boolean('encrypted').notNull().default(false),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
+
+export const companies = mysqlTable('companies', {
+  id: id('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  createdAt: ts('created_at').notNull().$defaultFn(now),
+})
+
+export const domains = mysqlTable(
+  'domains',
+  {
+    id: id('id').primaryKey(),
+    companyId: id('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    /** Normalized by `normalizeDomain` in @seotools/core: `example.com`, never a URL. */
+    host: varchar('host', { length: 253 }).notNull().unique(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [index('domains_company_id_idx').on(t.companyId)],
+)

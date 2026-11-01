@@ -47,12 +47,50 @@ export interface AdminRepository {
   create(input: { id: string; email: string; name: string; passwordHash: string }): Promise<void>
 }
 
+export interface Company {
+  id: string
+  name: string
+  createdAt: Date
+}
+
+export interface Domain {
+  id: string
+  companyId: string
+  /** Normalized host, e.g. `example.com` (see `normalizeDomain` in @seotools/core). */
+  host: string
+  createdAt: Date
+}
+
+export interface CompanyWithDomains extends Company {
+  domains: Domain[]
+}
+
+export interface DomainWithCompany extends Domain {
+  company: Company
+}
+
+export interface CompanyRepository {
+  /** Every company with its domains. Companies are sorted by name, domains by host. */
+  list(): Promise<CompanyWithDomains[]>
+  get(id: string): Promise<Company | null>
+  /** Creates a company together with its first domain. Rejects if the host is already taken. */
+  create(input: { name: string; host: string }): Promise<{ company: Company; domain: Domain }>
+}
+
+export interface DomainRepository {
+  findByHost(host: string): Promise<DomainWithCompany | null>
+  /** Rejects if the host is already taken or the company does not exist. */
+  add(input: { companyId: string; host: string }): Promise<Domain>
+}
+
 export interface Database {
   readonly dialect: Dialect
   readonly jobs: JobRepository
   readonly heartbeats: HeartbeatRepository
   readonly settings: SettingsStore
   readonly admin: AdminRepository
+  readonly companies: CompanyRepository
+  readonly domains: DomainRepository
   /** Drizzle instance and auth tables, for better-auth's drizzle adapter. */
   readonly orm: { db: unknown; schema: Record<string, unknown> }
   /** Rejects if the database is unreachable. */

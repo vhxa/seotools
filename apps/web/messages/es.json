@@ -1,0 +1,119 @@
+{
+  "Common": {
+    "cancel": "Cancelar",
+    "signOut": "Cerrar sesión"
+  },
+  "NotFound": {
+    "title": "Página no encontrada",
+    "description": "La página que buscas no existe o no tienes acceso a ella.",
+    "back": "Volver al inicio"
+  },
+  "Login": {
+    "metaTitle": "Iniciar sesión · seotools",
+    "description": "Inicia sesión con la cuenta de administrador.",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "submit": "Iniciar sesión",
+    "submitting": "Iniciando sesión…",
+    "invalidCredentials": "Correo o contraseña incorrectos",
+    "genericError": "Algo salió mal. Inténtalo de nuevo."
+  },
+  "Setup": {
+    "metaTitle": "Configuración · seotools",
+    "title": "Te damos la bienvenida a seotools",
+    "description": "Crea la cuenta de administrador para empezar.",
+    "name": "Nombre",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar contraseña",
+    "submit": "Crear cuenta de administrador",
+    "submitting": "Creando cuenta…",
+    "errors": {
+      "nameRequired": "Introduce un nombre.",
+      "invalidEmail": "Introduce un correo electrónico válido.",
+      "passwordLength": "La contraseña debe tener entre {min} y {max} caracteres.",
+      "passwordMismatch": "Las contraseñas no coinciden."
+    }
+  },
+  "CompanyFields": {
+    "companyLabel": "Empresa",
+    "companyPlaceholder": "Acme S.L.",
+    "companyHint": "El cliente u organización propietaria del dominio.",
+    "domainLabel": "Dominio",
+    "domainPlaceholder": "example.com",
+    "domainHint": "Solo el dominio, sin https:// ni www.",
+    "errors": {
+      "invalidName": "Introduce un nombre de empresa de hasta {max} caracteres.",
+      "invalidDomain": "Introduce un dominio válido, como example.com.",
+      "domainTaken": "{host} ya está en seguimiento.",
+      "companyNotFound": "Esa empresa ya no existe."
+    }
+  },
+  "Onboarding": {
+    "metaTitle": "Primeros pasos · seotools",
+    "title": "Añade tu primer dominio",
+    "description": "Los dominios se agrupan por empresa, igual que una agencia los agrupa por cliente. Puedes añadir más empresas y dominios en cualquier momento.",
+    "submit": "Continuar",
+    "submitting": "Guardando…"
+  },
+  "NewCompany": {
+    "metaTitle": "Añadir empresa · seotools",
+    "title": "Añadir una empresa",
+    "description": "Una empresa nueva empieza con un dominio. Podrás añadir más después.",
+    "submit": "Añadir empresa",
+    "submitting": "Guardando…"
+  },
+  "NewDomain": {
+    "metaTitle": "Añadir dominio · seotools",
+    "title": "Añadir un dominio",
+    "description": "Haz seguimiento de otro dominio de una empresa existente.",
+    "companyLabel": "Empresa",
+    "submit": "Añadir dominio",
+    "submitting": "Guardando…"
+  },
+  "DomainSwitcher": {
+    "placeholder": "Selecciona un dominio",
+    "label": "Cambiar de dominio",
+    "addDomain": "Añadir dominio",
+    "addCompany": "Añadir empresa"
+  },
+  "Header": {
+    "system": "Sistema"
+  },
+  "DomainHome": {
+    "metaTitle": "{host} · seotools",
+    "company": "Empresa: {company}",
+    "emptyTitle": "Todavía no hay nada que mostrar",
+    "emptyDescription": "Las auditorías y el seguimiento de {host} aparecerán aquí a medida que se añadan funciones."
+  },
+  "System": {
+    "metaTitle": "Sistema · seotools",
+    "database": "Base de datos",
+    "connected": "conectada",
+    "worker": "Worker",
+    "online": "en línea",
+    "offline": "sin conexión",
+    "seen": "visto {when}",
+    "never": "nunca",
+    "jobs": "Trabajos",
+    "jobCounts": "{pending} pendientes · {running} en curso · {completed} completados · {failed} fallidos",
+    "queueTitle": "Cola de trabajos",
+    "queueDescription": "Los trabajos viven en la base de datos y los procesa el worker. No hace falta Redis.",
+    "enqueue": "Encolar trabajo de ejemplo",
+    "columns": {
+      "job": "Trabajo",
+      "type": "Tipo",
+      "status": "Estado",
+      "attempts": "Intentos",
+      "created": "Creado",
+      "result": "Resultado"
+    },
+    "empty": "Aún no hay trabajos. Encola uno para ver el worker en acción.",
+    "status": {
+      "pending": "pendiente",
+      "running": "en curso",
+      "completed": "completado",
+      "failed": "fallido"
+    }
+  }
+}

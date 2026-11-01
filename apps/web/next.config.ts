@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { loadEnvConfig } from '@next/env'
 import type { NextConfig } from 'next'
+import createNextIntlPlugin from 'next-intl/plugin'
 import pkg from '../../package.json' with { type: 'json' }
 
 // Next only reads .env from apps/web; load the monorepo-root .env too (dev only, no-op in prod).
@@ -21,4 +22,7 @@ const config: NextConfig = {
   poweredByHeader: false,
 }
 
-export default config
+// Reads ./i18n/request.ts, where the locale and its messages are resolved per request.
+const withNextIntl = createNextIntlPlugin()
+
+export default withNextIntl(config)

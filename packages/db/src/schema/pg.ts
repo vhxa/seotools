@@ -104,3 +104,23 @@ export const settings = pgTable('settings', {
   encrypted: boolean('encrypted').notNull().default(false),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
+
+export const companies = pgTable('companies', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  createdAt: ts('created_at').notNull().$defaultFn(now),
+})
+
+export const domains = pgTable(
+  'domains',
+  {
+    id: text('id').primaryKey(),
+    companyId: text('company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'cascade' }),
+    /** Normalized by `normalizeDomain` in @seotools/core: `example.com`, never a URL. */
+    host: text('host').notNull().unique(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [index('domains_company_id_idx').on(t.companyId)],
+)
