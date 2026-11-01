@@ -1,47 +1,45 @@
-import Link from 'next/link'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
-import { DomainSwitcher } from '@/components/domain-switcher'
-import { SignOutButton } from '@/components/sign-out-button'
-import { buttonVariants } from '@/components/ui/button'
+import { AppSidebar } from '@/components/app-sidebar'
+import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { getDb } from '@/lib/db'
 import { requireSession } from '@/lib/session'
 
 export default async function ProtectedLayout({ children }: { children: ReactNode }) {
   const session = await requireSession()
-  const t = await getTranslations('Header')
   const companies = await (await getDb()).companies.list()
   // Nothing to switch between yet: finish the onboarding first.
   if (!companies.some((company) => company.domains.length > 0)) redirect('/onboarding')
 
+  // The sidebar remembers whether it was collapsed in this cookie (written by the shadcn sidebar).
+  const defaultOpen = (await cookies()).get('sidebar_state')?.value !== 'false'
+
   return (
-    <div className="mx-auto flex min-h-svh max-w-5xl flex-col gap-6 p-4 md:p-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="flex items-baseline gap-2">
-            <span className="text-lg font-semibold">seotools</span>
-            <span className="text-xs text-muted-foreground">v{process.env.APP_VERSION}</span>
-          </Link>
-          <DomainSwitcher
-            companies={companies.map((company) => ({
-              id: company.id,
-              name: company.name,
-              domains: company.domains.map(({ id, host }) => ({ id, host })),
-            }))}
-          />
+    <TooltipProvider>
+      <SidebarProvider defaultOpen={defaultOpen}>
+        <AppSidebar
+          companies={companies.map((company) => ({
+            id: company.id,
+            name: company.name,
+            domains: company.domains.map(({ id, host }) => ({ id, host })),
+          }))}
+          user={{
+            name: session.user.name,
+            email: session.user.email,
+            image: session.user.image,
+          }}
+          version={process.env.APP_VERSION}
+        />
+        {/* A plain div, not SidebarInset: that one renders a <main> and pages bring their own. */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
+            <SidebarTrigger className="-ml-1" />
+          </header>
+          <div className="mx-auto w-full max-w-5xl flex-1 p-4 md:p-8">{children}</div>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/system" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-            {t('system')}
-          </Link>
-          <span className="hidden text-sm text-muted-foreground sm:inline">
-            {session.user.email}
-          </span>
-          <SignOutButton />
-        </div>
-      </header>
-      {children}
-    </div>
+      </SidebarProvider>
+    </TooltipProvider>
   )
 }
