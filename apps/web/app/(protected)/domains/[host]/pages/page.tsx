@@ -1,16 +1,15 @@
 import { crawlUrlHash } from '@seotools/core'
 import type { Crawl, CrawlUrl, CrawlUrlView } from '@seotools/db'
-import { StarIcon, TriangleAlertIcon } from 'lucide-react'
+import { TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
-import { setPriorityUrlAction } from '@/app/(protected)/domains/[host]/actions'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
-import { AddPriorityUrlForm } from '@/components/crawl/add-priority-url-form'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
+import { detailOf, PriorityToggle, StatusCell, UrlLink } from '@/components/crawl/url-cells'
+import { Pagination } from '@/components/pagination'
 import { Stat } from '@/components/stat'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import {
   Table,
@@ -26,60 +25,13 @@ import { requireDomain } from '@/lib/workspace'
 export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 50
-const VIEWS = ['pages', 'other', 'external', 'priority'] as const
+const VIEWS = ['pages', 'other', 'external'] as const
 type View = (typeof VIEWS)[number]
 
 export async function generateMetadata({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
   const t = await getTranslations('Pages')
   return { title: t('metaTitle', { host }) }
-}
-
-function StatusCell({ row }: { row: Pick<CrawlUrl, 'statusCode' | 'error'> | undefined }) {
-  if (!row) return <span className="text-muted-foreground">—</span>
-  if (row.statusCode === null) return <Badge variant="destructive">{row.error ? '!' : '—'}</Badge>
-  const failed = row.statusCode >= 400
-  const moved = row.statusCode >= 300 && row.statusCode < 400
-  return (
-    <Badge variant={failed ? 'destructive' : moved ? 'secondary' : 'outline'}>
-      {row.statusCode}
-    </Badge>
-  )
-}
-
-const detailOf = (row: CrawlUrl | undefined) =>
-  row?.error ?? row?.title ?? (row?.redirectTo && `→ ${row.redirectTo}`) ?? row?.contentType ?? '—'
-
-function UrlLink({ url }: { url: string }) {
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer noopener"
-      title={url}
-      className="block max-w-md truncate font-mono text-xs hover:underline"
-    >
-      {url}
-    </a>
-  )
-}
-
-function PriorityToggle({ host, url, marked }: { host: string; url: string; marked: boolean }) {
-  return (
-    <form action={setPriorityUrlAction.bind(null, host, url, !marked)}>
-      <PriorityButton marked={marked} />
-    </form>
-  )
-}
-
-async function PriorityButton({ marked }: { marked: boolean }) {
-  const t = await getTranslations('Pages.priority')
-  const label = t(marked ? 'unmark' : 'mark')
-  return (
-    <Button type="submit" variant="ghost" size="icon" aria-label={label} title={label}>
-      <StarIcon className={marked ? 'fill-current' : undefined} />
-    </Button>
-  )
 }
 
 async function UrlTable({
@@ -135,8 +87,7 @@ async function UrlTable({
   )
 }
 
-function countOf(view: View, crawl: Crawl | null, priorityCount: number): number {
-  if (view === 'priority') return priorityCount
+function countOf(view: View, crawl: Crawl | null): number {
   if (!crawl) return 0
   if (view === 'pages') return crawl.pagesCount
   if (view === 'external') return crawl.externalCount
@@ -165,22 +116,12 @@ export default async function PagesPage({
     db.priorityUrls.list(domain.id),
   ])
   const priorities = new Set(priorityUrls.map((p) => p.urlHash))
-  const total = countOf(view, latest, priorityUrls.length)
+  const total = countOf(view, latest)
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const offset = (page - 1) * PAGE_SIZE
 
   let rows: { url: string; result?: CrawlUrl }[] = []
-  if (view === 'priority') {
-    const shown = priorityUrls.slice(offset, offset + PAGE_SIZE)
-    const results = await db.crawls.latestResults(
-      domain.id,
-      shown.map((p) => p.urlHash),
-    )
-    rows = shown.map(({ url, urlHash }) => ({
-      url,
-      result: results.find((result) => result.urlHash === urlHash),
-    }))
-  } else if (latest) {
+  if (latest) {
     const urls = await db.crawls.listUrls({
       crawlId: latest.id,
       view: view satisfies CrawlUrlView,
@@ -250,7 +191,7 @@ export default async function PagesPage({
               >
                 {t(`views.${option}`)}
                 <span className="text-muted-foreground tabular-nums">
-                  {number(countOf(option, latest, priorityUrls.length))}
+                  {number(countOf(option, latest))}
                 </span>
               </Link>
             ))}
@@ -258,38 +199,13 @@ export default async function PagesPage({
           <CardDescription>{t(`viewHints.${view}`)}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          {view === 'priority' && <AddPriorityUrlForm host={domain.host} />}
           <UrlTable
             host={domain.host}
             rows={rows}
             priorities={priorities}
-            showPriority={view === 'pages' || view === 'priority'}
+            showPriority={view === 'pages'}
           />
-          {pageCount > 1 && (
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm text-muted-foreground">
-                {t('pagination.summary', { page, pages: pageCount })}
-              </p>
-              <div className="flex gap-2">
-                {page > 1 && (
-                  <Link
-                    href={href({ page: page - 1 })}
-                    className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                  >
-                    {t('pagination.previous')}
-                  </Link>
-                )}
-                {page < pageCount && (
-                  <Link
-                    href={href({ page: page + 1 })}
-                    className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                  >
-                    {t('pagination.next')}
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
+          <Pagination page={page} pageCount={pageCount} href={(next) => href({ page: next })} />
         </CardContent>
       </Card>
     </main>

@@ -175,14 +175,12 @@
     "views": {
       "pages": "Pages",
       "other": "Other URLs",
-      "external": "External",
-      "priority": "Priority"
+      "external": "External"
     },
     "viewHints": {
       "pages": "URLs of this site that answered with HTML, whatever their status. These are the ones counted as pages.",
       "other": "Redirects, images, stylesheets, scripts, PDFs, robots.txt, sitemaps and URLs that did not answer.",
-      "external": "URLs on other sites linked from this one. They are recorded, but never requested or counted.",
-      "priority": "Pages the priority crawl requests, with their most recent result from any crawl."
+      "external": "URLs on other sites linked from this one. They are recorded, but never requested or counted."
     },
     "columns": {
       "url": "URL",
@@ -192,15 +190,7 @@
     "emptyView": "Nothing here yet.",
     "priority": {
       "mark": "Mark as priority",
-      "unmark": "Remove from priority",
-      "addLabel": "Add a priority page",
-      "addPlaceholder": "/pricing or https://{host}/pricing",
-      "add": "Add"
-    },
-    "pagination": {
-      "summary": "Page {page, number} of {pages, number}",
-      "previous": "Previous",
-      "next": "Next"
+      "unmark": "Remove from priority"
     }
   },
   "Jobs": {
@@ -256,7 +246,8 @@
     "description": "Everything that can be configured for {host}.",
     "navLabel": "Settings sections",
     "sections": {
-      "crawl": "Crawling"
+      "crawl": "Crawling",
+      "priority": "Priority pages"
     }
   },
   "CrawlSettings": {
@@ -701,5 +692,25 @@
         }
       }
     }
+  },
+  "Pagination": {
+    "summary": "Page {page, number} of {pages, number}",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "PrioritySettings": {
+    "metaTitle": "Priority pages · {host} · seotools",
+    "title": "Priority pages",
+    "description": "Pages of {host} that the priority crawl requests, with their most recent result from any crawl. Starring a page in the Pages list adds it here too.",
+    "columns": {
+      "url": "URL",
+      "status": "Status",
+      "detail": "Detail",
+      "added": "Added"
+    },
+    "empty": "No priority pages yet.",
+    "addLabel": "Add a priority page",
+    "addPlaceholder": "/pricing or https://{host}/pricing",
+    "add": "Add"
   }
 }

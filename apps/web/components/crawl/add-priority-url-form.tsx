@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export function AddPriorityUrlForm({ host }: { host: string }) {
-  const t = useTranslations('Pages.priority')
+  const t = useTranslations('PrioritySettings')
   const [state, formAction, pending] = useActionState<AddPriorityUrlState, FormData>(
     addPriorityUrlAction.bind(null, host),
     {},

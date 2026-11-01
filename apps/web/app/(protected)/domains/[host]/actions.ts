@@ -25,6 +25,12 @@ export interface AddPriorityUrlState {
   value?: string
 }
 
+/** Where priority pages are listed (settings) and where they can be starred (pages). */
+function revalidatePriorityUrls(host: string) {
+  revalidatePath(`/domains/${host}/pages`)
+  revalidatePath(`/domains/${host}/settings/priority`)
+}
+
 function revalidateDomain(host: string) {
   revalidatePath(`/domains/${host}/pages`)
   revalidatePath(`/domains/${host}/jobs`)
@@ -67,7 +73,7 @@ export async function setPriorityUrlAction(host: string, url: string, marked: bo
   if (!normalized) return
   if (marked) await db.priorityUrls.add({ domainId: domain.id, url: normalized })
   else await db.priorityUrls.remove({ domainId: domain.id, urlHash: crawlUrlHash(normalized) })
-  revalidatePath(`/domains/${host}/pages`)
+  revalidatePriorityUrls(host)
 }
 
 export async function addPriorityUrlAction(
@@ -82,7 +88,7 @@ export async function addPriorityUrlAction(
   if (!url) return { error: t('invalidPriorityUrl', { host: domain.host }), value }
 
   await (await getDb()).priorityUrls.add({ domainId: domain.id, url })
-  revalidatePath(`/domains/${host}/pages`)
+  revalidatePriorityUrls(host)
   return {}
 }
 
