@@ -90,7 +90,9 @@
     "scheduledJobs": "Scheduled jobs",
     "settings": "Settings",
     "instance": "Instance",
-    "system": "System"
+    "system": "System",
+    "pagesOverview": "Overview",
+    "pagesDetails": "Details"
   },
   "DomainHome": {
     "metaTitle": "{host} · seotools",
@@ -169,8 +171,36 @@
       "total": "Pages found",
       "correct": "Correct pages",
       "issues": "Pages with issues",
-      "soon": "Available once issue detection arrives."
+      "notChecked": "Not checked yet"
     },
+    "chart": {
+      "ariaLabel": "Correct pages and pages with issues after each full crawl",
+      "empty": "The history starts with the next full crawl: it is checked for issues when it ends.",
+      "date": "Crawl finished",
+      "toggle": "Show or hide in the chart"
+    },
+    "issues": {
+      "title": "Issues",
+      "description": "What the last full crawl found on the pages. Open one to see the pages that have it.",
+      "empty": "No issues found: every page is correct.",
+      "notChecked": "The last full crawl has not been checked for issues. Run a new full crawl to see them here.",
+      "noCrawl": "Issues appear here once the domain has been crawled.",
+      "pages": "{count, plural, one {# page} other {# pages}}",
+      "severity": {
+        "error": "Error",
+        "warning": "Warning"
+      }
+    },
+    "priority": {
+      "mark": "Mark as priority",
+      "unmark": "Remove from priority"
+    }
+  },
+  "PagesDetails": {
+    "metaTitle": "Pages detail · {host} · seotools",
+    "title": "Pages detail",
+    "description": "Every URL of the last full crawl. Select some to act on them together.",
+    "neverCrawled": "This domain has not been crawled yet. Run a full crawl from the pages overview.",
     "viewsLabel": "Views",
     "views": {
       "pages": "Pages",
@@ -182,16 +212,122 @@
       "other": "Redirects, images, stylesheets, scripts, PDFs, robots.txt, sitemaps and URLs that did not answer.",
       "external": "URLs on other sites linked from this one. They are recorded, but never requested or counted."
     },
+    "search": {
+      "label": "Search URLs",
+      "placeholder": "Search by URL or title"
+    },
+    "columnsMenu": {
+      "label": "Columns",
+      "reset": "Show the default columns"
+    },
     "columns": {
       "url": "URL",
+      "title": "Title",
       "status": "Status",
-      "detail": "Detail"
+      "issues": "Issues",
+      "depth": "Depth",
+      "responseTime": "Response time",
+      "bytes": "Size",
+      "contentType": "Content type",
+      "redirectTo": "Redirects to"
     },
-    "emptyView": "Nothing here yet.",
-    "priority": {
+    "sortBy": "Sort by {column}",
+    "sortedAscending": "Sorted ascending, click to sort descending",
+    "sortedDescending": "Sorted descending, click to remove the order",
+    "selectAll": "Select every URL on this page",
+    "selectRow": "Select {url}",
+    "selected": "{count, plural, one {# URL selected} other {# URLs selected}}",
+    "clearSelection": "Clear selection",
+    "bulk": {
       "mark": "Mark as priority",
       "unmark": "Remove from priority"
+    },
+    "openUrl": "Open {url} in a new tab",
+    "empty": "No URLs match.",
+    "total": "{total, plural, one {# URL} other {# URLs}}",
+    "responseTime": "{value, number} ms",
+    "issueList": {
+      "all": "All pages"
+    },
+    "actionsMenu": {
+      "label": "Actions"
     }
+  },
+  "UrlDetail": {
+    "back": "Back to the detail",
+    "openFullScreen": "Open full screen",
+    "openUrl": "Open in a new tab",
+    "close": "Close",
+    "drawerDescription": "What the last full crawl found at this URL.",
+    "notFound": "This URL is not in the last full crawl.",
+    "sections": {
+      "summary": "Summary",
+      "page": "On the page",
+      "issues": "Issues",
+      "linksIn": "Linked from",
+      "linksOut": "Links to"
+    },
+    "fields": {
+      "contentType": "Content type",
+      "responseTime": "Response time",
+      "size": "Size",
+      "depth": "Depth",
+      "fetchedAt": "Requested",
+      "redirectTo": "Redirects to",
+      "title": "Title",
+      "description": "Meta description",
+      "h1": "H1",
+      "canonical": "Canonical",
+      "metaRobots": "Meta robots",
+      "xRobotsTag": "X-Robots-Tag",
+      "error": "Error"
+    },
+    "kinds": {
+      "page": "Page",
+      "redirect": "Redirect",
+      "resource": "Resource",
+      "unknown": "Unknown"
+    },
+    "notSet": "Not set",
+    "noIssues": "No issues found on this page.",
+    "notChecked": "This crawl has not been checked for issues.",
+    "noLinks": "None found.",
+    "moreLinks": "There are more.",
+    "responseTime": "{value, number} ms",
+    "loading": "Loading the detail of the URL"
+  },
+  "PageIssues": {
+    "http-error": {
+      "name": "HTTP error status",
+      "description": "The page answered with a 4xx or 5xx status code."
+    },
+    "missing-title": {
+      "name": "Missing title",
+      "description": "The page has no title, or it is empty."
+    },
+    "missing-description": {
+      "name": "Missing meta description",
+      "description": "The page has no meta description, or it is empty."
+    }
+  },
+  "LinkKinds": {
+    "anchor": "Link",
+    "canonical": "Canonical",
+    "hreflang": "Hreflang",
+    "head-link": "Head link",
+    "script": "Script",
+    "style": "Stylesheet",
+    "image": "Image",
+    "media": "Media",
+    "frame": "Frame",
+    "form": "Form",
+    "meta": "Meta tag",
+    "structured-data": "Structured data",
+    "http-header": "HTTP header",
+    "redirect": "Redirect",
+    "sitemap": "Sitemap",
+    "llms": "llms.txt",
+    "other": "Other"
   },
   "Jobs": {
     "metaTitle": "Scheduled jobs · {host} · seotools",

@@ -235,6 +235,8 @@ export const crawls = mysqlTable(
     urlsCount: int('urls_count').notNull().default(0),
     urlsDoneCount: int('urls_done_count').notNull().default(0),
     externalCount: int('external_count').notNull().default(0),
+    /** Pages with at least one issue. `null`: the crawl was not analysed (yet). */
+    pagesWithIssuesCount: int('pages_with_issues_count'),
     robots: longtext('robots'),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: boolean('pruned').notNull().default(false),
@@ -298,6 +300,25 @@ export const crawlLinks = mysqlTable(
   (t) => [
     primaryKey({ columns: [t.crawlId, t.sourceHash, t.targetHash, t.kind] }),
     index('crawl_links_target_idx').on(t.crawlId, t.targetHash),
+  ],
+)
+
+/**
+ * The issues each page of a crawl had (`PAGE_ISSUES` in @seotools/core), written when the crawl
+ * ends. A page without a row is correct. Removed along with the results per URL of old crawls.
+ */
+export const crawlUrlIssues = mysqlTable(
+  'crawl_url_issues',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    urlHash: varchar('url_hash', { length: 32 }).notNull(),
+    issue: varchar('issue', { length: 64 }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.urlHash, t.issue] }),
+    index('crawl_url_issues_issue_idx').on(t.crawlId, t.issue),
   ],
 )
 

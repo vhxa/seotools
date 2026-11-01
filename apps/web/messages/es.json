@@ -90,7 +90,9 @@
     "scheduledJobs": "Tareas programadas",
     "settings": "Ajustes",
     "instance": "Instancia",
-    "system": "Sistema"
+    "system": "Sistema",
+    "pagesOverview": "Resumen",
+    "pagesDetails": "Detalle"
   },
   "DomainHome": {
     "metaTitle": "{host} · seotools",
@@ -169,8 +171,36 @@
       "total": "Páginas encontradas",
       "correct": "Páginas correctas",
       "issues": "Páginas con issues",
-      "soon": "Disponible cuando llegue la detección de issues."
+      "notChecked": "Aún sin comprobar"
     },
+    "chart": {
+      "ariaLabel": "Páginas correctas y páginas con issues tras cada rastreo completo",
+      "empty": "El histórico empieza con el próximo rastreo completo: se comprueban las issues cuando termina.",
+      "date": "Rastreo terminado",
+      "toggle": "Mostrar u ocultar en el gráfico"
+    },
+    "issues": {
+      "title": "Issues",
+      "description": "Lo que encontró el último rastreo completo en las páginas. Abre una para ver las páginas que la tienen.",
+      "empty": "No se han encontrado issues: todas las páginas son correctas.",
+      "notChecked": "El último rastreo completo no se ha comprobado en busca de issues. Lanza uno nuevo para verlas aquí.",
+      "noCrawl": "Las issues aparecen aquí cuando el dominio se haya rastreado.",
+      "pages": "{count, plural, one {# página} other {# páginas}}",
+      "severity": {
+        "error": "Error",
+        "warning": "Aviso"
+      }
+    },
+    "priority": {
+      "mark": "Marcar como prioritaria",
+      "unmark": "Quitar de prioritarias"
+    }
+  },
+  "PagesDetails": {
+    "metaTitle": "Detalle de páginas · {host} · seotools",
+    "title": "Detalle de páginas",
+    "description": "Todas las URLs del último rastreo completo. Selecciona varias para actuar sobre ellas a la vez.",
+    "neverCrawled": "Este dominio todavía no se ha rastreado. Lanza un rastreo completo desde el resumen de páginas.",
     "viewsLabel": "Vistas",
     "views": {
       "pages": "Páginas",
@@ -182,16 +212,122 @@
       "other": "Redirecciones, imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps y URLs que no respondieron.",
       "external": "URLs de otros sitios enlazadas desde esta web. Se registran, pero nunca se piden ni se cuentan."
     },
+    "search": {
+      "label": "Buscar URLs",
+      "placeholder": "Buscar por URL o título"
+    },
+    "columnsMenu": {
+      "label": "Columnas",
+      "reset": "Mostrar las columnas por defecto"
+    },
     "columns": {
       "url": "URL",
+      "title": "Título",
       "status": "Estado",
-      "detail": "Detalle"
+      "issues": "Issues",
+      "depth": "Profundidad",
+      "responseTime": "Tiempo de respuesta",
+      "bytes": "Tamaño",
+      "contentType": "Tipo de contenido",
+      "redirectTo": "Redirige a"
     },
-    "emptyView": "Todavía no hay nada aquí.",
-    "priority": {
-      "mark": "Marcar como prioritaria",
+    "sortBy": "Ordenar por {column}",
+    "sortedAscending": "Orden ascendente, haz clic para ordenar de forma descendente",
+    "sortedDescending": "Orden descendente, haz clic para quitar el orden",
+    "selectAll": "Seleccionar todas las URLs de esta página",
+    "selectRow": "Seleccionar {url}",
+    "selected": "{count, plural, one {# URL seleccionada} other {# URLs seleccionadas}}",
+    "clearSelection": "Quitar selección",
+    "bulk": {
+      "mark": "Marcar como prioritarias",
       "unmark": "Quitar de prioritarias"
+    },
+    "openUrl": "Abrir {url} en una pestaña nueva",
+    "empty": "Ninguna URL coincide.",
+    "total": "{total, plural, one {# URL} other {# URLs}}",
+    "responseTime": "{value, number} ms",
+    "issueList": {
+      "all": "Todas las páginas"
+    },
+    "actionsMenu": {
+      "label": "Acciones"
     }
+  },
+  "UrlDetail": {
+    "back": "Volver al detalle",
+    "openFullScreen": "Abrir en pantalla completa",
+    "openUrl": "Abrir en una pestaña nueva",
+    "close": "Cerrar",
+    "drawerDescription": "Lo que encontró el último rastreo completo en esta URL.",
+    "notFound": "Esta URL no está en el último rastreo completo.",
+    "sections": {
+      "summary": "Resumen",
+      "page": "En la página",
+      "issues": "Issues",
+      "linksIn": "Enlazada desde",
+      "linksOut": "Enlaza a"
+    },
+    "fields": {
+      "contentType": "Tipo de contenido",
+      "responseTime": "Tiempo de respuesta",
+      "size": "Tamaño",
+      "depth": "Profundidad",
+      "fetchedAt": "Solicitada",
+      "redirectTo": "Redirige a",
+      "title": "Título",
+      "description": "Meta description",
+      "h1": "H1",
+      "canonical": "Canonical",
+      "metaRobots": "Meta robots",
+      "xRobotsTag": "X-Robots-Tag",
+      "error": "Error"
+    },
+    "kinds": {
+      "page": "Página",
+      "redirect": "Redirección",
+      "resource": "Recurso",
+      "unknown": "Desconocido"
+    },
+    "notSet": "Sin definir",
+    "noIssues": "No se han encontrado issues en esta página.",
+    "notChecked": "Este rastreo no se ha comprobado en busca de issues.",
+    "noLinks": "No se ha encontrado ninguno.",
+    "moreLinks": "Hay más.",
+    "responseTime": "{value, number} ms",
+    "loading": "Cargando el detalle de la URL"
+  },
+  "PageIssues": {
+    "http-error": {
+      "name": "Estado HTTP de error",
+      "description": "La página respondió con un código de estado 4xx o 5xx."
+    },
+    "missing-title": {
+      "name": "Falta el título",
+      "description": "La página no tiene título, o está vacío."
+    },
+    "missing-description": {
+      "name": "Falta la meta description",
+      "description": "La página no tiene meta description, o está vacía."
+    }
+  },
+  "LinkKinds": {
+    "anchor": "Enlace",
+    "canonical": "Canonical",
+    "hreflang": "Hreflang",
+    "head-link": "Enlace del head",
+    "script": "Script",
+    "style": "Hoja de estilo",
+    "image": "Imagen",
+    "media": "Medio",
+    "frame": "Frame",
+    "form": "Formulario",
+    "meta": "Meta etiqueta",
+    "structured-data": "Datos estructurados",
+    "http-header": "Cabecera HTTP",
+    "redirect": "Redirección",
+    "sitemap": "Sitemap",
+    "llms": "llms.txt",
+    "other": "Otro"
   },
   "Jobs": {
     "metaTitle": "Tareas programadas · {host} · seotools",

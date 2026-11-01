@@ -18,6 +18,7 @@ describeDatabaseContract(
           'worker_heartbeats',
           'settings',
           'user',
+          'crawl_url_issues',
           'crawl_links',
           'crawl_urls',
           'crawls',

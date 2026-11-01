@@ -54,7 +54,7 @@ interface NavLink {
 interface NavSection {
   label: string
   icon: LucideIcon
-  links: { label: string; href: string }[]
+  links: { label: string; href: string; exact?: boolean }[]
 }
 
 type NavItem = NavLink | NavSection
@@ -185,7 +185,14 @@ export function AppSidebar({
           icon: LayoutDashboardIcon,
           exact: true,
         },
-        { label: t('pages'), href: `/domains/${activeHost}/pages`, icon: FileTextIcon },
+        {
+          label: t('pages'),
+          icon: FileTextIcon,
+          links: [
+            { label: t('pagesOverview'), href: `/domains/${activeHost}/pages`, exact: true },
+            { label: t('pagesDetails'), href: `/domains/${activeHost}/pages/details` },
+          ],
+        },
         {
           label: t('crawlFiles'),
           icon: FileCode2Icon,

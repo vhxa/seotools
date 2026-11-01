@@ -1,32 +1,22 @@
-import { crawlUrlHash } from '@seotools/core'
-import type { Crawl, CrawlUrl, CrawlUrlView } from '@seotools/db'
-import { TriangleAlertIcon } from 'lucide-react'
+import { PAGE_ISSUES } from '@seotools/core/crawl/issues'
+import { ChevronRightIcon, TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
-import { detailOf, PriorityToggle, StatusCell, UrlLink } from '@/components/crawl/url-cells'
-import { Pagination } from '@/components/pagination'
-import { Stat } from '@/components/stat'
+import { PagesChart, type PagesPoint } from '@/components/pages/pages-chart'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
+import { rankIssueCounts } from '@/lib/pages-issues'
+import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
 
-const PAGE_SIZE = 50
-const VIEWS = ['pages', 'other', 'external'] as const
-type View = (typeof VIEWS)[number]
+/** Full crawls the history goes back to. */
+const HISTORY_CRAWLS = 100
 
 export async function generateMetadata({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
@@ -34,109 +24,43 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   return { title: t('metaTitle', { host }) }
 }
 
-async function UrlTable({
-  host,
-  rows,
-  priorities,
-  showPriority,
-}: {
-  host: string
-  rows: { url: string; result?: CrawlUrl }[]
-  priorities: Set<string>
-  showPriority: boolean
-}) {
-  const t = await getTranslations('Pages')
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t('columns.url')}</TableHead>
-          <TableHead>{t('columns.status')}</TableHead>
-          <TableHead>{t('columns.detail')}</TableHead>
-          {showPriority && <TableHead className="w-10" />}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={4} className="text-center text-muted-foreground">
-              {t('emptyView')}
-            </TableCell>
-          </TableRow>
-        )}
-        {rows.map(({ url, result }) => (
-          <TableRow key={url}>
-            <TableCell>
-              <UrlLink url={url} />
-            </TableCell>
-            <TableCell>
-              <StatusCell row={result} />
-            </TableCell>
-            <TableCell className="max-w-64 truncate" title={detailOf(result)}>
-              {detailOf(result)}
-            </TableCell>
-            {showPriority && (
-              <TableCell>
-                <PriorityToggle host={host} url={url} marked={priorities.has(crawlUrlHash(url))} />
-              </TableCell>
-            )}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function countOf(view: View, crawl: Crawl | null): number {
-  if (!crawl) return 0
-  if (view === 'pages') return crawl.pagesCount
-  if (view === 'external') return crawl.externalCount
-  return crawl.urlsCount - crawl.pagesCount
-}
-
-export default async function PagesPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ host: string }>
-  searchParams: Promise<{ view?: string; page?: string }>
-}) {
+export default async function PagesOverviewPage({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
-  const { view: viewParam, page: pageParam } = await searchParams
   const { domain } = await requireDomain(host)
-  const [t, format] = await Promise.all([getTranslations('Pages'), getFormatter()])
+  const [t, tIssues, format] = await Promise.all([
+    getTranslations('Pages'),
+    getTranslations('PageIssues'),
+    getFormatter(),
+  ])
   const db = await getDb()
 
-  const view: View = VIEWS.find((v) => v === viewParam) ?? 'pages'
-  const page = Math.max(1, Math.floor(Number(pageParam)) || 1)
-
-  const [active, latest, priorityUrls] = await Promise.all([
+  const [active, latest, crawls] = await Promise.all([
     db.crawls.active(domain.id),
     db.crawls.latestWithResults(domain.id, 'full'),
-    db.priorityUrls.list(domain.id),
+    db.crawls.list(domain.id, { type: 'full', limit: HISTORY_CRAWLS }),
   ])
-  const priorities = new Set(priorityUrls.map((p) => p.urlHash))
-  const total = countOf(view, latest)
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const offset = (page - 1) * PAGE_SIZE
 
-  let rows: { url: string; result?: CrawlUrl }[] = []
-  if (latest) {
-    const urls = await db.crawls.listUrls({
-      crawlId: latest.id,
-      view: view satisfies CrawlUrlView,
-      limit: PAGE_SIZE,
-      offset,
-    })
-    rows = urls.map((result) => ({ url: result.url, result }))
-  }
+  // The pages of a crawl that was checked for issues. Counts outlive the per-URL results, so
+  // crawls that were pruned still draw their point.
+  const checked = (latest?.pagesWithIssuesCount ?? null) !== null
+  const withIssues = latest?.pagesWithIssuesCount ?? 0
+  const points: PagesPoint[] = crawls
+    .filter(
+      (crawl) =>
+        (crawl.status === 'completed' || crawl.status === 'incomplete') &&
+        crawl.pagesWithIssuesCount !== null,
+    )
+    .map((crawl) => ({
+      at: (crawl.finishedAt ?? crawl.createdAt).getTime(),
+      correct: Math.max(0, crawl.pagesCount - (crawl.pagesWithIssuesCount ?? 0)),
+      issues: crawl.pagesWithIssuesCount ?? 0,
+    }))
+    .sort((a, b) => a.at - b.at)
 
-  const number = (value: number) => format.number(value)
-  const href = (next: { view?: View; page?: number }) => {
-    const query = new URLSearchParams({ view: next.view ?? view })
-    if (next.page && next.page > 1) query.set('page', String(next.page))
-    return `/domains/${domain.host}/pages?${query}`
-  }
+  const counts = latest && checked ? await db.crawls.issueCounts(latest.id) : []
+  const issues = rankIssueCounts(counts)
+  const tSeverity = await getTranslations('Pages.issues.severity')
+  const defaultQuery = parseDetailQuery({})
 
   return (
     <main className="grid gap-6">
@@ -169,43 +93,59 @@ export default async function PagesPage({
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label={t('stats.total')} value={latest ? number(latest.pagesCount) : '—'} />
-        {/* Not known until the features that detect issues exist. */}
-        <Stat label={t('stats.correct')} value="—" hint={t('stats.soon')} />
-        <Stat label={t('stats.issues')} value="—" hint={t('stats.soon')} />
-      </div>
+      <PagesChart
+        stats={{
+          total: latest ? latest.pagesCount : null,
+          correct: latest && checked ? Math.max(0, latest.pagesCount - withIssues) : null,
+          issues: latest && checked ? withIssues : null,
+        }}
+        points={points}
+      />
 
       <Card>
-        <CardHeader className="gap-3">
-          <nav aria-label={t('viewsLabel')} className="flex flex-wrap gap-1">
-            {VIEWS.map((option) => (
-              <Link
-                key={option}
-                href={href({ view: option })}
-                aria-current={option === view ? 'page' : undefined}
-                className={buttonVariants({
-                  variant: option === view ? 'secondary' : 'ghost',
-                  size: 'sm',
-                })}
-              >
-                {t(`views.${option}`)}
-                <span className="text-muted-foreground tabular-nums">
-                  {number(countOf(option, latest))}
-                </span>
-              </Link>
-            ))}
-          </nav>
-          <CardDescription>{t(`viewHints.${view}`)}</CardDescription>
+        <CardHeader>
+          <CardTitle>{t('issues.title')}</CardTitle>
+          <CardDescription>{t('issues.description')}</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4">
-          <UrlTable
-            host={domain.host}
-            rows={rows}
-            priorities={priorities}
-            showPriority={view === 'pages'}
-          />
-          <Pagination page={page} pageCount={pageCount} href={(next) => href({ page: next })} />
+        <CardContent>
+          {!latest ? (
+            <p className="text-sm text-muted-foreground">{t('issues.noCrawl')}</p>
+          ) : !checked ? (
+            <p className="text-sm text-muted-foreground">{t('issues.notChecked')}</p>
+          ) : issues.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('issues.empty')}</p>
+          ) : (
+            <ul className="-mx-2 grid divide-y">
+              {issues.map(({ issue, pages }) => (
+                <li key={issue}>
+                  <Link
+                    href={detailHref(domain.host, defaultQuery, { issue })}
+                    className="flex items-center gap-4 rounded-md px-2 py-3 outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <div className="grid min-w-0 flex-1 gap-0.5">
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        {tIssues(`${issue}.name`)}
+                        <Badge
+                          variant={
+                            PAGE_ISSUES[issue].severity === 'error' ? 'destructive' : 'secondary'
+                          }
+                        >
+                          {tSeverity(PAGE_ISSUES[issue].severity)}
+                        </Badge>
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {tIssues(`${issue}.description`)}
+                      </span>
+                    </div>
+                    <span className="text-sm whitespace-nowrap tabular-nums">
+                      {t('issues.pages', { count: pages })}
+                    </span>
+                    <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
     </main>

@@ -28,6 +28,7 @@ export interface AddPriorityUrlState {
 /** Where priority pages are listed (settings) and where they can be starred (pages). */
 function revalidatePriorityUrls(host: string) {
   revalidatePath(`/domains/${host}/pages`)
+  revalidatePath(`/domains/${host}/pages/details`)
   revalidatePath(`/domains/${host}/settings/priority`)
 }
 
@@ -73,6 +74,22 @@ export async function setPriorityUrlAction(host: string, url: string, marked: bo
   if (!normalized) return
   if (marked) await db.priorityUrls.add({ domainId: domain.id, url: normalized })
   else await db.priorityUrls.remove({ domainId: domain.id, urlHash: crawlUrlHash(normalized) })
+  revalidatePriorityUrls(host)
+}
+
+/** Most URLs a single call marks or unmarks: a page of the pages table is far below it. */
+const MAX_BULK_URLS = 200
+
+/** Marks or unmarks several URLs at once. URLs that are not of the domain are skipped. */
+export async function setPriorityUrlsAction(host: string, urls: string[], marked: boolean) {
+  const { domain } = await requireDomain(host)
+  const db = await getDb()
+  for (const url of urls.slice(0, MAX_BULK_URLS)) {
+    const normalized = parsePriorityUrl(url, domain.host)
+    if (!normalized) continue
+    if (marked) await db.priorityUrls.add({ domainId: domain.id, url: normalized })
+    else await db.priorityUrls.remove({ domainId: domain.id, urlHash: crawlUrlHash(normalized) })
+  }
   revalidatePriorityUrls(host)
 }
 

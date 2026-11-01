@@ -47,7 +47,10 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
             <SidebarTrigger className="-ml-1" />
           </header>
-          <div className="mx-auto w-full max-w-5xl flex-1 p-4 md:p-8">{children}</div>
+          {/* Readable width by default; a page that needs the whole screen marks its <main data-wide>. */}
+          <div className="mx-auto w-full max-w-5xl flex-1 p-4 has-[>main[data-wide]]:max-w-none md:p-8">
+            {children}
+          </div>
         </div>
       </SidebarProvider>
     </TooltipProvider>

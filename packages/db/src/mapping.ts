@@ -1,5 +1,17 @@
 import { createHash } from 'node:crypto'
 import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  ne,
+  sql,
+  type AnyColumn,
+  type SQL,
+  type SQLWrapper,
+} from 'drizzle-orm'
+import {
   JOB_TYPES,
   crawlUrlHash,
   enabledExtraFiles,
@@ -21,7 +33,10 @@ import type {
   CrawlLink,
   CrawlSchedule,
   CrawlUrl,
+  CrawlUrlIssue,
+  CrawlUrlQuery,
   CrawlUrlResult,
+  CrawlUrlSort,
   CrawlUrlView,
   Domain,
   DomainFavicon,
@@ -216,6 +231,65 @@ export function foldCrawlCounts(
 
 export const crawlViewScope = (view: CrawlUrlView) =>
   view === 'external' ? ('external' as const) : ('internal' as const)
+
+/** The columns of `crawl_urls` that listing, filtering and ordering URLs look at. */
+export interface CrawlUrlColumns extends Record<CrawlUrlSort, AnyColumn> {
+  crawlId: AnyColumn
+  scope: AnyColumn
+  kind: AnyColumn
+  urlHash: AnyColumn
+}
+
+/** `like` has no escape character by default in SQLite, so every dialect gets this one. */
+const LIKE_ESCAPE = '!'
+const containsPattern = (text: string) =>
+  `%${text.toLowerCase().replace(/[!%_]/g, `${LIKE_ESCAPE}$&`)}%`
+
+/**
+ * The condition that selects the URLs of a query. `withIssue` is a query for the hashes of the
+ * pages that have `query.issue`, built by the dialect since it needs its own `db`.
+ */
+export function crawlUrlWhere(
+  columns: CrawlUrlColumns,
+  query: CrawlUrlQuery,
+  withIssue: (issue: string) => SQLWrapper,
+): SQL | undefined {
+  const pattern = query.search ? containsPattern(query.search) : null
+  return and(
+    eq(columns.crawlId, query.crawlId),
+    eq(columns.scope, crawlViewScope(query.view)),
+    query.view === 'pages' ? eq(columns.kind, 'page') : undefined,
+    query.view === 'other' ? ne(columns.kind, 'page') : undefined,
+    pattern
+      ? sql`(lower(${columns.url}) like ${pattern} escape '!' or lower(${columns.title}) like ${pattern} escape '!')`
+      : undefined,
+    query.issue ? inArray(columns.urlHash, withIssue(query.issue)) : undefined,
+  )
+}
+
+/**
+ * Shallowest first by default. URLs without a value (a title that is missing, a request that never
+ * answered) go last whatever the direction, since each dialect sorts NULLs differently.
+ */
+export function crawlUrlOrder(
+  columns: CrawlUrlColumns,
+  sort: CrawlUrlSort = 'depth',
+  direction: 'asc' | 'desc' = 'asc',
+): SQL[] {
+  const column = columns[sort]
+  return [
+    asc(sql`${column} is null`),
+    (direction === 'desc' ? desc : asc)(column),
+    asc(columns.url),
+  ]
+}
+
+/** One row per page and issue: asking twice for the same one is not an error. */
+export function crawlIssueRows(crawlId: string, issues: CrawlUrlIssue[]) {
+  const unique = new Map<string, CrawlUrlIssue>()
+  for (const issue of issues) unique.set(`${issue.urlHash}:${issue.issue}`, issue)
+  return [...unique.values()].map(({ urlHash, issue }) => ({ crawlId, urlHash, issue }))
+}
 
 /** Multi-row inserts are split so they stay under every driver's parameter limit. */
 export function chunk<T>(items: T[], size = 500): T[][] {

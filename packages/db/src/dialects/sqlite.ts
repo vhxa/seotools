@@ -13,7 +13,6 @@ import {
   isNull,
   lt,
   lte,
-  ne,
   notInArray,
   or,
   sql,
@@ -29,7 +28,9 @@ import {
   crawlJobValues,
   crawlResultColumns,
   crawlRobotsColumn,
-  crawlViewScope,
+  crawlIssueRows,
+  crawlUrlOrder,
+  crawlUrlWhere,
   crawlFileColumns,
   crawlFileRow,
   crawlSettingsColumns,
@@ -70,9 +71,26 @@ const {
   crawlSchedules,
   crawls,
   crawlUrls,
+  crawlUrlIssues,
   crawlLinks,
   priorityUrls,
 } = schema
+
+/** `limit` when a list is not capped. */
+const MAX_LIMIT = 2_147_483_647
+
+const urlColumns = {
+  crawlId: crawlUrls.crawlId,
+  scope: crawlUrls.scope,
+  kind: crawlUrls.kind,
+  urlHash: crawlUrls.urlHash,
+  url: crawlUrls.url,
+  title: crawlUrls.title,
+  status: crawlUrls.statusCode,
+  depth: crawlUrls.depth,
+  responseTime: crawlUrls.responseTimeMs,
+  bytes: crawlUrls.bytes,
+}
 
 export function createSqliteDatabase(options: {
   url: string
@@ -89,6 +107,13 @@ export function createSqliteDatabase(options: {
   sqlite.pragma('synchronous = NORMAL')
 
   const db = drizzle(sqlite, { schema })
+
+  /** The hashes of the pages of a crawl that have an issue. */
+  const withIssue = (crawlId: string) => (issue: string) =>
+    db
+      .select({ urlHash: crawlUrlIssues.urlHash })
+      .from(crawlUrlIssues)
+      .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue)))
 
   return {
     dialect: 'sqlite',
@@ -429,11 +454,11 @@ export function createSqliteDatabase(options: {
         return row ? toCrawl(row) : null
       },
 
-      async list(domainId, { limit = 20 } = {}) {
+      async list(domainId, { limit = 20, type } = {}) {
         const rows = db
           .select()
           .from(crawls)
-          .where(eq(crawls.domainId, domainId))
+          .where(and(eq(crawls.domainId, domainId), type ? eq(crawls.type, type) : undefined))
           .orderBy(desc(crawls.createdAt))
           .limit(limit)
           .all()
@@ -554,6 +579,7 @@ export function createSqliteDatabase(options: {
         if (expired.length === 0) return 0
         db.transaction((tx) => {
           tx.delete(crawlLinks).where(inArray(crawlLinks.crawlId, expired)).run()
+          tx.delete(crawlUrlIssues).where(inArray(crawlUrlIssues.crawlId, expired)).run()
           tx.delete(crawlUrls).where(inArray(crawlUrls.crawlId, expired)).run()
           tx.update(crawls).set({ pruned: true }).where(inArray(crawls.id, expired)).run()
         })
@@ -631,27 +657,37 @@ export function createSqliteDatabase(options: {
         return foldCrawlCounts(rows)
       },
 
-      async listUrls({ crawlId, view, limit, offset }) {
-        const kind =
-          view === 'pages'
-            ? eq(crawlUrls.kind, 'page')
-            : view === 'other'
-              ? ne(crawlUrls.kind, 'page')
-              : undefined
+      async listUrls({ limit, offset, sort, direction, ...query }) {
         const rows = db
           .select()
           .from(crawlUrls)
-          .where(
-            and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.scope, crawlViewScope(view)), kind),
-          )
-          .orderBy(asc(crawlUrls.depth), asc(crawlUrls.url))
+          .where(crawlUrlWhere(urlColumns, query, withIssue(query.crawlId)))
+          .orderBy(...crawlUrlOrder(urlColumns, sort, direction))
           .limit(limit)
           .offset(offset)
           .all()
         return rows.map(toCrawlUrl)
       },
 
-      async linkSources(crawlId, targetHash) {
+      async countListed(query) {
+        const row = db
+          .select({ count: sql<number>`count(*)` })
+          .from(crawlUrls)
+          .where(crawlUrlWhere(urlColumns, query, withIssue(query.crawlId)))
+          .get()
+        return Number(row?.count ?? 0)
+      },
+
+      async getUrl(crawlId, urlHash) {
+        const row = db
+          .select()
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, urlHash)))
+          .get()
+        return row ? toCrawlUrl(row) : null
+      },
+
+      async linkSources(crawlId, targetHash, { limit = MAX_LIMIT } = {}) {
         const rows = db
           .select({ url: crawlUrls.url, kind: crawlLinks.kind })
           .from(crawlLinks)
@@ -663,8 +699,66 @@ export function createSqliteDatabase(options: {
             ),
           )
           .where(and(eq(crawlLinks.crawlId, crawlId), eq(crawlLinks.targetHash, targetHash)))
+          .orderBy(asc(crawlUrls.url), asc(crawlLinks.kind))
+          .limit(limit)
           .all()
         return rows as { url: string; kind: CrawlLinkKind }[]
+      },
+
+      async linkTargets(crawlId, sourceHash, { limit = MAX_LIMIT } = {}) {
+        const rows = db
+          .select({ url: crawlUrls.url, kind: crawlLinks.kind })
+          .from(crawlLinks)
+          .innerJoin(
+            crawlUrls,
+            and(
+              eq(crawlUrls.crawlId, crawlLinks.crawlId),
+              eq(crawlUrls.urlHash, crawlLinks.targetHash),
+            ),
+          )
+          .where(and(eq(crawlLinks.crawlId, crawlId), eq(crawlLinks.sourceHash, sourceHash)))
+          .orderBy(asc(crawlUrls.url), asc(crawlLinks.kind))
+          .limit(limit)
+          .all()
+        return rows as { url: string; kind: CrawlLinkKind }[]
+      },
+
+      async saveIssues({ crawlId, issues }) {
+        const rows = crawlIssueRows(crawlId, issues)
+        db.transaction((tx) => {
+          tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId)).run()
+          for (const batch of chunk(rows)) tx.insert(crawlUrlIssues).values(batch).run()
+          tx.update(crawls)
+            .set({ pagesWithIssuesCount: new Set(rows.map((row) => row.urlHash)).size })
+            .where(eq(crawls.id, crawlId))
+            .run()
+        })
+      },
+
+      async issueCounts(crawlId) {
+        const rows = db
+          .select({ issue: crawlUrlIssues.issue, pages: sql<number>`count(*)` })
+          .from(crawlUrlIssues)
+          .where(eq(crawlUrlIssues.crawlId, crawlId))
+          .groupBy(crawlUrlIssues.issue)
+          .all()
+        return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
+      },
+
+      async issuesOf(crawlId, urlHashes) {
+        const found: { urlHash: string; issue: string }[] = []
+        for (const batch of chunk(urlHashes)) {
+          found.push(
+            ...db
+              .select({ urlHash: crawlUrlIssues.urlHash, issue: crawlUrlIssues.issue })
+              .from(crawlUrlIssues)
+              .where(
+                and(eq(crawlUrlIssues.crawlId, crawlId), inArray(crawlUrlIssues.urlHash, batch)),
+              )
+              .all(),
+          )
+        }
+        return found
       },
 
       async latestResults(domainId, urlHashes) {
