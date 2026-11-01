@@ -6,7 +6,7 @@ SEO Tools is an open-source application with a set of features for monitoring an
 
 ```
 apps/web/            # Next.js app: UI, login + first-run setup + onboarding, /api/health, better-auth routes, server actions
-apps/worker/         # Background job runner + handlers (example.echo, mail.send, crawl.run), crawler, crawl scheduler, favicon refresher; also the bootstrap CLI (migrations)
+apps/worker/         # Background job runner + handlers (example.echo, mail.send, crawl.run), crawler, crawl scheduler, favicon and crawl file refreshers; also the bootstrap CLI (migrations)
 packages/core/       # Shared logic: env validation, logger, job types, settings encryption, mail (SMTP + Resend), crawl types and URL rules
 packages/db/         # Database layer: Drizzle schemas, migrations and repositories for SQLite, PostgreSQL and MySQL
 docker/              # Container entrypoint and healthcheck
@@ -43,7 +43,8 @@ The most important third-party packages are:
 
 - **Auth and users:** the app is multi-user with roles. First-run setup creates the first user, who is an admin, but that user is not special: more admins and users with other roles can be created, and the first user's admin role can be revoked like anyone else's. Never write code that assumes a single admin or treats the first user differently after setup. Users can reset their password from within the app.
 - **UI:** use shadcn by default whenever an existing component or primitive covers the need.
-- **Companies and domains:** domains are grouped by company (an agency's client) and each feature works on one domain at a time. The active domain is the `/domains/[host]` route segment, never a cookie or global state. Every page and server action scoped to a domain starts with `requireDomain(host)` (`apps/web/lib/workspace.ts`) and its tables reference `domains.id`; that function is the single place where per-company/per-domain permissions will be enforced. Hosts are stored normalized by `normalizeDomain` (`@seotools/core`): `example.com`, no scheme, no `www.`, no path, always with a dot. Only instance-wide pages (`/system`) live outside a domain.
+- **Forms with a switch or checkbox** submit through `useFormActionState` (`apps/web/hooks`), never `<form action>`: React resets the form after the action, which leaves the switch looking on while its checkbox is off, so the next click does nothing and the next submit sends the wrong value.
+- **Companies and domains:** domains are grouped by company (an agency's client) and each feature works on one domain at a time. The active domain is the `/domains/[host]` route segment, never a cookie or global state. Every page and server action scoped to a domain starts with `requireDomain(host)` (`apps/web/lib/workspace.ts`) and its tables reference `domains.id`; that function is the single place where per-company/per-domain permissions will be enforced. Hosts are stored normalized by `normalizeDomain` (`@seotools/core`): `example.com`, no scheme, no `www.`, no path, always with a dot. Only instance-wide pages (`/system`) live outside a domain. A domain's settings go in a section of `/domains/[host]/settings` (`components/settings-nav.tsx`), never in the page of the feature they configure.
 - **i18n:** the UI is internationalized (`next-intl`, locale from `Accept-Language`, no URL prefix). Every user-facing string must be translatable; never hardcode copy in components. Add each message to **both** `apps/web/messages/en.json` and `es.json` (a test fails if their keys or ICU arguments differ) and read it with `useTranslations` / `getTranslations`, including error messages returned by server actions. Data stored in the database (job payloads, etc.) is not UI copy. shadcn components that ship English copy are patched to read `next-intl` (`components/ui/sidebar.tsx` → `Sidebar` messages; `hooks/use-mobile.ts` also differs from upstream to pass lint): re-apply those patches after `shadcn add --overwrite`.
 
 ### Outbound requests (crawling)
@@ -53,6 +54,8 @@ The most important third-party packages are:
 - A site is the tracked host and its `www.` variant, over HTTP and HTTPS on default ports. Other subdomains are domains of their own. External URLs are recorded with who links to them, but are never requested or counted as pages.
 - Crawl settings are per domain (`DEFAULT_CRAWL_SETTINGS` in `@seotools/core`): User-Agent, 2 simultaneous requests, 5 per second, 30 s timeout, 2 retries, 100,000 URLs (past it, the crawl ends `incomplete`).
 - Every outbound request goes through `createHttpFetcher` (`apps/worker/src/crawl/fetcher.ts`), which refuses non-public addresses when connecting, unless `CRAWLER_ALLOW_PRIVATE_NETWORKS` is set. Never fetch a user-controlled URL any other way.
+- Crawl files (robots.txt, sitemaps, llms.txt and the optional ones) live in `crawl_files`, one row per URL with what the last request answered, written by both full crawls and the daily refresher (`createCrawlFileRefresher`). Add a new kind in `crawlFileRequests` (`@seotools/core`), so both request it; an optional one also goes in `OPTIONAL_CRAWL_FILES`, which gives it a settings switch, a sidebar entry and a page under `crawl-files/[kind]`.
+- What these files contain is untrusted: parse it without backtracking regexes, and link a URL taken from one only after `normalizeCrawlUrl`, which refuses `javascript:` and the like.
 
 ### Jobs
 

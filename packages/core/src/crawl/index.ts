@@ -1,4 +1,7 @@
+export * from './files'
+export * from './robots'
 export * from './schedule'
 export * from './settings'
+export * from './text-files'
 export * from './types'
 export * from './url'

@@ -21,11 +21,16 @@ import mysql from 'mysql2/promise'
 import {
   CREDENTIAL_PROVIDER,
   EMPTY_COUNTS,
+  byUrl,
   chunk,
   crawlJobValues,
   crawlResultColumns,
   crawlRobotsColumn,
   crawlViewScope,
+  crawlFileColumns,
+  crawlFileRow,
+  crawlSettingsColumns,
+  enabledFilesByDomain,
   faviconRow,
   foldCrawlCounts,
   groupDomains,
@@ -36,6 +41,9 @@ import {
   toCrawl,
   toCrawlSchedule,
   toCrawlUrl,
+  toCrawlFile,
+  toCrawlFileCheck,
+  toCrawlSettings,
   toDomainFavicon,
   toJob,
   truncateError,
@@ -53,6 +61,8 @@ const {
   companies,
   domains,
   domainFavicons,
+  crawlFileChecks,
+  crawlFiles,
   crawlSettings,
   crawlSchedules,
   crawls,
@@ -362,11 +372,15 @@ export function createMysqlDatabase(options: {
           await db.select().from(crawlSettings).where(eq(crawlSettings.domainId, domainId))
         )[0]
         if (!row) return { ...DEFAULT_CRAWL_SETTINGS }
-        const { domainId: _domainId, updatedAt: _updatedAt, ...settings } = row
-        return settings
+        return toCrawlSettings(row)
       },
 
-      async saveSettings(domainId, values) {
+      async enabledFiles() {
+        return enabledFilesByDomain(await db.select().from(crawlSettings))
+      },
+
+      async saveSettings(domainId, input) {
+        const values = crawlSettingsColumns(input)
         const updatedAt = new Date()
         await db
           .insert(crawlSettings)
@@ -706,6 +720,89 @@ export function createMysqlDatabase(options: {
           .update(crawlSchedules)
           .set({ lastOutcome: outcome })
           .where(eq(crawlSchedules.id, id))
+      },
+    },
+
+    crawlFiles: {
+      async list(domainId, kinds) {
+        const rows = await db
+          .select()
+          .from(crawlFiles)
+          .where(
+            and(
+              eq(crawlFiles.domainId, domainId),
+              kinds ? inArray(crawlFiles.kind, [...kinds]) : undefined,
+            ),
+          )
+        return rows.map(toCrawlFile).sort(byUrl)
+      },
+      async save(domainId, files) {
+        for (const file of files) {
+          await db
+            .insert(crawlFiles)
+            .values(crawlFileRow(domainId, file))
+            .onDuplicateKeyUpdate({ set: crawlFileColumns(file) })
+        }
+      },
+      async prune({ domainId, before, keepKinds }) {
+        const result = await db
+          .delete(crawlFiles)
+          .where(
+            and(
+              eq(crawlFiles.domainId, domainId),
+              lt(crawlFiles.fetchedAt, before),
+              keepKinds?.length ? notInArray(crawlFiles.kind, [...keepKinds]) : undefined,
+            ),
+          )
+        return affected(result)
+      },
+      async getCheck(domainId) {
+        const [row] = await db
+          .select()
+          .from(crawlFileChecks)
+          .where(eq(crawlFileChecks.domainId, domainId))
+        return row ? toCrawlFileCheck(row) : null
+      },
+      async requestCheck({ domainId, now }) {
+        const values = { nextCheckAt: now, requestedAt: now }
+        await db
+          .insert(crawlFileChecks)
+          .values({ domainId, ...values })
+          .onDuplicateKeyUpdate({ set: values })
+      },
+      async dueChecks({ now, limit }) {
+        return await db
+          .select({ id: domains.id, host: domains.host })
+          .from(domains)
+          .leftJoin(crawlFileChecks, eq(crawlFileChecks.domainId, domains.id))
+          .where(or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)))
+          .orderBy(asc(domains.createdAt), asc(domains.id))
+          .limit(limit)
+      },
+      async claimCheck({ domainId, now, retryAt }) {
+        // A domain never checked has no row yet: its first check is due as of now.
+        await db
+          .insert(crawlFileChecks)
+          .values({ domainId, nextCheckAt: now })
+          .onDuplicateKeyUpdate({ set: { domainId } })
+        const result = await db
+          .update(crawlFileChecks)
+          .set({ nextCheckAt: retryAt })
+          .where(and(eq(crawlFileChecks.domainId, domainId), lte(crawlFileChecks.nextCheckAt, now)))
+        return affected(result) > 0
+      },
+      async finishCheck({ domainId, outcome, checkedAt, nextCheckAt }) {
+        const values = { outcome, checkedAt, nextCheckAt, requestedAt: null }
+        await db
+          .insert(crawlFileChecks)
+          .values({ domainId, ...values })
+          .onDuplicateKeyUpdate({ set: values })
+      },
+      async deferCheck({ domainId, nextCheckAt }) {
+        await db
+          .update(crawlFileChecks)
+          .set({ nextCheckAt, requestedAt: null })
+          .where(eq(crawlFileChecks.domainId, domainId))
       },
     },
 

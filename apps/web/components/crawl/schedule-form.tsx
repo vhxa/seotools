@@ -3,7 +3,7 @@
 import type { CrawlType } from '@seotools/core'
 import { CRAWL_FREQUENCIES, type CrawlFrequency } from '@seotools/core/crawl/schedule'
 import { useTranslations } from 'next-intl'
-import { useActionState, useState, useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { saveScheduleAction, type ActionState } from '@/app/(protected)/domains/[host]/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { useFormActionState } from '@/hooks/use-form-action-state'
 
 export interface ScheduleFormValues {
   enabled: boolean
@@ -86,11 +87,11 @@ export function ScheduleForm({
   values: ScheduleFormValues
 }) {
   const t = useTranslations('Jobs.schedule')
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+  const [state, onSubmit, pending] = useFormActionState<ActionState>(
     saveScheduleAction.bind(null, host, type),
     {},
   )
-  // Controlled, so the choices survive the form reset that follows a submit.
+  // Controlled: the fields that show depend on the frequency, and the time zone is not a field.
   const [enabled, setEnabled] = useState(values.enabled)
   const [frequency, setFrequency] = useState<string>(values.frequency)
   const [dayOfWeek, setDayOfWeek] = useState(String(values.dayOfWeek))
@@ -101,7 +102,7 @@ export function ScheduleForm({
   const id = (name: string) => `${type}-${name}`
 
   return (
-    <form action={formAction} className="grid gap-4">
+    <form onSubmit={onSubmit} className="grid gap-4">
       <div className="flex items-center gap-2">
         <Switch id={id('enabled')} name="enabled" checked={enabled} onCheckedChange={setEnabled} />
         <Label htmlFor={id('enabled')}>{t('enabled')}</Label>

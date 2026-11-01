@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { INDEXNOW_KEY, OPTIONAL_CRAWL_FILES, type OptionalCrawlFile } from './files'
 
 /**
  * How pages are fetched. Only `http` is implemented; the other two are shown disabled in the UI
@@ -22,6 +23,10 @@ export interface CrawlSettings {
   maxUrls: number | null
   /** Successful crawls of each type whose per-URL results are kept. `null` keeps them all. */
   retainCrawls: number | null
+  /** Crawl files that are not requested unless asked for. */
+  optionalFiles: OptionalCrawlFile[]
+  /** The file holding it cannot be found without knowing it. `null`: not checked. */
+  indexNowKey: string | null
 }
 
 export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
@@ -33,6 +38,8 @@ export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
   maxRetries: 2,
   maxUrls: 100_000,
   retainCrawls: 10,
+  optionalFiles: [],
+  indexNowKey: null,
 }
 
 export const CRAWL_SETTINGS_LIMITS = {
@@ -68,6 +75,8 @@ export const crawlSettingsSchema = z.object({
   maxRetries: between(CRAWL_SETTINGS_LIMITS.maxRetries),
   maxUrls: between(CRAWL_SETTINGS_LIMITS.maxUrls).nullable(),
   retainCrawls: between(CRAWL_SETTINGS_LIMITS.retainCrawls).nullable(),
+  optionalFiles: z.array(z.enum(OPTIONAL_CRAWL_FILES)),
+  indexNowKey: z.string().regex(INDEXNOW_KEY).nullable(),
 })
 
 const CRAWLER_HOMEPAGE = 'https://github.com/botaroikawa/seotools'

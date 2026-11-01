@@ -172,6 +172,9 @@ export const crawlSettings = pgTable('crawl_settings', {
   maxUrls: integer('max_urls'),
   /** `null` keeps the results of every crawl. */
   retainCrawls: integer('retain_crawls'),
+  /** JSON array of `OptionalCrawlFile`. `null`: none. */
+  optionalFiles: text('optional_files'),
+  indexNowKey: text('index_now_key'),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
 
@@ -300,4 +303,54 @@ export const priorityUrls = pgTable(
     createdAt: ts('created_at').notNull().$defaultFn(now),
   },
   (t) => [primaryKey({ columns: [t.domainId, t.urlHash] })],
+)
+
+/**
+ * What a domain's files for crawlers answered the last time they were requested, by a crawl or a
+ * refresh. There is no history: each request replaces the row of its URL.
+ */
+export const crawlFiles = pgTable(
+  'crawl_files',
+  {
+    domainId: text('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    urlHash: text('url_hash').notNull(),
+    url: text('url').notNull(),
+    kind: text('kind').notNull(),
+    statusCode: integer('status_code'),
+    contentType: text('content_type'),
+    redirectTo: text('redirect_to'),
+    bytes: integer('bytes'),
+    /** The file is larger than what was read or kept of it. */
+    truncated: boolean('truncated').notNull().default(false),
+    /** Sitemaps have no body here: they can be huge, and `data` says what matters of them. */
+    body: text('body'),
+    error: text('error'),
+    /** JSON (`CrawlFileData`). */
+    data: text('data'),
+    via: text('via', { enum: ['crawl', 'refresh'] }).notNull(),
+    fetchedAt: ts('fetched_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.domainId, t.urlHash] }),
+    index('crawl_files_kind_idx').on(t.domainId, t.kind),
+  ],
+)
+
+/** When a domain's files are next refreshed. A domain without a row is due at once. */
+export const crawlFileChecks = pgTable(
+  'crawl_file_checks',
+  {
+    domainId: text('domain_id')
+      .primaryKey()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    nextCheckAt: ts('next_check_at').notNull(),
+    /** Someone asked for a refresh and it has not finished yet. */
+    requestedAt: ts('requested_at'),
+    checkedAt: ts('checked_at'),
+    /** How the last refresh went. */
+    outcome: text('outcome', { enum: ['ok', 'unreachable'] }),
+  },
+  (t) => [index('crawl_file_checks_due_idx').on(t.nextCheckAt)],
 )

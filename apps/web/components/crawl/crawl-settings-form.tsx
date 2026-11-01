@@ -1,13 +1,18 @@
 'use client'
 
 import {
+  EXTRA_CRAWL_FILES,
+  enabledExtraFiles,
+  type ExtraCrawlFileKind,
+} from '@seotools/core/crawl/files'
+import {
   CRAWL_RENDERING_AVAILABLE,
   CRAWL_RENDERING_MODES,
   CRAWL_SETTINGS_LIMITS as limits,
   type CrawlSettings,
 } from '@seotools/core/crawl/settings'
 import { useTranslations } from 'next-intl'
-import { useActionState, useState } from 'react'
+import { useState } from 'react'
 import { saveCrawlSettingsAction, type ActionState } from '@/app/(protected)/domains/[host]/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { useFormActionState } from '@/hooks/use-form-action-state'
 
 type Retention = 'latest' | 'current' | 'all'
 
@@ -73,13 +80,14 @@ export function CrawlSettingsForm({
   defaultUserAgent: string
 }) {
   const t = useTranslations('CrawlSettings')
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+  const [state, onSubmit, pending] = useFormActionState<ActionState>(
     saveCrawlSettingsAction.bind(null, host),
     {},
   )
-  // Controlled, so the choices survive the form reset that follows a submit.
+  // Controlled: what a choice shows (the hint, the count, the key field) follows it.
   const [mode, setMode] = useState<string>(settings.renderingMode)
   const [retention, setRetention] = useState<Retention>(retentionOf(settings.retainCrawls))
+  const [files, setFiles] = useState<readonly ExtraCrawlFileKind[]>(enabledExtraFiles(settings))
 
   const modes = CRAWL_RENDERING_MODES.map((value) => ({
     value,
@@ -92,7 +100,7 @@ export function CrawlSettingsForm({
   }))
 
   return (
-    <form action={formAction} className="grid gap-6">
+    <form onSubmit={onSubmit} className="grid gap-6">
       <div className="grid gap-2">
         <Label htmlFor="renderingMode">{t('rendering.label')}</Label>
         <Select
@@ -205,6 +213,54 @@ export function CrawlSettingsForm({
           />
         )}
       </div>
+
+      <fieldset className="grid gap-4">
+        <div className="grid gap-1">
+          <legend className="text-sm font-medium">{t('optionalFiles.label')}</legend>
+          <p className="text-xs text-muted-foreground">{t('optionalFiles.hint')}</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {EXTRA_CRAWL_FILES.map((kind) => (
+            <div key={kind} className="flex items-start gap-3">
+              <Switch
+                id={`file.${kind}`}
+                name={`file.${kind}`}
+                checked={files.includes(kind)}
+                onCheckedChange={(checked) =>
+                  setFiles((current) =>
+                    checked ? [...current, kind] : current.filter((file) => file !== kind),
+                  )
+                }
+              />
+              <div className="grid gap-1">
+                <Label htmlFor={`file.${kind}`}>{t(`optionalFiles.kinds.${kind}.label`)}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t(`optionalFiles.kinds.${kind}.hint`)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+        {files.includes('indexnow') && (
+          <div className="grid gap-2">
+            <Label htmlFor="indexNowKey">{t('optionalFiles.indexNow.label')}</Label>
+            <Input
+              id="indexNowKey"
+              name="indexNowKey"
+              defaultValue={settings.indexNowKey ?? ''}
+              maxLength={128}
+              required
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              aria-describedby="indexNowKey-hint"
+            />
+            <p id="indexNowKey-hint" className="text-xs text-muted-foreground">
+              {t('optionalFiles.indexNow.hint')}
+            </p>
+          </div>
+        )}
+      </fieldset>
 
       {state.error && (
         <p role="alert" className="text-sm text-destructive">

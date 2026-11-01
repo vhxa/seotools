@@ -29,6 +29,13 @@
       "when": 1793547494618,
       "tag": "0003_domain_favicons",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1793549637650,
+      "tag": "0004_crawl_files",
+      "breakpoints": true
     }
   ]
 }

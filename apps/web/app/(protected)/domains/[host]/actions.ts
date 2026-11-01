@@ -137,10 +137,37 @@ export async function saveCrawlSettingsAction(
         return { error: t('maxUrls', limits.maxUrls) }
       case 'retainCrawls':
         return { error: t('retainCrawls', limits.retainCrawls) }
+      case 'indexNowKey':
+        return { error: t('indexNowKey') }
+      case 'indexNowKeyRequired':
+        return { error: t('indexNowKeyRequired') }
     }
   }
 
-  await (await getDb()).crawls.saveSettings(domain.id, parsed.settings)
-  revalidatePath(`/domains/${host}/jobs/settings`)
+  const db = await getDb()
+  const previous = await db.crawls.settings(domain.id)
+  await db.crawls.saveSettings(domain.id, parsed.settings)
+  // Whoever just turned a file on should not have to wait a day to see it.
+  const filesChanged =
+    previous.indexNowKey !== parsed.settings.indexNowKey ||
+    previous.optionalFiles.join() !== parsed.settings.optionalFiles.join()
+  if (filesChanged) await db.crawlFiles.requestCheck({ domainId: domain.id, now: new Date() })
+  revalidatePath(`/domains/${host}/settings/crawl`)
+  // The sidebar lists the files that are turned on, and it belongs to a layout above the domain.
+  if (filesChanged) revalidatePath('/', 'layout')
   return { saved: true }
+}
+
+/** Asks the worker to request the domain's crawl files again, without a crawl. */
+export async function refreshCrawlFilesAction(
+  host: string,
+  _previous: ActionState,
+): Promise<ActionState> {
+  const { domain } = await requireDomain(host)
+  const t = await getTranslations('CrawlFiles.refresh')
+  const db = await getDb()
+  if ((await db.crawls.active(domain.id))?.type === 'full') return { error: t('crawlRunning') }
+  await db.crawlFiles.requestCheck({ domainId: domain.id, now: new Date() })
+  revalidatePath(`/domains/${host}/crawl-files`, 'layout')
+  return {}
 }

@@ -1,8 +1,12 @@
 import {
+  crawlFileKindOf,
+  crawlFileRequests,
+  crawlFileSource,
   crawlUrlHash,
   defaultCrawlerUserAgent,
   isInternalUrl,
   normalizeCrawlUrl,
+  parseLlms,
   type CrawlLinkKind,
   type CrawlPageData,
   type CrawlRobotsFiles,
@@ -21,6 +25,7 @@ import {
   parseRobotsSitemaps,
   parseSitemap,
   type ExtractedLink,
+  type ParsedSitemap,
 } from './extract'
 import {
   FetchError,
@@ -30,6 +35,20 @@ import {
   type Fetcher,
   type FetcherConfig,
 } from './fetcher'
+import {
+  CRAWL_FILE_REFRESH_INTERVAL_MS,
+  captureCrawlFile,
+  crawlFileFetchOptions,
+  readTextFile,
+} from './files'
+import {
+  PERMANENT_ERRORS,
+  RETRYABLE_STATUS,
+  RETRY_BASE_MS,
+  abortableSleep,
+  isRedirect,
+  parseRetryAfter,
+} from './requests'
 
 /** How many queued URLs are read from the database at a time. Must exceed the max concurrency. */
 const QUEUE_BATCH = 200
@@ -37,20 +56,6 @@ const QUEUE_BATCH = 200
 const PROGRESS_INTERVAL_MS = 2000
 /** robots.txt files past this size are ignored by Google, so nothing past it matters to an audit. */
 const MAX_ROBOTS_BYTES = 512 * 1024
-/** Longest pause a `Retry-After` header can impose on the whole crawl. */
-const MAX_RETRY_AFTER_MS = 5 * 60_000
-const RETRY_BASE_MS = 1000
-const RETRYABLE_STATUS = new Set([429, 503])
-/** Errors that will fail the same way on a second try, seconds later. */
-const PERMANENT_ERRORS = new Set([
-  'BLOCKED_ADDRESS',
-  'ENOTFOUND',
-  'CERT_HAS_EXPIRED',
-  'DEPTH_ZERO_SELF_SIGNED_CERT',
-  'ERR_TLS_CERT_ALTNAME_INVALID',
-  'SELF_SIGNED_CERT_IN_CHAIN',
-  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-])
 
 const HTML = /^(text\/html|application\/xhtml\+xml)\b/i
 const CSS = /^text\/css\b/i
@@ -79,29 +84,6 @@ interface Discovered {
   urls: NewCrawlUrl[]
   links: CrawlLink[]
 }
-
-function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
-  if (ms <= 0 || signal.aborted) return Promise.resolve()
-  return new Promise((resolve) => {
-    const done = () => {
-      clearTimeout(timer)
-      signal.removeEventListener('abort', done)
-      resolve()
-    }
-    const timer = setTimeout(done, ms)
-    signal.addEventListener('abort', done, { once: true })
-  })
-}
-
-/** `Retry-After` is either seconds or an HTTP date. */
-function parseRetryAfter(value: string | undefined): number | null {
-  if (!value) return null
-  const seconds = Number(value)
-  const ms = Number.isFinite(seconds) ? seconds * 1000 : new Date(value).getTime() - Date.now()
-  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, MAX_RETRY_AFTER_MS) : null
-}
-
-const isRedirect = (status: number) => status >= 300 && status < 400 && status !== 304
 
 /** Runs a crawl to its end, resuming from its stored queue if an earlier attempt was cut short. */
 export async function runCrawl(
@@ -179,19 +161,17 @@ export async function runCrawl(
 
   async function seed() {
     const urls: NewCrawlUrl[] = []
+    // Before the priority URLs: a file marked as priority still has to be read as what it is.
+    if (followLinks) {
+      for (const name of [host, `www.${host}`]) {
+        for (const scheme of ['https', 'http']) admit(`${scheme}://${name}/`, 'seed', 0, urls)
+      }
+      for (const { url, kind } of crawlFileRequests(host, settings)) {
+        admit(url, crawlFileSource(kind), 0, urls)
+      }
+    }
     for (const { url } of await db.priorityUrls.list(crawl!.domainId)) {
       admit(url, 'priority', 0, urls)
-    }
-    if (followLinks) {
-      const hosts = [host, `www.${host}`]
-      for (const name of hosts) {
-        for (const scheme of ['https', 'http']) {
-          admit(`${scheme}://${name}/`, 'seed', 0, urls)
-          admit(`${scheme}://${name}/robots.txt`, 'robots', 0, urls)
-        }
-        admit(`https://${name}/sitemap.xml`, 'sitemap-file', 0, urls)
-        admit(`https://${name}/sitemap_index.xml`, 'sitemap-file', 0, urls)
-      }
     }
     await db.crawls.addUrls(crawlId, urls)
   }
@@ -212,16 +192,14 @@ export async function runCrawl(
   }
 
   async function fetchWithRetries(item: NewCrawlUrl): Promise<FetchedResponse | FetchError> {
-    const readBody =
-      item.source === 'robots' || item.source === 'sitemap-file'
-        ? ('force' as const)
-        : ('auto' as const)
+    const fileKind = crawlFileKindOf(item.source)
+    const fetchOptions = fileKind ? crawlFileFetchOptions(fileKind) : { readBody: 'auto' as const }
     for (let attempt = 0; ; attempt++) {
       await waitForSlot()
       if (stopSignal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
       const backoff = retryBaseMs * 2 ** attempt
       try {
-        const response = await fetcher.fetch(item.url, { signal: stopSignal, readBody })
+        const response = await fetcher.fetch(item.url, { signal: stopSignal, ...fetchOptions })
         if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= settings.maxRetries) {
           return response
         }
@@ -240,7 +218,7 @@ export async function runCrawl(
   function analyse(
     item: NewCrawlUrl,
     response: FetchedResponse,
-  ): { result: CrawlUrlResult; found: Discovered } {
+  ): { result: CrawlUrlResult; found: Discovered; sitemap?: ParsedSitemap | null } {
     const { statusCode, headers, body } = response
     const found: Discovered = { urls: [], links: [] }
     const contentType = headers['content-type'] ?? null
@@ -257,6 +235,8 @@ export async function runCrawl(
     let title: string | null = null
     let metaRobots: string | null = null
     const data: CrawlPageData = {}
+    const fileKind = crawlFileKindOf(item.source)
+    let sitemap: ParsedSitemap | null = null
 
     const linkHeader = headers.link ? parseLinkHeader(headers.link, item.url) : null
     if (linkHeader) {
@@ -273,9 +253,8 @@ export async function runCrawl(
       kind = 'redirect'
       redirectTo = headers.location ? normalizeCrawlUrl(headers.location, item.url) : null
       if (redirectTo) {
-        // A moved robots.txt or sitemap is still one, so it gets parsed where it landed.
-        const special = item.source === 'robots' || item.source === 'sitemap-file'
-        fromHere(redirectTo, 'redirect', special ? item.source : 'redirect')
+        // A moved crawl file is still one, so it gets read as such where it landed.
+        fromHere(redirectTo, 'redirect', fileKind ? item.source : 'redirect')
       }
     } else if (item.source === 'robots') {
       const text =
@@ -287,10 +266,21 @@ export async function runCrawl(
           fromHere(sitemap, 'sitemap', 'sitemap-file')
         }
       }
+    } else if (fileKind && fileKind !== 'sitemap') {
+      // Never a page, even when a site answers every path with one: that page is not this file.
+      if (fileKind === 'llms') {
+        const text = readTextFile(response)
+        for (const section of text === null ? [] : parseLlms(text).sections) {
+          for (const link of section.links) {
+            const url = normalizeCrawlUrl(link.url, item.url)
+            if (url) fromHere(url, 'llms')
+          }
+        }
+      }
     } else if (item.source === 'sitemap-file' || (body && contentType && XML.test(contentType))) {
       if (statusCode === 200 && body) {
         try {
-          const sitemap = parseSitemap(decodeSitemapBody(body), item.url)
+          sitemap = parseSitemap(decodeSitemapBody(body), item.url)
           for (const url of sitemap.urls) fromHere(url, 'sitemap', 'sitemap')
           for (const url of sitemap.sitemaps) fromHere(url, 'sitemap', 'sitemap-file')
         } catch (error) {
@@ -301,6 +291,16 @@ export async function runCrawl(
       kind = 'page'
       if (body) {
         const page = extractHtml(decodeText(body, contentType), item.url)
+        // Before the links, which include them: the first source a URL is found under is the one.
+        if (item.source === 'seed' || item.source === 'redirect') {
+          const wanted = settings.optionalFiles
+          if (wanted.includes('feed')) {
+            for (const url of page.feeds) fromHere(url, 'head-link', 'feed')
+          }
+          if (wanted.includes('opensearch')) {
+            for (const url of page.openSearch) fromHere(url, 'head-link', 'opensearch')
+          }
+        }
         addAll(page.links)
         title = page.title
         metaRobots = page.metaRobots
@@ -317,6 +317,7 @@ export async function runCrawl(
 
     return {
       found,
+      sitemap,
       result: {
         kind,
         statusCode,
@@ -355,10 +356,26 @@ export async function runCrawl(
     const outcome = await fetchWithRetries(item)
     let result: CrawlUrlResult
     let found: Discovered = { urls: [], links: [] }
+    let sitemap: ParsedSitemap | null | undefined
     if (outcome instanceof FetchError) {
       result = failureResult(outcome)
     } else {
-      ;({ result, found } = analyse(item, outcome))
+      ;({ result, found, sitemap } = analyse(item, outcome))
+    }
+    const fileKind = crawlFileKindOf(item.source)
+    if (fileKind) {
+      // What the site's files say is secondary to the crawl: a failure here must not end it.
+      await db.crawlFiles
+        .save(crawl!.domainId, [
+          captureCrawlFile({
+            request: { url: item.url, kind: fileKind },
+            outcome,
+            via: 'crawl',
+            fetchedAt: new Date(),
+            ...(sitemap === undefined ? {} : { sitemap }),
+          }),
+        ])
+        .catch((error) => log.warn({ err: error, url: item.url }, 'could not save crawl file'))
     }
     if (item.source === 'robots') {
       const { origin } = new URL(item.url)
@@ -455,6 +472,24 @@ export async function runCrawl(
   // A cancellation can also arrive after the last URL: `finish` then reports nothing changed.
   const status = truncated ? 'incomplete' : 'completed'
   const finished = !cancelled && (await db.crawls.finish(crawlId, { status }))
+  if (finished && followLinks) {
+    try {
+      // A crawl that stopped at its limit may not have got to every file, so it removes none.
+      if (status === 'completed') {
+        await db.crawlFiles.prune({ domainId: crawl.domainId, before: crawl.createdAt })
+      }
+      // The files were just requested: asking again in a moment would only add traffic.
+      const checkedAt = new Date()
+      await db.crawlFiles.finishCheck({
+        domainId: crawl.domainId,
+        outcome: 'ok',
+        checkedAt,
+        nextCheckAt: new Date(checkedAt.getTime() + CRAWL_FILE_REFRESH_INTERVAL_MS),
+      })
+    } catch (error) {
+      log.warn({ err: error }, 'could not update the crawl files')
+    }
+  }
   try {
     await db.crawls.prune({
       domainId: crawl.domainId,

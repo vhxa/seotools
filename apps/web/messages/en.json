@@ -83,7 +83,12 @@
     "mobileDescription": "Main navigation and domain selector.",
     "overview": "Overview",
     "pages": "Pages",
+    "crawlFiles": "Crawl files",
+    "robots": "robots.txt",
+    "sitemaps": "Sitemaps",
+    "llms": "llms.txt",
     "scheduledJobs": "Scheduled jobs",
+    "settings": "Settings",
     "instance": "Instance",
     "system": "System"
   },
@@ -202,7 +207,6 @@
     "metaTitle": "Scheduled jobs · {host} · seotools",
     "title": "Scheduled jobs",
     "description": "Run each type of crawl now or on a recurring schedule. A domain runs one crawl at a time.",
-    "settings": "Crawl settings",
     "typeDescriptions": {
       "full": "Requests every URL of the site: from the home page, the sitemaps and everything linked anywhere, ignoring robots.txt and meta robots.",
       "priority": "Requests only the pages marked as priority in Pages, without following their links."
@@ -247,9 +251,16 @@
       "empty": "No crawls yet."
     }
   },
+  "DomainSettings": {
+    "title": "Settings",
+    "description": "Everything that can be configured for {host}.",
+    "navLabel": "Settings sections",
+    "sections": {
+      "crawl": "Crawling"
+    }
+  },
   "CrawlSettings": {
     "metaTitle": "Crawl settings · {host} · seotools",
-    "back": "Scheduled jobs",
     "title": "Crawl settings",
     "description": "How crawls of {host} behave. Changes apply from the next crawl.",
     "rendering": {
@@ -300,6 +311,44 @@
       "countLabel": "How many of each type",
       "countHint": "Older ones keep their summary but lose their results per URL."
     },
+    "optionalFiles": {
+      "label": "Other crawl files",
+      "hint": "Files to check besides robots.txt, sitemaps and llms.txt. Checked as soon as you save, in every crawl and once a day.",
+      "kinds": {
+        "ads": {
+          "label": "ads.txt",
+          "hint": "Authorized sellers of ad space."
+        },
+        "app-ads": {
+          "label": "app-ads.txt",
+          "hint": "Authorized sellers, for apps."
+        },
+        "security": {
+          "label": "security.txt",
+          "hint": "How to report security issues."
+        },
+        "humans": {
+          "label": "humans.txt",
+          "hint": "Credits of the site."
+        },
+        "feed": {
+          "label": "RSS / Atom feeds",
+          "hint": "Those the home page announces, or at the usual URLs."
+        },
+        "opensearch": {
+          "label": "OpenSearch",
+          "hint": "The search description of the site."
+        },
+        "indexnow": {
+          "label": "IndexNow",
+          "hint": "Tells search engines about changes at once. Its file is named after a key."
+        }
+      },
+      "indexNow": {
+        "label": "Key",
+        "hint": "The file is named after the key, so it cannot be found without it. It has to be 8 to 128 letters, numbers or dashes."
+      }
+    },
     "save": "Save settings",
     "saved": "Saved.",
     "errors": {
@@ -310,7 +359,347 @@
       "timeout": "The timeout must be between {min} and {max} seconds.",
       "maxRetries": "Retries must be between {min} and {max}.",
       "maxUrls": "The URL limit must be between {min} and {max}, or empty for no limit.",
-      "retainCrawls": "The number of crawls to keep must be between {min} and {max}."
+      "retainCrawls": "The number of crawls to keep must be between {min} and {max}.",
+      "indexNowKey": "The IndexNow key must be 8 to 128 letters, numbers or dashes.",
+      "indexNowKeyRequired": "Enter the IndexNow key, or turn IndexNow off."
+    }
+  },
+  "CrawlFiles": {
+    "refresh": {
+      "action": "Check now",
+      "pending": "Checking…",
+      "crawlRunning": "A full crawl is checking these files already."
+    },
+    "fetchedByCrawl": "Last checked {when}, during a crawl.",
+    "fetchedByRefresh": "Last checked {when}, without a crawl.",
+    "neverFetched": "Not checked yet. It takes a moment after adding a domain.",
+    "crawlRunning": "A full crawl is running: it updates these files as it goes.",
+    "unreachable": {
+      "title": "The site did not answer the last check",
+      "description": "No request got an answer, so this is what was found before. It will be tried again in an hour."
+    },
+    "size": "{kib} KiB",
+    "sizeOver": "Over {kib} KiB",
+    "states": {
+      "ok": "Found",
+      "invalid": "Not this file",
+      "redirect": "Redirects",
+      "missing": "Not found",
+      "server-error": "Server error",
+      "unreachable": "No answer"
+    },
+    "requests": {
+      "url": "URL",
+      "status": "Status",
+      "size": "Size",
+      "detail": "Detail",
+      "invalidDetail": "It answers with something else, usually a web page."
+    },
+    "raw": {
+      "show": "Show the file",
+      "hide": "Hide the file",
+      "truncated": "The file is larger than this: only the beginning is kept."
+    },
+    "robots": {
+      "metaTitle": "robots.txt · {host} · seotools",
+      "title": "robots.txt",
+      "description": "What the site tells crawlers they may request. The crawler of this app records it, but does not obey it.",
+      "findings": {
+        "missing": {
+          "title": "There is no robots.txt",
+          "description": "Crawlers take that to mean they may request everything."
+        },
+        "unavailable": {
+          "title": "robots.txt could not be read",
+          "description": "Search engines may stop crawling the whole site while its robots.txt answers with a server error or not at all."
+        },
+        "invalid": {
+          "title": "The URL does not serve a robots.txt",
+          "description": "It answers 200 with something else, usually a web page. Crawlers cannot find any rules in that."
+        },
+        "site-blocked": {
+          "title": "The whole site is blocked for crawlers",
+          "description": "The rules for every user agent disallow /. Unless a group names a crawler, it will not request anything."
+        },
+        "too-large": {
+          "title": "The file is over 500 KiB",
+          "description": "Google ignores whatever comes after that point, including any rules there."
+        },
+        "no-sitemaps": {
+          "title": "It does not declare any sitemap",
+          "description": "A Sitemap line is how crawlers that are not told otherwise find the sitemaps of a site."
+        },
+        "origins-differ": {
+          "title": "Variants of the site serve different files",
+          "description": "Rules apply per origin, so the same URL may be allowed on one variant and not on another. Compare them below."
+        },
+        "syntax-issues": {
+          "title": "Some lines have problems",
+          "description": "Crawlers ignore what they cannot understand, so these lines probably do not do what was meant."
+        }
+      },
+      "stats": {
+        "groups": "Groups of rules",
+        "rules": "Rules",
+        "sitemaps": "Sitemaps declared"
+      },
+      "aiBots": {
+        "title": "AI bots",
+        "description": "Whether each one may crawl the site, going by these rules. Bots decide on their own whether to obey them.",
+        "bot": "Bot",
+        "company": "Company",
+        "purpose": "Purpose",
+        "access": "Access",
+        "matchedBy": "Decided by",
+        "purposes": {
+          "training": "Training models",
+          "search": "AI search",
+          "user": "User requests"
+        },
+        "accessLevels": {
+          "allowed": "Allowed",
+          "partial": "Partly blocked",
+          "blocked": "Blocked"
+        },
+        "matches": {
+          "specific": "A rule naming it",
+          "wildcard": "The rules for *",
+          "none": "No rule applies"
+        }
+      },
+      "groups": {
+        "title": "Rules by user agent",
+        "description": "Each group applies to the user agents above it.",
+        "emptyAgent": "(empty)",
+        "crawlDelay": "Crawl delay: {seconds} s",
+        "noRules": "No rules.",
+        "emptyPath": "(empty: nothing)",
+        "ruleTypes": {
+          "allow": "Allow",
+          "disallow": "Disallow"
+        },
+        "moreRules": "And {count} more. See the file for all of them."
+      },
+      "issues": {
+        "title": "Lines with problems",
+        "line": "Line",
+        "content": "Content",
+        "problem": "Problem",
+        "types": {
+          "invalid-line": "Not a valid directive",
+          "rule-outside-group": "Rule with no User-agent before it",
+          "unsupported-directive": "Search engines ignore this directive",
+          "unknown-directive": "Unknown directive"
+        }
+      },
+      "origins": {
+        "title": "Requests",
+        "description": "robots.txt applies per origin, so each variant of the site has its own."
+      }
+    },
+    "sitemaps": {
+      "metaTitle": "Sitemaps · {host} · seotools",
+      "title": "Sitemaps",
+      "description": "The lists of URLs the site offers crawlers, wherever they were found.",
+      "findings": {
+        "none": {
+          "title": "No sitemap was found",
+          "description": "Neither robots.txt nor the usual locations lead to one."
+        },
+        "not-declared": {
+          "title": "robots.txt does not declare the sitemaps",
+          "description": "They were only found by trying their usual locations. Crawlers may not do that."
+        },
+        "declared-broken": {
+          "title": "robots.txt declares a sitemap that does not work",
+          "description": "Crawlers are told to read it, and find an error instead."
+        },
+        "empty": {
+          "title": "The sitemaps are empty",
+          "description": "They exist, but do not list any URL."
+        }
+      },
+      "stats": {
+        "files": "Sitemaps found",
+        "urls": "URLs listed",
+        "urlsHint": "Added up: a URL in two sitemaps counts twice.",
+        "lastModified": "Last modified"
+      },
+      "table": {
+        "title": "Files",
+        "tried": "{count, plural, one {# usual location was also tried and holds nothing, which is normal.} other {# usual locations were also tried and hold nothing, which is normal.}}",
+        "url": "URL",
+        "origin": "Found through",
+        "status": "Status",
+        "format": "Type",
+        "entries": "Entries",
+        "lastModified": "Last modified",
+        "size": "Size",
+        "external": "On another site: not requested",
+        "notRequested": "Not requested yet",
+        "pagination": "Page {page} of {pages}",
+        "previous": "Previous",
+        "next": "Next"
+      },
+      "origins": {
+        "robots": "robots.txt",
+        "default": "Usual location",
+        "other": "Another sitemap"
+      },
+      "formats": {
+        "urlset": "URL list",
+        "index": "Sitemap index",
+        "text": "Plain text"
+      }
+    },
+    "llms": {
+      "metaTitle": "llms.txt · {host} · seotools",
+      "title": "llms.txt",
+      "description": "A summary of the site for AI models: what it is, and where to read about it. It is a proposal, not a standard that every AI product reads.",
+      "findings": {
+        "missing": {
+          "title": "There is no llms.txt",
+          "description": "It is optional, so this is not an error. Without it, AI models have to work out the site from its pages."
+        },
+        "unavailable": {
+          "title": "llms.txt could not be read",
+          "description": "It answers with a server error, or not at all."
+        },
+        "invalid": {
+          "title": "The URL does not serve an llms.txt",
+          "description": "It answers 200 with something else, usually a web page."
+        },
+        "no-title": {
+          "title": "It has no title",
+          "description": "The format starts with a level 1 heading naming the site or project."
+        },
+        "no-summary": {
+          "title": "It has no summary",
+          "description": "The format has a blockquote under the title, with a short summary."
+        },
+        "no-links": {
+          "title": "It has no links",
+          "description": "The format lists links to read further, under level 2 headings."
+        }
+      },
+      "stats": {
+        "sections": "Sections",
+        "links": "Links",
+        "size": "Size"
+      },
+      "untitled": "Untitled",
+      "noSection": "Outside any section",
+      "noLinks": "No links.",
+      "requests": {
+        "llms": "llms.txt",
+        "llmsFull": "llms-full.txt"
+      },
+      "full": {
+        "found": "The full text for AI models, in one file: “{title}”, with {headings, plural, one {# heading} other {# headings}}.",
+        "missing": "The optional companion with the full text in one file. This site does not have one."
+      }
+    },
+    "extra": {
+      "metaTitle": "{name} · {host} · seotools",
+      "result": "Result",
+      "found": "Found",
+      "notFound": "Not found",
+      "notRequestedYet": "Not checked yet.",
+      "guessedNotFound": "{count, plural, one {# usual location was tried and the home page does not announce any.} other {# usual locations were tried and the home page does not announce any.}}",
+      "manage": "Choose which ones in",
+      "settings": "Crawl settings",
+      "disabled": {
+        "title": "{name} is not being checked",
+        "description": "Turn it on in the crawl settings to request it in every crawl and once a day."
+      },
+      "kinds": {
+        "ads": {
+          "name": "ads.txt",
+          "description": "Who is authorized to sell the ad space of this site."
+        },
+        "app-ads": {
+          "name": "app-ads.txt",
+          "description": "The same, for the apps of this developer."
+        },
+        "security": {
+          "name": "security.txt",
+          "description": "How to report a security issue (RFC 9116)."
+        },
+        "humans": {
+          "name": "humans.txt",
+          "description": "Credits for the people behind the site."
+        },
+        "feed": {
+          "name": "RSS / Atom feeds",
+          "description": "The latest content, in a format that readers and crawlers follow."
+        },
+        "opensearch": {
+          "name": "OpenSearch",
+          "description": "Lets browsers search this site directly."
+        },
+        "indexnow": {
+          "name": "IndexNow key",
+          "description": "The file that proves this key may announce changes of the site to search engines."
+        }
+      },
+      "ads": {
+        "records": "Records",
+        "direct": "Direct",
+        "reseller": "Resellers",
+        "systems": "Ad systems",
+        "invalid": {
+          "title": "Some lines are not valid",
+          "description": "{count, plural, one {# line is} other {# lines are}} neither a record nor a variable: {lines}."
+        }
+      },
+      "security": {
+        "findings": {
+          "no-contact": {
+            "title": "It has no Contact field",
+            "description": "RFC 9116 requires it: it is the point of the file."
+          },
+          "no-expiry": {
+            "title": "It has no valid Expires field",
+            "description": "RFC 9116 requires one, so outdated information is not trusted forever."
+          },
+          "expired": {
+            "title": "It has expired",
+            "description": "Past its Expires date, the file should no longer be trusted."
+          },
+          "wrong-location": {
+            "title": "It is not where it should be",
+            "description": "RFC 9116 places it at /.well-known/security.txt."
+          }
+        }
+      },
+      "feed": {
+        "url": "URL",
+        "format": "Format",
+        "feedTitle": "Title",
+        "items": "Items",
+        "lastModified": "Last modified",
+        "formats": {
+          "rss": "RSS",
+          "atom": "Atom",
+          "rdf": "RDF"
+        }
+      },
+      "opensearch": {
+        "url": "URL",
+        "shortName": "Name",
+        "searchDescription": "Description",
+        "template": "Search URL"
+      },
+      "indexnow": {
+        "matches": {
+          "title": "The file holds this key",
+          "description": "Search engines will accept what is announced with it."
+        },
+        "differs": {
+          "title": "The file holds something else",
+          "description": "It has to hold exactly the key, or search engines will refuse what is announced with it."
+        }
+      }
     }
   }
 }

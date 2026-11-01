@@ -10,9 +10,10 @@ import { requireSession } from '@/lib/session'
 export default async function ProtectedLayout({ children }: { children: ReactNode }) {
   const session = await requireSession()
   const db = await getDb()
-  const [companies, faviconVersions] = await Promise.all([
+  const [companies, faviconVersions, enabledFiles] = await Promise.all([
     db.companies.list(),
     db.favicons.versions(),
+    db.crawls.enabledFiles(),
   ])
   // Nothing to switch between yet: finish the onboarding first.
   if (!companies.some((company) => company.domains.length > 0)) redirect('/onboarding')
@@ -31,6 +32,7 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
               id,
               host,
               faviconVersion: faviconVersions.get(id) ?? null,
+              extraFiles: enabledFiles.get(id) ?? [],
             })),
           }))}
           user={{

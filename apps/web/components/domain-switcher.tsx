@@ -1,5 +1,6 @@
 'use client'
 
+import type { ExtraCrawlFileKind } from '@seotools/core'
 import { CheckIcon, ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
@@ -26,6 +27,8 @@ export interface SwitcherDomain {
   host: string
   /** Hash of the stored favicon, or `null` when the site has none (yet). */
   faviconVersion: string | null
+  /** The extra crawl files the domain turned on: each one is an entry of the sidebar. */
+  extraFiles: ExtraCrawlFileKind[]
 }
 
 export interface SwitcherCompany {

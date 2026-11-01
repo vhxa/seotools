@@ -83,7 +83,12 @@
     "mobileDescription": "Navegación principal y selector de dominio.",
     "overview": "Resumen",
     "pages": "Páginas",
+    "crawlFiles": "Archivos de rastreo",
+    "robots": "robots.txt",
+    "sitemaps": "Sitemaps",
+    "llms": "llms.txt",
     "scheduledJobs": "Tareas programadas",
+    "settings": "Ajustes",
     "instance": "Instancia",
     "system": "Sistema"
   },
@@ -202,7 +207,6 @@
     "metaTitle": "Tareas programadas · {host} · seotools",
     "title": "Tareas programadas",
     "description": "Lanza cada tipo de rastreo ahora o de forma recurrente. Un dominio ejecuta un solo rastreo a la vez.",
-    "settings": "Ajustes de rastreo",
     "typeDescriptions": {
       "full": "Pide todas las URLs de la web: desde la portada, los sitemaps y todo lo enlazado en cualquier parte, sin hacer caso a robots.txt ni a meta robots.",
       "priority": "Pide solo las páginas marcadas como prioritarias en Páginas, sin seguir sus enlaces."
@@ -247,9 +251,16 @@
       "empty": "Todavía no hay rastreos."
     }
   },
+  "DomainSettings": {
+    "title": "Ajustes",
+    "description": "Todo lo que se puede configurar de {host}.",
+    "navLabel": "Secciones de ajustes",
+    "sections": {
+      "crawl": "Rastreo"
+    }
+  },
   "CrawlSettings": {
     "metaTitle": "Ajustes de rastreo · {host} · seotools",
-    "back": "Tareas programadas",
     "title": "Ajustes de rastreo",
     "description": "Cómo se comportan los rastreos de {host}. Los cambios se aplican desde el siguiente rastreo.",
     "rendering": {
@@ -300,6 +311,44 @@
       "countLabel": "Cuántos de cada tipo",
       "countHint": "Los anteriores conservan su resumen, pero pierden los resultados por URL."
     },
+    "optionalFiles": {
+      "label": "Otros archivos de rastreo",
+      "hint": "Archivos que comprobar además de robots.txt, los sitemaps y llms.txt. Se comprueban al guardar, en cada rastreo y una vez al día.",
+      "kinds": {
+        "ads": {
+          "label": "ads.txt",
+          "hint": "Vendedores autorizados de espacio publicitario."
+        },
+        "app-ads": {
+          "label": "app-ads.txt",
+          "hint": "Vendedores autorizados, para apps."
+        },
+        "security": {
+          "label": "security.txt",
+          "hint": "Cómo informar de problemas de seguridad."
+        },
+        "humans": {
+          "label": "humans.txt",
+          "hint": "Créditos del sitio."
+        },
+        "feed": {
+          "label": "Feeds RSS / Atom",
+          "hint": "Los que anuncia la página de inicio, o en las URLs habituales."
+        },
+        "opensearch": {
+          "label": "OpenSearch",
+          "hint": "La descripción de búsqueda del sitio."
+        },
+        "indexnow": {
+          "label": "IndexNow",
+          "hint": "Avisa a los buscadores de los cambios al momento. Su archivo se llama como una clave."
+        }
+      },
+      "indexNow": {
+        "label": "Clave",
+        "hint": "El archivo se llama como la clave, así que no se puede encontrar sin ella. Debe tener de 8 a 128 letras, números o guiones."
+      }
+    },
     "save": "Guardar ajustes",
     "saved": "Guardado.",
     "errors": {
@@ -310,7 +359,347 @@
       "timeout": "El tiempo de espera debe estar entre {min} y {max} segundos.",
       "maxRetries": "Los reintentos deben estar entre {min} y {max}.",
       "maxUrls": "El límite de URLs debe estar entre {min} y {max}, o vacío para no poner límite.",
-      "retainCrawls": "El número de rastreos que se conservan debe estar entre {min} y {max}."
+      "retainCrawls": "El número de rastreos que se conservan debe estar entre {min} y {max}.",
+      "indexNowKey": "La clave de IndexNow debe tener de 8 a 128 letras, números o guiones.",
+      "indexNowKeyRequired": "Introduce la clave de IndexNow o desactiva IndexNow."
+    }
+  },
+  "CrawlFiles": {
+    "refresh": {
+      "action": "Comprobar ahora",
+      "pending": "Comprobando…",
+      "crawlRunning": "Un rastreo completo ya está comprobando estos archivos."
+    },
+    "fetchedByCrawl": "Última comprobación {when}, durante un rastreo.",
+    "fetchedByRefresh": "Última comprobación {when}, sin rastreo.",
+    "neverFetched": "Sin comprobar todavía. Tarda un momento tras añadir un dominio.",
+    "crawlRunning": "Hay un rastreo completo en marcha: actualiza estos archivos sobre la marcha.",
+    "unreachable": {
+      "title": "El sitio no respondió en la última comprobación",
+      "description": "Ninguna petición obtuvo respuesta, así que esto es lo que se encontró antes. Se volverá a intentar dentro de una hora."
+    },
+    "size": "{kib} KiB",
+    "sizeOver": "Más de {kib} KiB",
+    "states": {
+      "ok": "Encontrado",
+      "invalid": "No es este archivo",
+      "redirect": "Redirige",
+      "missing": "No encontrado",
+      "server-error": "Error del servidor",
+      "unreachable": "Sin respuesta"
+    },
+    "requests": {
+      "url": "URL",
+      "status": "Estado",
+      "size": "Tamaño",
+      "detail": "Detalle",
+      "invalidDetail": "Responde con otra cosa, normalmente una página web."
+    },
+    "raw": {
+      "show": "Ver el archivo",
+      "hide": "Ocultar el archivo",
+      "truncated": "El archivo es más grande: solo se guarda el principio."
+    },
+    "robots": {
+      "metaTitle": "robots.txt · {host} · seotools",
+      "title": "robots.txt",
+      "description": "Lo que el sitio indica a los rastreadores que pueden pedir. El rastreador de esta aplicación lo registra, pero no lo obedece.",
+      "findings": {
+        "missing": {
+          "title": "No hay robots.txt",
+          "description": "Los rastreadores lo interpretan como que pueden pedirlo todo."
+        },
+        "unavailable": {
+          "title": "No se pudo leer robots.txt",
+          "description": "Los buscadores pueden dejar de rastrear todo el sitio mientras su robots.txt responda con un error del servidor o no responda."
+        },
+        "invalid": {
+          "title": "La URL no sirve un robots.txt",
+          "description": "Responde 200 con otra cosa, normalmente una página web. Los rastreadores no encuentran reglas ahí."
+        },
+        "site-blocked": {
+          "title": "Todo el sitio está bloqueado para los rastreadores",
+          "description": "Las reglas para todos los user agents prohíben /. Salvo que un grupo nombre a un rastreador, este no pedirá nada."
+        },
+        "too-large": {
+          "title": "El archivo supera los 500 KiB",
+          "description": "Google ignora lo que venga a partir de ahí, incluidas las reglas."
+        },
+        "no-sitemaps": {
+          "title": "No declara ningún sitemap",
+          "description": "La línea Sitemap es la forma en que los rastreadores encuentran los sitemaps del sitio por su cuenta."
+        },
+        "origins-differ": {
+          "title": "Las variantes del sitio sirven archivos distintos",
+          "description": "Las reglas se aplican por origen, así que una misma URL puede estar permitida en una variante y en otra no. Compáralas abajo."
+        },
+        "syntax-issues": {
+          "title": "Algunas líneas tienen problemas",
+          "description": "Los rastreadores ignoran lo que no entienden, así que estas líneas probablemente no hacen lo que se pretendía."
+        }
+      },
+      "stats": {
+        "groups": "Grupos de reglas",
+        "rules": "Reglas",
+        "sitemaps": "Sitemaps declarados"
+      },
+      "aiBots": {
+        "title": "Bots de IA",
+        "description": "Si cada uno puede rastrear el sitio según estas reglas. Cada bot decide por su cuenta si las obedece.",
+        "bot": "Bot",
+        "company": "Empresa",
+        "purpose": "Para qué",
+        "access": "Acceso",
+        "matchedBy": "Lo decide",
+        "purposes": {
+          "training": "Entrenar modelos",
+          "search": "Búsqueda con IA",
+          "user": "Peticiones de usuarios"
+        },
+        "accessLevels": {
+          "allowed": "Permitido",
+          "partial": "Bloqueado en parte",
+          "blocked": "Bloqueado"
+        },
+        "matches": {
+          "specific": "Una regla que lo nombra",
+          "wildcard": "Las reglas para *",
+          "none": "Ninguna regla"
+        }
+      },
+      "groups": {
+        "title": "Reglas por user agent",
+        "description": "Cada grupo se aplica a los user agents que lo encabezan.",
+        "emptyAgent": "(vacío)",
+        "crawlDelay": "Retraso de rastreo: {seconds} s",
+        "noRules": "Sin reglas.",
+        "emptyPath": "(vacío: nada)",
+        "ruleTypes": {
+          "allow": "Allow",
+          "disallow": "Disallow"
+        },
+        "moreRules": "Y {count} más. Consulta el archivo para verlas todas."
+      },
+      "issues": {
+        "title": "Líneas con problemas",
+        "line": "Línea",
+        "content": "Contenido",
+        "problem": "Problema",
+        "types": {
+          "invalid-line": "No es una directiva válida",
+          "rule-outside-group": "Regla sin User-agent delante",
+          "unsupported-directive": "Los buscadores ignoran esta directiva",
+          "unknown-directive": "Directiva desconocida"
+        }
+      },
+      "origins": {
+        "title": "Peticiones",
+        "description": "robots.txt se aplica por origen, así que cada variante del sitio tiene el suyo."
+      }
+    },
+    "sitemaps": {
+      "metaTitle": "Sitemaps · {host} · seotools",
+      "title": "Sitemaps",
+      "description": "Las listas de URLs que el sitio ofrece a los rastreadores, se hayan encontrado donde se hayan encontrado.",
+      "findings": {
+        "none": {
+          "title": "No se encontró ningún sitemap",
+          "description": "Ni robots.txt ni las ubicaciones habituales llevan a uno."
+        },
+        "not-declared": {
+          "title": "robots.txt no declara los sitemaps",
+          "description": "Solo se encontraron probando sus ubicaciones habituales, y los rastreadores pueden no hacerlo."
+        },
+        "declared-broken": {
+          "title": "robots.txt declara un sitemap que no funciona",
+          "description": "Se indica a los rastreadores que lo lean, y encuentran un error."
+        },
+        "empty": {
+          "title": "Los sitemaps están vacíos",
+          "description": "Existen, pero no listan ninguna URL."
+        }
+      },
+      "stats": {
+        "files": "Sitemaps encontrados",
+        "urls": "URLs listadas",
+        "urlsHint": "Sumadas: una URL en dos sitemaps cuenta dos veces.",
+        "lastModified": "Última modificación"
+      },
+      "table": {
+        "title": "Archivos",
+        "tried": "{count, plural, one {# ubicación habitual también se probó, sin nada en ella, lo cual es normal.} other {# ubicaciones habituales también se probaron, sin nada en ellas, lo cual es normal.}}",
+        "url": "URL",
+        "origin": "Encontrado por",
+        "status": "Estado",
+        "format": "Tipo",
+        "entries": "Entradas",
+        "lastModified": "Última modificación",
+        "size": "Tamaño",
+        "external": "En otro sitio: no se pide",
+        "notRequested": "Sin pedir todavía",
+        "pagination": "Página {page} de {pages}",
+        "previous": "Anterior",
+        "next": "Siguiente"
+      },
+      "origins": {
+        "robots": "robots.txt",
+        "default": "Ubicación habitual",
+        "other": "Otro sitemap"
+      },
+      "formats": {
+        "urlset": "Lista de URLs",
+        "index": "Índice de sitemaps",
+        "text": "Texto plano"
+      }
+    },
+    "llms": {
+      "metaTitle": "llms.txt · {host} · seotools",
+      "title": "llms.txt",
+      "description": "Un resumen del sitio para modelos de IA: qué es y dónde leer sobre él. Es una propuesta, no un estándar que lean todos los productos de IA.",
+      "findings": {
+        "missing": {
+          "title": "No hay llms.txt",
+          "description": "Es opcional, así que no es un error. Sin él, los modelos de IA tienen que deducir el sitio a partir de sus páginas."
+        },
+        "unavailable": {
+          "title": "No se pudo leer llms.txt",
+          "description": "Responde con un error del servidor, o no responde."
+        },
+        "invalid": {
+          "title": "La URL no sirve un llms.txt",
+          "description": "Responde 200 con otra cosa, normalmente una página web."
+        },
+        "no-title": {
+          "title": "No tiene título",
+          "description": "El formato empieza con un encabezado de nivel 1 con el nombre del sitio o proyecto."
+        },
+        "no-summary": {
+          "title": "No tiene resumen",
+          "description": "El formato incluye una cita bajo el título, con un resumen breve."
+        },
+        "no-links": {
+          "title": "No tiene enlaces",
+          "description": "El formato lista enlaces para seguir leyendo, bajo encabezados de nivel 2."
+        }
+      },
+      "stats": {
+        "sections": "Secciones",
+        "links": "Enlaces",
+        "size": "Tamaño"
+      },
+      "untitled": "Sin título",
+      "noSection": "Fuera de cualquier sección",
+      "noLinks": "Sin enlaces.",
+      "requests": {
+        "llms": "llms.txt",
+        "llmsFull": "llms-full.txt"
+      },
+      "full": {
+        "found": "El texto completo para modelos de IA, en un solo archivo: «{title}», con {headings, plural, one {# encabezado} other {# encabezados}}.",
+        "missing": "El complemento opcional con todo el texto en un archivo. Este sitio no lo tiene."
+      }
+    },
+    "extra": {
+      "metaTitle": "{name} · {host} · seotools",
+      "result": "Resultado",
+      "found": "Encontrado",
+      "notFound": "No encontrado",
+      "notRequestedYet": "Sin comprobar todavía.",
+      "guessedNotFound": "{count, plural, one {# ubicación habitual probada, y la página de inicio no anuncia ninguno.} other {# ubicaciones habituales probadas, y la página de inicio no anuncia ninguno.}}",
+      "manage": "Elige cuáles en",
+      "settings": "Ajustes de rastreo",
+      "disabled": {
+        "title": "{name} no se está comprobando",
+        "description": "Actívalo en los ajustes de rastreo para pedirlo en cada rastreo y una vez al día."
+      },
+      "kinds": {
+        "ads": {
+          "name": "ads.txt",
+          "description": "Quién está autorizado a vender el espacio publicitario de este sitio."
+        },
+        "app-ads": {
+          "name": "app-ads.txt",
+          "description": "Lo mismo, para las apps de este desarrollador."
+        },
+        "security": {
+          "name": "security.txt",
+          "description": "Cómo informar de un problema de seguridad (RFC 9116)."
+        },
+        "humans": {
+          "name": "humans.txt",
+          "description": "Créditos de las personas detrás del sitio."
+        },
+        "feed": {
+          "name": "Feeds RSS / Atom",
+          "description": "El contenido más reciente, en un formato que siguen lectores y rastreadores."
+        },
+        "opensearch": {
+          "name": "OpenSearch",
+          "description": "Permite a los navegadores buscar directamente en este sitio."
+        },
+        "indexnow": {
+          "name": "Clave de IndexNow",
+          "description": "El archivo que demuestra que esta clave puede anunciar cambios del sitio a los buscadores."
+        }
+      },
+      "ads": {
+        "records": "Registros",
+        "direct": "Directos",
+        "reseller": "Revendedores",
+        "systems": "Sistemas publicitarios",
+        "invalid": {
+          "title": "Algunas líneas no son válidas",
+          "description": "{count, plural, one {# línea no es} other {# líneas no son}} ni un registro ni una variable: {lines}."
+        }
+      },
+      "security": {
+        "findings": {
+          "no-contact": {
+            "title": "No tiene campo Contact",
+            "description": "RFC 9116 lo exige: es la razón de ser del archivo."
+          },
+          "no-expiry": {
+            "title": "No tiene un campo Expires válido",
+            "description": "RFC 9116 lo exige, para que no se confíe para siempre en información desfasada."
+          },
+          "expired": {
+            "title": "Ha caducado",
+            "description": "Pasada su fecha Expires, ya no se debe confiar en el archivo."
+          },
+          "wrong-location": {
+            "title": "No está donde debería",
+            "description": "RFC 9116 lo sitúa en /.well-known/security.txt."
+          }
+        }
+      },
+      "feed": {
+        "url": "URL",
+        "format": "Formato",
+        "feedTitle": "Título",
+        "items": "Elementos",
+        "lastModified": "Última modificación",
+        "formats": {
+          "rss": "RSS",
+          "atom": "Atom",
+          "rdf": "RDF"
+        }
+      },
+      "opensearch": {
+        "url": "URL",
+        "shortName": "Nombre",
+        "searchDescription": "Descripción",
+        "template": "URL de búsqueda"
+      },
+      "indexnow": {
+        "matches": {
+          "title": "El archivo contiene esta clave",
+          "description": "Los buscadores aceptarán lo que se anuncie con ella."
+        },
+        "differs": {
+          "title": "El archivo contiene otra cosa",
+          "description": "Debe contener exactamente la clave, o los buscadores rechazarán lo que se anuncie con ella."
+        }
+      }
     }
   }
 }

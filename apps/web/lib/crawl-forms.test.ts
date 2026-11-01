@@ -49,6 +49,54 @@ describe('parseCrawlSettingsForm', () => {
     expect(result).toMatchObject({ ok: true, settings: { userAgent: 'MyBot/1.0' } })
   })
 
+  it('reads the optional crawl files and the IndexNow key', () => {
+    const result = parseCrawlSettingsForm(
+      formOf({
+        ...validSettings,
+        'file.ads': 'on',
+        'file.feed': 'on',
+        'file.nonsense': 'on',
+        'file.indexnow': 'on',
+        indexNowKey: ' abcd-1234 ',
+      }),
+    )
+    expect(result).toMatchObject({
+      ok: true,
+      settings: { optionalFiles: ['ads', 'feed'], indexNowKey: 'abcd-1234' },
+    })
+  })
+
+  it('forgets the IndexNow key while its switch is off, whatever the field holds', () => {
+    expect(
+      parseCrawlSettingsForm(formOf({ ...validSettings, indexNowKey: 'abcd-1234' })),
+    ).toMatchObject({ ok: true, settings: { indexNowKey: null } })
+    expect(
+      parseCrawlSettingsForm(formOf({ ...validSettings, indexNowKey: 'not valid!' })),
+    ).toMatchObject({ ok: true, settings: { indexNowKey: null } })
+  })
+
+  it.each(['', '   '])('asks for the key when IndexNow is on and it is %j', (indexNowKey) => {
+    expect(
+      parseCrawlSettingsForm(formOf({ ...validSettings, 'file.indexnow': 'on', indexNowKey })),
+    ).toEqual({ ok: false, error: 'indexNowKeyRequired' })
+    expect(parseCrawlSettingsForm(formOf({ ...validSettings, 'file.indexnow': 'on' }))).toEqual({
+      ok: false,
+      error: 'indexNowKeyRequired',
+    })
+  })
+
+  it.each(['short', 'not valid!', `${'a'.repeat(129)}`, '../../etc/passwd'])(
+    'refuses %s as an IndexNow key',
+    (indexNowKey) => {
+      expect(
+        parseCrawlSettingsForm(formOf({ ...validSettings, 'file.indexnow': 'on', indexNowKey })),
+      ).toEqual({
+        ok: false,
+        error: 'indexNowKey',
+      })
+    },
+  )
+
   it.each([
     [{ renderingMode: 'headless' }, 'renderingUnavailable'],
     [{ renderingMode: 'both' }, 'renderingUnavailable'],

@@ -1,4 +1,6 @@
 import {
+  INDEXNOW_KEY,
+  OPTIONAL_CRAWL_FILES,
   CRAWL_RENDERING_AVAILABLE,
   CRAWL_RENDERING_MODES,
   CRAWL_SETTINGS_LIMITS,
@@ -18,6 +20,8 @@ export type CrawlSettingsFormError =
   | 'maxRetries'
   | 'maxUrls'
   | 'retainCrawls'
+  | 'indexNowKey'
+  | 'indexNowKeyRequired'
 
 export type CrawlSettingsFormResult =
   { ok: true; settings: CrawlSettings } | { ok: false; error: CrawlSettingsFormError }
@@ -73,6 +77,14 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
       return { ok: false, error: 'retainCrawls' }
   }
 
+  // The key is only read while its switch is on: turning IndexNow off forgets it.
+  const indexNowOn = form.get('file.indexnow') === 'on'
+  const indexNowKey = text(form, 'indexNowKey')
+  if (indexNowOn) {
+    if (indexNowKey === '') return { ok: false, error: 'indexNowKeyRequired' }
+    if (!INDEXNOW_KEY.test(indexNowKey)) return { ok: false, error: 'indexNowKey' }
+  }
+
   const userAgent = text(form, 'userAgent')
   const parsed = crawlSettingsSchema.safeParse({
     renderingMode: mode,
@@ -83,6 +95,8 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
     maxRetries,
     maxUrls,
     retainCrawls,
+    optionalFiles: OPTIONAL_CRAWL_FILES.filter((kind) => form.get(`file.${kind}`) === 'on'),
+    indexNowKey: indexNowOn ? indexNowKey : null,
   })
   // Everything else was checked above, so the only way to get here is the User-Agent.
   if (!parsed.success) return { ok: false, error: 'userAgent' }

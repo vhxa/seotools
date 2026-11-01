@@ -7,10 +7,11 @@ import { setPriorityUrlAction } from '@/app/(protected)/domains/[host]/actions'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { AddPriorityUrlForm } from '@/components/crawl/add-priority-url-form'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
+import { Stat } from '@/components/stat'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -78,18 +79,6 @@ async function PriorityButton({ marked }: { marked: boolean }) {
     <Button type="submit" variant="ghost" size="icon" aria-label={label} title={label}>
       <StarIcon className={marked ? 'fill-current' : undefined} />
     </Button>
-  )
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-3xl tabular-nums">{value}</CardTitle>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </CardHeader>
-    </Card>
   )
 }
 
@@ -231,7 +220,7 @@ export default async function PagesPage({
           <AlertDescription>
             <p>
               {t('incomplete.description', { urls: latest.urlsCount })}{' '}
-              <Link href={`/domains/${domain.host}/jobs/settings`} className="underline">
+              <Link href={`/domains/${domain.host}/settings/crawl`} className="underline">
                 {t('incomplete.settings')}
               </Link>
             </p>

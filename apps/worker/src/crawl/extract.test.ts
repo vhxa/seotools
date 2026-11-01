@@ -5,6 +5,8 @@ import {
   parseLinkHeader,
   parseRefresh,
   parseRobotsSitemaps,
+  parseFeed,
+  parseOpenSearch,
   parseSitemap,
 } from './extract'
 
@@ -260,6 +262,9 @@ describe('parseSitemap', () => {
     expect(parseSitemap('<rss><channel><link>https://a.co</link></channel></rss>', base)).toEqual({
       urls: [],
       sitemaps: [],
+      format: null,
+      entries: 0,
+      lastModified: null,
     })
   })
 })
@@ -271,5 +276,112 @@ describe('parseRobotsSitemaps', () => {
       'https://example.com/a.xml',
       'https://example.com/rel.xml',
     ])
+  })
+})
+
+describe('sitemap summaries', () => {
+  const base = 'https://example.com/sitemap.xml'
+
+  it('counts entries, not the images in them, and keeps the newest date', () => {
+    const parsed = parseSitemap(
+      `<?xml version="1.0"?>
+      <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+              xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+        <url><loc>https://example.com/a</loc><lastmod>2026-01-02</lastmod>
+          <image:image><image:loc>https://example.com/a.png</image:loc></image:image></url>
+        <url><loc>https://example.com/b</loc><lastmod>2026-03-04T10:00:00+00:00</lastmod></url>
+        <url><loc>https://example.com/c</loc><lastmod>not a date</lastmod></url>
+      </urlset>`,
+      base,
+    )
+    expect(parsed).toMatchObject({
+      format: 'urlset',
+      entries: 3,
+      lastModified: '2026-03-04T10:00:00.000Z',
+    })
+  })
+
+  it('tells an index apart', () => {
+    const parsed = parseSitemap(
+      '<sitemapindex><sitemap><loc>https://example.com/a.xml</loc></sitemap></sitemapindex>',
+      base,
+    )
+    expect(parsed).toMatchObject({
+      format: 'index',
+      entries: 1,
+      sitemaps: ['https://example.com/a.xml'],
+    })
+  })
+
+  it('reads plain text as a sitemap only if it lists URLs', () => {
+    expect(parseSitemap('https://example.com/a\nhttps://example.com/b', base)).toMatchObject({
+      format: 'text',
+      entries: 2,
+    })
+    expect(parseSitemap('nothing here', base).format).toBeNull()
+    expect(parseSitemap('<!doctype html><html></html>', base).format).toBeNull()
+  })
+})
+
+describe('announced files', () => {
+  it('finds the feeds and search descriptions a page announces, which are links as well', () => {
+    const page = extractHtml(
+      `<head>
+        <link rel="alternate" type="application/rss+xml" href="/rss">
+        <link rel="alternate" type="application/atom+xml" href="https://example.com/atom">
+        <link rel="alternate" hreflang="es" href="/es">
+        <link rel="search" type="application/opensearchdescription+xml" href="/os.xml">
+      </head>`,
+      'https://example.com/',
+    )
+    expect(page.feeds).toEqual(['https://example.com/rss', 'https://example.com/atom'])
+    expect(page.openSearch).toEqual(['https://example.com/os.xml'])
+    expect(page.links.map((link) => link.url)).toContain('https://example.com/rss')
+  })
+})
+
+describe('parseFeed', () => {
+  it('reads RSS', () => {
+    expect(
+      parseFeed(`<rss version="2.0"><channel><title> Blog </title><lastBuildDate>Mon, 02 Mar 2026 10:00:00 GMT</lastBuildDate>
+        <item><title>First</title><pubDate>Sun, 01 Mar 2026 10:00:00 GMT</pubDate></item>
+        <item><title>Second</title></item></channel></rss>`),
+    ).toEqual({
+      format: 'rss',
+      title: 'Blog',
+      items: 2,
+      lastModified: '2026-03-02T10:00:00.000Z',
+    })
+  })
+
+  it('reads Atom', () => {
+    expect(
+      parseFeed(`<feed xmlns="http://www.w3.org/2005/Atom"><title>Blog</title><updated>2026-03-02T10:00:00Z</updated>
+        <entry><title>First</title></entry></feed>`),
+    ).toMatchObject({ format: 'atom', title: 'Blog', items: 1 })
+  })
+
+  it('refuses anything else', () => {
+    expect(parseFeed('<!doctype html><html></html>')).toBeNull()
+    expect(parseFeed('not xml')).toBeNull()
+  })
+})
+
+describe('parseOpenSearch', () => {
+  it('reads a description', () => {
+    expect(
+      parseOpenSearch(`<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+        <ShortName>Acme</ShortName><Description>Search Acme</Description>
+        <Url type="text/html" template="https://example.com/s?q={searchTerms}"/>
+      </OpenSearchDescription>`),
+    ).toEqual({
+      shortName: 'Acme',
+      description: 'Search Acme',
+      templates: ['https://example.com/s?q={searchTerms}'],
+    })
+  })
+
+  it('refuses anything else', () => {
+    expect(parseOpenSearch('<html></html>')).toBeNull()
   })
 })
