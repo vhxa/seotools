@@ -77,7 +77,12 @@
     "addDomain": "Add domain",
     "addCompany": "Add company"
   },
-  "Header": {
+  "Sidebar": {
+    "toggle": "Toggle sidebar",
+    "mobileTitle": "Navigation",
+    "mobileDescription": "Main navigation and domain selector.",
+    "overview": "Overview",
+    "instance": "Instance",
     "system": "System"
   },
   "DomainHome": {

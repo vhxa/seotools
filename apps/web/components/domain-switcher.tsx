@@ -1,10 +1,9 @@
 'use client'
 
-import { CheckIcon, ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
+import { CheckIcon, ChevronsUpDownIcon, GlobeIcon, PlusIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +13,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@/components/ui/sidebar'
 
 export interface SwitcherCompany {
   id: string
@@ -22,12 +27,13 @@ export interface SwitcherCompany {
 }
 
 /**
- * Domain picker in the header, grouped by company (like Search Console's property selector).
- * The active domain comes from the `/domains/[host]` route, so it is always shareable and each
- * browser tab can sit on a different domain.
+ * Domain picker at the top of the sidebar, grouped by company (like Search Console's property
+ * selector). The active domain comes from the `/domains/[host]` route, so it is always shareable
+ * and each browser tab can sit on a different domain.
  */
 export function DomainSwitcher({ companies }: { companies: SwitcherCompany[] }) {
   const t = useTranslations('DomainSwitcher')
+  const { isMobile } = useSidebar()
   const { host: currentHost } = useParams<{ host?: string }>()
   const pathname = usePathname()
 
@@ -42,65 +48,78 @@ export function DomainSwitcher({ companies }: { companies: SwitcherCompany[] }) 
   const hrefFor = (host: string) => `/domains/${host}${section}`
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="outline"
-            aria-label={t('label')}
-            className="h-auto min-w-52 justify-between gap-3 py-1"
-          />
-        }
-      >
-        {current && currentHost ? (
-          <span className="grid text-left leading-tight">
-            <span className="text-sm font-medium">{currentHost}</span>
-            <span className="text-xs font-normal text-muted-foreground">{current.name}</span>
-          </span>
-        ) : (
-          <span className="py-1.5 font-normal text-muted-foreground">{t('placeholder')}</span>
-        )}
-        <ChevronsUpDownIcon className="text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-72" align="start">
-        {companies.map((company, index) => (
-          <DropdownMenuGroup key={company.id}>
-            {index > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
-            {company.domains.map((domain) => (
-              <DropdownMenuItem
-                key={domain.id}
-                render={<Link href={hrefFor(domain.host)} />}
-                className="justify-between"
-              >
-                {domain.host}
-                {domain.host === currentHost && <CheckIcon />}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger
             render={
-              <Link
-                href={
-                  current
-                    ? `/domains/new?company=${encodeURIComponent(current.id)}`
-                    : '/domains/new'
-                }
+              <SidebarMenuButton
+                size="lg"
+                aria-label={t('label')}
+                tooltip={currentHost && current ? currentHost : t('placeholder')}
+                className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
               />
             }
           >
-            <PlusIcon />
-            {t('addDomain')}
-          </DropdownMenuItem>
-          <DropdownMenuItem render={<Link href="/companies/new" />}>
-            <PlusIcon />
-            {t('addCompany')}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <span className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <GlobeIcon className="size-4" />
+            </span>
+            {current && currentHost ? (
+              <span className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">{currentHost}</span>
+                <span className="truncate text-xs text-muted-foreground">{current.name}</span>
+              </span>
+            ) : (
+              <span className="flex-1 truncate text-muted-foreground">{t('placeholder')}</span>
+            )}
+            <ChevronsUpDownIcon className="ml-auto text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="max-h-(--available-height) w-72 overflow-y-auto"
+            align="start"
+            side={isMobile ? 'bottom' : 'right'}
+            sideOffset={4}
+          >
+            {companies.map((company, index) => (
+              <DropdownMenuGroup key={company.id}>
+                {index > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
+                {company.domains.map((domain) => (
+                  <DropdownMenuItem
+                    key={domain.id}
+                    render={<Link href={hrefFor(domain.host)} />}
+                    className="justify-between"
+                  >
+                    {domain.host}
+                    {domain.host === currentHost && <CheckIcon />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                render={
+                  <Link
+                    href={
+                      current
+                        ? `/domains/new?company=${encodeURIComponent(current.id)}`
+                        : '/domains/new'
+                    }
+                  />
+                }
+              >
+                <PlusIcon />
+                {t('addDomain')}
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/companies/new" />}>
+                <PlusIcon />
+                {t('addCompany')}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }
