@@ -174,7 +174,7 @@ ESLint ignores `packages/db/migrations/**` and `apps/web/components/ui/**` (gene
 
 ## Security
 
-- Never commit secrets. `.env` and `.env.*` are gitignored (only `.env.example` is tracked), and so is `/data`.
+- Never commit secrets. `.env` and `.env.*` are gitignored (only `.env.example` is tracked), and so are `/data` and `/apps/*/data` (a process started without `DATABASE_URL` creates `./data/seotools.db` in its own cwd). Never `git add` a SQLite file.
 - Admin credentials never come from environment variables. The first admin is registered on `/setup` through `createFirstAdmin`, which refuses to run once any user exists. Never re-enable better-auth sign-up.
 - `proxy.ts` only checks that a session cookie exists. Every protected page and **every server action** must call `requireSession()` itself; a layout does not protect actions.
 - A valid session is not authorization. Pages and server actions restricted to a role (e.g. admin) must also check the user's role on the server.
