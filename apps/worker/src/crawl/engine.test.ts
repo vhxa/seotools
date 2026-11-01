@@ -3,6 +3,7 @@ import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { JobInterruptedError } from '../types'
+import { analyseCrawl } from './analysis'
 import { runCrawl, type CrawlEngineOptions } from './engine'
 import { FetchError, type FetchedResponse, type Fetcher } from './fetcher'
 
@@ -430,6 +431,55 @@ describe('settings', () => {
     expect((await db.crawls.get(first.crawl.id))?.pruned).toBe(true)
     expect(await db.crawls.knownUrls(first.crawl.id)).toEqual([])
     expect((await db.crawls.get(second.crawl.id))?.pruned).toBe(false)
+  })
+})
+
+describe('page issues', () => {
+  // Besides the home page, /bare and /missing, the crawl seeds the other schemes and `www`: the
+  // fake site answers 404 to those three, with a title but no description.
+  const site = () =>
+    fakeSite({
+      'https://example.com/': html(
+        `<title>Home</title><meta name="description" content="Desc"><a href="/bare">x</a><a href="/missing">x</a>`,
+      ),
+      'https://example.com/bare': html('<p>Nothing here</p>'),
+    })
+  const issuesOf = async (crawlId: string, url: string) =>
+    (await db.crawls.issuesOf(crawlId, [crawlUrlHash(url)])).map((i) => i.issue).sort()
+
+  it('checks every page of a full crawl when it ends', async () => {
+    const { crawl } = await crawlWith(site())
+    expect(crawl).toMatchObject({ pagesCount: 6, pagesWithIssuesCount: 5 })
+    expect(await issuesOf(crawl.id, 'https://example.com/')).toEqual([])
+    expect(await issuesOf(crawl.id, 'https://example.com/bare')).toEqual([
+      'missing-description',
+      'missing-title',
+    ])
+    expect(await issuesOf(crawl.id, 'https://example.com/missing')).toEqual([
+      'http-error',
+      'missing-description',
+    ])
+    expect(
+      (await db.crawls.issueCounts(crawl.id)).sort((a, b) => a.issue.localeCompare(b.issue)),
+    ).toEqual([
+      { issue: 'http-error', pages: 4 },
+      { issue: 'missing-description', pages: 5 },
+      { issue: 'missing-title', pages: 1 },
+    ])
+  })
+
+  it('leaves a priority crawl unanalysed: it only sees a few pages', async () => {
+    await db.priorityUrls.add({ domainId, url: 'https://example.com/bare' })
+    const { crawl } = await crawlWith(site(), 'priority')
+    expect(crawl.pagesWithIssuesCount).toBeNull()
+  })
+
+  it('can check a crawl again', async () => {
+    const { crawl } = await crawlWith(site())
+    await db.crawls.saveIssues({ crawlId: crawl.id, issues: [] })
+    expect((await db.crawls.get(crawl.id))?.pagesWithIssuesCount).toBe(0)
+    expect(await analyseCrawl(db, crawl.id)).toEqual({ pages: 6, withIssues: 5 })
+    expect((await db.crawls.get(crawl.id))?.pagesWithIssuesCount).toBe(5)
   })
 })
 

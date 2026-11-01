@@ -10,7 +10,6 @@ import {
   isNull,
   lt,
   lte,
-  ne,
   notInArray,
   or,
   sql,
@@ -26,7 +25,9 @@ import {
   crawlJobValues,
   crawlResultColumns,
   crawlRobotsColumn,
-  crawlViewScope,
+  crawlIssueRows,
+  crawlUrlOrder,
+  crawlUrlWhere,
   crawlFileColumns,
   crawlFileRow,
   crawlSettingsColumns,
@@ -67,9 +68,26 @@ const {
   crawlSchedules,
   crawls,
   crawlUrls,
+  crawlUrlIssues,
   crawlLinks,
   priorityUrls,
 } = schema
+
+/** `limit` when a list is not capped. */
+const MAX_LIMIT = 2_147_483_647
+
+const urlColumns = {
+  crawlId: crawlUrls.crawlId,
+  scope: crawlUrls.scope,
+  kind: crawlUrls.kind,
+  urlHash: crawlUrls.urlHash,
+  url: crawlUrls.url,
+  title: crawlUrls.title,
+  status: crawlUrls.statusCode,
+  depth: crawlUrls.depth,
+  responseTime: crawlUrls.responseTimeMs,
+  bytes: crawlUrls.bytes,
+}
 
 export function createPgDatabase(options: {
   url: string
@@ -77,6 +95,13 @@ export function createPgDatabase(options: {
 }): Database {
   const client = postgres(options.url, { max: 10, onnotice: () => {} })
   const db = drizzle(client, { schema })
+
+  /** The hashes of the pages of a crawl that have an issue. */
+  const withIssue = (crawlId: string) => (issue: string) =>
+    db
+      .select({ urlHash: crawlUrlIssues.urlHash })
+      .from(crawlUrlIssues)
+      .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue)))
 
   return {
     dialect: 'pg',
@@ -406,11 +431,11 @@ export function createPgDatabase(options: {
         return row ? toCrawl(row) : null
       },
 
-      async list(domainId, { limit = 20 } = {}) {
+      async list(domainId, { limit = 20, type } = {}) {
         const rows = await db
           .select()
           .from(crawls)
-          .where(eq(crawls.domainId, domainId))
+          .where(and(eq(crawls.domainId, domainId), type ? eq(crawls.type, type) : undefined))
           .orderBy(desc(crawls.createdAt))
           .limit(limit)
         return rows.map(toCrawl)
@@ -527,6 +552,7 @@ export function createPgDatabase(options: {
         if (expired.length === 0) return 0
         await db.transaction(async (tx) => {
           await tx.delete(crawlLinks).where(inArray(crawlLinks.crawlId, expired))
+          await tx.delete(crawlUrlIssues).where(inArray(crawlUrlIssues.crawlId, expired))
           await tx.delete(crawlUrls).where(inArray(crawlUrls.crawlId, expired))
           await tx.update(crawls).set({ pruned: true }).where(inArray(crawls.id, expired))
         })
@@ -601,26 +627,38 @@ export function createPgDatabase(options: {
         return foldCrawlCounts(rows)
       },
 
-      async listUrls({ crawlId, view, limit, offset }) {
-        const kind =
-          view === 'pages'
-            ? eq(crawlUrls.kind, 'page')
-            : view === 'other'
-              ? ne(crawlUrls.kind, 'page')
-              : undefined
+      async listUrls({ limit, offset, sort, direction, ...query }) {
         const rows = await db
           .select()
           .from(crawlUrls)
-          .where(
-            and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.scope, crawlViewScope(view)), kind),
-          )
-          .orderBy(asc(crawlUrls.depth), asc(crawlUrls.url))
+          .where(crawlUrlWhere(urlColumns, query, withIssue(query.crawlId)))
+          .orderBy(...crawlUrlOrder(urlColumns, sort, direction))
           .limit(limit)
           .offset(offset)
         return rows.map(toCrawlUrl)
       },
 
-      async linkSources(crawlId, targetHash) {
+      async countListed(query) {
+        const row = (
+          await db
+            .select({ count: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .where(crawlUrlWhere(urlColumns, query, withIssue(query.crawlId)))
+        )[0]
+        return Number(row?.count ?? 0)
+      },
+
+      async getUrl(crawlId, urlHash) {
+        const row = (
+          await db
+            .select()
+            .from(crawlUrls)
+            .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, urlHash)))
+        )[0]
+        return row ? toCrawlUrl(row) : null
+      },
+
+      async linkSources(crawlId, targetHash, { limit = MAX_LIMIT } = {}) {
         const rows = await db
           .select({ url: crawlUrls.url, kind: crawlLinks.kind })
           .from(crawlLinks)
@@ -632,7 +670,64 @@ export function createPgDatabase(options: {
             ),
           )
           .where(and(eq(crawlLinks.crawlId, crawlId), eq(crawlLinks.targetHash, targetHash)))
+
+          .orderBy(asc(crawlUrls.url), asc(crawlLinks.kind))
+          .limit(limit)
         return rows as { url: string; kind: CrawlLinkKind }[]
+      },
+
+      async linkTargets(crawlId, sourceHash, { limit = MAX_LIMIT } = {}) {
+        const rows = await db
+          .select({ url: crawlUrls.url, kind: crawlLinks.kind })
+          .from(crawlLinks)
+          .innerJoin(
+            crawlUrls,
+            and(
+              eq(crawlUrls.crawlId, crawlLinks.crawlId),
+              eq(crawlUrls.urlHash, crawlLinks.targetHash),
+            ),
+          )
+          .where(and(eq(crawlLinks.crawlId, crawlId), eq(crawlLinks.sourceHash, sourceHash)))
+
+          .orderBy(asc(crawlUrls.url), asc(crawlLinks.kind))
+          .limit(limit)
+        return rows as { url: string; kind: CrawlLinkKind }[]
+      },
+
+      async saveIssues({ crawlId, issues }) {
+        const rows = crawlIssueRows(crawlId, issues)
+        await db.transaction(async (tx) => {
+          await tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId))
+          for (const batch of chunk(rows)) await tx.insert(crawlUrlIssues).values(batch)
+          await tx
+            .update(crawls)
+            .set({ pagesWithIssuesCount: new Set(rows.map((row) => row.urlHash)).size })
+            .where(eq(crawls.id, crawlId))
+        })
+      },
+
+      async issueCounts(crawlId) {
+        const rows = await db
+          .select({ issue: crawlUrlIssues.issue, pages: sql<number>`count(*)` })
+          .from(crawlUrlIssues)
+          .where(eq(crawlUrlIssues.crawlId, crawlId))
+          .groupBy(crawlUrlIssues.issue)
+        return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
+      },
+
+      async issuesOf(crawlId, urlHashes) {
+        const found: { urlHash: string; issue: string }[] = []
+        for (const batch of chunk(urlHashes)) {
+          found.push(
+            ...(await db
+              .select({ urlHash: crawlUrlIssues.urlHash, issue: crawlUrlIssues.issue })
+              .from(crawlUrlIssues)
+              .where(
+                and(eq(crawlUrlIssues.crawlId, crawlId), inArray(crawlUrlIssues.urlHash, batch)),
+              )),
+          )
+        }
+        return found
       },
 
       async latestResults(domainId, urlHashes) {

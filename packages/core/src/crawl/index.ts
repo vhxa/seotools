@@ -1,4 +1,5 @@
 export * from './files'
+export * from './issues'
 export * from './robots'
 export * from './schedule'
 export * from './settings'

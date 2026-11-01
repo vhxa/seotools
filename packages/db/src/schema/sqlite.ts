@@ -216,6 +216,8 @@ export const crawls = sqliteTable(
     urlsCount: integer('urls_count').notNull().default(0),
     urlsDoneCount: integer('urls_done_count').notNull().default(0),
     externalCount: integer('external_count').notNull().default(0),
+    /** Pages with at least one issue. `null`: the crawl was not analysed (yet). */
+    pagesWithIssuesCount: integer('pages_with_issues_count'),
     robots: text('robots'),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: integer('pruned', { mode: 'boolean' }).notNull().default(false),
@@ -279,6 +281,25 @@ export const crawlLinks = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.crawlId, t.sourceHash, t.targetHash, t.kind] }),
     index('crawl_links_target_idx').on(t.crawlId, t.targetHash),
+  ],
+)
+
+/**
+ * The issues each page of a crawl had (`PAGE_ISSUES` in @seotools/core), written when the crawl
+ * ends. A page without a row is correct. Removed along with the results per URL of old crawls.
+ */
+export const crawlUrlIssues = sqliteTable(
+  'crawl_url_issues',
+  {
+    crawlId: text('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    urlHash: text('url_hash').notNull(),
+    issue: text('issue').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.urlHash, t.issue] }),
+    index('crawl_url_issues_issue_idx').on(t.crawlId, t.issue),
   ],
 )
 

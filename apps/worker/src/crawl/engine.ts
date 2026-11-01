@@ -17,6 +17,7 @@ import {
 } from '@seotools/core'
 import type { Crawl, CrawlLink, CrawlUrlResult, Database, NewCrawlUrl } from '@seotools/db'
 import { JobInterruptedError } from '../types'
+import { analyseCrawl } from './analysis'
 import {
   extractCssUrls,
   extractHtml,
@@ -488,6 +489,14 @@ export async function runCrawl(
       })
     } catch (error) {
       log.warn({ err: error }, 'could not update the crawl files')
+    }
+  }
+  // Only a full crawl says what the pages of the site are like: a priority one sees a few of them.
+  if (finished && crawl.type === 'full') {
+    try {
+      await analyseCrawl(db, crawlId)
+    } catch (error) {
+      log.warn({ err: error }, 'could not check the pages for issues')
     }
   }
   try {

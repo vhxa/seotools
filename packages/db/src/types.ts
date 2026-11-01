@@ -130,6 +130,11 @@ export interface Crawl {
   urlsCount: number
   urlsDoneCount: number
   externalCount: number
+  /**
+   * Pages with at least one issue (`PAGE_ISSUES` in @seotools/core). `null` when the crawl has not
+   * been analysed: the pages without issues are `pagesCount` minus this. Survives pruning.
+   */
+  pagesWithIssuesCount: number | null
   robots: CrawlRobotsFiles | null
   /** The results per URL were removed by the domain's retention setting; the counts remain. */
   pruned: boolean
@@ -182,6 +187,25 @@ export interface CrawlLink {
 /** `pages`: URLs of the site that are pages. `other`: the rest of the site. `external`: elsewhere. */
 export type CrawlUrlView = 'pages' | 'other' | 'external'
 
+/** What a list of URLs can be ordered by. Without one, shallowest first, then by URL. */
+export type CrawlUrlSort = 'url' | 'title' | 'status' | 'depth' | 'responseTime' | 'bytes'
+
+/** Which URLs of a crawl a list shows. */
+export interface CrawlUrlQuery {
+  crawlId: string
+  view: CrawlUrlView
+  /** Text the URL or the title contains, whatever its case. */
+  search?: string
+  /** Only pages that have this issue (an id from `PAGE_ISSUES`). */
+  issue?: string
+}
+
+/** An issue found on a page of a crawl. */
+export interface CrawlUrlIssue {
+  urlHash: string
+  issue: string
+}
+
 export interface CrawlRepository {
   /** The saved settings of a domain, or the defaults if it has none. */
   settings(domainId: string): Promise<CrawlSettings>
@@ -196,8 +220,8 @@ export interface CrawlRepository {
   start(input: { domainId: string; type: CrawlType; trigger: CrawlTrigger }): Promise<Crawl | null>
   get(id: string): Promise<Crawl | null>
   active(domainId: string): Promise<Crawl | null>
-  /** Newest first. */
-  list(domainId: string, options?: { limit?: number }): Promise<Crawl[]>
+  /** Newest first. Every type unless told otherwise. */
+  list(domainId: string, options?: { limit?: number; type?: CrawlType }): Promise<Crawl[]>
   /** The newest crawl of a type that finished with usable results. */
   latestWithResults(domainId: string, type: CrawlType): Promise<Crawl | null>
   /** Moves an active crawl to `running`. `null` when it is no longer active (e.g. cancelled). */
@@ -234,14 +258,40 @@ export interface CrawlRepository {
     links?: CrawlLink[]
   }): Promise<void>
   countUrls(crawlId: string): Promise<CrawlCounts>
-  listUrls(input: {
-    crawlId: string
-    view: CrawlUrlView
-    limit: number
-    offset: number
-  }): Promise<CrawlUrl[]>
-  /** The URLs of a crawl that link to `targetHash`. */
-  linkSources(crawlId: string, targetHash: string): Promise<{ url: string; kind: CrawlLinkKind }[]>
+  listUrls(
+    input: CrawlUrlQuery & {
+      limit: number
+      offset: number
+      sort?: CrawlUrlSort
+      direction?: 'asc' | 'desc'
+    },
+  ): Promise<CrawlUrl[]>
+  /** How many URLs `listUrls` would list for the same query, ignoring the page. */
+  countListed(query: CrawlUrlQuery): Promise<number>
+  /** One URL of a crawl, or `null` if the crawl does not have it. */
+  getUrl(crawlId: string, urlHash: string): Promise<CrawlUrl | null>
+  /** The URLs of a crawl that link to `targetHash`, sorted by URL. A home page has thousands. */
+  linkSources(
+    crawlId: string,
+    targetHash: string,
+    options?: { limit?: number },
+  ): Promise<{ url: string; kind: CrawlLinkKind }[]>
+  /** The URLs that `sourceHash` links to, external ones included, sorted by URL. */
+  linkTargets(
+    crawlId: string,
+    sourceHash: string,
+    options?: { limit?: number },
+  ): Promise<{ url: string; kind: CrawlLinkKind }[]>
+
+  /**
+   * Replaces the issues of a crawl with these and records how many pages have any, which also
+   * marks the crawl as analysed. Every page the crawl has but `issues` does not mention is correct.
+   */
+  saveIssues(input: { crawlId: string; issues: CrawlUrlIssue[] }): Promise<void>
+  /** For each issue found in a crawl, how many pages have it. Issues nobody has are left out. */
+  issueCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
+  /** The issues of these URLs of a crawl. URLs without issues have no entry. */
+  issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
   /** For each hash that has one, the most recent result in any retained crawl of the domain. */
   latestResults(domainId: string, urlHashes: string[]): Promise<CrawlUrl[]>
 }

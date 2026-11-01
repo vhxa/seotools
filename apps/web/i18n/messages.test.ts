@@ -1,3 +1,5 @@
+import { CRAWL_LINK_KINDS } from '@seotools/core'
+import { PAGE_ISSUE_IDS } from '@seotools/core/crawl/issues'
 import { describe, expect, it } from 'vitest'
 import en from '../messages/en.json'
 import es from '../messages/es.json'
@@ -43,4 +45,23 @@ describe('message catalogs', () => {
       }
     },
   )
+})
+
+describe('messages of the registries in @seotools/core', () => {
+  it.each(Object.entries(catalogs))('%s describes every page issue', (_locale, catalog) => {
+    const issues = catalog.PageIssues as Record<string, { name?: string; description?: string }>
+    for (const id of PAGE_ISSUE_IDS) {
+      expect({ id, name: Boolean(issues[id]?.name) }).toEqual({ id, name: true })
+      expect({ id, description: Boolean(issues[id]?.description) }).toEqual({
+        id,
+        description: true,
+      })
+    }
+  })
+
+  it.each(Object.entries(catalogs))('%s names every kind of link', (_locale, catalog) => {
+    const kinds = catalog.LinkKinds as Record<string, string>
+    for (const kind of CRAWL_LINK_KINDS)
+      expect({ kind, name: kinds[kind] }).not.toEqual({ kind, name: undefined })
+  })
 })
