@@ -30,6 +30,7 @@ export interface EnqueueInput {
 export const JOB_TYPES = {
   exampleEcho: 'example.echo',
   mailSend: 'mail.send',
+  crawlRun: 'crawl.run',
 } as const
 
 export const exampleEchoPayload = z.object({
@@ -45,6 +46,9 @@ export const mailSendPayload = z.object({
   html: z.string().optional(),
 })
 export type MailSendPayload = z.infer<typeof mailSendPayload>
+
+export const crawlRunPayload = z.object({ crawlId: z.string().min(1) })
+export type CrawlRunPayload = z.infer<typeof crawlRunPayload>
 
 /** Delay before retrying a job that failed `attempts` times: 5s, 10s, 20s… capped at 15 min. */
 export function retryDelayMs(attempts: number, baseMs = 5_000, maxMs = 15 * 60_000): number {

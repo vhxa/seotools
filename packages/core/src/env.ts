@@ -44,6 +44,10 @@ export const workerEnvSchema = commonEnvSchema.extend({
   WORKER_POLL_INTERVAL_MS: int(1000, 50),
   /** A job `running` for longer than this is considered abandoned and re-queued. */
   JOB_LOCK_TIMEOUT_MS: int(5 * 60_000, 1000),
+  /** Crawls running in parallel. They have their own slots, so they never starve other jobs. */
+  CRAWL_CONCURRENCY: int(2),
+  /** Lets the crawler reach loopback and private addresses, to audit sites on an intranet. */
+  CRAWLER_ALLOW_PRIVATE_NETWORKS: bool.default(false),
 })
 
 export const bootstrapEnvSchema = commonEnvSchema.extend({

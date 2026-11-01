@@ -13,7 +13,7 @@ describeDatabaseContract(
     return {
       db,
       reset: async () => {
-        await sql`truncate table jobs, worker_heartbeats, settings, "user", domains, companies cascade`
+        await sql`truncate table jobs, worker_heartbeats, settings, "user", crawl_links, crawl_urls, crawls, crawl_schedules, crawl_settings, priority_urls, domains, companies cascade`
       },
     }
   },

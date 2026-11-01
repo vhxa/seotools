@@ -1,6 +1,11 @@
 import { retryDelayMs, type Job, type Logger } from '@seotools/core'
 import type { Database } from '@seotools/db'
-import { PermanentJobError, type HandlerContext, type JobHandler } from './types'
+import {
+  JobInterruptedError,
+  PermanentJobError,
+  type HandlerContext,
+  type JobHandler,
+} from './types'
 
 export interface RunnerOptions {
   db: Database
@@ -15,15 +20,21 @@ export interface RunnerOptions {
   retryBaseMs?: number
   /** How often to look for orphaned jobs. */
   staleCheckIntervalMs?: number
+  /** Only run these job types. */
+  types?: readonly string[]
+  /** Run anything but these job types. */
+  excludeTypes?: readonly string[]
 }
 
 export function createRunner(options: RunnerOptions) {
   const { db, handlers, workerId, log, concurrency, pollIntervalMs, lockTimeoutMs } = options
   const staleCheckIntervalMs = options.staleCheckIntervalMs ?? 30_000
-  const inFlight = new Set<Promise<void>>()
+  const renewIntervalMs = lockTimeoutMs / 3
+  const inFlight = new Map<string, Promise<void>>()
   const abort = new AbortController()
   let running = false
   let lastStaleCheck = 0
+  let lastRenewal = Date.now()
   let wake: (() => void) | undefined
 
   const ctx: HandlerContext = { log, signal: abort.signal, getMailer: options.getMailer }
@@ -33,6 +44,11 @@ export function createRunner(options: RunnerOptions) {
       lockedBefore: new Date(Date.now() - lockTimeoutMs),
     })
     if (recovered > 0) log.warn({ recovered }, 'recovered jobs left running by a dead worker')
+  }
+
+  /** A job only counts as orphaned if nobody vouches for it, however long it takes. */
+  async function renewLocks() {
+    await Promise.all([...inFlight.keys()].map((id) => db.jobs.renewLock({ id, workerId })))
   }
 
   async function execute(job: Job) {
@@ -45,6 +61,13 @@ export function createRunner(options: RunnerOptions) {
       await db.jobs.complete({ id: job.id, workerId, result })
       jobLog.info('job completed')
     } catch (error) {
+      if (error instanceof JobInterruptedError) {
+        await db.jobs
+          .release({ id: job.id, workerId })
+          .catch((e) => jobLog.error({ err: e }, 'could not release job'))
+        jobLog.info('job handed back to the queue')
+        return
+      }
       const message = error instanceof Error ? error.message : String(error)
       const permanent = error instanceof PermanentJobError
       const retry = !permanent && job.attempts < job.maxAttempts
@@ -67,15 +90,24 @@ export function createRunner(options: RunnerOptions) {
       lastStaleCheck = Date.now()
       await recoverStale()
     }
+    if (Date.now() - lastRenewal >= renewIntervalMs) {
+      lastRenewal = Date.now()
+      await renewLocks()
+    }
     const free = concurrency - inFlight.size
     if (free <= 0) return 0
-    const jobs = await db.jobs.claim({ workerId, limit: free })
+    const jobs = await db.jobs.claim({
+      workerId,
+      limit: free,
+      types: options.types,
+      excludeTypes: options.excludeTypes,
+    })
     for (const job of jobs) {
       const p: Promise<void> = execute(job).finally(() => {
-        inFlight.delete(p)
+        inFlight.delete(job.id)
         wake?.()
       })
-      inFlight.add(p)
+      inFlight.set(job.id, p)
     }
     return jobs.length
   }
@@ -110,7 +142,7 @@ export function createRunner(options: RunnerOptions) {
     tick,
     /** Resolves when every job started so far has finished. */
     async idle() {
-      while (inFlight.size > 0) await Promise.allSettled([...inFlight])
+      while (inFlight.size > 0) await Promise.allSettled([...inFlight.values()])
     },
     start() {
       if (running) return
@@ -123,9 +155,12 @@ export function createRunner(options: RunnerOptions) {
       running = false
       wake?.()
       await loopPromise
+      // Nothing renews the locks from here on, so keep doing it for as long as jobs are finishing.
+      const renewal = setInterval(() => void renewLocks().catch(() => {}), renewIntervalMs)
       const timer = setTimeout(() => abort.abort(), graceMs)
       await this.idle()
       clearTimeout(timer)
+      clearInterval(renewal)
       log.info('worker stopped')
     },
   }

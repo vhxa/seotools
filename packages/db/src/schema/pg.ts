@@ -1,4 +1,13 @@
-import { boolean, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core'
 
 const ts = (name: string) => timestamp(name, { mode: 'date', withTimezone: true })
 const now = () => new Date()
@@ -123,4 +132,151 @@ export const domains = pgTable(
     createdAt: ts('created_at').notNull().$defaultFn(now),
   },
   (t) => [index('domains_company_id_idx').on(t.companyId)],
+)
+
+/** One row per domain once its crawl settings have been saved; until then, the defaults apply. */
+export const crawlSettings = pgTable('crawl_settings', {
+  domainId: text('domain_id')
+    .primaryKey()
+    .references(() => domains.id, { onDelete: 'cascade' }),
+  renderingMode: text('rendering_mode', { enum: ['http', 'headless', 'both'] })
+    .notNull()
+    .default('http'),
+  userAgent: text('user_agent'),
+  concurrency: integer('concurrency').notNull(),
+  requestsPerSecond: integer('requests_per_second').notNull(),
+  timeoutMs: integer('timeout_ms').notNull(),
+  maxRetries: integer('max_retries').notNull(),
+  /** `null` means no limit. */
+  maxUrls: integer('max_urls'),
+  /** `null` keeps the results of every crawl. */
+  retainCrawls: integer('retain_crawls'),
+  updatedAt: ts('updated_at').notNull().$defaultFn(now),
+})
+
+export const crawlSchedules = pgTable(
+  'crawl_schedules',
+  {
+    id: text('id').primaryKey(),
+    domainId: text('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: ['full', 'priority'] }).notNull(),
+    enabled: boolean('enabled').notNull(),
+    frequency: text('frequency', { enum: ['hourly', 'daily', 'weekly', 'monthly'] }).notNull(),
+    hour: integer('hour').notNull(),
+    minute: integer('minute').notNull(),
+    dayOfWeek: integer('day_of_week').notNull(),
+    dayOfMonth: integer('day_of_month').notNull(),
+    timeZone: text('time_zone').notNull(),
+    nextRunAt: ts('next_run_at').notNull(),
+    lastRunAt: ts('last_run_at'),
+    lastOutcome: text('last_outcome', { enum: ['started', 'skipped-active', 'skipped-empty'] }),
+    updatedAt: ts('updated_at').notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex('crawl_schedules_domain_type_idx').on(t.domainId, t.type),
+    index('crawl_schedules_due_idx').on(t.enabled, t.nextRunAt),
+  ],
+)
+
+export const crawls = pgTable(
+  'crawls',
+  {
+    id: text('id').primaryKey(),
+    domainId: text('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: ['full', 'priority'] }).notNull(),
+    status: text('status', {
+      enum: ['pending', 'running', 'completed', 'incomplete', 'failed', 'cancelled'],
+    })
+      .notNull()
+      .default('pending'),
+    trigger: text('trigger', { enum: ['manual', 'schedule'] }).notNull(),
+    jobId: text('job_id').notNull(),
+    /** The domain id while the crawl is active, `null` after: unique, so one per domain at most. */
+    activeKey: text('active_key').unique(),
+    pagesCount: integer('pages_count').notNull().default(0),
+    urlsCount: integer('urls_count').notNull().default(0),
+    urlsDoneCount: integer('urls_done_count').notNull().default(0),
+    externalCount: integer('external_count').notNull().default(0),
+    robots: text('robots'),
+    /** Whether the results per URL were pruned by the domain's retention setting. */
+    pruned: boolean('pruned').notNull().default(false),
+    error: text('error'),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+    startedAt: ts('started_at'),
+    finishedAt: ts('finished_at'),
+  },
+  (t) => [index('crawls_domain_created_idx').on(t.domainId, t.type, t.createdAt)],
+)
+
+/** Every URL of a crawl: the queue of what is left to fetch, and the result of what was. */
+export const crawlUrls = pgTable(
+  'crawl_urls',
+  {
+    crawlId: text('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    urlHash: text('url_hash').notNull(),
+    url: text('url').notNull(),
+    scope: text('scope', { enum: ['internal', 'external'] }).notNull(),
+    state: text('state', { enum: ['queued', 'done', 'skipped'] }).notNull(),
+    kind: text('kind', { enum: ['page', 'redirect', 'resource', 'unknown'] })
+      .notNull()
+      .default('unknown'),
+    source: text('source').notNull(),
+    depth: integer('depth').notNull(),
+    statusCode: integer('status_code'),
+    contentType: text('content_type'),
+    redirectTo: text('redirect_to'),
+    title: text('title'),
+    metaRobots: text('meta_robots'),
+    xRobotsTag: text('x_robots_tag'),
+    canonical: text('canonical'),
+    responseTimeMs: integer('response_time_ms'),
+    bytes: integer('bytes'),
+    error: text('error'),
+    /** JSON (`CrawlPageData`): everything extracted that has no column of its own. */
+    data: text('data'),
+    fetchedAt: ts('fetched_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.urlHash] }),
+    index('crawl_urls_queue_idx').on(t.crawlId, t.state, t.depth),
+    index('crawl_urls_view_idx').on(t.crawlId, t.scope, t.kind, t.depth),
+    index('crawl_urls_hash_idx').on(t.urlHash),
+  ],
+)
+
+/** Which URL of a crawl links to which, and how. External targets are recorded here too. */
+export const crawlLinks = pgTable(
+  'crawl_links',
+  {
+    crawlId: text('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    sourceHash: text('source_hash').notNull(),
+    targetHash: text('target_hash').notNull(),
+    kind: text('kind').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.sourceHash, t.targetHash, t.kind] }),
+    index('crawl_links_target_idx').on(t.crawlId, t.targetHash),
+  ],
+)
+
+/** The URLs marked as priority from the panel. They survive crawls, so they hang off the domain. */
+export const priorityUrls = pgTable(
+  'priority_urls',
+  {
+    domainId: text('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    urlHash: text('url_hash').notNull(),
+    url: text('url').notNull(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [primaryKey({ columns: [t.domainId, t.urlHash] })],
 )
