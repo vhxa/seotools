@@ -1,4 +1,9 @@
-import { ISSUE_CATALOG_VERSION, createLogger, crawlUrlHash } from '@seotools/core'
+import {
+  EMPTY_AUDIT_SNAPSHOT,
+  ISSUE_CATALOG_VERSION,
+  createLogger,
+  crawlUrlHash,
+} from '@seotools/core'
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -27,6 +32,17 @@ beforeEach(async () => {
 afterEach(async () => {
   await db.close()
 })
+
+/** An analysis as the ones made before audit configuration existed: no rules, nothing excluded. */
+const saveIssues = (input: Omit<Parameters<Database['crawls']['saveAnalysis']>[0], 'audit'>) =>
+  db.crawls.saveAnalysis({
+    ...input,
+    audit: {
+      snapshot: EMPTY_AUDIT_SNAPSHOT,
+      pages: { audited: 0, excluded: 0, indexable: 0, notIndexable: 0, unknownIndexability: 0 },
+      urls: [],
+    },
+  })
 
 async function crawlWith(
   site: ReturnType<typeof fakeSite>,
@@ -424,14 +440,14 @@ describe('page issues', () => {
   it('can check a crawl again', async () => {
     const { crawl } = await crawlWith(site())
     const before = crawl.pagesByWorstIssue
-    await db.crawls.saveIssues({
+    await saveIssues({
       crawlId: crawl.id,
       issues: [],
       pages: { issue: 0, warning: 0, opportunity: 0 },
       withType: { issue: 0, warning: 0, opportunity: 0 },
       catalog: 'old',
     })
-    const again = await analyseCrawl(db, crawl.id)
+    const again = await analyseCrawl(db, crawl.id, EMPTY_AUDIT_SNAPSHOT)
     expect(again.pages).toBe(6)
     expect(again.pagesByWorstIssue).toEqual(before)
     expect((await db.crawls.get(crawl.id))?.pagesByWorstIssue).toEqual(before)
@@ -449,7 +465,7 @@ describe('a changed issue catalog', () => {
     expect(await reanalyseOutdatedCrawls({ db, log })).toBe(0)
 
     // What a crawl analysed before the catalog changed looks like: other totals, other version.
-    await db.crawls.saveIssues({
+    await saveIssues({
       crawlId: crawl.id,
       issues: [{ urlHash: 'x', issue: 'retired-check' }],
       pages: { issue: 99, warning: 0, opportunity: 0 },
@@ -468,7 +484,7 @@ describe('a changed issue catalog', () => {
     const { crawl } = await crawlWith(
       fakeSite({ 'https://example.com/': html('<title>Home</title>') }),
     )
-    await db.crawls.saveIssues({
+    await saveIssues({
       crawlId: crawl.id,
       issues: [],
       pages: { issue: 0, warning: 0, opportunity: 0 },

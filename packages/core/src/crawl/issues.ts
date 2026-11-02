@@ -22,8 +22,9 @@ export type IssueImportance = (typeof ISSUE_IMPORTANCES)[number]
  * when the table is filtered by that issue.
  * - `hreflang-source`: where the hreflang came from, one of `HREFLANG_SOURCES`.
  * - `security-header`: the names of the headers that are missing.
+ * - `indexability-blocker`: what keeps a URL from being indexable, from `INDEXABILITY_BLOCKERS`.
  */
-export type IssueDetailKind = 'hreflang-source' | 'security-header'
+export type IssueDetailKind = 'hreflang-source' | 'security-header' | 'indexability-blocker'
 
 type Entry = readonly [type: IssueType, importance: IssueImportance, detail?: IssueDetailKind]
 
@@ -49,6 +50,11 @@ const ISSUE_CATALOG = {
     'robots-blocked': ['issue', 'high'],
     'redirect-3xx': ['warning', 'low'],
     'broken-external-link': ['warning', 'low'],
+  },
+  // What the user declared a URL should be, against what the crawl saw. See `crawl/audit`.
+  'indexing-intent': {
+    'expected-indexable-blocked': ['issue', 'high', 'indexability-blocker'],
+    'expected-not-indexable-but-indexable': ['issue', 'high'],
   },
   directives: {
     'directive-outside-head': ['warning', 'low'],
@@ -178,7 +184,10 @@ export type PageIssueId = { [C in IssueCategoryId]: keyof Catalog[C] & string }[
 
 export const ISSUE_GROUPS = [
   { id: 'crawling', categories: ['response-codes'] },
-  { id: 'indexing', categories: ['directives', 'canonicals', 'sitemaps', 'hreflang'] },
+  {
+    id: 'indexing',
+    categories: ['indexing-intent', 'directives', 'canonicals', 'sitemaps', 'hreflang'],
+  },
   {
     id: 'on-page',
     categories: ['title', 'meta-description', 'headings', 'content', 'images', 'structured-data'],
@@ -212,7 +221,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  * Bump when a check in the worker changes what it finds without the catalog changing (the catalog
  * changing is noticed by itself).
  */
-const CHECKS_REVISION = 1
+const CHECKS_REVISION = 3
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.
@@ -256,10 +265,14 @@ export function compareIssueSeverity(a: PageIssueId, b: PageIssueId): number {
 }
 
 /**
- * How many pages of a crawl have each type as the worst of their findings. A page is counted once,
- * so with the pages that have none these add up to the pages of the crawl.
+ * How many audited pages of a crawl have each type as the worst of their findings. A page is
+ * counted once, so with the audited pages that have none these add up to the audited pages. Pages
+ * excluded from the audit have no findings and are in none.
  */
 export type PagesByWorstIssue = Record<IssueType, number>
 
-/** How many pages of a crawl have at least one finding of each type. A page can be in several. */
+/**
+ * How many audited pages of a crawl have at least one finding of each type. A page can be in
+ * several.
+ */
 export type PagesWithType = Record<IssueType, number>

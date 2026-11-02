@@ -6,6 +6,7 @@ import {
   eq,
   inArray,
   ne,
+  or,
   sql,
   type AnyColumn,
   type SQL,
@@ -15,6 +16,9 @@ import {
   JOB_TYPES,
   crawlUrlHash,
   enabledExtraFiles,
+  parseAuditSnapshot,
+  serializeAuditSnapshot,
+  type AuditSnapshot,
   type CrawlFileData,
   type CrawlPageData,
   type CrawlRobotsFiles,
@@ -22,6 +26,7 @@ import {
   type ExtraCrawlFileKind,
   type Job,
   type JobStatus,
+  type PagesAudit,
   type PagesByWorstIssue,
   type PagesWithType,
 } from '@seotools/core'
@@ -35,6 +40,7 @@ import type {
   CrawlLink,
   CrawlSchedule,
   CrawlUrl,
+  CrawlUrlAudit,
   CrawlUrlIssue,
   CrawlUrlQuery,
   CrawlUrlResult,
@@ -115,7 +121,10 @@ export function groupDomains(companies: Company[], domains: Domain[]): CompanyWi
 
 // --- crawls --------------------------------------------------------------
 
-export type CrawlRow = Omit<Crawl, 'robots' | 'pagesByWorstIssue' | 'pagesWithType'> & {
+export type CrawlRow = Omit<
+  Crawl,
+  'robots' | 'pagesByWorstIssue' | 'pagesWithType' | 'pagesAudit' | 'auditSnapshot'
+> & {
   robots: string | null
   pagesWorstIssueCount: number | null
   pagesWorstWarningCount: number | null
@@ -123,6 +132,12 @@ export type CrawlRow = Omit<Crawl, 'robots' | 'pagesByWorstIssue' | 'pagesWithTy
   pagesWithIssueCount: number | null
   pagesWithWarningCount: number | null
   pagesWithOpportunityCount: number | null
+  pagesAuditedCount: number | null
+  pagesExcludedCount: number | null
+  pagesIndexableCount: number | null
+  pagesNotIndexableCount: number | null
+  pagesUnknownIndexabilityCount: number | null
+  auditSnapshot: string | null
 }
 export type CrawlUrlRow = Omit<CrawlUrl, 'data' | 'source' | 'scope' | 'kind' | 'state'> & {
   data: string | null
@@ -141,6 +156,12 @@ export const toCrawl = ({
   pagesWithIssueCount: withIssue,
   pagesWithWarningCount: withWarning,
   pagesWithOpportunityCount: withOpportunity,
+  pagesAuditedCount: audited,
+  pagesExcludedCount: excluded,
+  pagesIndexableCount: indexable,
+  pagesNotIndexableCount: notIndexable,
+  pagesUnknownIndexabilityCount: unknownIndexability,
+  auditSnapshot,
   ...row
 }: CrawlRow): Crawl => ({
   ...row,
@@ -152,21 +173,45 @@ export const toCrawl = ({
     withIssue === null || withWarning === null || withOpportunity === null
       ? null
       : { issue: withIssue, warning: withWarning, opportunity: withOpportunity },
+  pagesAudit:
+    audited === null ||
+    excluded === null ||
+    indexable === null ||
+    notIndexable === null ||
+    unknownIndexability === null
+      ? null
+      : { audited, excluded, indexable, notIndexable, unknownIndexability },
+  auditSnapshot: parseAuditSnapshot(auditSnapshot),
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
 })
 
-/** The columns of `crawls` that say how many pages have each type as their worst issue. */
-export const pagesByWorstIssueColumns = (
-  { issue, warning, opportunity }: PagesByWorstIssue,
-  withType: PagesWithType,
-) => ({
-  pagesWorstIssueCount: issue,
-  pagesWorstWarningCount: warning,
-  pagesWorstOpportunityCount: opportunity,
-  pagesWithIssueCount: withType.issue,
-  pagesWithWarningCount: withType.warning,
-  pagesWithOpportunityCount: withType.opportunity,
+/** The columns of `crawls` that an analysis writes: its totals and the configuration it used. */
+export const crawlAnalysisColumns = (analysis: {
+  pages: PagesByWorstIssue
+  withType: PagesWithType
+  catalog: string
+  snapshot: AuditSnapshot
+  audit: PagesAudit
+}) => ({
+  pagesWorstIssueCount: analysis.pages.issue,
+  pagesWorstWarningCount: analysis.pages.warning,
+  pagesWorstOpportunityCount: analysis.pages.opportunity,
+  pagesWithIssueCount: analysis.withType.issue,
+  pagesWithWarningCount: analysis.withType.warning,
+  pagesWithOpportunityCount: analysis.withType.opportunity,
+  pagesAuditedCount: analysis.audit.audited,
+  pagesExcludedCount: analysis.audit.excluded,
+  pagesIndexableCount: analysis.audit.indexable,
+  pagesNotIndexableCount: analysis.audit.notIndexable,
+  pagesUnknownIndexabilityCount: analysis.audit.unknownIndexability,
+  issueCatalog: analysis.catalog,
+  auditVersion: analysis.snapshot.version,
+  auditSnapshot: serializeAuditSnapshot(analysis.snapshot),
 })
+
+/** Whether a stored analysis is newer than the one being saved, which must then be dropped. */
+export const supersedes = (stored: number | null, saving: number) =>
+  stored !== null && stored > saving
 
 export const toCrawlUrl = ({ data, ...row }: CrawlUrlRow): CrawlUrl => ({
   ...(row as Omit<CrawlUrl, 'data'>),
@@ -286,14 +331,48 @@ const LIKE_ESCAPE = '!'
 const containsPattern = (text: string) =>
   `%${text.toLowerCase().replace(/[!%_]/g, `${LIKE_ESCAPE}$&`)}%`
 
+/** The columns of `crawl_url_audit` that filtering looks at. */
+export interface CrawlAuditColumns {
+  crawlId: AnyColumn
+  urlHash: AnyColumn
+  participation: AnyColumn
+  intent: AnyColumn
+  participationRule: AnyColumn
+  intentRule: AnyColumn
+}
+
+type AuditFilter = Pick<CrawlUrlQuery, 'participation' | 'intent' | 'rule'>
+
+export const hasAuditFilter = (query: AuditFilter) =>
+  Boolean(query.participation || query.intent || query.rule)
+
+/** Selects the rows of `crawl_url_audit` that a filter keeps. */
+export function crawlAuditWhere(
+  columns: CrawlAuditColumns,
+  crawlId: string,
+  filter: AuditFilter,
+): SQL | undefined {
+  return and(
+    eq(columns.crawlId, crawlId),
+    filter.participation ? eq(columns.participation, filter.participation) : undefined,
+    filter.intent ? eq(columns.intent, filter.intent) : undefined,
+    filter.rule
+      ? or(eq(columns.participationRule, filter.rule), eq(columns.intentRule, filter.rule))
+      : undefined,
+  )
+}
+
 /**
- * The condition that selects the URLs of a query. `withIssue` is a query for the hashes of the
- * URLs that have `query.issue`, built by the dialect since it needs its own `db`.
+ * The condition that selects the URLs of a query. `subqueries` build, for the dialect (they need its
+ * own `db`), the hashes of the URLs that have `query.issue` and those that pass the audit filters.
  */
 export function crawlUrlWhere(
   columns: CrawlUrlColumns,
   query: CrawlUrlQuery,
-  withIssue: (issue: string) => SQLWrapper,
+  subqueries: {
+    withIssue: (issue: string) => SQLWrapper
+    withAudit: (filter: AuditFilter) => SQLWrapper
+  },
 ): SQL | undefined {
   const pattern = query.search ? containsPattern(query.search) : null
   return and(
@@ -305,7 +384,8 @@ export function crawlUrlWhere(
     pattern
       ? sql`(lower(${columns.url}) like ${pattern} escape '!' or lower(${columns.title}) like ${pattern} escape '!')`
       : undefined,
-    query.issue ? inArray(columns.urlHash, withIssue(query.issue)) : undefined,
+    query.issue ? inArray(columns.urlHash, subqueries.withIssue(query.issue)) : undefined,
+    hasAuditFilter(query) ? inArray(columns.urlHash, subqueries.withAudit(query)) : undefined,
   )
 }
 
@@ -347,6 +427,54 @@ export const toCrawlUrlIssue = (row: {
   issue: row.issue,
   ...(row.details === null ? {} : { details: parseJson(row.details) as string[] }),
 })
+
+/** One row per internal URL of an analysis. */
+export function crawlAuditRows(crawlId: string, urls: CrawlUrlAudit[]) {
+  const unique = new Map<string, CrawlUrlAudit>()
+  for (const url of urls) unique.set(url.urlHash, url)
+  return [...unique.values()].map((url) => ({
+    crawlId,
+    urlHash: url.urlHash,
+    participation: url.participation,
+    participationRule: url.participationRule,
+    intent: url.intent,
+    intentRule: url.intentRule,
+    acceptNofollow: url.acceptNofollow,
+    indexability: url.indexability,
+    blockers: url.blockers.length > 0 ? JSON.stringify(url.blockers) : null,
+  }))
+}
+
+export const toCrawlUrlAudit = (row: {
+  urlHash: string
+  participation: string
+  participationRule: string | null
+  intent: string
+  intentRule: string | null
+  acceptNofollow: boolean
+  indexability: string
+  blockers: string | null
+}): CrawlUrlAudit => ({
+  urlHash: row.urlHash,
+  participation: row.participation as CrawlUrlAudit['participation'],
+  participationRule: row.participationRule,
+  intent: row.intent as CrawlUrlAudit['intent'],
+  intentRule: row.intentRule,
+  acceptNofollow: row.acceptNofollow,
+  indexability: row.indexability as CrawlUrlAudit['indexability'],
+  blockers: row.blockers === null ? [] : (parseJson(row.blockers) as string[]),
+})
+
+/** Folds the rows of a count by rule, for either dimension, into one count per rule. */
+export function foldRuleCounts(
+  rows: { rule: string | null; count: unknown }[],
+): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const { rule, count } of rows) {
+    if (rule !== null) counts.set(rule, (counts.get(rule) ?? 0) + Number(count))
+  }
+  return counts
+}
 
 const MAX_HREFLANG_LENGTH = 35
 

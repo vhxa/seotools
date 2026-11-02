@@ -1,8 +1,10 @@
+import { auditResultsState } from '@seotools/core/crawl/audit'
 import { ISSUE_TYPES, PAGE_ISSUES } from '@seotools/core/crawl/issues'
 import type { Crawl } from '@seotools/db'
 import { ChevronRightIcon, TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
 import { IssueLabel, IssueMark, ISSUE_TYPE_STYLES } from '@/components/pages/issue-mark'
@@ -36,20 +38,24 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
   ])
   const db = await getDb()
 
-  const [active, latest, crawls] = await Promise.all([
+  const [active, latest, crawls, config] = await Promise.all([
     db.crawls.active(domain.id),
     db.crawls.latestWithResults(domain.id, 'full'),
     db.crawls.list(domain.id, { type: 'full', limit: HISTORY_CRAWLS }),
+    db.audit.config(domain.id),
   ])
+  const results = auditResultsState(latest, config)
 
-  // Pages with something of each type, from a crawl that was checked for issues. A page with a
-  // warning and an opportunity is in both. Indexable pages are the ones without issues, whatever
-  // warnings or opportunities they have: those do not stop a page from being crawled or indexed.
-  // Counts outlive the per-URL results, so crawls that were pruned still draw their point.
+  // What a crawl found, apart. Indexable pages are the ones the crawl saw nothing in the way of, among
+  // every page it crawled: they do not depend on the audit, and not having findings does not make a
+  // page indexable (an excluded page has none). Issues, warnings and opportunities are the pages
+  // that have something of each type among the audited ones; a page can be in several. Counts outlive
+  // the per-URL results, so crawls that were pruned still draw their point. A crawl analysed before
+  // indexability was kept has no figure for it, and none is made up.
   const split = (crawl: Crawl) =>
     crawl.pagesWithType
       ? {
-          indexable: Math.max(0, crawl.pagesCount - crawl.pagesWithType.issue),
+          indexable: crawl.pagesAudit?.indexable ?? null,
           issues: crawl.pagesWithType.issue,
           warnings: crawl.pagesWithType.warning,
           opportunities: crawl.pagesWithType.opportunity,
@@ -85,13 +91,21 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
               : t('neverCrawled')}
           </p>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="grid justify-items-end">
-            <span className="text-3xl leading-none font-semibold tabular-nums">
-              {latest ? format.number(latest.pagesCount) : '—'}
-            </span>
-            <span className="text-xs text-muted-foreground">{t('stats.total')}</span>
-          </div>
+        <div className="flex flex-wrap items-center gap-6">
+          {(
+            [
+              ['total', latest ? latest.pagesCount : null],
+              ['audited', latest?.pagesAudit?.audited ?? null],
+              ['excluded', latest?.pagesAudit?.excluded ?? null],
+            ] as const
+          ).map(([key, value]) => (
+            <div key={key} className="grid justify-items-end">
+              <span className="text-3xl leading-none font-semibold tabular-nums">
+                {value === null ? '—' : format.number(value)}
+              </span>
+              <span className="text-xs text-muted-foreground">{t(`stats.${key}`)}</span>
+            </div>
+          ))}
           <StartCrawlButton host={domain.host} type="full" disabled={active !== null} />
         </div>
       </div>
@@ -113,7 +127,19 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
         </Alert>
       )}
 
-      <PagesChart stats={stats} points={points} />
+      <AuditResultsNotice host={domain.host} state={results} />
+
+      <PagesChart
+        stats={stats}
+        points={points}
+        crawled={latest ? latest.pagesCount : null}
+        audited={latest?.pagesAudit?.audited ?? null}
+      />
+      {latest?.pagesAudit && latest.pagesAudit.unknownIndexability > 0 && (
+        <p className="-mt-3 text-xs text-muted-foreground">
+          {t('stats.unknownIndexability', { count: latest.pagesAudit.unknownIndexability })}
+        </p>
+      )}
 
       {!latest || !checked ? (
         <Card>

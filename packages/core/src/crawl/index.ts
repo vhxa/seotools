@@ -1,4 +1,6 @@
+export * from './audit'
 export * from './files'
+export * from './indexability'
 export * from './issues'
 export * from './robots'
 export * from './schedule'

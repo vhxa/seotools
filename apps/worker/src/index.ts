@@ -17,6 +17,7 @@ import { createHttpFetcher } from './crawl/fetcher'
 import { reanalyseOutdatedCrawls } from './crawl/reanalysis'
 import { createFaviconRefresher } from './favicon/refresh'
 import { handlers } from './handlers'
+import { createAuditRecomputeHandler } from './handlers/audit-recompute'
 import { createCrawlRunHandler } from './handlers/crawl-run'
 import { createRunner } from './runner'
 import { runDueSchedules } from './scheduler'
@@ -50,7 +51,7 @@ async function main() {
   const runner = createRunner({
     ...shared,
     log,
-    handlers,
+    handlers: { ...handlers, [JOB_TYPES.auditRecompute]: createAuditRecomputeHandler({ db }) },
     concurrency: env.WORKER_CONCURRENCY,
     excludeTypes: crawlTypes,
   })

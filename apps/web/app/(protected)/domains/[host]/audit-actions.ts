@@ -1,0 +1,182 @@
+'use server'
+
+import type { AuditDimension } from '@seotools/core'
+import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
+import {
+  isRuleId,
+  parseLanguagesForm,
+  parseRuleForm,
+  parseRuleInput,
+  parseUrlConfig,
+  type RuleError,
+  type RuleInput,
+  type UrlConfigError,
+} from '@/lib/audit-forms'
+import { previewRule, type AuditPreview } from '@/lib/audit-preview'
+import { getDb } from '@/lib/db'
+import { requireDomain } from '@/lib/workspace'
+
+export interface RuleFormState {
+  error?: string
+  /** Set after a successful save, to confirm it to the user. */
+  saved?: boolean
+}
+
+/** Every page that shows what the audit configuration decides. */
+function revalidateAudit(host: string) {
+  revalidatePath(`/domains/${host}`, 'layout')
+}
+
+const errorMessages = () => getTranslations('AuditRules.errors')
+type Errors = Awaited<ReturnType<typeof errorMessages>>
+
+const ruleError = (t: Errors, error: RuleError) => t(error)
+const languagesError = (t: Errors, error: 'prefix' | 'limit') =>
+  error === 'limit' ? t('languagesLimit') : t('languagesPrefix')
+const urlError = (t: Errors, error: UrlConfigError) => t(`urls.${error}`)
+
+/** Mutation outcomes the stores report, in words. */
+function mutationError(t: Errors, error: 'conflict' | 'not-found' | 'limit') {
+  return error === 'not-found' ? t('notFound') : error === 'limit' ? t('limit') : t('conflict')
+}
+
+/**
+ * Creates a rule, or edits the one named by the form's `id`. The dimension comes from the section
+ * that holds the form, never from the form itself, and is checked like the rest.
+ */
+export async function saveAuditRuleAction(
+  host: string,
+  dimension: AuditDimension,
+  _previous: RuleFormState,
+  formData: FormData,
+): Promise<RuleFormState> {
+  const { domain } = await requireDomain(host)
+  const t = await errorMessages()
+  const parsed = parseRuleForm(formData, dimension, domain.host)
+  if (!parsed.ok) return { error: ruleError(t, parsed.error) }
+  if (parsed.id !== null && !isRuleId(parsed.id)) return { error: t('notFound') }
+
+  const saved = await (
+    await getDb()
+  ).audit.saveRule({
+    domainId: domain.id,
+    ...(parsed.id === null ? {} : { id: parsed.id }),
+    rule: parsed.rule,
+  })
+  if (!saved.ok) return { error: mutationError(t, saved.error) }
+  revalidateAudit(host)
+  return { saved: true }
+}
+
+export async function setAuditRuleEnabledAction(
+  host: string,
+  id: string,
+  enabled: boolean,
+): Promise<RuleFormState> {
+  const { domain } = await requireDomain(host)
+  const t = await errorMessages()
+  if (!isRuleId(id) || typeof enabled !== 'boolean') return { error: t('notFound') }
+  const changed = await (await getDb()).audit.setRuleEnabled({ domainId: domain.id, id, enabled })
+  if (!changed.ok) return { error: mutationError(t, changed.error) }
+  revalidateAudit(host)
+  return { saved: true }
+}
+
+export async function deleteAuditRuleAction(host: string, id: string): Promise<RuleFormState> {
+  const { domain } = await requireDomain(host)
+  const t = await errorMessages()
+  if (!isRuleId(id)) return { error: t('notFound') }
+  const deleted = await (await getDb()).audit.deleteRule({ domainId: domain.id, id })
+  if (!deleted.ok) return { error: mutationError(t, deleted.error) }
+  revalidateAudit(host)
+  return { saved: true }
+}
+
+export type PreviewState = AuditPreview | { status: 'error'; error: string }
+
+/**
+ * What a rule would do to the URLs of the last full crawl, before it is saved. Nothing is written:
+ * it checks the input like saving does, and says why it cannot when it cannot.
+ */
+export async function previewAuditRuleAction(
+  host: string,
+  dimension: AuditDimension,
+  input: Omit<RuleInput, 'enabled'> & { id?: unknown },
+): Promise<PreviewState> {
+  const { domain } = await requireDomain(host)
+  const t = await errorMessages()
+  // Whatever arrives from a client is checked, including that it is an object at all.
+  if (typeof input !== 'object' || input === null) return { status: 'error', error: t('value') }
+  const parsed = parseRuleInput({ ...input, enabled: true }, dimension, domain.host)
+  if (!parsed.ok) return { status: 'error', error: ruleError(t, parsed.error) }
+  const replacing = typeof input.id === 'string' && isRuleId(input.id) ? input.id : null
+
+  const db = await getDb()
+  const [crawl, config] = await Promise.all([
+    db.crawls.latestWithResults(domain.id, 'full'),
+    db.audit.config(domain.id),
+  ])
+  return previewRule({
+    db,
+    host: domain.host,
+    crawl,
+    rules: config.rules,
+    languages: config.languages,
+    replacing,
+    candidate: parsed.rule,
+  })
+}
+
+/**
+ * Sets what is declared for exact URLs: what the table and the detail of a URL offer. The same
+ * model as the rules of the settings page — a rule whose selector is that URL — so the three never
+ * contradict each other.
+ */
+export async function setUrlAuditAction(host: string, input: unknown): Promise<RuleFormState> {
+  const { domain } = await requireDomain(host)
+  const t = await errorMessages()
+  const parsed = parseUrlConfig(input, domain.host)
+  if (!parsed.ok) return { error: urlError(t, parsed.error) }
+  const { ok: _ok, ...config } = parsed
+  const changed = await (
+    await getDb()
+  ).audit.setUrlConfig({ domainId: domain.id, host: domain.host, ...config })
+  if (!changed.ok) return { error: mutationError(t, changed.error) }
+  revalidateAudit(host)
+  return { saved: true }
+}
+
+export interface LanguagesFormState {
+  error?: string
+  saved?: boolean
+}
+
+/**
+ * Declares the language directories of the domain, which the rules shared between languages look at.
+ * Nothing is deduced from the paths of the site: only what is declared here counts. Changing them
+ * moves the version, so the latest crawl is analysed again.
+ */
+export async function saveAuditLanguagesAction(
+  host: string,
+  _previous: LanguagesFormState,
+  formData: FormData,
+): Promise<LanguagesFormState> {
+  const { domain } = await requireDomain(host)
+  const t = await errorMessages()
+  const parsed = parseLanguagesForm(formData)
+  if (!parsed.ok) return { error: languagesError(t, parsed.error) }
+  const saved = await (
+    await getDb()
+  ).audit.setLanguages({ domainId: domain.id, languages: parsed.languages })
+  if (!saved.ok) return { error: mutationError(t, saved.error) }
+  revalidateAudit(host)
+  return { saved: true }
+}
+
+/** Asks the worker again to analyse the latest crawl, after a recalculation that failed. */
+export async function retryAuditRecomputeAction(host: string): Promise<void> {
+  const { domain } = await requireDomain(host)
+  await (await getDb()).audit.retryRecompute(domain.id)
+  revalidateAudit(host)
+}

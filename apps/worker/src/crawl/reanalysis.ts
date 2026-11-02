@@ -1,6 +1,6 @@
 import { ISSUE_CATALOG_VERSION, type Logger } from '@seotools/core'
 import type { Database } from '@seotools/db'
-import { analyseCrawl } from './analysis'
+import { analyseCrawl, recordedAuditConfig } from './analysis'
 
 /** Crawls analysed again at a time. Each one is loaded whole into memory. */
 const BATCH = 5
@@ -11,6 +11,11 @@ const BATCH = 5
  * but the totals each crawl stored are not. It uses what the crawl stored, so it cannot find what
  * pages parsed before a check existed never recorded. Crawls whose results were pruned keep their
  * old totals. Returns how many were analysed.
+ *
+ * Each crawl is analysed with the audit configuration it was analysed with (none, for the ones from
+ * before configuration existed), never with the current one: the rules of today are for the latest
+ * crawl, which a change to them already analyses again. A change to the catalog must not rewrite the
+ * history of what was excluded or expected, or an old crawl could no longer be read as it was.
  */
 export async function reanalyseOutdatedCrawls(options: {
   db: Database
@@ -29,7 +34,7 @@ export async function reanalyseOutdatedCrawls(options: {
     for (const crawl of outdated) {
       if (options.stopped?.()) return done
       try {
-        await analyseCrawl(db, crawl.id)
+        await analyseCrawl(db, crawl.id, recordedAuditConfig(crawl))
         done++
         log.info({ crawlId: crawl.id }, 'analysed a crawl again with the current issue catalog')
       } catch (err) {

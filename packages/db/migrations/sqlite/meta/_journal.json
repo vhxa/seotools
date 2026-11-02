@@ -71,6 +71,20 @@
       "when": 1793610703055,
       "tag": "0009_crawl_issue_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793617892216,
+      "tag": "0010_audit_exclusions_and_index_intent",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1793621048814,
+      "tag": "0011_audit_languages_nofollow_scopes",
+      "breakpoints": true
     }
   ]
 }

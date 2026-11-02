@@ -1,8 +1,11 @@
+import { auditResultsState } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
-import type { CrawlUrl, CrawlUrlIssue } from '@seotools/db'
+import type { CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { Pagination } from '@/components/pagination'
+import { AuditFilters } from '@/components/pages/audit-filters'
 import { IssueLabel } from '@/components/pages/issue-mark'
 import { IssuesFilter } from '@/components/pages/issues-filter'
 import { PagesTable, type PageRow } from '@/components/pages/pages-table'
@@ -10,6 +13,8 @@ import { UrlDetail } from '@/components/pages/url-detail'
 import { UrlDrawer } from '@/components/pages/url-drawer'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
+import { ruleRefsOf } from '@/lib/audit-rules'
+import { auditTabHref, tabOfDimension } from '@/lib/audit-tabs'
 import { getDb } from '@/lib/db'
 import {
   DETAIL_VIEWS,
@@ -34,6 +39,8 @@ const toRow = (
   issues: CrawlUrlIssue[],
   selectedIssue: string | null,
   priority: boolean,
+  audit: CrawlUrlAudit | undefined,
+  refOf: ReturnType<typeof ruleRefsOf>,
 ): PageRow => ({
   urlHash: url.urlHash,
   url: url.url,
@@ -49,6 +56,14 @@ const toRow = (
   issues: issues.map(({ issue }) => issue),
   issueDetails: issues.find(({ issue }) => issue === selectedIssue)?.details ?? [],
   priority,
+  internal: url.scope === 'internal',
+  participation: audit?.participation ?? null,
+  participationRule: refOf(audit?.participationRule ?? null),
+  intent: audit?.intent ?? null,
+  intentRule: refOf(audit?.intentRule ?? null),
+  acceptNofollow: audit?.acceptNofollow ?? false,
+  indexability: audit?.indexability ?? null,
+  blockers: audit?.blockers ?? [],
 })
 
 export default async function PagesDetailsPage({
@@ -68,7 +83,12 @@ export default async function PagesDetailsPage({
   ])
   const db = await getDb()
 
-  const latest = await db.crawls.latestWithResults(domain.id, 'full')
+  const [latest, config] = await Promise.all([
+    db.crawls.latestWithResults(domain.id, 'full'),
+    db.audit.config(domain.id),
+  ])
+  const results = auditResultsState(latest, config)
+  const ruleOfList = query.rule ? config.rules.find((rule) => rule.id === query.rule) : undefined
 
   // An issue lists URLs from every view, so none of them is the one being shown.
   const isCurrent = (view: DetailQuery['view']) => !query.issue && view === query.view
@@ -91,6 +111,9 @@ export default async function PagesDetailsPage({
       view: query.view,
       ...(query.search ? { search: query.search } : {}),
       ...(query.issue ? { issue: query.issue } : {}),
+      ...(query.participation ? { participation: query.participation } : {}),
+      ...(query.intent ? { intent: query.intent } : {}),
+      ...(query.rule ? { rule: query.rule } : {}),
     }
     if (latest.pagesByWorstIssue !== null) issueCounts = await db.crawls.issueCounts(latest.id)
     total = await db.crawls.countListed(listing)
@@ -105,17 +128,27 @@ export default async function PagesDetailsPage({
       }),
       db.priorityUrls.list(domain.id),
     ])
-    const issues = await db.crawls.issuesOf(
-      latest.id,
-      urls.map((url) => url.urlHash),
-    )
+    const hashes = urls.map((url) => url.urlHash)
+    const [issues, audits] = await Promise.all([
+      db.crawls.issuesOf(latest.id, hashes),
+      db.crawls.auditOf(latest.id, hashes),
+    ])
+    const auditByUrl = new Map(audits.map((audit) => [audit.urlHash, audit]))
+    const refOf = ruleRefsOf(latest.auditSnapshot)
     const issuesByUrl = new Map<string, CrawlUrlIssue[]>()
     for (const issue of issues) {
       issuesByUrl.set(issue.urlHash, [...(issuesByUrl.get(issue.urlHash) ?? []), issue])
     }
     const priorities = new Set(priorityUrls.map((p) => p.urlHash))
     rows = urls.map((url) =>
-      toRow(url, issuesByUrl.get(url.urlHash) ?? [], query.issue, priorities.has(url.urlHash)),
+      toRow(
+        url,
+        issuesByUrl.get(url.urlHash) ?? [],
+        query.issue,
+        priorities.has(url.urlHash),
+        auditByUrl.get(url.urlHash),
+        refOf,
+      ),
     )
   }
 
@@ -124,6 +157,7 @@ export default async function PagesDetailsPage({
     latest && query.url
       ? await loadUrlDetail({
           domainId: domain.id,
+          host: domain.host,
           crawl: latest,
           urlHash: query.url,
           linkLimit: 10,
@@ -138,6 +172,8 @@ export default async function PagesDetailsPage({
           {latest ? t('description') : t('neverCrawled')}
         </p>
       </div>
+
+      <AuditResultsNotice host={domain.host} state={results} />
 
       {latest && (
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -179,6 +215,13 @@ export default async function PagesDetailsPage({
                   t(`viewHints.${query.view}`)
                 )}
               </CardDescription>
+              <AuditFilters
+                host={domain.host}
+                query={{ ...query, page: 1 }}
+                {...(ruleOfList
+                  ? { rulesHref: auditTabHref(domain.host, tabOfDimension(ruleOfList.dimension)) }
+                  : {})}
+              />
             </CardHeader>
             <CardContent className="grid gap-4">
               <UrlDrawer
@@ -203,11 +246,15 @@ export default async function PagesDetailsPage({
                     query.direction,
                     query.search,
                     query.issue,
+                    query.participation,
+                    query.intent,
+                    query.rule,
                   ].join('|')}
                   host={domain.host}
                   rows={rows}
                   total={total}
                   query={{ ...query, page }}
+                  analysed={latest.pagesByWorstIssue !== null}
                 />
               </UrlDrawer>
               <Pagination

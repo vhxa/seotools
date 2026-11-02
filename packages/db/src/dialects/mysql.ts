@@ -27,7 +27,12 @@ import {
   crawlResultColumns,
   crawlRobotsColumn,
   crawlIssueRows,
-  pagesByWorstIssueColumns,
+  crawlAnalysisColumns,
+  crawlAuditRows,
+  crawlAuditWhere,
+  foldRuleCounts,
+  supersedes,
+  toCrawlUrlAudit,
   sitemapHreflangRow,
   toCrawlUrlIssue,
   crawlUrlOrder,
@@ -53,9 +58,43 @@ import {
   toJob,
   truncateError,
 } from '../mapping'
-import { DEFAULT_CRAWL_SETTINGS, type CrawlLinkKind } from '@seotools/core'
+import {
+  AUDIT_SEMANTICS,
+  DEFAULT_CRAWL_SETTINGS,
+  JOB_TYPES,
+  type CrawlLinkKind,
+} from '@seotools/core'
+import {
+  AUDIT_SEMANTICS_SETTING,
+  inApplyOrder,
+  languageColumns,
+  languagesOf,
+  mutationResult,
+  planChanges,
+  planDeleteRule,
+  planLanguages,
+  planUpgradeSemantics,
+  planSaveRule,
+  planSetEnabled,
+  planUrlConfig,
+  readAuditConfig,
+  recomputeJobValues,
+  recomputePayload,
+  toAuditRule,
+  type AuditPlan,
+  type AuditRuleRow,
+  type PlanContext,
+} from '../audit'
 import * as schema from '../schema/mysql'
-import type { CrawlLink, CrawlUrlIssue, Database, NewCrawlUrl, SitemapHreflang } from '../types'
+import type {
+  CrawlLink,
+  CrawlUrlAudit,
+  CrawlUrlBrief,
+  CrawlUrlIssue,
+  Database,
+  NewCrawlUrl,
+  SitemapHreflang,
+} from '../types'
 
 const {
   jobs,
@@ -73,9 +112,12 @@ const {
   crawls,
   crawlUrls,
   crawlUrlIssues,
+  crawlUrlAudit,
   crawlSitemapHreflang,
   crawlLinks,
   priorityUrls,
+  auditRules,
+  domainAuditConfig,
 } = schema
 
 /** `limit` when a list is not capped. */
@@ -104,12 +146,149 @@ export function createMysqlDatabase(options: {
   const pool = mysql.createPool({ uri: options.url, connectionLimit: 10 })
   const db = drizzle(pool, { schema, mode: 'default' })
 
-  /** The hashes of the pages of a crawl that have an issue. */
-  const withIssue = (crawlId: string) => (issue: string) =>
-    db
-      .select({ urlHash: crawlUrlIssues.urlHash })
-      .from(crawlUrlIssues)
-      .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue)))
+  /** The hashes of the URLs of a crawl that have an issue, and of those a filter on the audit keeps. */
+  const subqueries = (crawlId: string) => ({
+    withIssue: (issue: string) =>
+      db
+        .select({ urlHash: crawlUrlIssues.urlHash })
+        .from(crawlUrlIssues)
+        .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue))),
+    withAudit: (filter: Parameters<typeof crawlAuditWhere>[2]) =>
+      db
+        .select({ urlHash: crawlUrlAudit.urlHash })
+        .from(crawlUrlAudit)
+        .where(crawlAuditWhere(crawlUrlAudit, crawlId, filter)),
+  })
+
+  type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+  /**
+   * The row that versions a domain's rules and serializes the changes to them. Created apart from
+   * the transaction that locks it, so that concurrent first changes cannot deadlock creating it.
+   */
+  const ensureAuditConfig = async (domainId: string) => {
+    await db
+      .insert(domainAuditConfig)
+      .values({ domainId, version: 0, updatedAt: new Date() })
+      .onDuplicateKeyUpdate({ set: { domainId } })
+  }
+
+  /** Asks for the latest full crawl to be analysed again, unless there is none or it is already asked. */
+  const requestRecompute = async (tx: Tx, domainId: string, now: Date) => {
+    const usable = (
+      await tx
+        .select({ id: crawls.id })
+        .from(crawls)
+        .where(
+          and(
+            eq(crawls.domainId, domainId),
+            eq(crawls.type, 'full'),
+            inArray(crawls.status, ['completed', 'incomplete']),
+            eq(crawls.pruned, false),
+          ),
+        )
+        .limit(1)
+    )[0]
+    if (!usable) return
+    const waiting = (
+      await tx
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.auditRecompute),
+            eq(jobs.status, 'pending'),
+            eq(jobs.payload, recomputePayload(domainId)),
+          ),
+        )
+        .limit(1)
+    )[0]
+    if (waiting) return
+    await tx.insert(jobs).values(recomputeJobValues(domainId, randomUUID(), now))
+  }
+
+  /**
+   * Runs a change to the rules of a domain: see `AuditRepository`. The row of the domain's version
+   * is locked first, so changes to one domain take turns and each plans from the rules the one
+   * before left.
+   */
+  const changeRules = (
+    domainId: string,
+    plan: (rows: AuditRuleRow[], context: PlanContext) => AuditPlan,
+  ) =>
+    ensureAuditConfig(domainId).then(() =>
+      db.transaction(async (tx) => {
+        const now = new Date()
+        const config = (
+          await tx
+            .select()
+            .from(domainAuditConfig)
+            .where(eq(domainAuditConfig.domainId, domainId))
+            .for('update')
+        )[0]
+        let version = config?.version ?? 0
+        const rows = await tx.select().from(auditRules).where(eq(auditRules.domainId, domainId))
+        const decided = plan(rows, { now, newId: randomUUID, languages: languagesOf(config) })
+        if (decided.ok && planChanges(decided)) {
+          for (const change of inApplyOrder(decided.changes)) {
+            if (change.op === 'delete')
+              await tx.delete(auditRules).where(eq(auditRules.id, change.id))
+            else if (change.op === 'update') {
+              await tx.update(auditRules).set(change.patch).where(eq(auditRules.id, change.id))
+            } else await tx.insert(auditRules).values(change.row)
+          }
+          version += 1
+          await tx
+            .update(domainAuditConfig)
+            .set({
+              version,
+              recomputeError: null,
+              recomputeErrorVersion: null,
+              updatedAt: now,
+              ...(decided.languages ? languageColumns(decided.languages) : {}),
+            })
+            .where(eq(domainAuditConfig.domainId, domainId))
+          await requestRecompute(tx, domainId, now)
+        }
+        const saved =
+          decided.ok && decided.result
+            ? (await tx.select().from(auditRules).where(eq(auditRules.id, decided.result)))[0]
+            : undefined
+        return mutationResult(decided, version, () => (saved ? toAuditRule(saved) : null))
+      }),
+    )
+
+  /**
+   * Brings the rules of every domain to the current meaning of a configuration, once (see
+   * `AuditRepository.upgradeSemantics`). The rules of a domain that has none, and no crawl to
+   * analyse again, have nothing to change: what a new domain is expected to be is the default.
+   */
+  const upgradeAuditSemantics = async () => {
+    const done = (
+      await db.select().from(settings).where(eq(settings.key, AUDIT_SEMANTICS_SETTING))
+    )[0]
+    if (done?.value === String(AUDIT_SEMANTICS)) return
+    const withRules = await db.selectDistinct({ id: auditRules.domainId }).from(auditRules)
+    const withCrawls = await db
+      .selectDistinct({ id: crawls.domainId })
+      .from(crawls)
+      .where(
+        and(
+          eq(crawls.type, 'full'),
+          inArray(crawls.status, ['completed', 'incomplete']),
+          eq(crawls.pruned, false),
+        ),
+      )
+    for (const domainId of new Set([...withRules, ...withCrawls].map((row) => row.id))) {
+      await changeRules(domainId, (rows) => planUpgradeSemantics(rows))
+    }
+    const value = String(AUDIT_SEMANTICS)
+    const updatedAt = new Date()
+    await db
+      .insert(settings)
+      .values({ key: AUDIT_SEMANTICS_SETTING, value, encrypted: false, updatedAt })
+      .onDuplicateKeyUpdate({ set: { value, updatedAt } })
+  }
 
   return {
     dialect: 'mysql',
@@ -124,6 +303,7 @@ export function createMysqlDatabase(options: {
 
     async migrate(dir) {
       await migrate(db, { migrationsFolder: dir ?? options.defaultMigrationsDir() })
+      await upgradeAuditSemantics()
     },
 
     async close() {
@@ -586,6 +766,7 @@ export function createMysqlDatabase(options: {
         await db.transaction(async (tx) => {
           await tx.delete(crawlLinks).where(inArray(crawlLinks.crawlId, expired))
           await tx.delete(crawlUrlIssues).where(inArray(crawlUrlIssues.crawlId, expired))
+          await tx.delete(crawlUrlAudit).where(inArray(crawlUrlAudit.crawlId, expired))
           await tx
             .delete(crawlSitemapHreflang)
             .where(inArray(crawlSitemapHreflang.crawlId, expired))
@@ -667,7 +848,7 @@ export function createMysqlDatabase(options: {
         const rows = await db
           .select()
           .from(crawlUrls)
-          .where(crawlUrlWhere(urlColumns, query, withIssue(query.crawlId)))
+          .where(crawlUrlWhere(urlColumns, query, subqueries(query.crawlId)))
           .orderBy(...crawlUrlOrder(urlColumns, sort, direction))
           .limit(limit)
           .offset(offset)
@@ -679,7 +860,7 @@ export function createMysqlDatabase(options: {
           await db
             .select({ count: sql<number>`count(*)` })
             .from(crawlUrls)
-            .where(crawlUrlWhere(urlColumns, query, withIssue(query.crawlId)))
+            .where(crawlUrlWhere(urlColumns, query, subqueries(query.crawlId)))
         )[0]
         return Number(row?.count ?? 0)
       },
@@ -811,15 +992,38 @@ export function createMysqlDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveIssues({ crawlId, issues, pages, withType, catalog }) {
-        const rows = crawlIssueRows(crawlId, issues)
-        await db.transaction(async (tx) => {
+      async saveAnalysis({ crawlId, issues, pages, withType, catalog, audit }) {
+        const issueRows = crawlIssueRows(crawlId, issues)
+        const auditRows = crawlAuditRows(crawlId, audit.urls)
+        return db.transaction(async (tx) => {
+          // Locked: of two analyses of one crawl at once, the second reads what the first saved.
+          const current = (
+            await tx
+              .select({ version: crawls.auditVersion, pruned: crawls.pruned })
+              .from(crawls)
+              .where(eq(crawls.id, crawlId))
+              .for('update')
+          )[0]
+          if (!current || current.pruned || supersedes(current.version, audit.snapshot.version)) {
+            return false
+          }
           await tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId))
-          for (const batch of chunk(rows)) await tx.insert(crawlUrlIssues).values(batch)
+          for (const batch of chunk(issueRows)) await tx.insert(crawlUrlIssues).values(batch)
+          await tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId))
+          for (const batch of chunk(auditRows)) await tx.insert(crawlUrlAudit).values(batch)
           await tx
             .update(crawls)
-            .set({ ...pagesByWorstIssueColumns(pages, withType), issueCatalog: catalog })
+            .set(
+              crawlAnalysisColumns({
+                pages,
+                withType,
+                catalog,
+                snapshot: audit.snapshot,
+                audit: audit.pages,
+              }),
+            )
             .where(eq(crawls.id, crawlId))
+          return true
         })
       },
 
@@ -848,6 +1052,48 @@ export function createMysqlDatabase(options: {
         return found
       },
 
+      async auditOf(crawlId, urlHashes) {
+        const found: CrawlUrlAudit[] = []
+        for (const batch of chunk(urlHashes)) {
+          const rows = await db
+            .select()
+            .from(crawlUrlAudit)
+            .where(and(eq(crawlUrlAudit.crawlId, crawlId), inArray(crawlUrlAudit.urlHash, batch)))
+          found.push(...rows.map(toCrawlUrlAudit))
+        }
+        return found
+      },
+
+      async auditRuleCounts(crawlId) {
+        const count = sql<number>`count(*)`
+        const byDimension = await Promise.all(
+          [crawlUrlAudit.participationRule, crawlUrlAudit.intentRule].map((column) =>
+            db
+              .select({ rule: column, count })
+              .from(crawlUrlAudit)
+              .where(and(eq(crawlUrlAudit.crawlId, crawlId), isNotNull(column)))
+              .groupBy(column),
+          ),
+        )
+        return foldRuleCounts(byDimension.flat())
+      },
+
+      async urlBriefs(crawlId, { limit, offset }) {
+        const rows = await db
+          .select({
+            urlHash: crawlUrls.urlHash,
+            url: crawlUrls.url,
+            kind: crawlUrls.kind,
+            state: crawlUrls.state,
+          })
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.scope, 'internal')))
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+          .offset(offset)
+        return rows as CrawlUrlBrief[]
+      },
+
       async latestResults(domainId, urlHashes) {
         if (urlHashes.length === 0) return []
         const rows = await db
@@ -862,6 +1108,85 @@ export function createMysqlDatabase(options: {
             ),
           )
         return newestPerUrl(rows.map(({ row }) => toCrawlUrl(row)))
+      },
+    },
+
+    audit: {
+      async config(domainId) {
+        return readAuditConfig({
+          state: async () =>
+            (
+              await db
+                .select()
+                .from(domainAuditConfig)
+                .where(eq(domainAuditConfig.domainId, domainId))
+            )[0],
+          rules: async () =>
+            db
+              .select()
+              .from(auditRules)
+              .where(eq(auditRules.domainId, domainId))
+              .orderBy(asc(auditRules.createdAt), asc(auditRules.id)),
+        })
+      },
+
+      async saveRule({ domainId, id, rule }) {
+        return changeRules(domainId, (rows, context) =>
+          planSaveRule(rows, { domainId, ...(id === undefined ? {} : { id }), rule }, context),
+        )
+      },
+
+      async setRuleEnabled({ domainId, id, enabled }) {
+        return changeRules(domainId, (rows, context) =>
+          planSetEnabled(rows, { id, enabled }, context),
+        )
+      },
+
+      async deleteRule({ domainId, id }) {
+        return changeRules(domainId, (rows) => planDeleteRule(rows, { id }))
+      },
+
+      async setUrlConfig({ domainId, ...input }) {
+        return changeRules(domainId, (rows, context) =>
+          planUrlConfig(rows, { domainId, ...input }, context),
+        )
+      },
+
+      async setLanguages({ domainId, languages }) {
+        return changeRules(domainId, (_rows, context) => planLanguages(languages, context))
+      },
+
+      upgradeSemantics: upgradeAuditSemantics,
+
+      async retryRecompute(domainId) {
+        await db.transaction(async (tx) => {
+          await tx
+            .update(domainAuditConfig)
+            .set({ recomputeError: null, recomputeErrorVersion: null })
+            .where(eq(domainAuditConfig.domainId, domainId))
+          await requestRecompute(tx, domainId, new Date())
+        })
+      },
+
+      async failRecompute({ domainId, version, error }) {
+        await db
+          .update(domainAuditConfig)
+          .set({ recomputeError: truncateError(error), recomputeErrorVersion: version })
+          .where(
+            and(eq(domainAuditConfig.domainId, domainId), eq(domainAuditConfig.version, version)),
+          )
+      },
+
+      async clearRecomputeFailure({ domainId, version }) {
+        await db
+          .update(domainAuditConfig)
+          .set({ recomputeError: null, recomputeErrorVersion: null })
+          .where(
+            and(
+              eq(domainAuditConfig.domainId, domainId),
+              lte(domainAuditConfig.recomputeErrorVersion, version),
+            ),
+          )
       },
     },
 

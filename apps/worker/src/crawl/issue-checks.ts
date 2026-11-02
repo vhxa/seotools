@@ -3,6 +3,7 @@ import {
   PAGE_ISSUE_IDS,
   type CrawlPageFacts,
   type HreflangEntry,
+  type IndexabilityBlocker,
   type PageIssueId,
 } from '@seotools/core'
 import { isValidHreflang } from './language-codes'
@@ -34,6 +35,12 @@ const SITEMAP_MAX_BYTES = 50 * 1024 * 1024
 
 /** Servers often refuse bots with these while the page works fine for people. */
 const REFUSES_BOTS = new Set([401, 403, 405, 406, 429, 451])
+
+/**
+ * A URL whose expectation can be judged: a page that answered successfully and that the crawler did
+ * not only try on its own. Resources, redirects, failures and guesses have no expectation to meet.
+ */
+const judgeable = (url: AuditedUrl, site: Site) => url.contentPage && !isGuess(url, site)
 
 /** The issue applies to pages that answered and were parsed, not to redirects or failures. */
 const onPage =
@@ -120,6 +127,24 @@ const SEARCH_PARAMETERS = new Set(['s', 'q', 'query', 'search', 'keyword', 'keyw
 
 /** What each issue of `PAGE_ISSUES` looks for. Each check says itself which URLs it applies to. */
 export const CHECKS: Record<PageIssueId, Check> = {
+  // --- what is expected of a URL's indexation, against what the crawl saw ---------------------
+  // Only for pages that answered (not images, stylesheets, redirects or what the crawler only tried),
+  // and only for the blockers that say something the page's other findings do not: an error response
+  // has its own response-code finding, and not knowing (`unknown`) is not a finding. Nothing declared
+  // means a page is expected to be indexable, and then its generic findings (`noindex`, a canonical
+  // elsewhere, a robots.txt block) already say so: this one is for what the user stated.
+  'expected-indexable-blocked': (url, site) =>
+    url.intent === 'indexable' &&
+    url.intentRule !== null &&
+    judgeable(url, site) &&
+    url.indexability.state === 'not-indexable'
+      ? url.indexability.blockers.filter((blocker) => blocker in INDEXING_FINDING_OF)
+      : false,
+  'expected-not-indexable-but-indexable': (url, site) =>
+    url.intent === 'not-indexable' &&
+    judgeable(url, site) &&
+    url.indexability.state === 'indexable',
+
   // --- response codes ------------------------------------------------------
   'no-response': answer((url) => url.url.error !== null),
   'server-error': answer((url) => statusIn(url, 500, 599)),
@@ -389,16 +414,68 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'content-before-head': onPage((_, facts) => facts.headNotFirst),
 }
 
+type Finding = { issue: PageIssueId; details?: string[] }
+
+/**
+ * The finding each blocker of indexation already has when nobody declared anything. A page the user
+ * declared indexable gets one finding that names its blockers (`expected-indexable-blocked`), and
+ * these are dropped for it: two findings for the same cause would count one problem twice.
+ */
+const INDEXING_FINDING_OF = {
+  noindex: 'noindex',
+  canonical: 'canonicalised',
+  robots: 'robots-blocked',
+} as const satisfies Partial<Record<IndexabilityBlocker, PageIssueId>>
+
+/**
+ * What is not a finding for a URL expected not to be indexable, because it is the expectation
+ * itself: a `noindex`, a canonical elsewhere, and being indexable but absent from the sitemap. A
+ * `robots.txt` block is not here on purpose: it keeps crawlers from reading the page, and its
+ * `noindex`, but not from listing the URL, so it says nothing about whether it stays out of the
+ * index. Everything else keeps applying, directive conflicts and relations to other pages included.
+ */
+const EXPECTED_WHEN_NOT_INDEXABLE: ReadonlySet<PageIssueId> = new Set([
+  'noindex',
+  'canonicalised',
+  'indexable-not-in-sitemap',
+])
+
+/**
+ * The one place that decides which findings a URL keeps once its checks ran, so that no check
+ * needs to know about exclusions or expectations:
+ * - a URL left out of the audit has none of its own;
+ * - when the rule that decides its expectation accepts `nofollow`, the generic finding for its own
+ *   `nofollow` is not raised. Nothing else is: not a conflict of directives, not a link marked
+ *   `rel="nofollow"`, not what other pages say of it, and `noindex` is a different directive;
+ * - what is declared of a URL's indexation replaces the generic findings that would only repeat it.
+ * The checks of other URLs have already looked at this one as it really is, whatever happens here.
+ */
+export function applyAuditPolicy(url: AuditedUrl, found: Finding[]): Finding[] {
+  if (url.excluded) return []
+  let kept = url.acceptNofollow ? found.filter(({ issue }) => issue !== 'nofollow') : found
+  if (url.intent === 'not-indexable') {
+    kept = kept.filter(({ issue }) => !EXPECTED_WHEN_NOT_INDEXABLE.has(issue))
+  } else if (url.intent === 'indexable') {
+    const blocked = kept.find(({ issue }) => issue === 'expected-indexable-blocked')
+    if (blocked) {
+      const repeated = new Set<PageIssueId>(
+        (blocked.details ?? []).flatMap(
+          (blocker) => INDEXING_FINDING_OF[blocker as keyof typeof INDEXING_FINDING_OF] ?? [],
+        ),
+      )
+      kept = kept.filter(({ issue }) => !repeated.has(issue))
+    }
+  }
+  return kept
+}
+
 /** The issues of a URL, in catalog order, with what each one details. */
-export function detectIssues(
-  url: AuditedUrl,
-  site: Site,
-): { issue: PageIssueId; details?: string[] }[] {
-  const found: { issue: PageIssueId; details?: string[] }[] = []
+export function detectIssues(url: AuditedUrl, site: Site): Finding[] {
+  const found: Finding[] = []
   for (const issue of PAGE_ISSUE_IDS) {
     const result = CHECKS[issue](url, site)
     if (result === true) found.push({ issue })
     else if (Array.isArray(result) && result.length > 0) found.push({ issue, details: result })
   }
-  return found
+  return applyAuditPolicy(url, found)
 }

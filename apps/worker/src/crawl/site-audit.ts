@@ -1,10 +1,18 @@
 import {
+  assessIndexability,
+  compileAuditSnapshot,
   crawlFileKindOf,
   crawlUrlHash,
   isRobotsAllowed,
   parseRobots,
+  type AuditParticipation,
+  type AuditResolver,
+  type AuditRule,
+  type AuditSnapshot,
   type CrawlPageFacts,
   type HreflangEntry,
+  type RecordedIntent,
+  type Indexability,
   type ParsedRobots,
 } from '@seotools/core'
 import type { Crawl, CrawlUrl, CrawlUrlView, Database } from '@seotools/db'
@@ -93,7 +101,29 @@ export interface AuditedUrl {
   /** Its canonical says another URL is the one to index. */
   canonicalised: boolean
   robotsBlocked: boolean
+  /**
+   * What the crawl saw of whether it can be indexed (`assessIndexability`): a technical state, apart
+   * from the audit, from what is expected of the URL and from whether it is indexed.
+   */
+  indexability: Indexability
+  /** Technically indexable: a page that answered with nothing in the way. */
   indexable: boolean
+  /** Audited, or left out of the audit by a rule or an exception. Only internal URLs can be. */
+  participation: AuditParticipation
+  /** Left out of the audit: it is crawled and its data is kept, but it has no findings of its own. */
+  excluded: boolean
+  /** The rule that decided `participation`; `null` for the default. */
+  participationRule: AuditRule | null
+  /**
+   * What the user expects of its indexation: what a rule or an exception says, and `indexable` when
+   * none does (`none` only for a configuration from before that default). Never evidence of what a
+   * search engine did.
+   */
+  intent: RecordedIntent
+  /** The rule that decided it. `null`: the expectation is the default. */
+  intentRule: AuditRule | null
+  /** Its own `nofollow` is accepted as intended, by the rule that decided the intent. */
+  acceptNofollow: boolean
   /**
    * Whether a search engine has it in its index. The crawl cannot say: it takes a source that does,
    * such as Search Console. `null`: unknown, which is what every URL is until there is one.
@@ -122,11 +152,16 @@ export interface AuditedUrl {
 export interface Site {
   /** When the audit happens, for what depends on the date. */
   now: Date
+  /** The audit configuration this analysis applies, whole: no URL is judged by another version. */
+  config: AuditSnapshot
   urls: AuditedUrl[]
   get(url: string): AuditedUrl | undefined
   /** Whether any URL of the site answered as a page, unlike a site that is down. */
   answered: boolean
-  /** How many indexable pages share each value, which is what makes one a duplicate. */
+  /**
+   * How many indexable pages share each value, which is what makes one a duplicate. Pages left out
+   * of the audit are not counted: they would make audited pages look like copies.
+   */
   titles: Map<string, number>
   descriptions: Map<string, number>
   h1s: Map<string, number>
@@ -157,7 +192,11 @@ function robotsOf(crawl: Crawl) {
   return parsed
 }
 
-function audit(url: CrawlUrl, robots: ReadonlyMap<string, ParsedRobots>): AuditedUrl {
+function audit(
+  url: CrawlUrl,
+  robots: ReadonlyMap<string, ParsedRobots>,
+  resolver: AuditResolver,
+): AuditedUrl {
   const parsed = new URL(url.url)
   const internal = url.scope === 'internal'
   const facts = internal ? (url.data?.facts ?? null) : null
@@ -182,6 +221,16 @@ function audit(url: CrawlUrl, robots: ReadonlyMap<string, ParsedRobots>): Audite
     !fileOfTheCrawl &&
     parsedRobots !== undefined &&
     !isRobotsAllowed(parsedRobots, SEARCH_BOT, parsed.pathname + parsed.search)
+  const indexability = assessIndexability({
+    state: url.state,
+    kind: url.kind,
+    statusCode: url.statusCode,
+    noindex,
+    canonicalised,
+    robotsBlocked,
+  })
+  // Only the URLs of the site can be left out or have an intent: the rest is just recorded.
+  const resolved = internal ? resolver.resolve(url.url) : null
   return {
     url,
     internal,
@@ -193,7 +242,14 @@ function audit(url: CrawlUrl, robots: ReadonlyMap<string, ParsedRobots>): Audite
     nofollow,
     canonicalised,
     robotsBlocked,
-    indexable: contentPage && !noindex && !canonicalised && !robotsBlocked,
+    indexability: internal ? indexability : { state: 'unknown', blockers: [] },
+    indexable: internal && indexability.state === 'indexable',
+    participation: resolved?.audit.value ?? 'audited',
+    excluded: resolved?.audit.value === 'excluded',
+    participationRule: resolved?.audit.rule ?? null,
+    intent: resolved?.intent.value ?? 'none',
+    intentRule: resolved?.intent.rule ?? null,
+    acceptNofollow: resolved?.intent.acceptNofollow ?? false,
     indexed: null,
     hreflang: url.data?.hreflang ? [...url.data.hreflang] : [],
     linksIn: 0,
@@ -238,8 +294,20 @@ function countValues(values: Iterable<string>) {
  * Everything known about a crawl, in memory: what each URL answered, and what can only be known by
  * looking at the rest of the site, such as who links to it. The URLs are bounded by the domain's
  * limit, and their stored data by what `PageFactsCollector` keeps of a page.
+ *
+ * `config` is the audit configuration to apply, which the caller chose: the current one for a new
+ * crawl or a recalculation, the one the crawl was analysed with to repeat that analysis.
  */
-export async function loadSite(db: Database, crawl: Crawl, now = new Date()): Promise<Site> {
+export async function loadSite(
+  db: Database,
+  crawl: Crawl,
+  config: AuditSnapshot,
+  now = new Date(),
+): Promise<Site> {
+  const domain = await db.domains.get(crawl.domainId)
+  if (!domain) throw new Error(`Domain ${crawl.domainId} not found`)
+  // As the analysis that kept this configuration would resolve it: what it meant, and its languages.
+  const resolver = compileAuditSnapshot(config, domain.host)
   const robots = robotsOf(crawl)
   const urls: AuditedUrl[] = []
   const byHash = new Map<string, AuditedUrl>()
@@ -247,7 +315,7 @@ export async function loadSite(db: Database, crawl: Crawl, now = new Date()): Pr
     for (let offset = 0; ; offset += BATCH) {
       const batch = await db.crawls.listUrls({ crawlId: crawl.id, view, limit: BATCH, offset })
       for (const row of batch) {
-        const url = audit(row, robots)
+        const url = audit(row, robots, resolver)
         urls.push(url)
         byHash.set(row.urlHash, url)
       }
@@ -283,13 +351,17 @@ export async function loadSite(db: Database, crawl: Crawl, now = new Date()): Pr
   }
   measureClickDepth(internal, byHash)
 
-  const indexable = urls.filter((url) => url.indexable && url.facts)
+  // What pages are compared against each other: the audited ones that can be indexed. A page left
+  // out of the audit stays in the site (links, canonicals, hreflang, redirects see it as it is) but
+  // is not a copy of anything an audited page should answer for.
+  const indexable = urls.filter((url) => url.indexable && !url.excluded && url.facts)
   const comparableTexts = indexable.flatMap((url) => {
     const simhash = url.facts?.textSimhash
     return simhash ? [{ url, simhash, group: url.facts?.textHash ?? null }] : []
   })
   return {
     now,
+    config,
     urls,
     get: (url) => byHash.get(crawlUrlHash(url)),
     answered: urls.some((url) => url.contentPage),
