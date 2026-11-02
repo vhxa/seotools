@@ -520,7 +520,10 @@ export function describeDatabaseContract(
               metaRobots: 'noindex',
               xRobotsTag: 'nofollow',
               canonical: home,
-              data: { h1: ['Welcome'], hreflang: [{ lang: 'es', url: `${home}es` }] },
+              data: {
+                h1: ['Welcome'],
+                hreflang: [{ lang: 'es', url: `${home}es`, source: 'html' }],
+              },
             }),
             urls: [newUrl(about), newUrl(outside, { scope: 'external' })],
             links: [
@@ -766,6 +769,7 @@ export function describeDatabaseContract(
               { urlHash: hashOf(pages.gone), issue: 'missing-title' },
               { urlHash: hashOf(pages.deep), issue: 'missing-title' },
             ],
+            pages: { issue: 2, warning: 0, opportunity: 0 },
           })
           expect(await paths(crawlId, { issue: 'missing-title' })).toEqual([
             '/gone',
@@ -783,6 +787,32 @@ export function describeDatabaseContract(
           expect(await db.crawls.countListed({ crawlId, view: 'other' })).toBe(1)
           expect(await db.crawls.countListed({ crawlId, view: 'external' })).toBe(1)
           expect(await db.crawls.countListed({ crawlId: 'missing', view: 'pages' })).toBe(0)
+        })
+
+        it('finds the URLs of an issue in whichever view they are', async () => {
+          const crawlId = await crawlOfPages()
+          await db.crawls.saveIssues({
+            crawlId,
+            issues: [
+              { urlHash: hashOf(pages.gone), issue: 'client-error' },
+              { urlHash: crawlUrlHash(`${site}/logo.png`), issue: 'client-error' },
+              { urlHash: crawlUrlHash('https://elsewhere.org/'), issue: 'client-error' },
+            ],
+            pages: { issue: 1, warning: 0, opportunity: 0 },
+          })
+          expect(
+            await db.crawls.countListed({ crawlId, view: 'pages', issue: 'client-error' }),
+          ).toBe(3)
+          const listed = await db.crawls.listUrls({
+            crawlId,
+            view: 'pages',
+            issue: 'client-error',
+            limit: 10,
+            offset: 0,
+          })
+          expect(listed.map((url) => url.url).sort()).toEqual(
+            ['https://elsewhere.org/', `${site}/gone`, `${site}/logo.png`].sort(),
+          )
         })
 
         it('gets a URL and the URLs it links to', async () => {
@@ -824,22 +854,135 @@ export function describeDatabaseContract(
         })
       })
 
+      describe('what checking for issues reads', () => {
+        const page = 'https://acme.com/'
+        const other = 'https://acme.com/other'
+
+        it('lists the links going out of some URLs', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          await db.crawls.addUrls(id, [newUrl(page), newUrl(other)])
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(page),
+            result: result('page'),
+            links: [
+              {
+                sourceHash: crawlUrlHash(page),
+                targetHash: crawlUrlHash(other),
+                kind: 'anchor-nofollow',
+              },
+            ],
+          })
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(other),
+            result: result('page'),
+            links: [
+              { sourceHash: crawlUrlHash(other), targetHash: crawlUrlHash(page), kind: 'anchor' },
+            ],
+          })
+          expect(await db.crawls.linksFrom(id, [crawlUrlHash(page)])).toEqual([
+            {
+              sourceHash: crawlUrlHash(page),
+              targetHash: crawlUrlHash(other),
+              kind: 'anchor-nofollow',
+            },
+          ])
+          expect(await db.crawls.linksFrom(id, [])).toEqual([])
+        })
+
+        it('keeps the hreflang of sitemaps, once each, until the crawl is pruned', async () => {
+          const domainId = await domain()
+          const crawl = await finishedCrawl(domainId)
+          const entry = { pageHash: crawlUrlHash(page), lang: 'es', url: `${page}es` }
+          await db.crawls.addSitemapHreflang(crawl.id, [
+            entry,
+            entry,
+            { pageHash: crawlUrlHash(other), lang: 'x'.repeat(50), url: `${other}/fr` },
+          ])
+          await db.crawls.addSitemapHreflang(crawl.id, [entry])
+          expect(await db.crawls.sitemapHreflangOf(crawl.id, [crawlUrlHash(page)])).toEqual([entry])
+          const [long] = await db.crawls.sitemapHreflangOf(crawl.id, [crawlUrlHash(other)])
+          expect(long?.lang).toHaveLength(35)
+          expect(await db.crawls.sitemapHreflangOf(crawl.id, [])).toEqual([])
+
+          await finishedCrawl(domainId)
+          await db.crawls.prune({ domainId, type: 'full', keep: 1 })
+          expect(await db.crawls.sitemapHreflangOf(crawl.id, [crawlUrlHash(page)])).toEqual([])
+        })
+
+        it('lists the external URLs that anchors link to until they are requested', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const linked = 'https://elsewhere.org/linked'
+          const nofollow = 'https://elsewhere.org/nofollow'
+          const image = 'https://elsewhere.org/image.png'
+          await db.crawls.addUrls(id, [newUrl(page)])
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(page),
+            result: result('page'),
+            urls: [linked, nofollow, image].map((url) => newUrl(url, { scope: 'external' })),
+            links: [
+              { sourceHash: crawlUrlHash(page), targetHash: crawlUrlHash(linked), kind: 'anchor' },
+              // Twice, but only one row is expected.
+              { sourceHash: crawlUrlHash(page), targetHash: crawlUrlHash(linked), kind: 'image' },
+              {
+                sourceHash: crawlUrlHash(page),
+                targetHash: crawlUrlHash(nofollow),
+                kind: 'anchor-nofollow',
+              },
+              { sourceHash: crawlUrlHash(page), targetHash: crawlUrlHash(image), kind: 'image' },
+            ],
+          })
+
+          const pending = await db.crawls.pendingExternalLinks(id, 10)
+          expect(pending.map((url) => url.url).sort()).toEqual([linked, nofollow])
+          expect(await db.crawls.pendingExternalLinks(id, 1)).toHaveLength(1)
+
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(linked),
+            result: result('unknown', { statusCode: 404 }),
+          })
+          expect((await db.crawls.pendingExternalLinks(id, 10)).map((url) => url.url)).toEqual([
+            nofollow,
+          ])
+          // Still external, and answering does not make it a page or a URL of the site.
+          expect(await db.crawls.countUrls(id)).toMatchObject({ externalCount: 3, urlsCount: 1 })
+        })
+
+        it('remembers what a domain counts as having issues', async () => {
+          const domainId = await domain()
+          const base = await db.crawls.settings(domainId)
+          expect(base.issueThreshold).toBe('warning')
+          await db.crawls.saveSettings(domainId, { ...base, issueThreshold: 'issue' })
+          expect((await db.crawls.settings(domainId)).issueThreshold).toBe('issue')
+        })
+      })
+
       describe('page issues', () => {
         it('replaces the issues of a crawl and says how many pages have any', async () => {
           const domainId = await domain()
           const { id } = await startCrawl(domainId)
-          expect((await db.crawls.get(id))?.pagesWithIssuesCount).toBeNull()
+          expect((await db.crawls.get(id))?.pagesByWorstIssue).toBeNull()
 
           await db.crawls.saveIssues({
             crawlId: id,
             issues: [
               { urlHash: 'a', issue: 'http-error' },
-              { urlHash: 'a', issue: 'missing-title' },
-              { urlHash: 'a', issue: 'missing-title' },
+              { urlHash: 'a', issue: 'missing-title', details: ['x', 'y'] },
+              { urlHash: 'a', issue: 'missing-title', details: ['x', 'y'] },
               { urlHash: 'b', issue: 'missing-title' },
             ],
+            pages: { issue: 1, warning: 2, opportunity: 3 },
           })
-          expect((await db.crawls.get(id))?.pagesWithIssuesCount).toBe(2)
+          expect((await db.crawls.get(id))?.pagesByWorstIssue).toEqual({
+            issue: 1,
+            warning: 2,
+            opportunity: 3,
+          })
           expect(
             (await db.crawls.issueCounts(id)).sort((x, y) => x.issue.localeCompare(y.issue)),
           ).toEqual([
@@ -851,10 +994,24 @@ export function describeDatabaseContract(
             'missing-title',
           ])
           expect(await db.crawls.issuesOf(id, [])).toEqual([])
+          expect(
+            (await db.crawls.issuesOf(id, ['a'])).find((i) => i.issue === 'missing-title'),
+          ).toEqual({ urlHash: 'a', issue: 'missing-title', details: ['x', 'y'] })
+          expect(
+            (await db.crawls.issuesOf(id, ['a'])).find((i) => i.issue === 'http-error'),
+          ).toEqual({ urlHash: 'a', issue: 'http-error' })
 
           // Analysing again replaces the previous result; zero issues is still "analysed".
-          await db.crawls.saveIssues({ crawlId: id, issues: [] })
-          expect((await db.crawls.get(id))?.pagesWithIssuesCount).toBe(0)
+          await db.crawls.saveIssues({
+            crawlId: id,
+            issues: [],
+            pages: { issue: 0, warning: 0, opportunity: 0 },
+          })
+          expect((await db.crawls.get(id))?.pagesByWorstIssue).toEqual({
+            issue: 0,
+            warning: 0,
+            opportunity: 0,
+          })
           expect(await db.crawls.issueCounts(id)).toEqual([])
         })
 
@@ -866,13 +1023,14 @@ export function describeDatabaseContract(
             await db.crawls.saveIssues({
               crawlId: crawl.id,
               issues: [{ urlHash: crawlUrlHash('https://acme.com/'), issue: 'missing-title' }],
+              pages: { issue: 1, warning: 0, opportunity: 0 },
             })
           }
 
           expect(await db.crawls.prune({ domainId, type: 'full', keep: 1 })).toBe(1)
           expect(await db.crawls.get(oldest.id)).toMatchObject({
             pruned: true,
-            pagesWithIssuesCount: 1,
+            pagesByWorstIssue: { issue: 1, warning: 0, opportunity: 0 },
           })
           expect(await db.crawls.issueCounts(oldest.id)).toEqual([])
           expect(await db.crawls.issueCounts(newest.id)).toEqual([

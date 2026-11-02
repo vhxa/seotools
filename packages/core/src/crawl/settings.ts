@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { INDEXNOW_KEY, OPTIONAL_CRAWL_FILES, type OptionalCrawlFile } from './files'
+import type { IssueType } from './issues'
 
 /**
  * How pages are fetched. Only `http` is implemented; the other two are shown disabled in the UI
@@ -27,6 +28,8 @@ export interface CrawlSettings {
   optionalFiles: OptionalCrawlFile[]
   /** The file holding it cannot be found without knowing it. `null`: not checked. */
   indexNowKey: string | null
+  /** A page counts as having issues if it has one of this type or worse. */
+  issueThreshold: IssueType
 }
 
 export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
@@ -40,6 +43,7 @@ export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
   retainCrawls: 10,
   optionalFiles: [],
   indexNowKey: null,
+  issueThreshold: 'warning',
 }
 
 export const CRAWL_SETTINGS_LIMITS = {

@@ -197,7 +197,7 @@ export async function fetchCrawlFiles(input: {
   const queue: CrawlFileRequest[] = []
   const seen = new Set<string>()
   const enqueue = (url: string, kind: CrawlFileKind) => {
-    // External URLs are never requested, wherever a site points to them from.
+    // A crawl file can point anywhere: only what a page links to gets checked, and only by a crawl.
     if (seen.has(url) || !isInternalUrl(url, host)) return
     seen.add(url)
     queue.push({ url, kind })

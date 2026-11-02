@@ -26,6 +26,9 @@ import {
   crawlResultColumns,
   crawlRobotsColumn,
   crawlIssueRows,
+  pagesByWorstIssueColumns,
+  sitemapHreflangRow,
+  toCrawlUrlIssue,
   crawlUrlOrder,
   crawlUrlWhere,
   crawlFileColumns,
@@ -51,7 +54,7 @@ import {
 } from '../mapping'
 import { DEFAULT_CRAWL_SETTINGS, type CrawlLinkKind } from '@seotools/core'
 import * as schema from '../schema/pg'
-import type { Database, NewCrawlUrl } from '../types'
+import type { CrawlLink, CrawlUrlIssue, Database, NewCrawlUrl, SitemapHreflang } from '../types'
 
 const {
   jobs,
@@ -69,6 +72,7 @@ const {
   crawls,
   crawlUrls,
   crawlUrlIssues,
+  crawlSitemapHreflang,
   crawlLinks,
   priorityUrls,
 } = schema
@@ -553,6 +557,9 @@ export function createPgDatabase(options: {
         await db.transaction(async (tx) => {
           await tx.delete(crawlLinks).where(inArray(crawlLinks.crawlId, expired))
           await tx.delete(crawlUrlIssues).where(inArray(crawlUrlIssues.crawlId, expired))
+          await tx
+            .delete(crawlSitemapHreflang)
+            .where(inArray(crawlSitemapHreflang.crawlId, expired))
           await tx.delete(crawlUrls).where(inArray(crawlUrls.crawlId, expired))
           await tx.update(crawls).set({ pruned: true }).where(inArray(crawls.id, expired))
         })
@@ -694,15 +701,93 @@ export function createPgDatabase(options: {
         return rows as { url: string; kind: CrawlLinkKind }[]
       },
 
-      async saveIssues({ crawlId, issues }) {
+      async linksFrom(crawlId, sourceHashes) {
+        const found: CrawlLink[] = []
+        for (const batch of chunk(sourceHashes)) {
+          const rows = await db
+            .select({
+              sourceHash: crawlLinks.sourceHash,
+              targetHash: crawlLinks.targetHash,
+              kind: crawlLinks.kind,
+            })
+            .from(crawlLinks)
+            .where(and(eq(crawlLinks.crawlId, crawlId), inArray(crawlLinks.sourceHash, batch)))
+          found.push(...(rows as CrawlLink[]))
+        }
+        return found
+      },
+
+      async addSitemapHreflang(crawlId, entries) {
+        for (const batch of chunk(entries)) {
+          await db
+            .insert(crawlSitemapHreflang)
+            .values(batch.map((entry) => sitemapHreflangRow(crawlId, entry)))
+            .onConflictDoNothing()
+        }
+      },
+
+      async sitemapHreflangOf(crawlId, pageHashes) {
+        const found: SitemapHreflang[] = []
+        for (const batch of chunk(pageHashes)) {
+          found.push(
+            ...(await db
+              .select({
+                pageHash: crawlSitemapHreflang.pageHash,
+                lang: crawlSitemapHreflang.lang,
+                url: crawlSitemapHreflang.url,
+              })
+              .from(crawlSitemapHreflang)
+              .where(
+                and(
+                  eq(crawlSitemapHreflang.crawlId, crawlId),
+                  inArray(crawlSitemapHreflang.pageHash, batch),
+                ),
+              )),
+          )
+        }
+        return found
+      },
+
+      async pendingExternalLinks(crawlId, limit) {
+        const rows = await db
+          .select({
+            url: crawlUrls.url,
+            urlHash: crawlUrls.urlHash,
+            scope: crawlUrls.scope,
+            source: crawlUrls.source,
+            depth: crawlUrls.depth,
+          })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'external'),
+              eq(crawlUrls.state, 'skipped'),
+              inArray(
+                crawlUrls.urlHash,
+                db
+                  .select({ urlHash: crawlLinks.targetHash })
+                  .from(crawlLinks)
+                  .where(
+                    and(
+                      eq(crawlLinks.crawlId, crawlId),
+                      inArray(crawlLinks.kind, ['anchor', 'anchor-nofollow']),
+                    ),
+                  ),
+              ),
+            ),
+          )
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+        return rows as NewCrawlUrl[]
+      },
+
+      async saveIssues({ crawlId, issues, pages }) {
         const rows = crawlIssueRows(crawlId, issues)
         await db.transaction(async (tx) => {
           await tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId))
           for (const batch of chunk(rows)) await tx.insert(crawlUrlIssues).values(batch)
-          await tx
-            .update(crawls)
-            .set({ pagesWithIssuesCount: new Set(rows.map((row) => row.urlHash)).size })
-            .where(eq(crawls.id, crawlId))
+          await tx.update(crawls).set(pagesByWorstIssueColumns(pages)).where(eq(crawls.id, crawlId))
         })
       },
 
@@ -716,16 +801,17 @@ export function createPgDatabase(options: {
       },
 
       async issuesOf(crawlId, urlHashes) {
-        const found: { urlHash: string; issue: string }[] = []
+        const found: CrawlUrlIssue[] = []
         for (const batch of chunk(urlHashes)) {
-          found.push(
-            ...(await db
-              .select({ urlHash: crawlUrlIssues.urlHash, issue: crawlUrlIssues.issue })
-              .from(crawlUrlIssues)
-              .where(
-                and(eq(crawlUrlIssues.crawlId, crawlId), inArray(crawlUrlIssues.urlHash, batch)),
-              )),
-          )
+          const rows = await db
+            .select({
+              urlHash: crawlUrlIssues.urlHash,
+              issue: crawlUrlIssues.issue,
+              details: crawlUrlIssues.details,
+            })
+            .from(crawlUrlIssues)
+            .where(and(eq(crawlUrlIssues.crawlId, crawlId), inArray(crawlUrlIssues.urlHash, batch)))
+          found.push(...rows.map(toCrawlUrlIssue))
         }
         return found
       },

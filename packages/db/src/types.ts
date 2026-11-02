@@ -19,6 +19,7 @@ import type {
   Job,
   JobStatus,
   SettingsStore,
+  PagesByWorstIssue,
 } from '@seotools/core'
 
 export type Dialect = 'sqlite' | 'pg' | 'mysql'
@@ -131,10 +132,11 @@ export interface Crawl {
   urlsDoneCount: number
   externalCount: number
   /**
-   * Pages with at least one issue (`PAGE_ISSUES` in @seotools/core). `null` when the crawl has not
-   * been analysed: the pages without issues are `pagesCount` minus this. Survives pruning.
+   * Pages by the worst type of issue they have (`PAGE_ISSUES` in @seotools/core). `null` when the
+   * crawl has not been analysed. `pagesWithIssues` says how many count, given a domain's threshold;
+   * the rest of `pagesCount` are correct. Survives pruning.
    */
-  pagesWithIssuesCount: number | null
+  pagesByWorstIssue: PagesByWorstIssue | null
   robots: CrawlRobotsFiles | null
   /** The results per URL were removed by the domain's retention setting; the counts remain. */
   pruned: boolean
@@ -196,14 +198,26 @@ export interface CrawlUrlQuery {
   view: CrawlUrlView
   /** Text the URL or the title contains, whatever its case. */
   search?: string
-  /** Only pages that have this issue (an id from `PAGE_ISSUES`). */
+  /**
+   * Only URLs that have this issue (an id from `PAGE_ISSUES`), whichever `view` they are in: issues
+   * are not only for pages, and a broken link is not even on this site.
+   */
   issue?: string
 }
 
-/** An issue found on a page of a crawl. */
+/** An issue found on a URL of a crawl. */
 export interface CrawlUrlIssue {
   urlHash: string
   issue: string
+  /** What `PAGE_ISSUES` says this issue details. Absent when it details nothing. */
+  details?: string[]
+}
+
+/** A hreflang alternate that a sitemap declares for a page. */
+export interface SitemapHreflang {
+  pageHash: string
+  lang: string
+  url: string
 }
 
 export interface CrawlRepository {
@@ -283,12 +297,28 @@ export interface CrawlRepository {
     options?: { limit?: number },
   ): Promise<{ url: string; kind: CrawlLinkKind }[]>
 
+  /** The links going out of these URLs of a crawl. */
+  linksFrom(crawlId: string, sourceHashes: string[]): Promise<CrawlLink[]>
+  /** Saves hreflang alternates sitemaps declared, ignoring those the crawl already has. */
+  addSitemapHreflang(crawlId: string, entries: SitemapHreflang[]): Promise<void>
+  /** The hreflang alternates sitemaps declare for these pages of a crawl. */
+  sitemapHreflangOf(crawlId: string, pageHashes: string[]): Promise<SitemapHreflang[]>
   /**
-   * Replaces the issues of a crawl with these and records how many pages have any, which also
-   * marks the crawl as analysed. Every page the crawl has but `issues` does not mention is correct.
+   * External URLs that anchors link to and were not requested yet. They only stop being returned
+   * once `recordResult` stores what they answered.
    */
-  saveIssues(input: { crawlId: string; issues: CrawlUrlIssue[] }): Promise<void>
-  /** For each issue found in a crawl, how many pages have it. Issues nobody has are left out. */
+  pendingExternalLinks(crawlId: string, limit: number): Promise<NewCrawlUrl[]>
+
+  /**
+   * Replaces the issues of a crawl with these and records how many pages have each type as their
+   * worst, which also marks the crawl as analysed.
+   */
+  saveIssues(input: {
+    crawlId: string
+    issues: CrawlUrlIssue[]
+    pages: PagesByWorstIssue
+  }): Promise<void>
+  /** For each issue found in a crawl, how many URLs have it. Issues nobody has are left out. */
   issueCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>

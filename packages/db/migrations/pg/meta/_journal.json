@@ -43,6 +43,20 @@
       "when": 1793557593105,
       "tag": "0005_page_issues",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793600562257,
+      "tag": "0006_drop_pages_with_issues_count",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793600563420,
+      "tag": "0007_page_issue_catalog",
+      "breakpoints": true
     }
   ]
 }

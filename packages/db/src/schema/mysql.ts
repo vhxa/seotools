@@ -178,6 +178,13 @@ export const crawlSettings = mysqlTable('crawl_settings', {
   /** JSON array of `OptionalCrawlFile`. `null`: none. */
   optionalFiles: longtext('optional_files'),
   indexNowKey: varchar('index_now_key', { length: 128 }),
+  /** A page counts as having issues from this type up: `IssueType`. */
+  issueThreshold: varchar('issue_threshold', {
+    length: 16,
+    enum: ['issue', 'warning', 'opportunity'],
+  })
+    .notNull()
+    .default('warning'),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
 
@@ -235,9 +242,14 @@ export const crawls = mysqlTable(
     urlsCount: int('urls_count').notNull().default(0),
     urlsDoneCount: int('urls_done_count').notNull().default(0),
     externalCount: int('external_count').notNull().default(0),
-    /** Pages with at least one issue. `null`: the crawl was not analysed (yet). */
-    pagesWithIssuesCount: int('pages_with_issues_count'),
     robots: longtext('robots'),
+    /**
+     * Pages by the worst type of issue they have, so that what counts as "with issues" can change
+     * without analysing again. `null`: the crawl was not analysed (yet).
+     */
+    pagesWorstIssueCount: int('pages_worst_issue_count'),
+    pagesWorstWarningCount: int('pages_worst_warning_count'),
+    pagesWorstOpportunityCount: int('pages_worst_opportunity_count'),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: boolean('pruned').notNull().default(false),
     error: text('error'),
@@ -315,11 +327,31 @@ export const crawlUrlIssues = mysqlTable(
       .references(() => crawls.id, { onDelete: 'cascade' }),
     urlHash: varchar('url_hash', { length: 32 }).notNull(),
     issue: varchar('issue', { length: 64 }).notNull(),
+    /** JSON array of what `PAGE_ISSUES` says the issue details, e.g. which headers are missing. */
+    details: longtext('details'),
   },
   (t) => [
     primaryKey({ columns: [t.crawlId, t.urlHash, t.issue] }),
     index('crawl_url_issues_issue_idx').on(t.crawlId, t.issue),
   ],
+)
+
+/**
+ * The hreflang alternates sitemaps declare for each page. A sitemap holds up to 50,000 pages with
+ * several alternates each, too much for the JSON of the sitemap's own row.
+ */
+export const crawlSitemapHreflang = mysqlTable(
+  'crawl_sitemap_hreflang',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    pageHash: varchar('page_hash', { length: 32 }).notNull(),
+    lang: varchar('lang', { length: 35 }).notNull(),
+    targetHash: varchar('target_hash', { length: 32 }).notNull(),
+    url: text('url').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.crawlId, t.pageHash, t.lang, t.targetHash] })],
 )
 
 /** The URLs marked as priority from the panel. They survive crawls, so they hang off the domain. */

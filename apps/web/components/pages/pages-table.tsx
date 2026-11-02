@@ -1,6 +1,11 @@
 'use client'
 
-import { PAGE_ISSUES, isPageIssueId } from '@seotools/core/crawl/issues'
+import {
+  PAGE_ISSUES,
+  compareIssueSeverity,
+  isPageIssueId,
+  type IssueDetailKind,
+} from '@seotools/core/crawl/issues'
 import type { CrawlUrlKind } from '@seotools/core'
 import type { CrawlUrlSort } from '@seotools/db'
 import {
@@ -32,8 +37,9 @@ import {
   setPriorityUrlsAction,
 } from '@/app/(protected)/domains/[host]/actions'
 import { StatusCell } from '@/components/crawl/status-cell'
-import { OpenUrlLink } from '@/components/pages/url-drawer'
+import { IssueBadge, IssueDetails, useIssueLabel } from '@/components/pages/issue-mark'
 import { Badge } from '@/components/ui/badge'
+import { OpenUrlLink } from '@/components/pages/url-drawer'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -71,8 +77,10 @@ export interface PageRow {
   bytes: number | null
   contentType: string | null
   redirectTo: string | null
-  /** Ids of the issues the page has. */
+  /** Ids of the issues the URL has. */
   issues: string[]
+  /** What the issue being filtered by says about this URL, if it says anything. */
+  issueDetails: string[]
   /** Marked as a priority page: what the star toggles. */
   priority: boolean
 }
@@ -89,6 +97,8 @@ const columns = helper.columns([
   helper.display({ id: 'url', enableHiding: false }),
   helper.display({ id: 'title' }),
   helper.display({ id: 'status' }),
+  // Only there when filtering by an issue that details something: the filter says, not the user.
+  helper.display({ id: 'issueDetail', enableHiding: false }),
   helper.display({ id: 'issues' }),
   helper.display({ id: 'depth' }),
   helper.display({ id: 'responseTime' }),
@@ -177,24 +187,28 @@ function PriorityStar({ host, row }: { host: string; row: PageRow }) {
   )
 }
 
+/** Rows have to stay rows: a page can have dozens of issues, and its detail lists them all. */
+const MAX_ISSUE_BADGES = 3
+
 function IssueBadges({ ids }: { ids: string[] }) {
-  const t = useTranslations('PageIssues')
+  const t = useTranslations('PagesDetails')
+  const label = useIssueLabel()
   if (ids.length === 0) return <span className="text-muted-foreground">—</span>
+  const ranked = [...ids].sort(
+    (a, b) =>
+      Number(isPageIssueId(b)) - Number(isPageIssueId(a)) ||
+      (isPageIssueId(a) && isPageIssueId(b) ? compareIssueSeverity(a, b) : 0),
+  )
+  const rest = ranked.slice(MAX_ISSUE_BADGES)
   return (
     <div className="flex flex-wrap gap-1">
-      {ids.map((id) =>
-        isPageIssueId(id) ? (
-          <Badge
-            key={id}
-            variant={PAGE_ISSUES[id].severity === 'error' ? 'destructive' : 'secondary'}
-          >
-            {t(`${id}.name`)}
-          </Badge>
-        ) : (
-          <Badge key={id} variant="outline">
-            {id}
-          </Badge>
-        ),
+      {ranked.slice(0, MAX_ISSUE_BADGES).map((id) => (
+        <IssueBadge key={id} issue={id} />
+      ))}
+      {rest.length > 0 && (
+        <Badge variant="outline" title={rest.map(label).join('\n')}>
+          {t('moreIssues', { count: rest.length })}
+        </Badge>
       )}
     </div>
   )
@@ -209,7 +223,6 @@ function Cell({
   row,
   host,
   query,
-  canPrioritize,
   selected,
   onSelect,
 }: {
@@ -217,7 +230,6 @@ function Cell({
   row: PageRow
   host: string
   query: DetailQuery
-  canPrioritize: boolean
   selected: boolean
   onSelect: (value: boolean) => void
 }) {
@@ -265,6 +277,12 @@ function Cell({
       )
     case 'status':
       return <StatusCell row={row} />
+    case 'issueDetail':
+      return row.issueDetails.length > 0 ? (
+        <IssueDetails details={row.issueDetails} />
+      ) : (
+        <Muted>—</Muted>
+      )
     case 'issues':
       return <IssueBadges ids={row.issues} />
     case 'depth':
@@ -298,7 +316,8 @@ function Cell({
         <Muted>—</Muted>
       )
     case 'actions':
-      return canPrioritize ? (
+      // Only pages can be prioritised, and an issue lists more than pages.
+      return row.kind === 'page' ? (
         <div className="flex justify-end">
           <PriorityStar host={host} row={row} />
         </div>
@@ -388,8 +407,11 @@ export function PagesTable({
   query: DetailQuery
 }) {
   const t = useTranslations('PagesDetails')
+  const tCatalog = useTranslations('IssueCatalog')
   const [stored, saveColumns] = useLocalStorage(STORAGE_KEY)
   const columnVisibility = useMemo(() => parseVisibility(stored), [stored])
+  const detail: IssueDetailKind | undefined =
+    query.issue && isPageIssueId(query.issue) ? PAGE_ISSUES[query.issue].detail : undefined
   const [pending, startTransition] = useTransition()
   const [selection, setSelection] = useState<Record<string, true>>({})
 
@@ -398,7 +420,10 @@ export function PagesTable({
     columns,
     data: rows,
     getRowId: (row) => row.urlHash,
-    state: { columnVisibility, rowSelection: selection },
+    state: {
+      columnVisibility: { ...columnVisibility, issueDetail: detail !== undefined },
+      rowSelection: selection,
+    },
     onRowSelectionChange: (updater: Updater<Record<string, true>>) =>
       setSelection((current) => (typeof updater === 'function' ? updater(current) : updater)),
     onColumnVisibilityChange: (updater: Updater<ColumnVisibilityState>) =>
@@ -407,9 +432,9 @@ export function PagesTable({
       ),
   })
 
-  // Only pages can be prioritised.
-  const canPrioritize = query.view === 'pages'
   const selected = rows.filter((row) => selection[row.urlHash])
+  // Only pages can be prioritised.
+  const selectedPages = selected.filter((row) => row.kind === 'page')
   const allSelected = rows.length > 0 && selected.length === rows.length
   const visibleColumns = table.getVisibleLeafColumns()
 
@@ -417,7 +442,7 @@ export function PagesTable({
     startTransition(async () => {
       await setPriorityUrlsAction(
         host,
-        selected.map((row) => row.url),
+        selectedPages.map((row) => row.url),
         marked,
       )
       setSelection({})
@@ -447,7 +472,7 @@ export function PagesTable({
             >
               <XIcon />
             </Button>
-            {canPrioritize && (
+            {selectedPages.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={<Button variant="outline" size="sm" disabled={pending} />}
@@ -524,7 +549,11 @@ export function PagesTable({
                   ) : column.id === 'actions' ? null : (
                     <SortableHead
                       id={column.id}
-                      label={t(`columns.${column.id as 'url'}`)}
+                      label={
+                        column.id === 'issueDetail' && detail
+                          ? tCatalog(`detailColumns.${detail}`)
+                          : t(`columns.${column.id as 'url'}`)
+                      }
                       host={host}
                       query={query}
                     />
@@ -558,7 +587,6 @@ export function PagesTable({
                     row={row.original}
                     host={host}
                     query={query}
-                    canPrioritize={canPrioritize}
                     selected={row.getIsSelected()}
                     onSelect={(value) => row.toggleSelected(value)}
                   />

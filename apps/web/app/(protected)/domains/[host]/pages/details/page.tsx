@@ -1,7 +1,9 @@
-import type { CrawlUrl } from '@seotools/db'
+import { isPageIssueId } from '@seotools/core/crawl/issues'
+import type { CrawlUrl, CrawlUrlIssue } from '@seotools/db'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { Pagination } from '@/components/pagination'
+import { IssueLabel } from '@/components/pages/issue-mark'
 import { IssuesFilter } from '@/components/pages/issues-filter'
 import { PagesTable, type PageRow } from '@/components/pages/pages-table'
 import { UrlDetail } from '@/components/pages/url-detail'
@@ -17,7 +19,6 @@ import {
   type DetailQuery,
 } from '@/lib/pages-query'
 import { loadUrlDetail } from '@/lib/url-detail'
-import { cn } from '@/lib/utils'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +29,12 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   return { title: t('metaTitle', { host }) }
 }
 
-const toRow = (url: CrawlUrl, issues: string[], priority: boolean): PageRow => ({
+const toRow = (
+  url: CrawlUrl,
+  issues: CrawlUrlIssue[],
+  selectedIssue: string | null,
+  priority: boolean,
+): PageRow => ({
   urlHash: url.urlHash,
   url: url.url,
   title: url.title,
@@ -40,7 +46,8 @@ const toRow = (url: CrawlUrl, issues: string[], priority: boolean): PageRow => (
   bytes: url.bytes,
   contentType: url.contentType,
   redirectTo: url.redirectTo,
-  issues,
+  issues: issues.map(({ issue }) => issue),
+  issueDetails: issues.find(({ issue }) => issue === selectedIssue)?.details ?? [],
   priority,
 })
 
@@ -54,10 +61,17 @@ export default async function PagesDetailsPage({
   const { host } = await params
   const query = parseDetailQuery(await searchParams)
   const { domain } = await requireDomain(host)
-  const [t, format] = await Promise.all([getTranslations('PagesDetails'), getFormatter()])
+  const [t, tIssues, format] = await Promise.all([
+    getTranslations('PagesDetails'),
+    getTranslations('PageIssues'),
+    getFormatter(),
+  ])
   const db = await getDb()
 
   const latest = await db.crawls.latestWithResults(domain.id, 'full')
+
+  // An issue lists URLs from every view, so none of them is the one being shown.
+  const isCurrent = (view: DetailQuery['view']) => !query.issue && view === query.view
 
   const viewCount = (view: DetailQuery['view']) => {
     if (!latest) return 0
@@ -78,7 +92,7 @@ export default async function PagesDetailsPage({
       ...(query.search ? { search: query.search } : {}),
       ...(query.issue ? { issue: query.issue } : {}),
     }
-    if (latest.pagesWithIssuesCount !== null) issueCounts = await db.crawls.issueCounts(latest.id)
+    if (latest.pagesByWorstIssue !== null) issueCounts = await db.crawls.issueCounts(latest.id)
     total = await db.crawls.countListed(listing)
     pageCount = Math.max(1, Math.ceil(total / PAGES_PAGE_SIZE))
     page = Math.min(query.page, pageCount)
@@ -95,13 +109,13 @@ export default async function PagesDetailsPage({
       latest.id,
       urls.map((url) => url.urlHash),
     )
-    const issuesByUrl = new Map<string, string[]>()
-    for (const { urlHash, issue } of issues) {
-      issuesByUrl.set(urlHash, [...(issuesByUrl.get(urlHash) ?? []), issue])
+    const issuesByUrl = new Map<string, CrawlUrlIssue[]>()
+    for (const issue of issues) {
+      issuesByUrl.set(issue.urlHash, [...(issuesByUrl.get(issue.urlHash) ?? []), issue])
     }
     const priorities = new Set(priorityUrls.map((p) => p.urlHash))
     rows = urls.map((url) =>
-      toRow(url, issuesByUrl.get(url.urlHash) ?? [], priorities.has(url.urlHash)),
+      toRow(url, issuesByUrl.get(url.urlHash) ?? [], query.issue, priorities.has(url.urlHash)),
     )
   }
 
@@ -126,12 +140,7 @@ export default async function PagesDetailsPage({
       </div>
 
       {latest && (
-        <div
-          className={cn(
-            'grid items-start gap-4',
-            query.view === 'pages' && 'xl:grid-cols-[minmax(0,1fr)_16rem]',
-          )}
-        >
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <Card>
             <CardHeader className="gap-3">
               <nav aria-label={t('viewsLabel')} className="flex flex-wrap gap-1">
@@ -145,9 +154,9 @@ export default async function PagesDetailsPage({
                       sort: null,
                       url: null,
                     })}
-                    aria-current={view === query.view ? 'page' : undefined}
+                    aria-current={isCurrent(view) ? 'page' : undefined}
                     className={buttonVariants({
-                      variant: view === query.view ? 'secondary' : 'ghost',
+                      variant: isCurrent(view) ? 'secondary' : 'ghost',
                       size: 'sm',
                     })}
                   >
@@ -158,7 +167,18 @@ export default async function PagesDetailsPage({
                   </Link>
                 ))}
               </nav>
-              <CardDescription>{t(`viewHints.${query.view}`)}</CardDescription>
+              <CardDescription>
+                {query.issue && isPageIssueId(query.issue) ? (
+                  <>
+                    <span className="font-medium text-foreground">
+                      <IssueLabel issue={query.issue} />.
+                    </span>{' '}
+                    {tIssues(`${query.issue}.description`)}
+                  </>
+                ) : (
+                  t(`viewHints.${query.view}`)
+                )}
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <UrlDrawer
@@ -197,16 +217,14 @@ export default async function PagesDetailsPage({
               />
             </CardContent>
           </Card>
-          {query.view === 'pages' && (
-            <IssuesFilter
-              host={domain.host}
-              query={{ ...query, page }}
-              pages={latest.pagesCount}
-              counts={issueCounts}
-              checked={latest.pagesWithIssuesCount !== null}
-              className="max-xl:order-first xl:sticky xl:top-16"
-            />
-          )}
+          <IssuesFilter
+            host={domain.host}
+            query={{ ...query, page }}
+            pages={latest.pagesCount}
+            counts={issueCounts}
+            checked={latest.pagesByWorstIssue !== null}
+            className="max-xl:order-first xl:sticky xl:top-16 xl:max-h-[calc(100svh-5rem)] xl:overflow-y-auto"
+          />
         </div>
       )}
     </main>

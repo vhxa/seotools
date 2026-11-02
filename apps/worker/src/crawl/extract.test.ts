@@ -47,6 +47,18 @@ describe('extractHtml', () => {
     })
   })
 
+  it('keeps its time and size in check whatever a page holds', () => {
+    const started = Date.now()
+    const page = extractHtml(
+      `<head><${'x'.repeat(5000)}></head><link rel="canonical" href="/${'a'.repeat(10_000)}">
+       <a href="/x">${'.!'.repeat(500_000)}a</a>`,
+      PAGE,
+    )
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(page.facts.invalidHeadElements[0]).toHaveLength(50)
+    expect(page.facts.canonicals[0]?.raw).toHaveLength(2048)
+  })
+
   it('does not mistake the title of an SVG for the title of the page', () => {
     expect(extractHtml('<svg><title>Icon</title></svg><title>Page</title>', PAGE).title).toBe(
       'Page',
@@ -126,7 +138,7 @@ describe('extractHtml', () => {
   it('follows rel=nofollow links and links on noindex pages all the same', () => {
     const html =
       '<meta name="robots" content="noindex,nofollow"><a rel="nofollow" href="/hidden">x</a>'
-    expect(urlsOf(html, 'anchor')).toEqual(['https://example.com/hidden'])
+    expect(urlsOf(html, 'anchor-nofollow')).toEqual(['https://example.com/hidden'])
   })
 
   it('finds URLs in CSS and structured data', () => {
@@ -203,7 +215,9 @@ describe('parseLinkHeader', () => {
       PAGE,
     )
     expect(parsed.canonical).toBe('https://example.com/c')
-    expect(parsed.hreflang).toEqual([{ lang: 'es', url: 'https://example.com/es' }])
+    expect(parsed.hreflang).toEqual([
+      { lang: 'es', url: 'https://example.com/es', source: 'header' },
+    ])
     expect(parsed.links).toEqual([
       { url: 'https://example.com/c', kind: 'canonical' },
       { url: 'https://example.com/es', kind: 'hreflang' },
@@ -265,6 +279,7 @@ describe('parseSitemap', () => {
       format: null,
       entries: 0,
       lastModified: null,
+      hreflang: [],
     })
   })
 })

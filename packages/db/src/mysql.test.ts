@@ -19,6 +19,7 @@ describeDatabaseContract(
           'settings',
           'user',
           'crawl_url_issues',
+          'crawl_sitemap_hreflang',
           'crawl_links',
           'crawl_urls',
           'crawls',

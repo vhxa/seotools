@@ -1,10 +1,11 @@
 import { crawlUrlHash } from '@seotools/core'
-import { PAGE_ISSUES, isPageIssueId } from '@seotools/core/crawl/issues'
+import { isPageIssueId } from '@seotools/core/crawl/issues'
 import { ExternalLinkIcon } from 'lucide-react'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
 import { PriorityToggle, UrlLink } from '@/components/crawl/url-cells'
 import { StatusCell } from '@/components/crawl/status-cell'
+import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { OpenUrlLink } from '@/components/pages/url-drawer'
 import { Badge } from '@/components/ui/badge'
 import { formatBytes } from '@/lib/format'
@@ -50,10 +51,9 @@ export async function UrlDetail({
   data: UrlDetailData
   hrefFor: (urlHash: string) => string
 }) {
-  const [t, tIssues, tSeverity, tKinds, format] = await Promise.all([
+  const [t, tIssues, tKinds, format] = await Promise.all([
     getTranslations('UrlDetail'),
     getTranslations('PageIssues'),
-    getTranslations('Pages.issues.severity'),
     getTranslations('LinkKinds'),
     getFormatter(),
   ])
@@ -130,59 +130,50 @@ export async function UrlDetail({
         </Fields>
       </Section>
 
-      {isPage && (
-        <>
-          <Section title={t('sections.issues')}>
-            {crawl.pagesWithIssuesCount === null ? (
-              <p className="text-sm text-muted-foreground">{t('notChecked')}</p>
-            ) : data.issues.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('noIssues')}</p>
-            ) : (
-              <ul className="grid gap-2 text-sm">
-                {data.issues.map((id) => (
-                  <li key={id} className="grid gap-0.5">
-                    <span className="flex items-center gap-2 font-medium">
-                      {isPageIssueId(id) ? tIssues(`${id}.name`) : id}
-                      {isPageIssueId(id) && (
-                        <Badge
-                          variant={
-                            PAGE_ISSUES[id].severity === 'error' ? 'destructive' : 'secondary'
-                          }
-                        >
-                          {tSeverity(PAGE_ISSUES[id].severity)}
-                        </Badge>
-                      )}
-                    </span>
-                    {isPageIssueId(id) && (
-                      <span className="text-muted-foreground">{tIssues(`${id}.description`)}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
-
-          <Section title={t('sections.page')}>
-            <Fields>
-              <Field label={t('fields.title')}>{text(url.title)}</Field>
-              <Field label={t('fields.description')}>{text(url.data?.description)}</Field>
-              <Field label={t('fields.h1')}>
-                {url.data?.h1?.length ? (
-                  <ul className="grid gap-1">
-                    {url.data.h1.map((heading, index) => (
-                      <li key={index}>{heading}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  notSet
+      <Section title={t('sections.issues')}>
+        {crawl.pagesByWorstIssue === null ? (
+          <p className="text-sm text-muted-foreground">{t('notChecked')}</p>
+        ) : data.issues.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('noIssues')}</p>
+        ) : (
+          <ul className="grid gap-3 text-sm">
+            {data.issues.map(({ issue: id, details }) => (
+              <li key={id} className="grid gap-1">
+                <span className="flex flex-wrap items-center gap-2 font-medium">
+                  <IssueLabel issue={id} />
+                  {isPageIssueId(id) && <IssueMark issue={id} />}
+                </span>
+                {isPageIssueId(id) && (
+                  <span className="text-muted-foreground">{tIssues(`${id}.description`)}</span>
                 )}
-              </Field>
-              <Field label={t('fields.canonical')}>{text(url.canonical)}</Field>
-              <Field label={t('fields.metaRobots')}>{text(url.metaRobots)}</Field>
-              <Field label={t('fields.xRobotsTag')}>{text(url.xRobotsTag)}</Field>
-            </Fields>
-          </Section>
-        </>
+                {details && <IssueDetails details={details} />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {isPage && (
+        <Section title={t('sections.page')}>
+          <Fields>
+            <Field label={t('fields.title')}>{text(url.title)}</Field>
+            <Field label={t('fields.description')}>{text(url.data?.description)}</Field>
+            <Field label={t('fields.h1')}>
+              {url.data?.h1?.length ? (
+                <ul className="grid gap-1">
+                  {url.data.h1.map((heading, index) => (
+                    <li key={index}>{heading}</li>
+                  ))}
+                </ul>
+              ) : (
+                notSet
+              )}
+            </Field>
+            <Field label={t('fields.canonical')}>{text(url.canonical)}</Field>
+            <Field label={t('fields.metaRobots')}>{text(url.metaRobots)}</Field>
+            <Field label={t('fields.xRobotsTag')}>{text(url.xRobotsTag)}</Field>
+          </Fields>
+        </Section>
       )}
 
       <Section title={t('sections.linksIn')}>{links(data.linksIn, data.hasMoreIn)}</Section>
