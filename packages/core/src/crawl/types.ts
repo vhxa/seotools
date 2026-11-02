@@ -131,6 +131,8 @@ export interface CrawlPageFacts {
   placeholderText: boolean
   /** Reads like a "not found" page, whatever the status code said. */
   notFoundText: boolean
+  /** Says so in its title or main heading, which is stronger evidence than the text. */
+  notFoundHeadline: boolean
   imagesNoAlt: number
   imagesEmptyAlt: number
   imagesNoSize: number

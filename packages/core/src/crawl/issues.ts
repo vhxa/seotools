@@ -27,105 +27,117 @@ export type IssueDetailKind = 'hreflang-source' | 'security-header'
 
 type Entry = readonly [type: IssueType, importance: IssueImportance, detail?: IssueDetailKind]
 
-/** By category, each in the order it is listed. Groups of categories are in `ISSUE_GROUPS`. */
+/**
+ * By category, each in the order it is listed. Groups of categories are in `ISSUE_GROUPS`.
+ *
+ * The type says what kind of finding it is, and the importance how much it matters, independently:
+ * - `issue`: crawling and indexing problems.
+ * - `warning`: something to review, which can be as important as an issue (a security problem is a
+ *   high-importance warning).
+ * - `opportunity`: an improvement.
+ */
 const ISSUE_CATALOG = {
   'response-codes': {
     'no-response': ['issue', 'high'],
     'server-error': ['issue', 'high'],
     'client-error': ['issue', 'high'],
     'redirect-loop': ['issue', 'high'],
-    'soft-404': ['warning', 'high'],
+    'soft-404-confirmed': ['issue', 'high'],
+    'soft-404-possible': ['warning', 'high'],
     'redirect-chain': ['warning', 'medium'],
     'refresh-redirect': ['warning', 'medium'],
-    'robots-blocked': ['warning', 'medium'],
+    'robots-blocked': ['issue', 'high'],
     'redirect-3xx': ['warning', 'low'],
     'broken-external-link': ['warning', 'low'],
   },
   directives: {
-    'directive-outside-head': ['issue', 'high'],
+    'directive-outside-head': ['warning', 'low'],
     'directives-conflict': ['issue', 'high'],
-    noindex: ['warning', 'high'],
+    'directives-conflict-snippets': ['warning', 'medium'],
+    noindex: ['issue', 'high'],
     nofollow: ['warning', 'medium'],
-    'snippet-limited': ['warning', 'medium'],
-    noimageindex: ['warning', 'low'],
-    'unavailable-after': ['warning', 'low'],
+    nosnippet: ['warning', 'high'],
+    'max-snippet-limited': ['warning', 'medium'],
+    noimageindex: ['issue', 'medium'],
+    'unavailable-after-expired': ['issue', 'high'],
+    'unavailable-after-future': ['warning', 'medium'],
   },
   canonicals: {
     'canonical-outside-head': ['issue', 'high'],
     'canonical-conflict': ['issue', 'high'],
     'canonical-not-indexable': ['issue', 'high'],
-    'canonical-fragment': ['issue', 'medium'],
-    'canonical-missing': ['warning', 'medium'],
+    'canonical-fragment': ['warning', 'medium'],
+    'canonical-missing': ['warning', 'low'],
     canonicalised: ['warning', 'low'],
     'canonical-relative': ['warning', 'low'],
     'canonical-repeated': ['warning', 'low'],
   },
   sitemaps: {
     'sitemap-too-big': ['issue', 'high'],
-    'sitemap-not-indexable': ['issue', 'high'],
-    'orphan-in-sitemap': ['issue', 'medium'],
-    'indexable-not-in-sitemap': ['issue', 'medium'],
-    'in-many-sitemaps': ['warning', 'low'],
+    'sitemap-not-indexable': ['issue', 'medium'],
+    'indexed-not-in-sitemap': ['warning', 'high'],
+    'indexable-not-in-sitemap': ['warning', 'low'],
   },
   hreflang: {
-    'hreflang-not-200': ['issue', 'high', 'hreflang-source'],
-    'hreflang-no-return': ['issue', 'high', 'hreflang-source'],
-    'hreflang-invalid-code': ['issue', 'high', 'hreflang-source'],
-    'hreflang-outside-head': ['issue', 'high', 'hreflang-source'],
-    'hreflang-non-canonical': ['issue', 'medium', 'hreflang-source'],
-    'hreflang-noindex': ['issue', 'medium', 'hreflang-source'],
-    'hreflang-same-language': ['issue', 'medium', 'hreflang-source'],
-    'hreflang-no-self': ['warning', 'low', 'hreflang-source'],
-    'hreflang-no-x-default': ['warning', 'low', 'hreflang-source'],
+    'hreflang-unreachable': ['issue', 'high', 'hreflang-source'],
+    'hreflang-redirect': ['warning', 'medium', 'hreflang-source'],
+    'hreflang-no-return': ['warning', 'high', 'hreflang-source'],
+    'hreflang-invalid-code': ['warning', 'high', 'hreflang-source'],
+    'hreflang-outside-head': ['warning', 'high', 'hreflang-source'],
+    'hreflang-non-canonical': ['warning', 'medium', 'hreflang-source'],
+    'hreflang-noindex': ['issue', 'high', 'hreflang-source'],
+    'hreflang-same-language': ['warning', 'medium', 'hreflang-source'],
+    'hreflang-no-self': ['warning', 'medium', 'hreflang-source'],
+    'hreflang-no-x-default': ['opportunity', 'low', 'hreflang-source'],
   },
   title: {
-    'title-missing': ['issue', 'high'],
-    'title-outside-head': ['issue', 'high'],
-    'title-multiple': ['issue', 'medium'],
+    'title-missing': ['warning', 'high'],
+    'title-outside-head': ['warning', 'medium'],
+    'title-multiple': ['warning', 'medium'],
     'title-duplicate': ['opportunity', 'medium'],
     'title-too-long': ['opportunity', 'low'],
     'title-too-short': ['opportunity', 'low'],
-    'title-same-as-h1': ['opportunity', 'low'],
   },
   'meta-description': {
-    'description-multiple': ['issue', 'medium'],
-    'description-outside-head': ['issue', 'medium'],
+    'description-multiple': ['warning', 'low'],
+    'description-outside-head': ['warning', 'low'],
     'description-missing': ['opportunity', 'medium'],
     'description-duplicate': ['opportunity', 'medium'],
     'description-too-long': ['opportunity', 'low'],
     'description-too-short': ['opportunity', 'low'],
   },
   headings: {
-    'h1-missing': ['issue', 'medium'],
+    'h1-missing': ['warning', 'medium'],
     'h1-multiple': ['warning', 'low'],
     'heading-empty': ['warning', 'low'],
     'heading-skipped-level': ['warning', 'low'],
-    'h2-missing': ['warning', 'low'],
+    'h2-missing': ['opportunity', 'low'],
     'h1-duplicate': ['opportunity', 'low'],
     'heading-too-long': ['opportunity', 'low'],
   },
   content: {
-    'content-duplicate': ['issue', 'high'],
+    'content-duplicate': ['warning', 'high'],
     'content-near-duplicate': ['warning', 'medium'],
     'content-placeholder': ['warning', 'medium'],
     'content-thin': ['opportunity', 'low'],
   },
   images: {
-    'img-no-alt': ['issue', 'medium'],
+    'img-no-alt': ['warning', 'high'],
     'img-empty-alt': ['warning', 'low'],
     'img-too-heavy': ['opportunity', 'low'],
     'img-no-size': ['opportunity', 'low'],
     'img-long-alt': ['opportunity', 'low'],
   },
   'structured-data': {
-    'json-ld-invalid': ['issue', 'high'],
+    'json-ld-invalid': ['warning', 'high'],
     'no-structured-data': ['opportunity', 'low'],
   },
   links: {
     'link-to-localhost': ['issue', 'high'],
-    'uncrawlable-links': ['warning', 'medium'],
+    'uncrawlable-links': ['issue', 'medium'],
     'only-nofollow-inlinks': ['warning', 'medium'],
     'only-noindex-inlinks': ['warning', 'medium'],
+    'orphan-in-sitemap': ['issue', 'medium'],
     'no-outgoing-links': ['warning', 'low'],
     'internal-nofollow-links': ['warning', 'low'],
     'deep-page': ['opportunity', 'medium'],
@@ -133,31 +145,29 @@ const ISSUE_CATALOG = {
     'anchor-vague': ['opportunity', 'low'],
   },
   urls: {
-    'url-multiple-slashes': ['issue', 'medium'],
-    'url-spaces': ['issue', 'medium'],
+    'url-multiple-slashes': ['warning', 'low'],
+    'url-spaces': ['warning', 'medium'],
     'url-tracking': ['warning', 'medium'],
     'url-uppercase': ['warning', 'low'],
-    'url-non-ascii': ['warning', 'low'],
-    'url-parameters': ['warning', 'low'],
     'url-repetitive-path': ['warning', 'low'],
-    'url-internal-search': ['warning', 'low'],
+    'url-internal-search': ['warning', 'medium'],
     'url-underscores': ['opportunity', 'low'],
     'url-too-long': ['opportunity', 'low'],
   },
   security: {
-    'http-url': ['issue', 'high'],
-    'mixed-content': ['issue', 'high'],
-    'insecure-form': ['issue', 'medium'],
+    'http-url': ['warning', 'high'],
+    'mixed-content': ['warning', 'high'],
+    'insecure-form': ['warning', 'high'],
     'missing-security-header': ['warning', 'low', 'security-header'],
     'unsafe-cross-origin-links': ['warning', 'low'],
     'protocol-relative': ['warning', 'low'],
   },
   html: {
-    'invalid-head-elements': ['issue', 'high'],
-    'missing-head-or-body': ['issue', 'high'],
-    'multiple-head-or-body': ['issue', 'high'],
+    'invalid-head-elements': ['warning', 'high'],
+    'html-structure-broken': ['issue', 'high'],
+    'multiple-head-or-body': ['warning', 'medium'],
     'document-too-big': ['issue', 'medium'],
-    'head-not-first': ['warning', 'medium'],
+    'content-before-head': ['warning', 'medium'],
   },
 } as const satisfies Record<string, Record<string, Entry>>
 
@@ -198,6 +208,27 @@ export const PAGE_ISSUES = Object.fromEntries(
 /** Every issue, in the order they are listed. */
 export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
 
+/**
+ * Bump when a check in the worker changes what it finds without the catalog changing (the catalog
+ * changing is noticed by itself).
+ */
+const CHECKS_REVISION = 1
+
+/**
+ * Identifies this list of issues with their types and importance, and the way they are detected.
+ * Crawls keep the one they were analysed with, and the worker analyses again those that have
+ * another.
+ */
+export const ISSUE_CATALOG_VERSION = (() => {
+  let hash = 5381
+  for (const char of PAGE_ISSUE_IDS.map(
+    (id) => `${id}:${PAGE_ISSUES[id].type}:${PAGE_ISSUES[id].importance}`,
+  ).join('|')) {
+    hash = (Math.imul(hash, 33) + char.charCodeAt(0)) >>> 0
+  }
+  return `${CHECKS_REVISION}.${hash.toString(36)}`
+})()
+
 export const isPageIssueId = (value: unknown): value is PageIssueId =>
   typeof value === 'string' && Object.hasOwn(PAGE_ISSUES, value)
 
@@ -224,11 +255,11 @@ export function compareIssueSeverity(a: PageIssueId, b: PageIssueId): number {
   )
 }
 
-/** How many pages of a crawl have each type as the worst of their issues. */
+/**
+ * How many pages of a crawl have each type as the worst of their findings. A page is counted once,
+ * so with the pages that have none these add up to the pages of the crawl.
+ */
 export type PagesByWorstIssue = Record<IssueType, number>
 
-/** The pages that count as having issues when `threshold` is the mildest type that counts. */
-export function pagesWithIssues(pages: PagesByWorstIssue, threshold: IssueType): number {
-  const last = ISSUE_TYPES.indexOf(threshold)
-  return ISSUE_TYPES.slice(0, last + 1).reduce((total, type) => total + pages[type], 0)
-}
+/** How many pages of a crawl have at least one finding of each type. A page can be in several. */
+export type PagesWithType = Record<IssueType, number>

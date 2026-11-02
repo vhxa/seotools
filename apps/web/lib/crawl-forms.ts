@@ -23,11 +23,8 @@ export type CrawlSettingsFormError =
   | 'indexNowKey'
   | 'indexNowKeyRequired'
 
-/** Everything the crawl settings form decides. What counts as an issue has a section of its own. */
-export type CrawlSettingsFormValues = Omit<CrawlSettings, 'issueThreshold'>
-
 export type CrawlSettingsFormResult =
-  { ok: true; settings: CrawlSettingsFormValues } | { ok: false; error: CrawlSettingsFormError }
+  { ok: true; settings: CrawlSettings } | { ok: false; error: CrawlSettingsFormError }
 
 export type CrawlScheduleFormResult =
   { ok: true; enabled: boolean; recurrence: CrawlRecurrence } | { ok: false }

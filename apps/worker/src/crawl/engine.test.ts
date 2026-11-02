@@ -1,9 +1,10 @@
-import { createLogger, crawlUrlHash } from '@seotools/core'
+import { ISSUE_CATALOG_VERSION, createLogger, crawlUrlHash } from '@seotools/core'
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { JobInterruptedError } from '../types'
 import { analyseCrawl } from './analysis'
+import { reanalyseOutdatedCrawls } from './reanalysis'
 import { runCrawl, type CrawlEngineOptions } from './engine'
 import { fakeSite, html, moved, notFound } from './fake-site'
 import { FetchError, type FetchedResponse } from './fetcher'
@@ -398,9 +399,20 @@ describe('page issues', () => {
 
   it('sorts pages by the worst type of issue they have', async () => {
     const { crawl } = await crawlWith(site())
-    // The home page has no H1, /bare no title, and /missing does not exist. The other three pages
-    // are what the site answered to URLs only the crawler tried, so they have nothing at all.
-    expect(crawl.pagesByWorstIssue).toEqual({ issue: 3, warning: 0, opportunity: 0 })
+    // The home page has no H1 and /bare no title, which are warnings, and /missing does not exist,
+    // which is an issue. The other three pages are what the site answered to URLs only the crawler
+    // tried, so they have nothing at all.
+    expect(crawl.pagesByWorstIssue).toEqual({ issue: 1, warning: 2, opportunity: 0 })
+  })
+
+  it('counts a page under every type it has something of', async () => {
+    const { crawl } = await crawlWith(site())
+    // Every page that has a warning also lacks a meta description, which is an opportunity: it is
+    // not hidden because something worse was found.
+    const withType = crawl.pagesWithType!
+    expect(withType.issue).toBe(1)
+    expect(withType.warning).toBe(2)
+    expect(withType.opportunity).toBeGreaterThan(crawl.pagesByWorstIssue!.opportunity)
   })
 
   it('leaves a priority crawl unanalysed: it only sees a few pages', async () => {
@@ -416,11 +428,60 @@ describe('page issues', () => {
       crawlId: crawl.id,
       issues: [],
       pages: { issue: 0, warning: 0, opportunity: 0 },
+      withType: { issue: 0, warning: 0, opportunity: 0 },
+      catalog: 'old',
     })
     const again = await analyseCrawl(db, crawl.id)
     expect(again.pages).toBe(6)
     expect(again.pagesByWorstIssue).toEqual(before)
     expect((await db.crawls.get(crawl.id))?.pagesByWorstIssue).toEqual(before)
+  })
+})
+
+describe('a changed issue catalog', () => {
+  it('analyses the crawls of the old one again, once', async () => {
+    const { crawl } = await crawlWith(
+      fakeSite({ 'https://example.com/': html('<title>Home</title>') }),
+    )
+    const current = (await db.crawls.get(crawl.id))!
+    expect(current.issueCatalog).toBe(ISSUE_CATALOG_VERSION)
+    const log = createLogger('test', 'silent')
+    expect(await reanalyseOutdatedCrawls({ db, log })).toBe(0)
+
+    // What a crawl analysed before the catalog changed looks like: other totals, other version.
+    await db.crawls.saveIssues({
+      crawlId: crawl.id,
+      issues: [{ urlHash: 'x', issue: 'retired-check' }],
+      pages: { issue: 99, warning: 0, opportunity: 0 },
+      withType: { issue: 99, warning: 0, opportunity: 0 },
+      catalog: 'old',
+    })
+    expect(await reanalyseOutdatedCrawls({ db, log })).toBe(1)
+    const after = (await db.crawls.get(crawl.id))!
+    expect(after.issueCatalog).toBe(ISSUE_CATALOG_VERSION)
+    expect(after.pagesByWorstIssue).toEqual(current.pagesByWorstIssue)
+    expect(after.pagesWithType).toEqual(current.pagesWithType)
+    expect(await reanalyseOutdatedCrawls({ db, log })).toBe(0)
+  })
+
+  it('stops when asked', async () => {
+    const { crawl } = await crawlWith(
+      fakeSite({ 'https://example.com/': html('<title>Home</title>') }),
+    )
+    await db.crawls.saveIssues({
+      crawlId: crawl.id,
+      issues: [],
+      pages: { issue: 0, warning: 0, opportunity: 0 },
+      withType: { issue: 0, warning: 0, opportunity: 0 },
+      catalog: 'old',
+    })
+    expect(
+      await reanalyseOutdatedCrawls({
+        db,
+        log: createLogger('test', 'silent'),
+        stopped: () => true,
+      }),
+    ).toBe(0)
   })
 })
 

@@ -13,6 +13,7 @@ import {
   isNull,
   lt,
   lte,
+  ne,
   notInArray,
   or,
   sql,
@@ -487,6 +488,24 @@ export function createSqliteDatabase(options: {
         return row ? toCrawl(row) : null
       },
 
+      async outdatedAnalyses(catalog, limit) {
+        const rows = db
+          .select()
+          .from(crawls)
+          .where(
+            and(
+              isNotNull(crawls.pagesWorstIssueCount),
+              inArray(crawls.status, ['completed', 'incomplete']),
+              eq(crawls.pruned, false),
+              or(isNull(crawls.issueCatalog), ne(crawls.issueCatalog, catalog)),
+            ),
+          )
+          .orderBy(asc(crawls.createdAt))
+          .limit(limit)
+          .all()
+        return rows.map(toCrawl)
+      },
+
       async markRunning(id) {
         const startedAt = new Date()
         db.update(crawls)
@@ -814,12 +833,15 @@ export function createSqliteDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveIssues({ crawlId, issues, pages }) {
+      async saveIssues({ crawlId, issues, pages, withType, catalog }) {
         const rows = crawlIssueRows(crawlId, issues)
         db.transaction((tx) => {
           tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId)).run()
           for (const batch of chunk(rows)) tx.insert(crawlUrlIssues).values(batch).run()
-          tx.update(crawls).set(pagesByWorstIssueColumns(pages)).where(eq(crawls.id, crawlId)).run()
+          tx.update(crawls)
+            .set({ ...pagesByWorstIssueColumns(pages, withType), issueCatalog: catalog })
+            .where(eq(crawls.id, crawlId))
+            .run()
         })
       },
 

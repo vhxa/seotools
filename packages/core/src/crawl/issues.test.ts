@@ -6,7 +6,6 @@ import {
   compareIssueSeverity,
   isPageIssueId,
   issuesOfCategory,
-  pagesWithIssues,
   worstIssueType,
 } from './issues'
 
@@ -18,7 +17,7 @@ describe('the catalog', () => {
     // An id repeated across categories would be lost in `PAGE_ISSUES`.
     expect(new Set(listed).size).toBe(listed.length)
     expect([...listed].sort()).toEqual([...PAGE_ISSUE_IDS].sort())
-    expect(listed).toHaveLength(100)
+    expect(listed).toHaveLength(102)
   })
 
   it('knows the category of each issue', () => {
@@ -34,6 +33,15 @@ describe('the catalog', () => {
       'content-placeholder',
       'content-thin',
     ])
+  })
+
+  it('keeps issues for crawling and indexing, and warnings for the rest', () => {
+    for (const id of ['noindex', 'robots-blocked', 'client-error', 'canonical-conflict'] as const) {
+      expect(PAGE_ISSUES[id].type).toBe('issue')
+    }
+    // Serious, but not a crawling or indexing problem.
+    expect(PAGE_ISSUES['http-url']).toMatchObject({ type: 'warning', importance: 'high' })
+    expect(PAGE_ISSUES['title-missing']).toMatchObject({ type: 'warning', importance: 'high' })
   })
 
   it('says which issues carry a detail', () => {
@@ -58,27 +66,33 @@ describe('worstIssueType', () => {
   it('finds the worst type', () => {
     expect(worstIssueType([])).toBeNull()
     expect(worstIssueType(['title-too-long'])).toBe('opportunity')
-    expect(worstIssueType(['title-too-long', 'noindex'])).toBe('warning')
-    expect(worstIssueType(['title-too-long', 'noindex', 'no-response'])).toBe('issue')
+    expect(worstIssueType(['title-too-long', 'nofollow'])).toBe('warning')
+    expect(worstIssueType(['title-too-long', 'nofollow', 'noindex'])).toBe('issue')
   })
 })
 
 describe('compareIssueSeverity', () => {
   it('sorts by type and then by importance', () => {
     expect(
-      (['title-too-long', 'noindex', 'url-spaces', 'nofollow', 'no-response'] as const)
+      (
+        [
+          'title-too-long',
+          'noindex',
+          'url-spaces',
+          'nofollow',
+          'title-missing',
+          'no-response',
+        ] as const
+      )
         .slice()
         .sort(compareIssueSeverity),
-    ).toEqual(['no-response', 'url-spaces', 'noindex', 'nofollow', 'title-too-long'])
-  })
-})
-
-describe('pagesWithIssues', () => {
-  const pages = { issue: 1, warning: 10, opportunity: 100 }
-
-  it('counts the types from the worst down to the threshold', () => {
-    expect(pagesWithIssues(pages, 'issue')).toBe(1)
-    expect(pagesWithIssues(pages, 'warning')).toBe(11)
-    expect(pagesWithIssues(pages, 'opportunity')).toBe(111)
+    ).toEqual([
+      'noindex',
+      'no-response',
+      'title-missing',
+      'url-spaces',
+      'nofollow',
+      'title-too-long',
+    ])
   })
 })

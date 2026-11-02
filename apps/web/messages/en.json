@@ -169,23 +169,36 @@
     },
     "stats": {
       "total": "Pages found",
-      "correct": "Correct pages",
+      "indexable": "Indexable pages",
       "issues": "Pages with issues",
+      "warnings": "Pages with warnings",
+      "opportunities": "Pages with opportunities",
+      "note": "A page counts in every group it has something of. Indexable pages have no issues, whether or not they have warnings or opportunities.",
       "notChecked": "Not checked yet"
     },
     "chart": {
-      "ariaLabel": "Correct pages and pages with issues after each full crawl",
+      "ariaLabel": "Pages by what they have, after each full crawl",
       "empty": "The history starts with the next full crawl: it is checked for issues when it ends.",
       "date": "Crawl finished",
       "toggle": "Show or hide in the chart"
     },
     "issues": {
       "title": "Issues",
-      "description": "What the last full crawl found, worst first. Open one to see the URLs that have it.",
-      "empty": "Nothing was found.",
       "notChecked": "The last full crawl has not been checked for issues. Run a new full crawl to see them here.",
       "noCrawl": "Issues appear here once the domain has been crawled.",
       "pages": "{count, plural, one {# URL} other {# URLs}}"
+    },
+    "findings": {
+      "issue": {
+        "title": "Issues"
+      },
+      "warning": {
+        "title": "Warnings"
+      },
+      "opportunity": {
+        "title": "Opportunities"
+      },
+      "empty": "Nothing of this kind was found."
     },
     "priority": {
       "mark": "Mark as priority",
@@ -310,9 +323,13 @@
       "name": "Redirect loop",
       "description": "Following the redirects of this URL never reaches a page."
     },
-    "soft-404": {
-      "name": "Soft 404",
-      "description": "Answers 200, but going by its content it looks like a \"not found\" page. Detected from the text, not the status code."
+    "soft-404-confirmed": {
+      "name": "Confirmed soft 404",
+      "description": "Answers 200, but its title or main heading says the page was not found. The page says it itself."
+    },
+    "soft-404-possible": {
+      "name": "Possible soft 404 (detected from content)",
+      "description": "Answers 200, has little text, and what it has reads like a \"not found\" page. A guess from the content, not a certainty: review it."
     },
     "redirect-chain": {
       "name": "Redirect chain",
@@ -339,8 +356,12 @@
       "description": "There is a meta robots tag in the body of the page, where search engines may ignore it."
     },
     "directives-conflict": {
-      "name": "Conflicting directives",
-      "description": "The page says one thing and its opposite at once, such as index and noindex."
+      "name": "Conflicting directives (indexing)",
+      "description": "The page says one thing and its opposite about indexing or following links, such as index and noindex."
+    },
+    "directives-conflict-snippets": {
+      "name": "Conflicting directives (snippets or display)",
+      "description": "The page gives contradictory limits on how it is shown, such as nosnippet with max-snippet:50, or two different values of max-image-preview."
     },
     "noindex": {
       "name": "noindex",
@@ -350,17 +371,25 @@
       "name": "nofollow",
       "description": "The page asks not to follow any of its links."
     },
-    "snippet-limited": {
-      "name": "nosnippet / max-snippet",
-      "description": "The page limits the snippet that can be shown. Relevant for GEO, since AI engines cannot quote it either."
+    "nosnippet": {
+      "name": "nosnippet / max-snippet:0",
+      "description": "The page forbids any snippet, so it cannot be quoted in results or in Google's AI features. That hurts its visibility."
+    },
+    "max-snippet-limited": {
+      "name": "Restrictive max-snippet (above 0)",
+      "description": "The page limits the snippet to a number of characters. The shorter the limit, the less of it can be quoted in results and AI answers. max-snippet:-1 places no limit and is not reported."
     },
     "noimageindex": {
       "name": "noimageindex",
-      "description": "The page asks not to index its images."
+      "description": "The page asks not to index its images, so they cannot appear in image search."
     },
-    "unavailable-after": {
-      "name": "unavailable_after",
-      "description": "The page asks to stop appearing in results after a date."
+    "unavailable-after-expired": {
+      "name": "unavailable_after (date passed)",
+      "description": "The page asked to stop appearing in results after a date that has already passed, so it is no longer shown."
+    },
+    "unavailable-after-future": {
+      "name": "unavailable_after (future date)",
+      "description": "The page will stop appearing in results on the date it gives. Check that this is intended."
     },
     "canonical-outside-head": {
       "name": "Outside the '<head>'",
@@ -402,21 +431,21 @@
       "name": "Non-indexable URL in the sitemap",
       "description": "The sitemap lists a URL that redirects, fails, has noindex or canonicalises to another. Only indexable ones belong there."
     },
-    "orphan-in-sitemap": {
-      "name": "Orphan URL (only in the sitemap)",
-      "description": "No page of the site links to it: only the sitemap leads to it."
+    "indexed-not-in-sitemap": {
+      "name": "Indexed URL not in a sitemap",
+      "description": "A URL that a search engine has indexed and no sitemap lists. It takes a source that confirms indexing, such as Search Console, so nothing is reported until one is connected."
     },
     "indexable-not-in-sitemap": {
-      "name": "Indexable URL not in a sitemap",
-      "description": "An indexable page that is in no sitemap."
+      "name": "Indexable URL not in a sitemap (indexing not confirmed)",
+      "description": "An indexable page that is in no sitemap. Nothing confirms that it is indexed."
     },
-    "in-many-sitemaps": {
-      "name": "URL in several sitemaps",
-      "description": "The same URL appears in more than one sitemap."
+    "hreflang-unreachable": {
+      "name": "Hreflang URL returns 4xx/5xx or does not answer",
+      "description": "A hreflang points at a URL of this site that fails or never answers."
     },
-    "hreflang-not-200": {
-      "name": "Hreflang URL does not answer 200",
-      "description": "A hreflang points at a URL of this site that does not answer 200."
+    "hreflang-redirect": {
+      "name": "Hreflang URL redirects",
+      "description": "A hreflang points at a URL of this site that redirects. It should point at the final URL."
     },
     "hreflang-no-return": {
       "name": "Missing return link",
@@ -474,10 +503,6 @@
       "name": "Too short",
       "description": "Under 30 characters: it is not being made the most of."
     },
-    "title-same-as-h1": {
-      "name": "Same as the H1",
-      "description": "The title and the H1 say exactly the same."
-    },
     "description-multiple": {
       "name": "Multiple",
       "description": "The page has more than one meta description."
@@ -520,7 +545,7 @@
     },
     "h2-missing": {
       "name": "H2 missing",
-      "description": "The page has no H2."
+      "description": "The page has no H2, and it has enough text to be split into subsections."
     },
     "h1-duplicate": {
       "name": "Duplicate H1",
@@ -532,7 +557,7 @@
     },
     "content-duplicate": {
       "name": "Exact duplicate",
-      "description": "Another indexable page has exactly the same text."
+      "description": "Another indexable page has exactly the same text. Check whether the duplication is intended and properly canonicalised."
     },
     "content-near-duplicate": {
       "name": "Near duplicate",
@@ -552,7 +577,7 @@
     },
     "img-empty-alt": {
       "name": "Empty alt",
-      "description": "There are images with an empty alt. It can be right for decorative images."
+      "description": "There are images with an empty alt. It can be right for decorative images, and those marked as such (role=\"presentation\" or aria-hidden) are not reported."
     },
     "img-too-heavy": {
       "name": "Over 100 KB",
@@ -590,6 +615,10 @@
       "name": "Only linked from non-indexable pages",
       "description": "Every link reaching this page comes from pages that will not be indexed."
     },
+    "orphan-in-sitemap": {
+      "name": "Orphan URL (only in the sitemap)",
+      "description": "No internal link to it was found within the scope of the crawl: only the sitemap leads to it."
+    },
     "no-outgoing-links": {
       "name": "No outgoing internal links",
       "description": "The page links to no other page of this site."
@@ -625,14 +654,6 @@
     "url-uppercase": {
       "name": "Uppercase",
       "description": "The path contains uppercase letters. /Page and /page are different URLs to a search engine."
-    },
-    "url-non-ascii": {
-      "name": "Non-ASCII characters",
-      "description": "The URL contains characters that have to be encoded, such as accents."
-    },
-    "url-parameters": {
-      "name": "Parameters",
-      "description": "The URL has parameters, which can multiply the versions of a page."
     },
     "url-repetitive-path": {
       "name": "Repetitive path",
@@ -678,9 +699,9 @@
       "name": "Invalid elements in the '<head>'",
       "description": "There are elements that cannot be in the '<head>'. They can end it early and make Google ignore the canonical or robots."
     },
-    "missing-head-or-body": {
-      "name": "Missing '<head>' or '<body>'",
-      "description": "The document has no '<head>' or '<body>' tag."
+    "html-structure-broken": {
+      "name": "HTML structure that prevents reading indexing directives",
+      "description": "A flaw in the structure of the HTML (an invalid element in the head, a misplaced or repeated head or body) left the robots meta, canonical or hreflang outside the '<head>', where search engines ignore them."
     },
     "multiple-head-or-body": {
       "name": "Multiple '<head>' or '<body>'",
@@ -690,8 +711,8 @@
       "name": "Document over 2 MB",
       "description": "The HTML is over 2 MB, more than Googlebot reads of a page."
     },
-    "head-not-first": {
-      "name": "'<head>' is not the first element",
+    "content-before-head": {
+      "name": "Content misplaced before the '<head>'",
       "description": "Something comes before the '<head>', which can make browsers end it early."
     }
   },
@@ -769,8 +790,7 @@
     "navLabel": "Settings sections",
     "sections": {
       "crawl": "Crawling",
-      "priority": "Priority pages",
-      "issues": "Issues"
+      "priority": "Priority pages"
     }
   },
   "CrawlSettings": {
@@ -1283,25 +1303,12 @@
     "mark": "{type}, {importance} importance",
     "noneFound": "Checked: no URL has it.",
     "categoryToggle": "Show or hide {category}",
-    "qualified": "{category}: {name}"
-  },
-  "IssueSettings": {
-    "metaTitle": "Issue settings · {host} · seotools",
-    "title": "Issue settings",
-    "description": "What counts as a problem on {host}.",
-    "threshold": {
-      "label": "A page counts as \"with issues\" if it has",
-      "hint": "Decides the figures and the chart of correct pages. It applies at once, to earlier crawls too, without crawling again. Everything found is still listed whatever this says.",
-      "options": {
-        "issue": "An Issue",
-        "warning": "An Issue or a Warning",
-        "opportunity": "Anything, even an Opportunity"
-      }
+    "qualified": "{category}: {name}",
+    "typeHelp": {
+      "issue": "Crawling and indexing problems.",
+      "warning": "Something to review. It can matter as much as an issue: a security problem is a warning of high importance.",
+      "opportunity": "An improvement."
     },
-    "save": "Save settings",
-    "saved": "Saved.",
-    "errors": {
-      "threshold": "Choose one of the options."
-    }
+    "importanceHelp": "The importance is independent of the type."
   }
 }

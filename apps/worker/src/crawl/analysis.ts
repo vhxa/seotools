@@ -1,4 +1,10 @@
-import { worstIssueType, type PagesByWorstIssue } from '@seotools/core'
+import {
+  ISSUE_CATALOG_VERSION,
+  PAGE_ISSUES,
+  worstIssueType,
+  type PagesByWorstIssue,
+  type PagesWithType,
+} from '@seotools/core'
 import type { CrawlUrlIssue, Database } from '@seotools/db'
 import { detectIssues } from './issue-checks'
 import { loadSite } from './site-audit'
@@ -6,6 +12,7 @@ import { loadSite } from './site-audit'
 export interface CrawlAnalysis {
   pages: number
   pagesByWorstIssue: PagesByWorstIssue
+  pagesWithType: PagesWithType
 }
 
 /**
@@ -20,6 +27,7 @@ export async function analyseCrawl(db: Database, crawlId: string): Promise<Crawl
   const site = await loadSite(db, crawl)
   const issues: CrawlUrlIssue[] = []
   const pagesByWorstIssue: PagesByWorstIssue = { issue: 0, warning: 0, opportunity: 0 }
+  const pagesWithType: PagesWithType = { issue: 0, warning: 0, opportunity: 0 }
   let pages = 0
   for (const url of site.urls) {
     const found = detectIssues(url, site)
@@ -30,7 +38,16 @@ export async function analyseCrawl(db: Database, crawlId: string): Promise<Crawl
     pages++
     const worst = worstIssueType(found.map((finding) => finding.issue))
     if (worst) pagesByWorstIssue[worst]++
+    for (const type of new Set(found.map((finding) => PAGE_ISSUES[finding.issue].type))) {
+      pagesWithType[type]++
+    }
   }
-  await db.crawls.saveIssues({ crawlId, issues, pages: pagesByWorstIssue })
-  return { pages, pagesByWorstIssue }
+  await db.crawls.saveIssues({
+    crawlId,
+    issues,
+    pages: pagesByWorstIssue,
+    withType: pagesWithType,
+    catalog: ISSUE_CATALOG_VERSION,
+  })
+  return { pages, pagesByWorstIssue, pagesWithType }
 }

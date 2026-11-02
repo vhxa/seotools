@@ -6,7 +6,14 @@ import {
   type PageIssueId,
 } from '@seotools/core'
 import { isValidHreflang } from './language-codes'
-import { comparable, followRedirects, isGuess, type AuditedUrl, type Site } from './site-audit'
+import {
+  comparable,
+  followRedirects,
+  isGuess,
+  unavailableAfter,
+  type AuditedUrl,
+  type Site,
+} from './site-audit'
 
 /** Whether a URL has the issue. A list says so too, unless empty, and is what the issue details. */
 type Check = (url: AuditedUrl, site: Site) => boolean | string[]
@@ -16,6 +23,8 @@ const TITLE_MIN = 30
 const DESCRIPTION_MAX = 155
 const DESCRIPTION_MIN = 70
 const THIN_CONTENT_WORDS = 200
+/** Under this much text, a page has no use for subsections. */
+const SUBSECTIONS_MIN_WORDS = 300
 const URL_MAX = 115
 const CLICK_DEPTH_MAX = 3
 const DOCUMENT_MAX_BYTES = 2 * 1024 * 1024
@@ -40,6 +49,12 @@ const answer =
 
 const statusIn = (url: AuditedUrl, min: number, max: number) =>
   url.url.statusCode !== null && url.url.statusCode >= min && url.url.statusCode <= max
+
+/** The values given to a directive that has them, e.g. `max-snippet:20` gives `['20']`. */
+const valuesOf = (directives: ReadonlySet<string>, name: string) =>
+  [...directives].flatMap((directive) =>
+    directive.startsWith(`${name}:`) ? [directive.slice(name.length + 1)] : [],
+  )
 
 const blank = (text: string | null | undefined) => !text || text.trim() === ''
 
@@ -112,7 +127,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'redirect-loop': answer(
     (url, site) => url.url.kind === 'redirect' && followRedirects(url, site).loop,
   ),
-  'soft-404': onPage((_, facts) => facts.notFoundText),
+  'soft-404-confirmed': onPage((_, facts) => facts.notFoundHeadline),
+  'soft-404-possible': onPage((_, facts) => facts.notFoundText && !facts.notFoundHeadline),
   'redirect-chain': answer((url, site) => {
     if (url.url.kind !== 'redirect') return false
     const { hops, loop } = followRedirects(url, site)
@@ -134,19 +150,33 @@ export const CHECKS: Record<PageIssueId, Check> = {
       (noindex && (d.has('index') || d.has('all'))) ||
       (nofollow && (d.has('follow') || d.has('all'))),
   ),
+  'directives-conflict-snippets': onPage(({ directives }) => {
+    const limits = valuesOf(directives, 'max-snippet')
+    return (
+      (directives.has('nosnippet') && limits.some((limit) => limit !== '0')) ||
+      ['max-snippet', 'max-image-preview', 'max-video-preview'].some(
+        (name) => valuesOf(directives, name).length > 1,
+      )
+    )
+  }),
   noindex: onPage((url) => url.noindex),
   nofollow: onPage((url) => url.nofollow),
-  'snippet-limited': onPage(({ directives }) =>
-    [...directives].some(
-      (directive) =>
-        directive === 'nosnippet' ||
-        (directive.startsWith('max-snippet:') && directive !== 'max-snippet:-1'),
-    ),
+  nosnippet: onPage(
+    ({ directives }) => directives.has('nosnippet') || directives.has('max-snippet:0'),
+  ),
+  // `-1` places no limit.
+  'max-snippet-limited': onPage(({ directives }) =>
+    valuesOf(directives, 'max-snippet').some((limit) => Number(limit) > 0),
   ),
   noimageindex: onPage(({ directives }) => directives.has('noimageindex')),
-  'unavailable-after': onPage(({ directives }) =>
-    [...directives].some((directive) => directive.startsWith('unavailable_after')),
-  ),
+  'unavailable-after-expired': onPage(({ directives }, _facts, site) => {
+    const date = unavailableAfter(directives)
+    return date !== null && date <= site.now
+  }),
+  'unavailable-after-future': onPage(({ directives }, _facts, site) => {
+    const date = unavailableAfter(directives)
+    return date !== null && date > site.now
+  }),
 
   // --- canonicals ----------------------------------------------------------
   'canonical-outside-head': onPage((_, facts) => facts.canonicals.some((c) => !c.inHead)),
@@ -191,14 +221,19 @@ export const CHECKS: Record<PageIssueId, Check> = {
     if (url.url.kind === 'resource') return statusIn(url, 400, 599)
     return !url.indexable
   },
-  'orphan-in-sitemap': (url) =>
-    url.contentPage && url.sitemaps > 0 && url.anchorsIn === 0 && url.url.source !== 'seed',
-  'indexable-not-in-sitemap': (url) => url.indexable && url.sitemaps === 0,
-  'in-many-sitemaps': (url) => url.contentPage && url.sitemaps > 1,
+  'indexed-not-in-sitemap': (url) => url.indexed === true && url.sitemaps === 0,
+  // Indexable is not indexed: only what confirms it is, and nothing does yet.
+  'indexable-not-in-sitemap': (url) => url.indexable && url.indexed !== true && url.sitemaps === 0,
 
   // --- hreflang ------------------------------------------------------------
-  'hreflang-not-200': hreflang(
-    hreflangTargets((target) => target.url.state === 'done' && target.url.statusCode !== 200),
+  'hreflang-unreachable': hreflang(
+    hreflangTargets(
+      (target) =>
+        target.url.state === 'done' && (target.url.error !== null || statusIn(target, 400, 599)),
+    ),
+  ),
+  'hreflang-redirect': hreflang(
+    hreflangTargets((target) => target.url.state === 'done' && target.url.kind === 'redirect'),
   ),
   'hreflang-no-return': hreflang(
     hreflangTargets(
@@ -240,11 +275,6 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'title-too-short': onPage(
     (url) => !blank(url.url.title) && (url.url.title?.length ?? 0) < TITLE_MIN,
   ),
-  'title-same-as-h1': onPage(
-    ({ url }) =>
-      !blank(url.title) &&
-      (url.data?.h1 ?? []).some((heading) => comparable(heading) === comparable(url.title)),
-  ),
 
   // --- meta description ----------------------------------------------------
   'description-multiple': onPage((_, facts) => facts.descriptions > 1),
@@ -267,7 +297,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'h1-multiple': onPage((_, facts) => facts.h1s > 1),
   'heading-empty': onPage((_, facts) => facts.emptyHeadings > 0),
   'heading-skipped-level': onPage((_, facts) => facts.headingLevelSkipped),
-  'h2-missing': onPage((_, facts) => facts.h2s === 0),
+  'h2-missing': onPage((_, facts) => facts.h2s === 0 && facts.words >= SUBSECTIONS_MIN_WORDS),
   'h1-duplicate': onPage(
     (url, _, site) => url.indexable && (site.h1s.get(comparable(url.url.data?.h1?.[0])) ?? 0) > 1,
   ),
@@ -302,6 +332,9 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'uncrawlable-links': onPage((_, facts) => facts.uncrawlableLinks > 0),
   'only-nofollow-inlinks': onPage((url) => url.anchorsIn > 0 && url.followedAnchorsIn === 0),
   'only-noindex-inlinks': onPage((url) => url.anchorsIn > 0 && url.anchorsFromIndexable === 0),
+  // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
+  'orphan-in-sitemap': (url) =>
+    url.contentPage && url.sitemaps > 0 && url.anchorsIn === 0 && url.url.source !== 'seed',
   'no-outgoing-links': onPage((url) => url.internalAnchorsOut === 0),
   'internal-nofollow-links': onPage((url) => url.nofollowAnchorsOut > 0),
   'deep-page': onPage((url) => (url.clickDepth ?? 0) > CLICK_DEPTH_MAX),
@@ -318,10 +351,6 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'url-uppercase': onPage(({ parsed }) =>
     /[A-Z]/.test(parsed.pathname.replace(/%[0-9a-f]{2}/gi, '')),
   ),
-  'url-non-ascii': onPage(({ parsed }) =>
-    /%[89a-f][0-9a-f]/i.test(parsed.pathname + parsed.search),
-  ),
-  'url-parameters': onPage(({ parsed }) => parsed.search !== ''),
   'url-repetitive-path': onPage((url) => hasRepeatedSegments(pathSegments(url))),
   'url-internal-search': onPage(
     (url) =>
@@ -341,10 +370,23 @@ export const CHECKS: Record<PageIssueId, Check> = {
 
   // --- HTML ----------------------------------------------------------------
   'invalid-head-elements': onPage((_, facts) => facts.invalidHeadElements.length > 0),
-  'missing-head-or-body': onPage((_, facts) => facts.heads === 0 || facts.bodies === 0),
+  // The same flaws as the warnings around it, once they have cost the page an indexing signal: a
+  // browser ends the head early, and a robots meta, canonical or hreflang past that point is ignored.
+  'html-structure-broken': onPage((url, facts) => {
+    const flawed =
+      facts.invalidHeadElements.length > 0 ||
+      facts.headNotFirst ||
+      facts.heads > 1 ||
+      facts.bodies > 1
+    const signalLost =
+      facts.robotsOutsideHead > 0 ||
+      facts.canonicals.some((canonical) => !canonical.inHead) ||
+      url.hreflang.some((entry) => entry.outsideHead)
+    return flawed && signalLost
+  }),
   'multiple-head-or-body': onPage((_, facts) => facts.heads > 1 || facts.bodies > 1),
   'document-too-big': onPage(({ url }) => (url.bytes ?? 0) > DOCUMENT_MAX_BYTES),
-  'head-not-first': onPage((_, facts) => facts.headNotFirst),
+  'content-before-head': onPage((_, facts) => facts.headNotFirst),
 }
 
 /** The issues of a URL, in catalog order, with what each one details. */

@@ -16,22 +16,26 @@ import { cn } from '@/lib/utils'
 export interface PagesPoint {
   /** When the crawl ended, in milliseconds since the epoch. */
   at: number
-  correct: number
+  indexable: number
   issues: number
+  warnings: number
+  opportunities: number
 }
 
-export interface PagesStats {
-  total: number | null
-  /** `null` when the last crawl has not been checked for issues. */
-  correct: number | null
-  issues: number | null
-}
+/** The figures of the last crawl. `null` when it has not been checked for issues. */
+export type PagesStats = Record<Series, number | null>
 
-type Series = 'correct' | 'issues'
+const SERIES = ['indexable', 'issues', 'warnings', 'opportunities'] as const
+type Series = (typeof SERIES)[number]
+
+/** What is drawn until somebody chooses otherwise. */
+const DEFAULT_SHOWN: readonly Series[] = ['indexable', 'issues']
 
 const config = {
-  correct: { color: 'var(--chart-1)' },
+  indexable: { color: 'var(--chart-3)' },
   issues: { color: 'var(--chart-2)' },
+  warnings: { color: 'var(--chart-4)' },
+  opportunities: { color: 'var(--chart-1)' },
 } satisfies ChartConfig
 
 /** With this many points or fewer each one gets a marker; past it the line is enough. */
@@ -95,26 +99,24 @@ function Tile({
 }
 
 /**
- * The three figures of the pages overview and the history behind two of them, in the manner of
- * Search Console: clicking "correct" or "with issues" shows or hides its line. One line always
- * stays on.
+ * The figures of the pages overview and the history behind them, in the manner of Search Console:
+ * clicking one shows or hides its line. One line always stays on.
  */
 export function PagesChart({ stats, points }: { stats: PagesStats; points: PagesPoint[] }) {
   const t = useTranslations('Pages')
   const format = useFormatter()
-  const [hidden, setHidden] = useState<Series[]>([])
+  const [shown, setShown] = useState<readonly Series[]>(DEFAULT_SHOWN)
 
   const toggle = (series: Series) =>
-    setHidden((current) =>
+    setShown((current) =>
       current.includes(series)
-        ? current.filter((s) => s !== series)
-        : current.length === 0
-          ? [series]
-          : current,
+        ? current.length > 1
+          ? current.filter((s) => s !== series)
+          : current
+        : [...current, series],
     )
-  const shown = (series: Series) => !hidden.includes(series)
   const number = (value: number | null) => (value === null ? '—' : format.number(value))
-  const notChecked = stats.correct === null ? t('stats.notChecked') : undefined
+  const notChecked = stats.indexable === null ? t('stats.notChecked') : undefined
   const marker = (series: Series) =>
     points.length <= MARKER_LIMIT
       ? {
@@ -130,26 +132,22 @@ export function PagesChart({ stats, points }: { stats: PagesStats; points: Pages
   return (
     <Card>
       <CardContent className="grid gap-6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Tile label={t('stats.total')} value={number(stats.total)} />
-          <Tile
-            label={t('stats.correct')}
-            value={number(stats.correct)}
-            hint={notChecked}
-            series="correct"
-            pressed={shown('correct')}
-            onToggle={() => toggle('correct')}
-            toggleLabel={t('chart.toggle')}
-          />
-          <Tile
-            label={t('stats.issues')}
-            value={number(stats.issues)}
-            hint={notChecked}
-            series="issues"
-            pressed={shown('issues')}
-            onToggle={() => toggle('issues')}
-            toggleLabel={t('chart.toggle')}
-          />
+        <div className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {SERIES.map((series) => (
+              <Tile
+                key={series}
+                label={t(`stats.${series}`)}
+                value={number(stats[series])}
+                hint={notChecked}
+                series={series}
+                pressed={shown.includes(series)}
+                onToggle={() => toggle(series)}
+                toggleLabel={t('chart.toggle')}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">{t('stats.note')}</p>
         </div>
 
         {points.length === 0 ? (
@@ -191,13 +189,13 @@ export function PagesChart({ stats, points }: { stats: PagesStats; points: Pages
                     />
                   }
                 />
-                {(['correct', 'issues'] as const).map(
+                {SERIES.map(
                   (series) =>
-                    shown(series) && (
+                    shown.includes(series) && (
                       <Area
                         key={series}
                         dataKey={series}
-                        name={t(series === 'correct' ? 'stats.correct' : 'stats.issues')}
+                        name={t(`stats.${series}`)}
                         type="monotone"
                         stroke={`var(--color-${series})`}
                         strokeWidth={2}
@@ -222,8 +220,9 @@ export function PagesChart({ stats, points }: { stats: PagesStats; points: Pages
               <thead>
                 <tr>
                   <th>{t('chart.date')}</th>
-                  <th>{t('stats.correct')}</th>
-                  <th>{t('stats.issues')}</th>
+                  {SERIES.map((series) => (
+                    <th key={series}>{t(`stats.${series}`)}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -232,8 +231,9 @@ export function PagesChart({ stats, points }: { stats: PagesStats; points: Pages
                     <td>
                       {format.dateTime(point.at, { dateStyle: 'medium', timeStyle: 'short' })}
                     </td>
-                    <td>{format.number(point.correct)}</td>
-                    <td>{format.number(point.issues)}</td>
+                    {SERIES.map((series) => (
+                      <td key={series}>{format.number(point[series])}</td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

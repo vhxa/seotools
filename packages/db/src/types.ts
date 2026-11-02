@@ -20,6 +20,7 @@ import type {
   JobStatus,
   SettingsStore,
   PagesByWorstIssue,
+  PagesWithType,
 } from '@seotools/core'
 
 export type Dialect = 'sqlite' | 'pg' | 'mysql'
@@ -132,11 +133,18 @@ export interface Crawl {
   urlsDoneCount: number
   externalCount: number
   /**
-   * Pages by the worst type of issue they have (`PAGE_ISSUES` in @seotools/core). `null` when the
-   * crawl has not been analysed. `pagesWithIssues` says how many count, given a domain's threshold;
-   * the rest of `pagesCount` are correct. Survives pruning.
+   * Pages by the worst type of finding they have (`PAGE_ISSUES` in @seotools/core). `null` when the
+   * crawl has not been analysed. The rest of `pagesCount` have none and are correct. Survives
+   * pruning.
    */
   pagesByWorstIssue: PagesByWorstIssue | null
+  /** Pages with at least one finding of each type, or `null` as above. Survives pruning. */
+  pagesWithType: PagesWithType | null
+  /**
+   * The version of the issue catalog (`ISSUE_CATALOG_VERSION`) that `pagesByWorstIssue` and the
+   * issues of the crawl were worked out with. `null`: not analysed, or analysed before this was kept.
+   */
+  issueCatalog: string | null
   robots: CrawlRobotsFiles | null
   /** The results per URL were removed by the domain's retention setting; the counts remain. */
   pruned: boolean
@@ -317,7 +325,15 @@ export interface CrawlRepository {
     crawlId: string
     issues: CrawlUrlIssue[]
     pages: PagesByWorstIssue
+    withType: PagesWithType
+    /** `ISSUE_CATALOG_VERSION`, to find the analyses a later catalog leaves out of date. */
+    catalog: string
   }): Promise<void>
+  /**
+   * Crawls that were analysed with another version of the catalog than `catalog`, and still have
+   * the results per URL to analyse them again. Oldest first.
+   */
+  outdatedAnalyses(catalog: string, limit: number): Promise<Crawl[]>
   /** For each issue found in a crawl, how many URLs have it. Issues nobody has are left out. */
   issueCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */

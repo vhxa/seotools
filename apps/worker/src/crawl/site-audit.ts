@@ -41,8 +41,14 @@ const ROBOTS_DIRECTIVES = new Set([
 export function parseRobotsDirectives(values: readonly (string | null | undefined)[]): Set<string> {
   const directives = new Set<string>()
   for (const value of values) {
-    for (const raw of (value ?? '').toLowerCase().split(',')) {
-      let token = raw.trim()
+    const raws = (value ?? '').toLowerCase().split(',')
+    for (let i = 0; i < raws.length; i++) {
+      let token = (raws[i] ?? '').trim()
+      // A date like `Mon, 25 Jun 2030 15:00:00 GMT` has a comma of its own.
+      if (token.startsWith('unavailable_after') && DATE_TAIL.test(raws[i + 1] ?? '')) {
+        token = `${token},${raws[i + 1]}`.trim()
+        i++
+      }
       let colon = token.indexOf(':')
       if (colon !== -1 && !ROBOTS_DIRECTIVES.has(token.slice(0, colon).trim())) {
         if (token.slice(0, colon).trim() !== SEARCH_BOT.toLowerCase()) continue
@@ -55,6 +61,22 @@ export function parseRobotsDirectives(values: readonly (string | null | undefine
     }
   }
   return directives
+}
+
+/** What follows the comma after the weekday in an RFC 822 or RFC 850 date. */
+const DATE_TAIL = /^\s*\d{1,2}[-\s][a-z]{3}[-\s]\d{2,4}/
+
+/**
+ * When an `unavailable_after` directive of a set says the page stops being shown, or `null` if it
+ * has none or what it holds is not a date.
+ */
+export function unavailableAfter(directives: ReadonlySet<string>): Date | null {
+  for (const directive of directives) {
+    if (!directive.startsWith('unavailable_after:')) continue
+    const time = Date.parse(directive.slice('unavailable_after:'.length))
+    if (!Number.isNaN(time)) return new Date(time)
+  }
+  return null
 }
 
 export interface AuditedUrl {
@@ -72,6 +94,11 @@ export interface AuditedUrl {
   canonicalised: boolean
   robotsBlocked: boolean
   indexable: boolean
+  /**
+   * Whether a search engine has it in its index. The crawl cannot say: it takes a source that does,
+   * such as Search Console. `null`: unknown, which is what every URL is until there is one.
+   */
+  indexed: boolean | null
   /** Its hreflang entries, wherever they were declared. */
   hreflang: HreflangEntry[]
   /** Links from other URLs of the site, not counting redirects. */
@@ -93,6 +120,8 @@ export interface AuditedUrl {
 }
 
 export interface Site {
+  /** When the audit happens, for what depends on the date. */
+  now: Date
   urls: AuditedUrl[]
   get(url: string): AuditedUrl | undefined
   /** Whether any URL of the site answered as a page, unlike a site that is down. */
@@ -165,6 +194,7 @@ function audit(url: CrawlUrl, robots: ReadonlyMap<string, ParsedRobots>): Audite
     canonicalised,
     robotsBlocked,
     indexable: contentPage && !noindex && !canonicalised && !robotsBlocked,
+    indexed: null,
     hreflang: url.data?.hreflang ? [...url.data.hreflang] : [],
     linksIn: 0,
     anchorsIn: 0,
@@ -209,7 +239,7 @@ function countValues(values: Iterable<string>) {
  * looking at the rest of the site, such as who links to it. The URLs are bounded by the domain's
  * limit, and their stored data by what `PageFactsCollector` keeps of a page.
  */
-export async function loadSite(db: Database, crawl: Crawl): Promise<Site> {
+export async function loadSite(db: Database, crawl: Crawl, now = new Date()): Promise<Site> {
   const robots = robotsOf(crawl)
   const urls: AuditedUrl[] = []
   const byHash = new Map<string, AuditedUrl>()
@@ -259,6 +289,7 @@ export async function loadSite(db: Database, crawl: Crawl): Promise<Site> {
     return simhash ? [{ url, simhash, group: url.facts?.textHash ?? null }] : []
   })
   return {
+    now,
     urls,
     get: (url) => byHash.get(crawlUrlHash(url)),
     answered: urls.some((url) => url.contentPage),

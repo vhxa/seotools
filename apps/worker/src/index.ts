@@ -14,6 +14,7 @@ import { createDatabase } from '@seotools/db'
 import pkg from '../package.json' with { type: 'json' }
 import { createCrawlFileRefresher } from './crawl/file-refresher'
 import { createHttpFetcher } from './crawl/fetcher'
+import { reanalyseOutdatedCrawls } from './crawl/reanalysis'
 import { createFaviconRefresher } from './favicon/refresh'
 import { handlers } from './handlers'
 import { createCrawlRunHandler } from './handlers/crawl-run'
@@ -96,7 +97,14 @@ async function main() {
   void crawlFiles.tick()
   const crawlFilesTimer = setInterval(() => void crawlFiles.tick(), SCHEDULER_INTERVAL_MS)
 
+  // After an update that changes the issues, earlier crawls show their old totals until this is done.
   let stopping = false
+  const reanalysis = reanalyseOutdatedCrawls({
+    db,
+    log: log.child({ lane: 'analysis' }),
+    stopped: () => stopping,
+  }).catch((err) => log.error({ err }, 'analysing crawls again failed'))
+
   const shutdown = async (signal: string) => {
     if (stopping) return
     stopping = true
@@ -106,7 +114,13 @@ async function main() {
     clearInterval(faviconTimer)
     clearInterval(crawlFilesTimer)
     // Crawls resume from their stored queue, so they don't need the grace period to finish.
-    await Promise.all([runner.stop(), crawlRunner.stop(0), favicons.stop(), crawlFiles.stop()])
+    await Promise.all([
+      runner.stop(),
+      crawlRunner.stop(0),
+      favicons.stop(),
+      crawlFiles.stop(),
+      reanalysis,
+    ])
     await db.close()
     process.exit(0)
   }
