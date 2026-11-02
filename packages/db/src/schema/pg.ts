@@ -175,10 +175,6 @@ export const crawlSettings = pgTable('crawl_settings', {
   /** JSON array of `OptionalCrawlFile`. `null`: none. */
   optionalFiles: text('optional_files'),
   indexNowKey: text('index_now_key'),
-  /** A page counts as having issues from this type up: `IssueType`. */
-  issueThreshold: text('issue_threshold', { enum: ['issue', 'warning', 'opportunity'] })
-    .notNull()
-    .default('warning'),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
 
@@ -237,6 +233,11 @@ export const crawls = pgTable(
     pagesWorstIssueCount: integer('pages_worst_issue_count'),
     pagesWorstWarningCount: integer('pages_worst_warning_count'),
     pagesWorstOpportunityCount: integer('pages_worst_opportunity_count'),
+    pagesWithIssueCount: integer('pages_with_issue_count'),
+    pagesWithWarningCount: integer('pages_with_warning_count'),
+    pagesWithOpportunityCount: integer('pages_with_opportunity_count'),
+    /** `ISSUE_CATALOG_VERSION` the issues were found with. `null`: not analysed. */
+    issueCatalog: text('issue_catalog'),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: boolean('pruned').notNull().default(false),
     error: text('error'),

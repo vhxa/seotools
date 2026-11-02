@@ -770,6 +770,8 @@ export function describeDatabaseContract(
               { urlHash: hashOf(pages.deep), issue: 'missing-title' },
             ],
             pages: { issue: 2, warning: 0, opportunity: 0 },
+            withType: { issue: 2, warning: 0, opportunity: 0 },
+            catalog: 'v1',
           })
           expect(await paths(crawlId, { issue: 'missing-title' })).toEqual([
             '/gone',
@@ -799,6 +801,8 @@ export function describeDatabaseContract(
               { urlHash: crawlUrlHash('https://elsewhere.org/'), issue: 'client-error' },
             ],
             pages: { issue: 1, warning: 0, opportunity: 0 },
+            withType: { issue: 1, warning: 0, opportunity: 0 },
+            catalog: 'v1',
           })
           expect(
             await db.crawls.countListed({ crawlId, view: 'pages', issue: 'client-error' }),
@@ -952,14 +956,6 @@ export function describeDatabaseContract(
           // Still external, and answering does not make it a page or a URL of the site.
           expect(await db.crawls.countUrls(id)).toMatchObject({ externalCount: 3, urlsCount: 1 })
         })
-
-        it('remembers what a domain counts as having issues', async () => {
-          const domainId = await domain()
-          const base = await db.crawls.settings(domainId)
-          expect(base.issueThreshold).toBe('warning')
-          await db.crawls.saveSettings(domainId, { ...base, issueThreshold: 'issue' })
-          expect((await db.crawls.settings(domainId)).issueThreshold).toBe('issue')
-        })
       })
 
       describe('page issues', () => {
@@ -977,11 +973,18 @@ export function describeDatabaseContract(
               { urlHash: 'b', issue: 'missing-title' },
             ],
             pages: { issue: 1, warning: 2, opportunity: 3 },
+            withType: { issue: 4, warning: 5, opportunity: 6 },
+            catalog: 'v1',
           })
           expect((await db.crawls.get(id))?.pagesByWorstIssue).toEqual({
             issue: 1,
             warning: 2,
             opportunity: 3,
+          })
+          expect((await db.crawls.get(id))?.pagesWithType).toEqual({
+            issue: 4,
+            warning: 5,
+            opportunity: 6,
           })
           expect(
             (await db.crawls.issueCounts(id)).sort((x, y) => x.issue.localeCompare(y.issue)),
@@ -1006,6 +1009,8 @@ export function describeDatabaseContract(
             crawlId: id,
             issues: [],
             pages: { issue: 0, warning: 0, opportunity: 0 },
+            withType: { issue: 0, warning: 0, opportunity: 0 },
+            catalog: 'v1',
           })
           expect((await db.crawls.get(id))?.pagesByWorstIssue).toEqual({
             issue: 0,
@@ -1024,6 +1029,8 @@ export function describeDatabaseContract(
               crawlId: crawl.id,
               issues: [{ urlHash: crawlUrlHash('https://acme.com/'), issue: 'missing-title' }],
               pages: { issue: 1, warning: 0, opportunity: 0 },
+              withType: { issue: 1, warning: 0, opportunity: 0 },
+              catalog: 'v1',
             })
           }
 
@@ -1036,6 +1043,59 @@ export function describeDatabaseContract(
           expect(await db.crawls.issueCounts(newest.id)).toEqual([
             { issue: 'missing-title', pages: 1 },
           ])
+        })
+
+        it('finds the analyses made with another version of the catalog', async () => {
+          const domainId = await domain()
+          // The oldest is the one that pruning removes the results of.
+          const pruned = await finishedCrawl(domainId)
+          const old = await finishedCrawl(domainId)
+          const current = await finishedCrawl(domainId)
+          const unanalysed = await finishedCrawl(domainId)
+          const pages = { issue: 0, warning: 0, opportunity: 0 }
+          await db.crawls.saveIssues({
+            crawlId: old.id,
+            issues: [],
+            pages,
+            withType: pages,
+            catalog: 'v1',
+          })
+          await db.crawls.saveIssues({
+            crawlId: current.id,
+            issues: [],
+            pages,
+            withType: pages,
+            catalog: 'v2',
+          })
+          await db.crawls.saveIssues({
+            crawlId: pruned.id,
+            issues: [],
+            pages,
+            withType: pages,
+            catalog: 'v1',
+          })
+          expect((await db.crawls.get(old.id))?.issueCatalog).toBe('v1')
+          expect((await db.crawls.get(unanalysed.id))?.issueCatalog).toBeNull()
+          expect(await db.crawls.prune({ domainId, type: 'full', keep: 3 })).toBe(1)
+
+          // Not the current one, nor one never analysed, nor one whose results are gone.
+          const ids = (await db.crawls.outdatedAnalyses('v2', 10)).map((crawl) => crawl.id)
+          expect(ids).not.toContain(current.id)
+          expect(ids).not.toContain(unanalysed.id)
+          expect(ids).toContain(old.id)
+          expect(ids).not.toContain(pruned.id)
+          expect(await db.crawls.outdatedAnalyses('v2', 0)).toEqual([])
+
+          await db.crawls.saveIssues({
+            crawlId: old.id,
+            issues: [],
+            pages,
+            withType: pages,
+            catalog: 'v2',
+          })
+          expect(
+            (await db.crawls.outdatedAnalyses('v2', 10)).map((crawl) => crawl.id),
+          ).not.toContain(old.id)
         })
 
         it('lists the crawls of one type', async () => {

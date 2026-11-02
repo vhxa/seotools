@@ -134,7 +134,6 @@ describe('createFaviconRefresher', () => {
       retainCrawls: null,
       optionalFiles: [],
       indexNowKey: null,
-      issueThreshold: 'warning',
     })
     await refresher().tick()
     expect(configs[0]).toMatchObject({
@@ -154,7 +153,6 @@ describe('createFaviconRefresher', () => {
       retainCrawls: null,
       optionalFiles: [],
       indexNowKey: null,
-      issueThreshold: 'warning',
     })
     clock = new Date(start.getTime() + FAVICON_REFRESH_INTERVAL_MS + 1000)
     await refresher().tick()

@@ -57,6 +57,20 @@
       "when": 1793600563120,
       "tag": "0007_page_issue_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793608975349,
+      "tag": "0008_drop_issue_threshold",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793610703055,
+      "tag": "0009_crawl_issue_catalog",
+      "breakpoints": true
     }
   ]
 }

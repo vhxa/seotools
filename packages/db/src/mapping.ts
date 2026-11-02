@@ -23,6 +23,7 @@ import {
   type Job,
   type JobStatus,
   type PagesByWorstIssue,
+  type PagesWithType,
 } from '@seotools/core'
 import type {
   Company,
@@ -114,11 +115,14 @@ export function groupDomains(companies: Company[], domains: Domain[]): CompanyWi
 
 // --- crawls --------------------------------------------------------------
 
-export type CrawlRow = Omit<Crawl, 'robots' | 'pagesByWorstIssue'> & {
+export type CrawlRow = Omit<Crawl, 'robots' | 'pagesByWorstIssue' | 'pagesWithType'> & {
   robots: string | null
   pagesWorstIssueCount: number | null
   pagesWorstWarningCount: number | null
   pagesWorstOpportunityCount: number | null
+  pagesWithIssueCount: number | null
+  pagesWithWarningCount: number | null
+  pagesWithOpportunityCount: number | null
 }
 export type CrawlUrlRow = Omit<CrawlUrl, 'data' | 'source' | 'scope' | 'kind' | 'state'> & {
   data: string | null
@@ -134,6 +138,9 @@ export const toCrawl = ({
   pagesWorstIssueCount: issue,
   pagesWorstWarningCount: warning,
   pagesWorstOpportunityCount: opportunity,
+  pagesWithIssueCount: withIssue,
+  pagesWithWarningCount: withWarning,
+  pagesWithOpportunityCount: withOpportunity,
   ...row
 }: CrawlRow): Crawl => ({
   ...row,
@@ -141,14 +148,24 @@ export const toCrawl = ({
     issue === null || warning === null || opportunity === null
       ? null
       : { issue, warning, opportunity },
+  pagesWithType:
+    withIssue === null || withWarning === null || withOpportunity === null
+      ? null
+      : { issue: withIssue, warning: withWarning, opportunity: withOpportunity },
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
 })
 
 /** The columns of `crawls` that say how many pages have each type as their worst issue. */
-export const pagesByWorstIssueColumns = ({ issue, warning, opportunity }: PagesByWorstIssue) => ({
+export const pagesByWorstIssueColumns = (
+  { issue, warning, opportunity }: PagesByWorstIssue,
+  withType: PagesWithType,
+) => ({
   pagesWorstIssueCount: issue,
   pagesWorstWarningCount: warning,
   pagesWorstOpportunityCount: opportunity,
+  pagesWithIssueCount: withType.issue,
+  pagesWithWarningCount: withType.warning,
+  pagesWithOpportunityCount: withType.opportunity,
 })
 
 export const toCrawlUrl = ({ data, ...row }: CrawlUrlRow): CrawlUrl => ({

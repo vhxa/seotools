@@ -2,7 +2,6 @@
 
 import {
   CRAWL_SETTINGS_LIMITS,
-  ISSUE_TYPES,
   crawlUrlHash,
   nextScheduledRun,
   parsePriorityUrl,
@@ -170,10 +169,7 @@ export async function saveCrawlSettingsAction(
 
   const db = await getDb()
   const previous = await db.crawls.settings(domain.id)
-  await db.crawls.saveSettings(domain.id, {
-    ...parsed.settings,
-    issueThreshold: previous.issueThreshold,
-  })
+  await db.crawls.saveSettings(domain.id, parsed.settings)
   // Whoever just turned a file on should not have to wait a day to see it.
   const filesChanged =
     previous.indexNowKey !== parsed.settings.indexNowKey ||
@@ -182,24 +178,6 @@ export async function saveCrawlSettingsAction(
   revalidatePath(`/domains/${host}/settings/crawl`)
   // The sidebar lists the files that are turned on, and it belongs to a layout above the domain.
   if (filesChanged) revalidatePath('/', 'layout')
-  return { saved: true }
-}
-
-/** What counts as a page with issues. Nothing needs crawling again: the counts are per type. */
-export async function saveIssueSettingsAction(
-  host: string,
-  _previous: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const { domain } = await requireDomain(host)
-  const t = await getTranslations('IssueSettings.errors')
-  const threshold = ISSUE_TYPES.find((type) => type === formData.get('issueThreshold'))
-  if (!threshold) return { error: t('threshold') }
-  const db = await getDb()
-  const settings = await db.crawls.settings(domain.id)
-  await db.crawls.saveSettings(domain.id, { ...settings, issueThreshold: threshold })
-  revalidatePath(`/domains/${host}/settings/issues`)
-  revalidatePath(`/domains/${host}/pages`)
   return { saved: true }
 }
 

@@ -6,8 +6,9 @@ import { analyseCrawl } from './analysis'
 import { runCrawl } from './engine'
 import { fakeSite, moved, type Answer } from './fake-site'
 import { FetchError, type FetchedResponse } from './fetcher'
+import { CHECKS } from './issue-checks'
 import { isValidHreflang } from './language-codes'
-import { parseRobotsDirectives } from './site-audit'
+import { parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
 
 const log = createLogger('test', 'silent')
 const SITE = 'https://example.com'
@@ -145,9 +146,13 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   'server-error': { at: '/x', pages: { '/x': { statusCode: 500, headers: {} } } },
   'client-error': { at: '/x', pages: { '/x': { statusCode: 404, headers: {} } } },
   'redirect-loop': { at: '/x', pages: { '/x': moved('/y'), '/y': moved('/x') } },
-  'soft-404': {
+  'soft-404-confirmed': {
     at: '/x',
     pages: { '/x': page('/x', { title: 'Page not found on this site, sorry', text: 'Nothing.' }) },
+  },
+  'soft-404-possible': {
+    at: '/x',
+    pages: { '/x': page('/x', { text: 'Sorry, the offer you wanted does not exist any more.' }) },
   },
   'redirect-chain': {
     at: '/x',
@@ -182,6 +187,14 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
       }),
     },
   },
+  'directives-conflict-snippets': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', {
+        head: '<meta name="robots" content="nosnippet, max-snippet:50">',
+      }),
+    },
+  },
   noindex: {
     at: '/x',
     pages: { '/x': page('/x', { head: '<meta name="robots" content="noindex">' }) },
@@ -190,7 +203,11 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     at: '/x',
     pages: { '/x': page('/x', { head: '<meta name="robots" content="nofollow">' }) },
   },
-  'snippet-limited': {
+  nosnippet: {
+    at: '/x',
+    pages: { '/x': page('/x', { head: '<meta name="robots" content="max-snippet:0">' }) },
+  },
+  'max-snippet-limited': {
     at: '/x',
     pages: { '/x': page('/x', { head: '<meta name="robots" content="max-snippet:10">' }) },
   },
@@ -198,10 +215,16 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     at: '/x',
     pages: { '/x': page('/x', { head: '<meta name="robots" content="noimageindex">' }) },
   },
-  'unavailable-after': {
+  'unavailable-after-expired': {
     at: '/x',
     pages: {
-      '/x': page('/x', { head: '<meta name="robots" content="unavailable_after: 2030-01-01">' }),
+      '/x': page('/x', { head: '<meta name="robots" content="unavailable_after: 2000-01-01">' }),
+    },
+  },
+  'unavailable-after-future': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', { head: '<meta name="robots" content="unavailable_after: 2999-01-01">' }),
     },
   },
 
@@ -237,24 +260,23 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     at: '/x',
     pages: { '/x': page('/x', { head: '<meta name="robots" content="noindex">' }) },
   },
-  'orphan-in-sitemap': { at: '/x', pages: { '/x': page('/x') }, notLinked: ['/x'] },
+  // Nothing says what a search engine has indexed yet. See the test of its own below.
+  'indexed-not-in-sitemap': { at: '/x', pages: { '/x': page('/x') }, notInSitemap: ['/x'] },
   'indexable-not-in-sitemap': { at: '/x', pages: { '/x': page('/x') }, notInSitemap: ['/x'] },
-  'in-many-sitemaps': {
-    at: '/x',
-    pages: {
-      '/x': page('/x'),
-      [`${SITE}/sitemap2.xml`]: xml(sitemapOf(['/x'])),
-    },
-    notLinked: [`${SITE}/sitemap2.xml`],
-    notInSitemap: [`${SITE}/sitemap2.xml`],
-    robots: `User-agent: *\nDisallow:\nSitemap: ${SITE}/sitemap2.xml\n`,
-  },
 
   // --- hreflang ------------------------------------------------------------
-  'hreflang-not-200': {
+  'hreflang-unreachable': {
     at: '/x',
     details: ['html'],
     pages: { '/x': page('/x', { head: '<link rel="alternate" hreflang="es" href="/es">' }) },
+  },
+  'hreflang-redirect': {
+    at: '/x',
+    details: ['html'],
+    pages: {
+      '/x': page('/x', { head: '<link rel="alternate" hreflang="es" href="/es">' }),
+      '/es': moved('/about'),
+    },
   },
   'hreflang-no-return': {
     at: '/x',
@@ -334,15 +356,6 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     pages: { '/x': page('/x', { title: 'A very long title '.repeat(5) }) },
   },
   'title-too-short': { at: '/x', pages: { '/x': page('/x', { title: 'Short' }) } },
-  'title-same-as-h1': {
-    at: '/x',
-    pages: {
-      '/x': page('/x', {
-        title: 'The same words in both of them',
-        h1: 'The same words in both of them',
-      }),
-    },
-  },
 
   // --- meta description ----------------------------------------------------
   'description-multiple': {
@@ -376,7 +389,10 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   'h1-multiple': { at: '/x', pages: { '/x': page('/x', { body: '<h1>One more</h1>' }) } },
   'heading-empty': { at: '/x', pages: { '/x': page('/x', { body: '<h3> </h3>' }) } },
   'heading-skipped-level': { at: '/x', pages: { '/x': page('/x', { body: '<h4>Down two</h4>' }) } },
-  'h2-missing': { at: '/x', pages: { '/x': page('/x', { h2: null }) } },
+  'h2-missing': {
+    at: '/x',
+    pages: { '/x': page('/x', { h2: null, text: words('/x', 400) }) },
+  },
   'h1-duplicate': {
     at: '/x',
     pages: {
@@ -486,6 +502,7 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     },
     notLinked: ['/x'],
   },
+  'orphan-in-sitemap': { at: '/x', pages: { '/x': page('/x') }, notLinked: ['/x'] },
   'no-outgoing-links': { at: '/x', pages: { '/x': page('/x', { links: '' }) } },
   'internal-nofollow-links': {
     at: '/x',
@@ -512,8 +529,6 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   'url-spaces': { at: '/a%20b', pages: { '/a%20b': page('/a%20b') } },
   'url-tracking': { at: '/a?utm_source=x', pages: { '/a?utm_source=x': page('/a?utm_source=x') } },
   'url-uppercase': { at: '/Abc', pages: { '/Abc': page('/Abc') } },
-  'url-non-ascii': { at: '/caf%C3%A9', pages: { '/caf%C3%A9': page('/caf%C3%A9') } },
-  'url-parameters': { at: '/a?x=1', pages: { '/a?x=1': page('/a?x=1') } },
   'url-repetitive-path': { at: '/a/b/a/b', pages: { '/a/b/a/b': page('/a/b/a/b') } },
   'url-internal-search': { at: '/?s=x', pages: { '/?s=x': page('/?s=x') } },
   'url-underscores': { at: '/a_b', pages: { '/a_b': page('/a_b') } },
@@ -561,14 +576,13 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     at: '/x',
     pages: { '/x': page('/x', { head: '<div>Not here</div>' }) },
   },
-  'missing-head-or-body': {
+  'html-structure-broken': {
     at: '/x',
     pages: {
-      '/x': {
-        statusCode: 200,
-        headers: { 'content-type': 'text/html', ...SAFE_HEADERS },
-        body: Buffer.from('<title>A page with no head or body tags at all</title><p>Hello</p>'),
-      },
+      '/x': page('/x', {
+        canonical: null,
+        head: `<div>Oops</div><link rel="canonical" href="${SITE}/x">`,
+      }),
     },
   },
   'multiple-head-or-body': {
@@ -576,7 +590,7 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     pages: { '/x': page('/x', { body: '<body><p>More</p></body>' }) },
   },
   'document-too-big': { at: '/x', pages: { '/x': { ...page('/x'), bytes: 3_000_000 } } },
-  'head-not-first': {
+  'content-before-head': {
     at: '/x',
     pages: {
       '/x': {
@@ -631,7 +645,9 @@ describe('each issue', () => {
     expect(Object.keys(SCENARIOS).sort()).toEqual([...PAGE_ISSUE_IDS].sort())
   })
 
-  it.each(PAGE_ISSUE_IDS.filter((id) => id !== 'sitemap-too-big'))('finds %s', async (id) => {
+  it.each(
+    PAGE_ISSUE_IDS.filter((id) => id !== 'sitemap-too-big' && id !== 'indexed-not-in-sitemap'),
+  )('finds %s', async (id) => {
     const scenario = SCENARIOS[id]
     const crawlId = await crawl(websiteOf(scenario))
     const found = await issuesAt(crawlId, scenario.at)
@@ -659,6 +675,31 @@ describe('each issue', () => {
   })
 })
 
+describe('a URL a search engine has indexed', () => {
+  // Nothing tells the crawl which URLs are indexed yet, so this is the check on its own.
+  const check = (indexed: boolean | null, sitemaps: number) =>
+    CHECKS['indexed-not-in-sitemap']({ indexed, sitemaps } as AuditedUrl, {} as Site)
+
+  it('is reported when no sitemap lists it', () => {
+    expect(check(true, 0)).toBe(true)
+    expect(check(true, 1)).toBe(false)
+  })
+
+  it('is not guessed from being indexable', () => {
+    expect(check(null, 0)).toBe(false)
+    expect(check(false, 0)).toBe(false)
+  })
+
+  it('is not also reported as merely indexable', async () => {
+    const crawlId = await crawl(
+      websiteOf({ at: '/x', pages: { '/x': page('/x') }, notInSitemap: ['/x'] }),
+    )
+    const found = (await issuesAt(crawlId, '/x')).map((row) => row.issue)
+    expect(found).toContain('indexable-not-in-sitemap')
+    expect(found).not.toContain('indexed-not-in-sitemap')
+  })
+})
+
 describe('a site with nothing wrong', () => {
   it('has no issues at all', async () => {
     const crawlId = await crawl(websiteOf({ at: '/' }))
@@ -677,6 +718,121 @@ describe('what is not an issue', () => {
   const only = (scenario: Scenario) => crawl(websiteOf(scenario))
   const has = async (crawlId: string, at: string, id: PageIssueId) =>
     (await issuesAt(crawlId, at)).some((row) => row.issue === id)
+
+  it('tells a confirmed soft 404 from a possible one', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', { title: 'Page not found on this site, sorry', text: 'Nothing.' }),
+        '/y': page('/y', { text: 'Sorry, the offer you wanted does not exist any more.' }),
+      },
+    })
+    expect(await has(crawlId, '/x', 'soft-404-confirmed')).toBe(true)
+    expect(await has(crawlId, '/x', 'soft-404-possible')).toBe(false)
+    expect(await has(crawlId, '/y', 'soft-404-possible')).toBe(true)
+    expect(await has(crawlId, '/y', 'soft-404-confirmed')).toBe(false)
+  })
+
+  it('does not take a long page that mentions it for a soft 404', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: { '/x': page('/x', { text: `${words('/x', 400)} page not found` }) },
+    })
+    expect(await has(crawlId, '/x', 'soft-404-possible')).toBe(false)
+  })
+
+  it('has no limit on snippets to report for max-snippet:-1', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: { '/x': page('/x', { head: '<meta name="robots" content="max-snippet:-1">' }) },
+    })
+    expect(await has(crawlId, '/x', 'max-snippet-limited')).toBe(false)
+    expect(await has(crawlId, '/x', 'nosnippet')).toBe(false)
+  })
+
+  it('does not call nosnippet and max-snippet:0 contradictory', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', { head: '<meta name="robots" content="nosnippet, max-snippet:0">' }),
+      },
+    })
+    expect(await has(crawlId, '/x', 'directives-conflict-snippets')).toBe(false)
+    expect(await has(crawlId, '/x', 'nosnippet')).toBe(true)
+  })
+
+  it('finds contradictory values for the same limit', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', {
+          head: '<meta name="robots" content="max-image-preview:large"><meta name="robots" content="max-image-preview:none">',
+        }),
+      },
+    })
+    expect(await has(crawlId, '/x', 'directives-conflict-snippets')).toBe(true)
+    expect(await has(crawlId, '/x', 'directives-conflict')).toBe(false)
+  })
+
+  it('reads an unavailable_after date that has a comma', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', {
+          head: '<meta name="robots" content="unavailable_after: Monday, 25-Jun-2001 15:00:00 PST, nofollow">',
+        }),
+      },
+    })
+    expect(await has(crawlId, '/x', 'unavailable-after-expired')).toBe(true)
+    expect(await has(crawlId, '/x', 'nofollow')).toBe(true)
+  })
+
+  it('does not ask for the alt text of a decorative image', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', {
+          body: '<img src="/a.png" alt="" role="presentation" width="1" height="1"><img src="/b.png" aria-hidden="true" width="1" height="1">',
+        }),
+      },
+    })
+    expect(await has(crawlId, '/x', 'img-empty-alt')).toBe(false)
+    expect(await has(crawlId, '/x', 'img-no-alt')).toBe(false)
+  })
+
+  it('does not ask for subsections on a short page', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: { '/x': page('/x', { h2: null, text: words('/x', 250) }) },
+    })
+    expect(await has(crawlId, '/x', 'h2-missing')).toBe(false)
+  })
+
+  it('tells a hreflang target that redirects from one that fails', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', {
+          head: '<link rel="alternate" hreflang="es" href="/es"><link rel="alternate" hreflang="fr" href="/fr">',
+        }),
+        '/es': moved('/about'),
+        '/fr': { statusCode: 404, headers: {} },
+      },
+    })
+    const found = await issuesAt(crawlId, '/x')
+    expect(found.map((row) => row.issue)).toEqual(
+      expect.arrayContaining(['hreflang-redirect', 'hreflang-unreachable']),
+    )
+  })
+
+  it('does not report broken HTML that cost no indexing signal as a structure issue', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: { '/x': page('/x', { head: '<div>Not here</div>' }) },
+    })
+    expect(await has(crawlId, '/x', 'invalid-head-elements')).toBe(true)
+    expect(await has(crawlId, '/x', 'html-structure-broken')).toBe(false)
+  })
 
   it('does not blame a site for the URLs only the crawler tried', async () => {
     const crawlId = await only({ at: '/' })
@@ -886,7 +1042,7 @@ describe('where a hreflang comes from', () => {
       'html',
       'sitemap',
     ])
-    expect(found.find((row) => row.issue === 'hreflang-not-200')?.details).toEqual(['sitemap'])
+    expect(found.find((row) => row.issue === 'hreflang-unreachable')?.details).toEqual(['sitemap'])
   })
 })
 
@@ -918,6 +1074,13 @@ describe('parseRobotsDirectives', () => {
   it('follows what is meant for Google, and ignores what is meant for other bots', () => {
     expect(parse('googlebot: noindex')).toEqual(['noindex'])
     expect(parse('bingbot: noindex')).toEqual([])
+  })
+
+  it('keeps a date with a comma in one piece', () => {
+    expect(parse('unavailable_after: Mon, 25 Jun 2030 15:00:00 GMT, noindex')).toEqual([
+      'unavailable_after:mon, 25 jun 2030 15:00:00 gmt',
+      'noindex',
+    ])
   })
 
   it('ignores what it does not know', () => {

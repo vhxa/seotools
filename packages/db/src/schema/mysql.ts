@@ -178,13 +178,6 @@ export const crawlSettings = mysqlTable('crawl_settings', {
   /** JSON array of `OptionalCrawlFile`. `null`: none. */
   optionalFiles: longtext('optional_files'),
   indexNowKey: varchar('index_now_key', { length: 128 }),
-  /** A page counts as having issues from this type up: `IssueType`. */
-  issueThreshold: varchar('issue_threshold', {
-    length: 16,
-    enum: ['issue', 'warning', 'opportunity'],
-  })
-    .notNull()
-    .default('warning'),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
 
@@ -250,6 +243,11 @@ export const crawls = mysqlTable(
     pagesWorstIssueCount: int('pages_worst_issue_count'),
     pagesWorstWarningCount: int('pages_worst_warning_count'),
     pagesWorstOpportunityCount: int('pages_worst_opportunity_count'),
+    pagesWithIssueCount: int('pages_with_issue_count'),
+    pagesWithWarningCount: int('pages_with_warning_count'),
+    pagesWithOpportunityCount: int('pages_with_opportunity_count'),
+    /** `ISSUE_CATALOG_VERSION` the issues were found with. `null`: not analysed. */
+    issueCatalog: varchar('issue_catalog', { length: 64 }),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: boolean('pruned').notNull().default(false),
     error: text('error'),

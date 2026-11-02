@@ -146,12 +146,8 @@ const anchorKey = (text: string) =>
     .toLowerCase()
     .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
 
-function readsLikeNotFound(title: string | null, h1: string | null, text: string): boolean {
-  const headline = `${title ?? ''} ${h1 ?? ''}`.toLowerCase()
-  if (/\b404\b/.test(headline)) return true
-  const body = text.toLowerCase()
-  return NOT_FOUND_PHRASES.some((phrase) => headline.includes(phrase) || body.includes(phrase))
-}
+const readsLikeNotFound = (text: string) =>
+  /\b404\b/.test(text) || NOT_FOUND_PHRASES.some((phrase) => text.includes(phrase))
 
 /**
  * Gathers what the checks for issues need while the HTML parser goes through a page. Nothing here
@@ -200,6 +196,7 @@ export class PageFactsCollector {
     textSimhash: null,
     placeholderText: false,
     notFoundText: false,
+    notFoundHeadline: false,
     imagesNoAlt: 0,
     imagesEmptyAlt: 0,
     imagesNoSize: 0,
@@ -318,8 +315,11 @@ export class PageFactsCollector {
     facts.placeholderText = normalized.includes('lorem ipsum')
     if (words.length >= MIN_WORDS_TO_COMPARE) facts.textHash = crawlUrlHash(normalized)
     if (words.length >= MIN_WORDS_FOR_SIMHASH) facts.textSimhash = simhash(words)
-    facts.notFoundText =
-      words.length <= NOT_FOUND_MAX_WORDS && readsLikeNotFound(page.title, page.h1, normalized)
+    if (words.length <= NOT_FOUND_MAX_WORDS) {
+      const headline = `${page.title ?? ''} ${page.h1 ?? ''}`.toLowerCase()
+      facts.notFoundHeadline = readsLikeNotFound(headline)
+      facts.notFoundText = facts.notFoundHeadline || readsLikeNotFound(normalized)
+    }
 
     const https = this.pageUrl.startsWith('https:')
     for (const { url, kind } of page.links) {
@@ -391,9 +391,17 @@ export class PageFactsCollector {
 
   private onImage(attributes: Record<string, string>) {
     const { alt, width, height } = attributes
-    if (alt === undefined) this.facts.imagesNoAlt++
-    else if (alt.trim() === '') this.facts.imagesEmptyAlt++
-    else if (alt.length > LONG_ALT) this.facts.imagesLongAlt++
+    // Marked as decorative on purpose, which is the one case where an empty alt is right.
+    const role = (attributes.role ?? '').toLowerCase()
+    const decorative =
+      role === 'presentation' ||
+      role === 'none' ||
+      attributes['aria-hidden']?.toLowerCase() === 'true'
+    if (!(decorative && (alt === undefined || alt.trim() === ''))) {
+      if (alt === undefined) this.facts.imagesNoAlt++
+      else if (alt.trim() === '') this.facts.imagesEmptyAlt++
+      else if (alt.length > LONG_ALT) this.facts.imagesLongAlt++
+    }
     if (width === undefined || height === undefined) this.facts.imagesNoSize++
     // An image is what a link or heading around it says.
     if (alt) {

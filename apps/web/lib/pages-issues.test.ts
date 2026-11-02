@@ -39,6 +39,7 @@ describe('summariseIssues', () => {
     { issue: 'title-too-long', pages: 40 },
     { issue: 'title-missing', pages: 2 },
     { issue: 'canonical-missing', pages: 7 },
+    { issue: 'noindex', pages: 3 },
     { issue: 'retired-check', pages: 9 },
   ])
   const category = (id: string) =>
@@ -62,7 +63,8 @@ describe('summariseIssues', () => {
   })
 
   it('takes the colour of a category from the worst type it actually found', () => {
-    expect(category('title')?.worst).toBe('issue')
+    expect(category('directives')?.worst).toBe('issue')
+    expect(category('title')?.worst).toBe('warning')
     // Canonicals has issues in the catalog, but only a warning was found.
     expect(category('canonicals')?.worst).toBe('warning')
     expect(category('html')?.worst).toBeNull()

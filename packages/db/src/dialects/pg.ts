@@ -10,6 +10,7 @@ import {
   isNull,
   lt,
   lte,
+  ne,
   notInArray,
   or,
   sql,
@@ -464,6 +465,23 @@ export function createPgDatabase(options: {
         return row ? toCrawl(row) : null
       },
 
+      async outdatedAnalyses(catalog, limit) {
+        const rows = await db
+          .select()
+          .from(crawls)
+          .where(
+            and(
+              isNotNull(crawls.pagesWorstIssueCount),
+              inArray(crawls.status, ['completed', 'incomplete']),
+              eq(crawls.pruned, false),
+              or(isNull(crawls.issueCatalog), ne(crawls.issueCatalog, catalog)),
+            ),
+          )
+          .orderBy(asc(crawls.createdAt))
+          .limit(limit)
+        return rows.map(toCrawl)
+      },
+
       async markRunning(id) {
         const startedAt = new Date()
         await db
@@ -782,12 +800,15 @@ export function createPgDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveIssues({ crawlId, issues, pages }) {
+      async saveIssues({ crawlId, issues, pages, withType, catalog }) {
         const rows = crawlIssueRows(crawlId, issues)
         await db.transaction(async (tx) => {
           await tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId))
           for (const batch of chunk(rows)) await tx.insert(crawlUrlIssues).values(batch)
-          await tx.update(crawls).set(pagesByWorstIssueColumns(pages)).where(eq(crawls.id, crawlId))
+          await tx
+            .update(crawls)
+            .set({ ...pagesByWorstIssueColumns(pages, withType), issueCatalog: catalog })
+            .where(eq(crawls.id, crawlId))
         })
       },
 

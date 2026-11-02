@@ -169,23 +169,36 @@
     },
     "stats": {
       "total": "Páginas encontradas",
-      "correct": "Páginas correctas",
+      "indexable": "Páginas indexables",
       "issues": "Páginas con issues",
+      "warnings": "Páginas con warnings",
+      "opportunities": "Páginas con oportunidades",
+      "note": "Una página cuenta en cada grupo del que tiene algo. Las páginas indexables no tienen issues, tengan o no warnings u oportunidades.",
       "notChecked": "Aún sin comprobar"
     },
     "chart": {
-      "ariaLabel": "Páginas correctas y páginas con issues tras cada rastreo completo",
+      "ariaLabel": "Páginas según lo que tienen, tras cada rastreo completo",
       "empty": "El histórico empieza con el próximo rastreo completo: se comprueban las issues cuando termina.",
       "date": "Rastreo terminado",
       "toggle": "Mostrar u ocultar en el gráfico"
     },
     "issues": {
       "title": "Issues",
-      "description": "Lo que encontró el último rastreo completo, de lo más grave a lo menos. Abre uno para ver las URLs que lo tienen.",
-      "empty": "No se ha encontrado nada.",
       "notChecked": "El último rastreo completo no se ha comprobado en busca de issues. Lanza uno nuevo para verlas aquí.",
       "noCrawl": "Las issues aparecen aquí cuando el dominio se haya rastreado.",
       "pages": "{count, plural, one {# URL} other {# URLs}}"
+    },
+    "findings": {
+      "issue": {
+        "title": "Issues"
+      },
+      "warning": {
+        "title": "Warnings"
+      },
+      "opportunity": {
+        "title": "Oportunidades"
+      },
+      "empty": "No se ha encontrado nada de este tipo."
     },
     "priority": {
       "mark": "Marcar como prioritaria",
@@ -310,9 +323,13 @@
       "name": "Bucle de redirección",
       "description": "Seguir las redirecciones de esta URL no lleva nunca a ninguna página."
     },
-    "soft-404": {
-      "name": "Soft 404",
-      "description": "Responde 200, pero por su contenido parece una página de «no encontrado». Se detecta por el texto, no por el código."
+    "soft-404-confirmed": {
+      "name": "Soft 404 confirmado",
+      "description": "Responde 200, pero su título o su encabezado principal dicen que la página no se ha encontrado. Lo dice la propia página."
+    },
+    "soft-404-possible": {
+      "name": "Posible soft 404 detectado por contenido",
+      "description": "Responde 200, tiene poco texto y este se parece al de una página de «no encontrado». Es una sospecha por el contenido, no una certeza: conviene revisarla."
     },
     "redirect-chain": {
       "name": "Cadena de redirecciones",
@@ -339,8 +356,12 @@
       "description": "Hay una meta robots en el cuerpo de la página, donde los buscadores pueden ignorarla."
     },
     "directives-conflict": {
-      "name": "Directivas contradictorias",
-      "description": "La página dice a la vez una cosa y la contraria, por ejemplo index y noindex."
+      "name": "Directivas contradictorias (indexación)",
+      "description": "La página dice una cosa y la contraria sobre la indexación o el seguimiento de enlaces, como index y noindex."
+    },
+    "directives-conflict-snippets": {
+      "name": "Directivas contradictorias (snippets o presentación)",
+      "description": "La página da límites contradictorios sobre cómo se muestra, como nosnippet con max-snippet:50, o dos valores distintos de max-image-preview."
     },
     "noindex": {
       "name": "noindex",
@@ -350,17 +371,25 @@
       "name": "nofollow",
       "description": "La página pide no seguir ninguno de sus enlaces."
     },
-    "snippet-limited": {
-      "name": "nosnippet / max-snippet",
-      "description": "La página limita el fragmento que se puede mostrar. Es relevante para GEO, porque los motores de IA tampoco pueden citarlo."
+    "nosnippet": {
+      "name": "nosnippet / max-snippet:0",
+      "description": "La página prohíbe cualquier snippet, así que no puede citarse en los resultados ni en las funciones de IA de Google. Eso perjudica su visibilidad."
+    },
+    "max-snippet-limited": {
+      "name": "max-snippet restrictivo (mayor que 0)",
+      "description": "La página limita el snippet a un número de caracteres. Cuanto menor es el límite, menos puede citarse en resultados y respuestas de IA. max-snippet:-1 no pone límite y no se avisa."
     },
     "noimageindex": {
       "name": "noimageindex",
-      "description": "La página pide no indexar sus imágenes."
+      "description": "La página pide que no se indexen sus imágenes, así que no pueden aparecer en la búsqueda de imágenes."
     },
-    "unavailable-after": {
-      "name": "unavailable_after",
-      "description": "La página pide dejar de aparecer en los resultados a partir de una fecha."
+    "unavailable-after-expired": {
+      "name": "unavailable_after con fecha vencida",
+      "description": "La página pidió dejar de aparecer en los resultados a partir de una fecha que ya ha pasado, así que ya no se muestra."
+    },
+    "unavailable-after-future": {
+      "name": "unavailable_after con fecha futura",
+      "description": "La página dejará de aparecer en los resultados en la fecha que indica. Conviene comprobar que es lo que se quiere."
     },
     "canonical-outside-head": {
       "name": "Fuera del '<head>'",
@@ -402,21 +431,21 @@
       "name": "URL no indexable en el sitemap",
       "description": "El sitemap lista una URL que redirige, da error, tiene noindex o canonicaliza a otra. Solo deberían estar las indexables."
     },
-    "orphan-in-sitemap": {
-      "name": "URL huérfana (solo está en el sitemap)",
-      "description": "Ninguna página de la web la enlaza: solo se llega a ella por el sitemap."
+    "indexed-not-in-sitemap": {
+      "name": "URL indexada fuera del sitemap",
+      "description": "Una URL que un buscador tiene indexada y que ningún sitemap lista. Hace falta una fuente que confirme la indexación, como Search Console, así que no se avisa de nada hasta que haya una conectada."
     },
     "indexable-not-in-sitemap": {
-      "name": "URL indexable fuera del sitemap",
-      "description": "Una página indexable que no está en ningún sitemap."
+      "name": "URL indexable fuera del sitemap (indexación sin confirmar)",
+      "description": "Una página indexable que no está en ningún sitemap. Nada confirma que esté indexada."
     },
-    "in-many-sitemaps": {
-      "name": "URL en varios sitemaps",
-      "description": "La misma URL aparece en más de un sitemap."
+    "hreflang-unreachable": {
+      "name": "URL de hreflang devuelve 4xx/5xx o no responde",
+      "description": "Un hreflang apunta a una URL de esta web que da error o no responde."
     },
-    "hreflang-not-200": {
-      "name": "URL de hreflang no devuelve 200",
-      "description": "Un hreflang apunta a una URL de esta web que no responde 200."
+    "hreflang-redirect": {
+      "name": "URL de hreflang redirige",
+      "description": "Un hreflang apunta a una URL de esta web que redirige. Debería apuntar a la URL final."
     },
     "hreflang-no-return": {
       "name": "Falta enlace de retorno",
@@ -474,10 +503,6 @@
       "name": "Demasiado corto",
       "description": "Tiene menos de 30 caracteres: se está desaprovechando."
     },
-    "title-same-as-h1": {
-      "name": "Igual al H1",
-      "description": "El título y el H1 dicen exactamente lo mismo."
-    },
     "description-multiple": {
       "name": "Múltiple",
       "description": "La página tiene más de una meta description."
@@ -520,7 +545,7 @@
     },
     "h2-missing": {
       "name": "H2 ausente",
-      "description": "La página no tiene ningún H2."
+      "description": "La página no tiene H2 y tiene texto suficiente para dividirse en subsecciones."
     },
     "h1-duplicate": {
       "name": "H1 duplicado",
@@ -532,7 +557,7 @@
     },
     "content-duplicate": {
       "name": "Duplicado exacto",
-      "description": "Otra página indexable tiene exactamente el mismo texto."
+      "description": "Otra página indexable tiene exactamente el mismo texto. Conviene revisar si la duplicación es intencional y está bien canonicalizada."
     },
     "content-near-duplicate": {
       "name": "Casi duplicado",
@@ -551,8 +576,8 @@
       "description": "Hay imágenes sin atributo alt."
     },
     "img-empty-alt": {
-      "name": "Alt vacío",
-      "description": "Hay imágenes con el alt vacío. Puede ser correcto en imágenes decorativas."
+      "name": "alt vacío",
+      "description": "Hay imágenes con el alt vacío. Puede ser correcto en imágenes decorativas, y las que están marcadas como tales (role=\"presentation\" o aria-hidden) no se avisan."
     },
     "img-too-heavy": {
       "name": "Peso mayor de 100 KB",
@@ -590,6 +615,10 @@
       "name": "Solo enlazada desde páginas no indexables",
       "description": "Todos los enlaces que llegan a esta página salen de páginas que no se indexarán."
     },
+    "orphan-in-sitemap": {
+      "name": "URL huérfana (solo está en el sitemap)",
+      "description": "No se ha encontrado ningún enlace interno a ella dentro del alcance del rastreo: solo se llega a ella por el sitemap."
+    },
     "no-outgoing-links": {
       "name": "Sin enlaces internos salientes",
       "description": "La página no enlaza a ninguna otra de esta web."
@@ -625,14 +654,6 @@
     "url-uppercase": {
       "name": "Mayúsculas",
       "description": "La ruta contiene mayúsculas. /Pagina y /pagina son URLs distintas para un buscador."
-    },
-    "url-non-ascii": {
-      "name": "Caracteres no ASCII",
-      "description": "La URL contiene caracteres que hay que codificar, como acentos."
-    },
-    "url-parameters": {
-      "name": "Parámetros",
-      "description": "La URL lleva parámetros, que pueden multiplicar las versiones de una misma página."
     },
     "url-repetitive-path": {
       "name": "Ruta repetitiva",
@@ -678,9 +699,9 @@
       "name": "Elementos inválidos en el '<head>'",
       "description": "Hay elementos que no pueden estar en el '<head>'. Pueden cerrarlo antes de tiempo y hacer que Google ignore el canonical o el robots."
     },
-    "missing-head-or-body": {
-      "name": "Falta '<head>' o '<body>'",
-      "description": "El documento no tiene etiqueta '<head>' o '<body>'."
+    "html-structure-broken": {
+      "name": "Estructura HTML que impide interpretar contenido o directivas de indexación",
+      "description": "Un fallo en la estructura del HTML (un elemento inválido en el head, un head o body mal colocado o repetido) ha dejado el meta robots, el canonical o el hreflang fuera del '<head>', donde los buscadores los ignoran."
     },
     "multiple-head-or-body": {
       "name": "Varios '<head>' o '<body>'",
@@ -690,8 +711,8 @@
       "name": "Documento de más de 2 MB",
       "description": "El HTML pesa más de 2 MB, más de lo que Googlebot lee de una página."
     },
-    "head-not-first": {
-      "name": "'<head>' no es el primer elemento",
+    "content-before-head": {
+      "name": "Contenido mal colocado antes del '<head>'",
       "description": "Hay algo antes del '<head>', lo que puede hacer que los navegadores lo cierren antes de tiempo."
     }
   },
@@ -769,8 +790,7 @@
     "navLabel": "Secciones de ajustes",
     "sections": {
       "crawl": "Rastreo",
-      "priority": "Páginas prioritarias",
-      "issues": "Issues"
+      "priority": "Páginas prioritarias"
     }
   },
   "CrawlSettings": {
@@ -1283,25 +1303,12 @@
     "mark": "{type}, importancia {importance}",
     "noneFound": "Comprobado: ninguna URL lo tiene.",
     "categoryToggle": "Mostrar u ocultar {category}",
-    "qualified": "{category}: {name}"
-  },
-  "IssueSettings": {
-    "metaTitle": "Ajustes de issues · {host} · seotools",
-    "title": "Ajustes de issues",
-    "description": "Qué se considera un problema en {host}.",
-    "threshold": {
-      "label": "Una página cuenta como «con issues» si tiene",
-      "hint": "Decide las cifras y la gráfica de páginas correctas. Se aplica al momento, también a los rastreos anteriores, sin rastrear de nuevo. Todo lo encontrado se sigue listando sea cual sea este ajuste.",
-      "options": {
-        "issue": "Algún Issue",
-        "warning": "Algún Issue o Warning",
-        "opportunity": "Cualquier cosa, también una Opportunity"
-      }
+    "qualified": "{category}: {name}",
+    "typeHelp": {
+      "issue": "Problemas de rastreo e indexación.",
+      "warning": "Algo que conviene revisar. Puede importar tanto como una issue: un problema de seguridad es un warning de importancia alta.",
+      "opportunity": "Una mejora."
     },
-    "save": "Guardar ajustes",
-    "saved": "Guardado.",
-    "errors": {
-      "threshold": "Elige una de las opciones."
-    }
+    "importanceHelp": "La importancia es independiente del tipo."
   }
 }
