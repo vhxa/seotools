@@ -1,5 +1,7 @@
 import {
+  AUDIT_LIMITS,
   DEFAULT_CRAWL_SETTINGS,
+  EMPTY_AUDIT_SNAPSHOT,
   JOB_TYPES,
   crawlUrlHash,
   type CrawlRecurrence,
@@ -342,6 +344,24 @@ export function describeDatabaseContract(
         data: null,
         ...overrides,
       })
+
+      const NO_PAGES = {
+        audited: 0,
+        excluded: 0,
+        indexable: 0,
+        notIndexable: 0,
+        unknownIndexability: 0,
+      }
+      /** An analysis with nothing audit-wise to say, as the ones made before audit rules existed. */
+      const saveIssues = (
+        input: Omit<Parameters<Database['crawls']['saveAnalysis']>[0], 'audit'> & {
+          audit?: Partial<Parameters<Database['crawls']['saveAnalysis']>[0]['audit']>
+        },
+      ) =>
+        db.crawls.saveAnalysis({
+          ...input,
+          audit: { snapshot: EMPTY_AUDIT_SNAPSHOT, pages: NO_PAGES, urls: [], ...input.audit },
+        })
 
       async function domain(host = 'acme.com') {
         const created = await createCompany(db, { name: host, domain: host })
@@ -762,7 +782,7 @@ export function describeDatabaseContract(
 
         it('filters pages by issue and counts what a list shows', async () => {
           const crawlId = await crawlOfPages()
-          await db.crawls.saveIssues({
+          await saveIssues({
             crawlId,
             issues: [
               { urlHash: hashOf(pages.gone), issue: 'http-error' },
@@ -793,7 +813,7 @@ export function describeDatabaseContract(
 
         it('finds the URLs of an issue in whichever view they are', async () => {
           const crawlId = await crawlOfPages()
-          await db.crawls.saveIssues({
+          await saveIssues({
             crawlId,
             issues: [
               { urlHash: hashOf(pages.gone), issue: 'client-error' },
@@ -964,7 +984,7 @@ export function describeDatabaseContract(
           const { id } = await startCrawl(domainId)
           expect((await db.crawls.get(id))?.pagesByWorstIssue).toBeNull()
 
-          await db.crawls.saveIssues({
+          await saveIssues({
             crawlId: id,
             issues: [
               { urlHash: 'a', issue: 'http-error' },
@@ -1005,7 +1025,7 @@ export function describeDatabaseContract(
           ).toEqual({ urlHash: 'a', issue: 'http-error' })
 
           // Analysing again replaces the previous result; zero issues is still "analysed".
-          await db.crawls.saveIssues({
+          await saveIssues({
             crawlId: id,
             issues: [],
             pages: { issue: 0, warning: 0, opportunity: 0 },
@@ -1025,7 +1045,7 @@ export function describeDatabaseContract(
           const oldest = await finishedCrawl(domainId)
           const newest = await finishedCrawl(domainId)
           for (const crawl of [oldest, newest]) {
-            await db.crawls.saveIssues({
+            await saveIssues({
               crawlId: crawl.id,
               issues: [{ urlHash: crawlUrlHash('https://acme.com/'), issue: 'missing-title' }],
               pages: { issue: 1, warning: 0, opportunity: 0 },
@@ -1053,21 +1073,21 @@ export function describeDatabaseContract(
           const current = await finishedCrawl(domainId)
           const unanalysed = await finishedCrawl(domainId)
           const pages = { issue: 0, warning: 0, opportunity: 0 }
-          await db.crawls.saveIssues({
+          await saveIssues({
             crawlId: old.id,
             issues: [],
             pages,
             withType: pages,
             catalog: 'v1',
           })
-          await db.crawls.saveIssues({
+          await saveIssues({
             crawlId: current.id,
             issues: [],
             pages,
             withType: pages,
             catalog: 'v2',
           })
-          await db.crawls.saveIssues({
+          await saveIssues({
             crawlId: pruned.id,
             issues: [],
             pages,
@@ -1086,7 +1106,7 @@ export function describeDatabaseContract(
           expect(ids).not.toContain(pruned.id)
           expect(await db.crawls.outdatedAnalyses('v2', 0)).toEqual([])
 
-          await db.crawls.saveIssues({
+          await saveIssues({
             crawlId: old.id,
             issues: [],
             pages,
@@ -1110,6 +1130,1334 @@ export function describeDatabaseContract(
           expect((await db.crawls.list(domainId, { type: 'full' })).map((c) => c.id)).toEqual([
             full.id,
           ])
+        })
+      })
+
+      describe('audit rules and exceptions', () => {
+        const prefixRule = (
+          path: string,
+          value: 'exclude' | 'include' = 'exclude',
+          extra: { enabled?: boolean; reason?: string | null } = {},
+        ) => ({
+          dimension: 'audit' as const,
+          value,
+          selector: {
+            kind: 'prefix' as const,
+            path,
+            query: { mode: 'any' as const },
+            scope: 'literal' as const,
+          },
+          reason: extra.reason ?? null,
+          enabled: extra.enabled ?? true,
+        })
+        const intentRule = (
+          path: string,
+          value: 'indexable' | 'not-indexable',
+          extra: { acceptNofollow?: boolean } = {},
+        ) => ({
+          dimension: 'intent' as const,
+          value,
+          selector: {
+            kind: 'path' as const,
+            path,
+            query: { mode: 'exact' as const, value: '' },
+            scope: 'literal' as const,
+          },
+          acceptNofollow: extra.acceptNofollow ?? false,
+          reason: null,
+          enabled: true,
+        })
+        const recomputeJobs = async () =>
+          (await db.jobs.list({ status: 'pending', limit: 100 })).filter(
+            (job) => job.type === JOB_TYPES.auditRecompute,
+          )
+
+        it('starts at version 0, with no rules', async () => {
+          const domainId = await domain()
+          expect(await db.audit.config(domainId)).toEqual({
+            version: 0,
+            rules: [],
+            languages: { prefixes: [], unprefixed: false },
+            recomputeError: null,
+          })
+        })
+
+        it('creates, edits, switches and deletes rules, moving the version for each change', async () => {
+          const domainId = await domain()
+          const created = await db.audit.saveRule({
+            domainId,
+            rule: prefixRule('/cart', 'exclude', { reason: 'The cart' }),
+          })
+          expect(created).toMatchObject({ ok: true, version: 1, changed: true })
+          const id = created.ok ? created.rule!.id : ''
+          const [stored] = (await db.audit.config(domainId)).rules
+          expect(stored).toMatchObject({
+            id,
+            domainId,
+            dimension: 'audit',
+            value: 'exclude',
+            selector: { kind: 'prefix', path: '/cart', query: { mode: 'any' } },
+            reason: 'The cart',
+            enabled: true,
+          })
+
+          expect(
+            await db.audit.saveRule({
+              domainId,
+              id,
+              rule: prefixRule('/cart', 'exclude', { reason: 'The cart' }),
+            }),
+          ).toMatchObject({ ok: true, version: 1, changed: false })
+          expect(
+            await db.audit.saveRule({ domainId, id, rule: prefixRule('/basket', 'exclude') }),
+          ).toMatchObject({ ok: true, version: 2, changed: true })
+          expect(await db.audit.setRuleEnabled({ domainId, id, enabled: false })).toMatchObject({
+            ok: true,
+            version: 3,
+          })
+          expect(await db.audit.setRuleEnabled({ domainId, id, enabled: false })).toMatchObject({
+            ok: true,
+            version: 3,
+            changed: false,
+          })
+          expect(await db.audit.setRuleEnabled({ domainId, id, enabled: true })).toMatchObject({
+            ok: true,
+            version: 4,
+          })
+          expect((await db.audit.config(domainId)).rules[0]).toMatchObject({
+            selector: { path: '/basket' },
+            enabled: true,
+          })
+          expect(await db.audit.deleteRule({ domainId, id })).toMatchObject({
+            ok: true,
+            version: 5,
+          })
+          expect(await db.audit.config(domainId)).toMatchObject({ version: 5, rules: [] })
+          expect(await db.audit.deleteRule({ domainId, id })).toEqual({
+            ok: false,
+            error: 'not-found',
+          })
+          expect(
+            await db.audit.saveRule({ domainId, id: 'missing', rule: prefixRule('/x') }),
+          ).toEqual({ ok: false, error: 'not-found' })
+        })
+
+        it('round-trips every kind of selector, the empty query included', async () => {
+          const domainId = await domain()
+          const selectors = [
+            { kind: 'url' as const, url: 'https://acme.com/a?b=1&a=2' },
+            {
+              kind: 'path' as const,
+              path: '/a',
+              query: { mode: 'any' as const },
+              scope: 'literal' as const,
+            },
+            {
+              kind: 'path' as const,
+              path: '/a',
+              query: { mode: 'exact' as const, value: '' },
+              scope: 'literal' as const,
+            },
+            {
+              kind: 'prefix' as const,
+              path: '/a',
+              query: { mode: 'exact' as const, value: 'x=1&x=1' },
+              scope: 'shared' as const,
+            },
+            {
+              kind: 'prefix' as const,
+              path: '/',
+              query: { mode: 'any' as const },
+              scope: 'literal' as const,
+            },
+          ]
+          for (const selector of selectors) {
+            const saved = await db.audit.saveRule({
+              domainId,
+              rule: { dimension: 'audit', value: 'exclude', selector, reason: null, enabled: true },
+            })
+            expect(saved.ok).toBe(true)
+          }
+          const stored = (await db.audit.config(domainId)).rules.map((rule) => rule.selector)
+          expect(stored).toHaveLength(selectors.length)
+          expect(stored).toEqual(expect.arrayContaining(selectors))
+        })
+
+        it('refuses two enabled rules of a dimension with the same selector', async () => {
+          const domainId = await domain()
+          const first = await db.audit.saveRule({ domainId, rule: prefixRule('/cart') })
+          expect(first.ok).toBe(true)
+          expect(
+            await db.audit.saveRule({ domainId, rule: prefixRule('/cart', 'include') }),
+          ).toEqual({
+            ok: false,
+            error: 'conflict',
+          })
+          // Another dimension, another query, another kind of selector: all different.
+          expect(
+            (await db.audit.saveRule({ domainId, rule: intentRule('/cart', 'indexable') })).ok,
+          ).toBe(true)
+          expect(
+            (
+              await db.audit.saveRule({
+                domainId,
+                rule: {
+                  ...prefixRule('/cart'),
+                  selector: {
+                    kind: 'prefix',
+                    path: '/cart',
+                    query: { mode: 'exact', value: 'a=1' },
+                    scope: 'literal',
+                  },
+                },
+              })
+            ).ok,
+          ).toBe(true)
+          expect(
+            (
+              await db.audit.saveRule({
+                domainId,
+                rule: {
+                  ...prefixRule('/cart'),
+                  selector: {
+                    kind: 'path',
+                    path: '/cart',
+                    query: { mode: 'any' },
+                    scope: 'literal',
+                  },
+                },
+              })
+            ).ok,
+          ).toBe(true)
+        })
+
+        it('lets a disabled rule share a selector, until someone enables it', async () => {
+          const domainId = await domain()
+          await db.audit.saveRule({ domainId, rule: prefixRule('/cart') })
+          const off = await db.audit.saveRule({
+            domainId,
+            rule: prefixRule('/cart', 'include', { enabled: false }),
+          })
+          expect(off.ok).toBe(true)
+          const id = off.ok ? off.rule!.id : ''
+          expect(await db.audit.setRuleEnabled({ domainId, id, enabled: true })).toEqual({
+            ok: false,
+            error: 'conflict',
+          })
+          expect(
+            await db.audit.saveRule({ domainId, id, rule: prefixRule('/cart', 'include') }),
+          ).toEqual({ ok: false, error: 'conflict' })
+          // Editing it into a selector nobody has is fine.
+          expect(
+            (await db.audit.saveRule({ domainId, id, rule: prefixRule('/other', 'include') })).ok,
+          ).toBe(true)
+        })
+
+        it('lets exactly one of several concurrent identical rules in', async () => {
+          const domainId = await domain()
+          const outcomes = await Promise.all(
+            Array.from({ length: 6 }, () =>
+              db.audit.saveRule({ domainId, rule: prefixRule('/cart') }),
+            ),
+          )
+          expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1)
+          expect(outcomes.filter((outcome) => !outcome.ok)).toEqual(
+            Array(5).fill({ ok: false, error: 'conflict' }),
+          )
+          const config = await db.audit.config(domainId)
+          expect(config.rules).toHaveLength(1)
+          expect(config.version).toBe(1)
+        })
+
+        it('counts every concurrent change, none lost and none counted twice', async () => {
+          const domainId = await domain()
+          const writes = Array.from({ length: 12 }, (_, i) =>
+            db.audit.saveRule({ domainId, rule: prefixRule(`/section-${i}`) }),
+          )
+          const reads = Array.from({ length: 12 }, () => db.audit.config(domainId))
+          const [outcomes, configs] = await Promise.all([Promise.all(writes), Promise.all(reads)])
+          expect(outcomes.every((outcome) => outcome.ok)).toBe(true)
+          expect(
+            outcomes.map((outcome) => (outcome.ok ? outcome.version : 0)).sort((a, b) => a - b),
+          ).toEqual(Array.from({ length: 12 }, (_, i) => i + 1))
+          // Whatever it caught in the middle, a version never stands for fewer rules than it names.
+          for (const config of configs)
+            expect(config.rules.length).toBeGreaterThanOrEqual(config.version)
+          expect(await db.audit.config(domainId)).toMatchObject({ version: 12 })
+        })
+
+        it('limits the rules of a domain', async () => {
+          const domainId = await domain()
+          const urls = Array.from(
+            { length: AUDIT_LIMITS.rulesPerDomain },
+            (_, i) => `https://acme.com/p${i}`,
+          )
+          expect(
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls,
+              audit: 'exclude',
+              reason: null,
+            }),
+          ).toMatchObject({
+            ok: true,
+          })
+          expect(await db.audit.saveRule({ domainId, rule: prefixRule('/one-more') })).toEqual({
+            ok: false,
+            error: 'limit',
+          })
+          expect(
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: ['https://acme.com/one-more'],
+              audit: 'exclude',
+              reason: null,
+            }),
+          ).toEqual({ ok: false, error: 'limit' })
+          // Changing what exists is not adding.
+          expect(
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: urls.slice(0, 5),
+              audit: 'include',
+              reason: null,
+            }),
+          ).toMatchObject({ ok: true, changed: true })
+          expect((await db.audit.config(domainId)).rules).toHaveLength(AUDIT_LIMITS.rulesPerDomain)
+        })
+
+        it('keeps each domain to its own rules', async () => {
+          const acme = await domain('acme.com')
+          const other = await domain('other.com')
+          const mine = await db.audit.saveRule({ domainId: acme, rule: prefixRule('/cart') })
+          const id = mine.ok ? mine.rule!.id : ''
+          // The same selector is a different rule in another domain.
+          expect((await db.audit.saveRule({ domainId: other, rule: prefixRule('/cart') })).ok).toBe(
+            true,
+          )
+          expect((await db.audit.config(acme)).rules).toHaveLength(1)
+          expect((await db.audit.config(other)).rules).toHaveLength(1)
+          expect((await db.audit.config(other)).rules[0]!.id).not.toBe(id)
+
+          // Nobody can reach a rule of another domain by its id.
+          expect(await db.audit.deleteRule({ domainId: other, id })).toEqual({
+            ok: false,
+            error: 'not-found',
+          })
+          expect(await db.audit.setRuleEnabled({ domainId: other, id, enabled: false })).toEqual({
+            ok: false,
+            error: 'not-found',
+          })
+          expect(await db.audit.saveRule({ domainId: other, id, rule: prefixRule('/x') })).toEqual({
+            ok: false,
+            error: 'not-found',
+          })
+          expect((await db.audit.config(acme)).rules[0]).toMatchObject({ id, enabled: true })
+          expect((await db.audit.config(acme)).version).toBe(1)
+        })
+
+        it('sets what is declared for exact URLs with one version, and inherits by removing it', async () => {
+          const domainId = await domain()
+          const a = 'https://acme.com/cart'
+          const b = 'https://acme.com/checkout'
+          expect(
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [a, b, a],
+              audit: 'exclude',
+              intent: 'not-indexable',
+              reason: 'Transactional',
+            }),
+          ).toMatchObject({ ok: true, version: 1, changed: true })
+          let rules = (await db.audit.config(domainId)).rules
+          expect(rules).toHaveLength(4)
+          expect(
+            rules.every((rule) => rule.selector.kind === 'url' && rule.reason === 'Transactional'),
+          ).toBe(true)
+
+          // The same again changes nothing, and does not move the version.
+          expect(
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [a, b],
+              audit: 'exclude',
+              intent: 'not-indexable',
+              reason: 'Transactional',
+            }),
+          ).toMatchObject({ ok: true, version: 1, changed: false })
+
+          // Changing a value replaces the rule instead of adding another; a dimension left out stays.
+          await db.audit.setUrlConfig({
+            host: 'acme.com',
+            domainId,
+            urls: [a],
+            audit: 'include',
+            reason: null,
+          })
+          rules = (await db.audit.config(domainId)).rules
+          expect(rules).toHaveLength(4)
+          expect(
+            rules.find(
+              (rule) =>
+                rule.dimension === 'audit' &&
+                rule.selector.kind === 'url' &&
+                rule.selector.url === a,
+            ),
+          ).toMatchObject({
+            value: 'include',
+            reason: null,
+          })
+          expect(
+            rules.find(
+              (rule) =>
+                rule.dimension === 'intent' &&
+                rule.selector.kind === 'url' &&
+                rule.selector.url === a,
+            ),
+          ).toMatchObject({
+            value: 'not-indexable',
+            reason: 'Transactional',
+          })
+
+          // Inheriting removes only that dimension's rule for that URL.
+          await db.audit.setUrlConfig({
+            host: 'acme.com',
+            domainId,
+            urls: [a],
+            audit: 'inherit',
+            reason: null,
+          })
+          rules = (await db.audit.config(domainId)).rules
+          expect(rules).toHaveLength(3)
+          expect(
+            rules.some(
+              (rule) =>
+                rule.dimension === 'audit' &&
+                rule.selector.kind === 'url' &&
+                rule.selector.url === a,
+            ),
+          ).toBe(false)
+          // Inheriting what was never set is nothing.
+          expect(
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [a],
+              audit: 'inherit',
+              reason: null,
+            }),
+          ).toMatchObject({ ok: true, changed: false })
+
+          // A rule that was switched off is back on when the URL is set again.
+          const off = rules.find((rule) => rule.dimension === 'audit')!
+          await db.audit.setRuleEnabled({ domainId, id: off.id, enabled: false })
+          await db.audit.setUrlConfig({
+            host: 'acme.com',
+            domainId,
+            urls: [b],
+            audit: 'exclude',
+            reason: 'Transactional',
+          })
+          expect(
+            (await db.audit.config(domainId)).rules.find((rule) => rule.id === off.id)?.enabled,
+          ).toBe(true)
+        })
+
+        describe('asking for the latest crawl to be analysed again', () => {
+          it('does not, when there is no crawl with results', async () => {
+            const domainId = await domain()
+            await db.audit.saveRule({ domainId, rule: prefixRule('/cart') })
+            expect(await recomputeJobs()).toEqual([])
+            // A priority crawl is not the one that says what the site is like.
+            const priority = await startCrawl(domainId, 'priority')
+            await db.crawls.finish(priority.id, { status: 'completed' })
+            await db.audit.saveRule({ domainId, rule: prefixRule('/basket') })
+            expect(await recomputeJobs()).toEqual([])
+            // Nor one still running, or one that failed.
+            const failed = await startCrawl(domainId)
+            await db.crawls.finish(failed.id, { status: 'failed', error: 'x' })
+            await db.audit.saveRule({ domainId, rule: prefixRule('/shop') })
+            expect(await recomputeJobs()).toEqual([])
+          })
+
+          it('queues one job for the domain, however many changes wait for it', async () => {
+            const domainId = await domain()
+            const other = await domain('other.com')
+            await finishedCrawl(domainId)
+            await finishedCrawl(other, 'https://other.com/')
+            await db.audit.saveRule({ domainId, rule: prefixRule('/cart') })
+            await db.audit.saveRule({ domainId, rule: prefixRule('/basket') })
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: ['https://acme.com/a'],
+              audit: 'exclude',
+              reason: null,
+            })
+            await db.audit.saveRule({ domainId: other, rule: prefixRule('/cart') })
+            const jobs = await recomputeJobs()
+            expect(
+              jobs
+                .map((job) => job.payload)
+                .sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y))),
+            ).toEqual(
+              [{ domainId }, { domainId: other }].sort((x, y) =>
+                JSON.stringify(x).localeCompare(JSON.stringify(y)),
+              ),
+            )
+          })
+
+          it('queues a new one for a change made while the last is running', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            await db.audit.saveRule({ domainId, rule: prefixRule('/cart') })
+            const [claimed] = await db.jobs.claim({
+              workerId: 'w1',
+              limit: 1,
+              types: [JOB_TYPES.auditRecompute],
+            })
+            expect(claimed).toBeDefined()
+            expect(await recomputeJobs()).toEqual([])
+            await db.audit.saveRule({ domainId, rule: prefixRule('/basket') })
+            expect(await recomputeJobs()).toHaveLength(1)
+          })
+
+          it('writes the rules, the version and the job together or not at all', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            await db.audit.saveRule({ domainId, rule: prefixRule('/cart') })
+            // A refused change leaves no trace: no version, no job.
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+            expect(await db.audit.saveRule({ domainId, rule: prefixRule('/cart') })).toEqual({
+              ok: false,
+              error: 'conflict',
+            })
+            expect((await db.audit.config(domainId)).version).toBe(1)
+            expect(await recomputeJobs()).toEqual([])
+          })
+        })
+
+        it('records a failed recalculation, until someone asks again or the rules change', async () => {
+          const domainId = await domain()
+          await finishedCrawl(domainId)
+          await db.audit.saveRule({ domainId, rule: prefixRule('/cart') })
+          await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+
+          await db.audit.failRecompute({ domainId, version: 1, error: 'boom' })
+          expect((await db.audit.config(domainId)).recomputeError).toEqual({
+            message: 'boom',
+            version: 1,
+          })
+
+          // A failure for a version the rules have left behind says nothing about the current one.
+          await db.audit.saveRule({ domainId, rule: prefixRule('/basket') })
+          expect((await db.audit.config(domainId)).recomputeError).toBeNull()
+          await db.audit.failRecompute({ domainId, version: 1, error: 'late' })
+          expect((await db.audit.config(domainId)).recomputeError).toBeNull()
+
+          await db.audit.failRecompute({ domainId, version: 2, error: 'again' })
+          await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+          await db.audit.retryRecompute(domainId)
+          expect((await db.audit.config(domainId)).recomputeError).toBeNull()
+          expect(await recomputeJobs()).toHaveLength(1)
+          // Asking twice does not queue twice.
+          await db.audit.retryRecompute(domainId)
+          expect(await recomputeJobs()).toHaveLength(1)
+
+          await db.audit.failRecompute({ domainId, version: 2, error: 'and again' })
+          await db.audit.clearRecomputeFailure({ domainId, version: 2 })
+          expect((await db.audit.config(domainId)).recomputeError).toBeNull()
+        })
+
+        it('survives the crawls, and the removal of their results', async () => {
+          const domainId = await domain()
+          const old = await finishedCrawl(domainId)
+          await db.audit.saveRule({
+            domainId,
+            rule: prefixRule('/cart', 'exclude', { reason: 'Cart' }),
+          })
+          const config = await db.audit.config(domainId)
+          const hash = crawlUrlHash('https://acme.com/')
+          await saveIssues({
+            crawlId: old.id,
+            issues: [],
+            pages: { issue: 0, warning: 0, opportunity: 0 },
+            withType: { issue: 0, warning: 0, opportunity: 0 },
+            catalog: 'v1',
+            audit: {
+              snapshot: { version: config.version, rules: config.rules },
+              pages: {
+                audited: 1,
+                excluded: 0,
+                indexable: 1,
+                notIndexable: 0,
+                unknownIndexability: 0,
+              },
+              urls: [
+                {
+                  urlHash: hash,
+                  participation: 'audited',
+                  participationRule: null,
+                  intent: 'indexable',
+                  intentRule: null,
+                  acceptNofollow: false,
+                  indexability: 'indexable',
+                  blockers: [],
+                },
+              ],
+            },
+          })
+          await finishedCrawl(domainId)
+          expect(await db.crawls.prune({ domainId, type: 'full', keep: 1 })).toBe(1)
+
+          // The rules are untouched by new crawls and by pruning.
+          expect((await db.audit.config(domainId)).rules).toHaveLength(1)
+          // The old crawl keeps what it concluded and the configuration it used, but not its URLs.
+          expect(await db.crawls.get(old.id)).toMatchObject({
+            pruned: true,
+            auditVersion: 1,
+            pagesAudit: {
+              audited: 1,
+              excluded: 0,
+              indexable: 1,
+              notIndexable: 0,
+              unknownIndexability: 0,
+            },
+            auditSnapshot: { version: 1, rules: [expect.objectContaining({ reason: 'Cart' })] },
+          })
+          expect(await db.crawls.auditOf(old.id, [hash])).toEqual([])
+        })
+
+        it('removes the rules of a domain with the domain, not those of another', async () => {
+          const acme = await domain('acme.com')
+          const other = await domain('other.com')
+          await db.audit.saveRule({ domainId: acme, rule: prefixRule('/cart') })
+          await db.audit.saveRule({ domainId: other, rule: prefixRule('/cart') })
+          expect((await db.audit.config(other)).rules).toHaveLength(1)
+        })
+      })
+
+      describe('scopes, nofollow and language directories', () => {
+        const LANGS = { prefixes: ['/ca', '/en', '/es'], unprefixed: true }
+        const recomputeJobs = async () =>
+          (await db.jobs.list({ status: 'pending', limit: 100 })).filter(
+            (job) => job.type === JOB_TYPES.auditRecompute,
+          )
+        const rule = (
+          dimension: 'audit' | 'intent',
+          value: string,
+          path: string,
+          options: {
+            kind?: 'path' | 'prefix'
+            scope?: 'literal' | 'shared'
+            acceptNofollow?: boolean
+            enabled?: boolean
+          } = {},
+        ) =>
+          ({
+            dimension,
+            value,
+            selector: {
+              kind: options.kind ?? 'prefix',
+              path,
+              query: { mode: 'any' },
+              scope: options.scope ?? 'literal',
+            },
+            ...(dimension === 'intent' ? { acceptNofollow: options.acceptNofollow ?? false } : {}),
+            reason: null,
+            enabled: options.enabled ?? true,
+          }) as Parameters<Database['audit']['saveRule']>[0]['rule']
+        const exceptionOf = async (domainId: string, dimension: string, url: string) =>
+          (await db.audit.config(domainId)).rules.find(
+            (r) => r.dimension === dimension && r.selector.kind === 'url' && r.selector.url === url,
+          )
+        const URL_A = 'https://acme.com/es/cart'
+
+        it('keeps a shared rule and a literal one for the same path apart, and returns both', async () => {
+          const domainId = await domain()
+          const literal = await db.audit.saveRule({
+            domainId,
+            rule: rule('audit', 'exclude', '/cart'),
+          })
+          const sharedRule = await db.audit.saveRule({
+            domainId,
+            rule: rule('audit', 'exclude', '/cart', { scope: 'shared' }),
+          })
+          expect(literal.ok && sharedRule.ok).toBe(true)
+          // The same scope again is the same selector.
+          expect(
+            await db.audit.saveRule({
+              domainId,
+              rule: rule('audit', 'include', '/cart', { scope: 'shared' }),
+            }),
+          ).toEqual({ ok: false, error: 'conflict' })
+          const rules = (await db.audit.config(domainId)).rules
+          expect(
+            rules.map((r) => (r.selector.kind === 'url' ? 'url' : r.selector.scope)).sort(),
+          ).toEqual(['literal', 'shared'])
+        })
+
+        it('keeps the acceptance of nofollow on intent rules, and only there', async () => {
+          const domainId = await domain()
+          const intent = await db.audit.saveRule({
+            domainId,
+            rule: rule('intent', 'not-indexable', '/a', { acceptNofollow: true }),
+          })
+          const audit = await db.audit.saveRule({ domainId, rule: rule('audit', 'exclude', '/b') })
+          const stored = (await db.audit.config(domainId)).rules
+          expect(stored.find((r) => r.id === (intent.ok ? intent.rule!.id : ''))).toMatchObject({
+            acceptNofollow: true,
+          })
+          expect(stored.find((r) => r.id === (audit.ok ? audit.rule!.id : ''))).not.toHaveProperty(
+            'acceptNofollow',
+          )
+          // Changing only it is a change.
+          const id = intent.ok ? intent.rule!.id : ''
+          expect(
+            await db.audit.saveRule({
+              domainId,
+              id,
+              rule: rule('intent', 'not-indexable', '/a', { acceptNofollow: false }),
+            }),
+          ).toMatchObject({ ok: true, changed: true, rule: { acceptNofollow: false } })
+        })
+
+        describe('what the table and the detail set for exact URLs', () => {
+          it('removes only the dimension that is set back to the rules, with what it carried', async () => {
+            const domainId = await domain()
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              audit: 'exclude',
+              intent: 'not-indexable',
+              acceptNofollow: true,
+              reason: 'Cart',
+            })
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              intent: 'inherit',
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toBeUndefined()
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({
+              value: 'exclude',
+              reason: 'Cart',
+            })
+          })
+
+          it('does not touch what the change does not name', async () => {
+            const domainId = await domain()
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              audit: 'exclude',
+              intent: 'not-indexable',
+              acceptNofollow: true,
+              reason: 'Because',
+            })
+            const before = await exceptionOf(domainId, 'audit', URL_A)
+            // Only the expectation: the audit exception, its reason and the acceptance stay.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              intent: 'indexable',
+            })
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toEqual(before)
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'indexable',
+              acceptNofollow: true,
+              reason: 'Because',
+            })
+            // Only the acceptance: the expectation stays.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              acceptNofollow: false,
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'indexable',
+              acceptNofollow: false,
+              reason: 'Because',
+            })
+            // A reason is only replaced when one is given.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              audit: 'include',
+            })
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({
+              value: 'include',
+              reason: 'Because',
+            })
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              audit: 'include',
+              reason: null,
+            })
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({ reason: null })
+          })
+
+          it('takes from a new exception what it was not given from what the URL is now', async () => {
+            const domainId = await domain()
+            await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'not-indexable', '/es', { acceptNofollow: true }),
+            })
+            // An expectation of its own, keeping the nofollow the rule accepted.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              intent: 'indexable',
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'indexable',
+              acceptNofollow: true,
+            })
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              intent: 'inherit',
+            })
+            // Only the acceptance: it keeps the expectation the rule gives the URL.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              acceptNofollow: false,
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'not-indexable',
+              acceptNofollow: false,
+            })
+          })
+
+          it('takes the default expectation for a URL no rule covers', async () => {
+            const domainId = await domain()
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              acceptNofollow: true,
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'indexable',
+              acceptNofollow: true,
+            })
+          })
+
+          it('reads the effective result through the language directories of the domain', async () => {
+            const domainId = await domain()
+            await db.audit.setLanguages({ domainId, languages: LANGS })
+            await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'not-indexable', '/cart', {
+                scope: 'shared',
+                acceptNofollow: true,
+              }),
+            })
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              acceptNofollow: false,
+            })
+            // /es/cart is under the shared rule, so the exception keeps its expectation.
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'not-indexable',
+              acceptNofollow: false,
+            })
+          })
+        })
+
+        describe('the language directories', () => {
+          it('start as none, and are kept sorted, once each, with whether the root has pages', async () => {
+            const domainId = await domain()
+            expect((await db.audit.config(domainId)).languages).toEqual({
+              prefixes: [],
+              unprefixed: false,
+            })
+            expect(
+              await db.audit.setLanguages({
+                domainId,
+                languages: { prefixes: ['/es', '/en', '/es', '/ca'], unprefixed: true },
+              }),
+            ).toMatchObject({ ok: true, version: 1, changed: true })
+            expect((await db.audit.config(domainId)).languages).toEqual(LANGS)
+          })
+
+          it('move the version only when they change, and ask for the crawl to be analysed again', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            await db.audit.setLanguages({ domainId, languages: LANGS })
+            expect(await recomputeJobs()).toHaveLength(1)
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+            // The same, in another order: nothing changed, so nothing is asked for.
+            expect(
+              await db.audit.setLanguages({
+                domainId,
+                languages: { prefixes: ['/es', '/ca', '/en'], unprefixed: true },
+              }),
+            ).toMatchObject({ ok: true, version: 1, changed: false })
+            expect(await recomputeJobs()).toEqual([])
+            expect(
+              await db.audit.setLanguages({ domainId, languages: { ...LANGS, unprefixed: false } }),
+            ).toMatchObject({ version: 2, changed: true })
+            expect(await recomputeJobs()).toHaveLength(1)
+          })
+
+          it('can be emptied again', async () => {
+            const domainId = await domain()
+            await db.audit.setLanguages({ domainId, languages: LANGS })
+            await db.audit.setLanguages({
+              domainId,
+              languages: { prefixes: [], unprefixed: false },
+            })
+            expect((await db.audit.config(domainId)).languages).toEqual({
+              prefixes: [],
+              unprefixed: false,
+            })
+          })
+
+          it('belong to their domain', async () => {
+            const acme = await domain('acme.com')
+            const other = await domain('other.com')
+            await db.audit.setLanguages({ domainId: acme, languages: LANGS })
+            expect((await db.audit.config(other)).languages).toEqual({
+              prefixes: [],
+              unprefixed: false,
+            })
+            expect((await db.audit.config(other)).version).toBe(0)
+          })
+
+          it('survive a change of rules, and rules survive a change of languages', async () => {
+            const domainId = await domain()
+            await db.audit.setLanguages({ domainId, languages: LANGS })
+            await db.audit.saveRule({ domainId, rule: rule('audit', 'exclude', '/cart') })
+            await db.audit.setLanguages({
+              domainId,
+              languages: { prefixes: ['/fr'], unprefixed: false },
+            })
+            const config = await db.audit.config(domainId)
+            expect(config.rules).toHaveLength(1)
+            expect(config.languages).toEqual({ prefixes: ['/fr'], unprefixed: false })
+            expect(config.version).toBe(3)
+          })
+
+          it('are read together with the version they came with, however many changes race', async () => {
+            const domainId = await domain()
+            const writes = Array.from({ length: 6 }, (_, i) =>
+              db.audit.setLanguages({
+                domainId,
+                languages: { prefixes: [`/l${i}`], unprefixed: i % 2 === 0 },
+              }),
+            )
+            const reads = Array.from({ length: 10 }, () => db.audit.config(domainId))
+            const [, configs] = await Promise.all([Promise.all(writes), Promise.all(reads)])
+            for (const config of configs) {
+              // Never languages of one change under the version of another that has not happened.
+              expect(config.version).toBeLessThanOrEqual(6)
+              if (config.version > 0) expect(config.languages.prefixes).toHaveLength(1)
+            }
+            expect((await db.audit.config(domainId)).version).toBe(6)
+          })
+        })
+
+        describe('moving to the second semantics', () => {
+          const SETTING = 'audit.semantics'
+
+          it('drops the rules of the retired intent and keeps everything else, then moves the version', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            const none = await db.audit.saveRule({
+              domainId,
+              rule: { ...rule('intent', 'indexable', '/blog'), value: 'none' } as never,
+            })
+            await db.audit.saveRule({ domainId, rule: rule('intent', 'not-indexable', '/account') })
+            await db.audit.saveRule({ domainId, rule: rule('audit', 'exclude', '/cart') })
+            const before = (await db.audit.config(domainId)).version
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+
+            // As if this were a database from before: the marker is not there yet.
+            await db.settings.delete(SETTING)
+            await db.migrate()
+
+            const config = await db.audit.config(domainId)
+            expect(config.rules.some((r) => r.id === (none.ok ? none.rule!.id : ''))).toBe(false)
+            expect(config.rules.map((r) => r.dimension).sort()).toEqual(['audit', 'intent'])
+            expect(config.version).toBe(before + 1)
+            expect(await recomputeJobs()).toHaveLength(1)
+            expect(await db.settings.get(SETTING)).toMatchObject({ value: '2' })
+          })
+
+          it('moves the version of a domain with a crawl and no rules, and leaves the others alone', async () => {
+            const withCrawl = await domain('acme.com')
+            const empty = await domain('empty.com')
+            await finishedCrawl(withCrawl)
+            await db.settings.delete(SETTING)
+            await db.migrate()
+            expect((await db.audit.config(withCrawl)).version).toBe(1)
+            expect((await db.audit.config(empty)).version).toBe(0)
+            expect(await recomputeJobs()).toHaveLength(1)
+          })
+
+          it('happens once: the marker keeps later migrations from moving the version again', async () => {
+            const domainId = await domain()
+            await db.audit.saveRule({ domainId, rule: rule('audit', 'exclude', '/cart') })
+            await db.settings.delete(SETTING)
+            await db.migrate()
+            const version = (await db.audit.config(domainId)).version
+            await db.migrate()
+            await db.migrate()
+            expect((await db.audit.config(domainId)).version).toBe(version)
+          })
+
+          it('does not rewrite what an analysis made before it concluded or used', async () => {
+            const domainId = await domain()
+            const crawl = await finishedCrawl(domainId)
+            const legacy = {
+              version: 4,
+              rules: [{ ...rule('intent', 'indexable', '/blog'), id: 'old', value: 'none' }],
+            } as never
+            await saveIssues({
+              crawlId: crawl.id,
+              issues: [],
+              pages: { issue: 0, warning: 0, opportunity: 0 },
+              withType: { issue: 0, warning: 0, opportunity: 0 },
+              catalog: 'v1',
+              audit: { snapshot: legacy },
+            })
+            await db.settings.delete(SETTING)
+            await db.migrate()
+            // The snapshot keeps its rule, its version and its lack of a semantics.
+            const stored = (await db.crawls.get(crawl.id))!
+            expect(stored.auditVersion).toBe(4)
+            expect(stored.auditSnapshot?.semantics).toBeUndefined()
+            expect(stored.auditSnapshot?.rules[0]).toMatchObject({ id: 'old', value: 'none' })
+          })
+        })
+
+        it('keeps what an analysis used: the semantics and the languages of its snapshot', async () => {
+          const domainId = await domain()
+          const crawl = await finishedCrawl(domainId)
+          await saveIssues({
+            crawlId: crawl.id,
+            issues: [],
+            pages: { issue: 0, warning: 0, opportunity: 0 },
+            withType: { issue: 0, warning: 0, opportunity: 0 },
+            catalog: 'v1',
+            audit: { snapshot: { version: 3, semantics: 2, languages: LANGS, rules: [] } },
+          })
+          expect((await db.crawls.get(crawl.id))!.auditSnapshot).toEqual({
+            version: 3,
+            semantics: 2,
+            languages: LANGS,
+            rules: [],
+          })
+        })
+      })
+
+      describe('what an analysis concludes about each URL', () => {
+        const site = 'https://acme.com'
+        const hashOf = (path: string) => crawlUrlHash(`${site}${path}`)
+        const state = (
+          overrides: Partial<
+            Parameters<Database['crawls']['saveAnalysis']>[0]['audit']['urls'][number]
+          > & { urlHash: string },
+        ): Parameters<Database['crawls']['saveAnalysis']>[0]['audit']['urls'][number] => ({
+          participation: 'audited',
+          participationRule: null,
+          intent: 'indexable',
+          intentRule: null,
+          acceptNofollow: false,
+          indexability: 'indexable',
+          blockers: [],
+          ...overrides,
+        })
+        const none = { issue: 0, warning: 0, opportunity: 0 }
+
+        let hosts = 0
+        async function analysedCrawl(version: number, extra: { catalog?: string } = {}) {
+          // The first is the host the URLs are on; later ones are other domains, for tests that need two.
+          const domainId = await domain(hosts++ === 0 ? 'acme.com' : `site-${hosts}.com`)
+          const crawl = await startCrawl(domainId)
+          const paths = ['/', '/cart', '/cart/items', '/blog']
+          await db.crawls.addUrls(
+            crawl.id,
+            paths.map((path) => newUrl(`${site}${path}`)),
+          )
+          for (const path of paths) {
+            await db.crawls.recordResult({
+              crawlId: crawl.id,
+              urlHash: hashOf(path),
+              result: result('page'),
+            })
+          }
+          await db.crawls.finish(crawl.id, { status: 'completed' })
+          return { domainId, crawlId: crawl.id, version, catalog: extra.catalog ?? 'v1' }
+        }
+
+        const save = (
+          crawl: { crawlId: string; version: number; catalog: string },
+          overrides: { cart?: 'excluded' | 'audited'; version?: number; issue?: string } = {},
+        ) =>
+          saveIssues({
+            crawlId: crawl.crawlId,
+            issues: overrides.issue ? [{ urlHash: hashOf('/blog'), issue: overrides.issue }] : [],
+            pages: none,
+            withType: none,
+            catalog: crawl.catalog,
+            audit: {
+              snapshot: { version: overrides.version ?? crawl.version, rules: [] },
+              pages: {
+                audited: 2,
+                excluded: 2,
+                indexable: 4,
+                notIndexable: 0,
+                unknownIndexability: 0,
+              },
+              urls: [
+                state({ urlHash: hashOf('/') }),
+                state({
+                  urlHash: hashOf('/cart'),
+                  participation: overrides.cart ?? 'excluded',
+                  participationRule: 'rule-cart',
+                  intent: 'not-indexable',
+                  intentRule: 'rule-intent',
+                  acceptNofollow: true,
+                  indexability: 'not-indexable',
+                  blockers: ['noindex', 'robots'],
+                }),
+                state({
+                  urlHash: hashOf('/cart/items'),
+                  participation: overrides.cart ?? 'excluded',
+                  participationRule: 'rule-cart',
+                }),
+                state({ urlHash: hashOf('/blog'), intent: 'indexable', intentRule: 'rule-blog' }),
+              ],
+            },
+          })
+
+        it('stores it per URL, with the totals and the configuration, as one analysis', async () => {
+          const crawl = await analysedCrawl(3)
+          expect(await db.crawls.get(crawl.crawlId)).toMatchObject({
+            pagesAudit: null,
+            auditVersion: null,
+            auditSnapshot: null,
+          })
+          expect(await save(crawl)).toBe(true)
+          expect(await db.crawls.get(crawl.crawlId)).toMatchObject({
+            pagesAudit: {
+              audited: 2,
+              excluded: 2,
+              indexable: 4,
+              notIndexable: 0,
+              unknownIndexability: 0,
+            },
+            auditVersion: 3,
+            auditSnapshot: { version: 3, rules: [] },
+            pagesByWorstIssue: none,
+          })
+          const stored = await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart'), hashOf('/nope')])
+          expect(stored).toEqual([
+            {
+              urlHash: hashOf('/cart'),
+              participation: 'excluded',
+              participationRule: 'rule-cart',
+              intent: 'not-indexable',
+              intentRule: 'rule-intent',
+              acceptNofollow: true,
+              indexability: 'not-indexable',
+              blockers: ['noindex', 'robots'],
+            },
+          ])
+          expect(await db.crawls.auditOf(crawl.crawlId, [])).toEqual([])
+        })
+
+        it('filters URLs by participation, intent and the rule that decided them', async () => {
+          const crawl = await analysedCrawl(1)
+          await save(crawl)
+          const paths = async (query: Partial<Parameters<Database['crawls']['countListed']>[0]>) =>
+            (
+              await db.crawls.listUrls({
+                crawlId: crawl.crawlId,
+                view: 'pages',
+                limit: 50,
+                offset: 0,
+                sort: 'url',
+                ...query,
+              })
+            ).map((row) => new URL(row.url).pathname)
+          expect(await paths({ participation: 'excluded' })).toEqual(['/cart', '/cart/items'])
+          expect(await paths({ participation: 'audited' })).toEqual(['/', '/blog'])
+          // What nothing decided is expected to be indexable, like what a rule says is.
+          expect(await paths({ intent: 'indexable' })).toEqual(['/', '/blog', '/cart/items'])
+          expect(await paths({ intent: 'not-indexable' })).toEqual(['/cart'])
+          expect(await paths({ rule: 'rule-cart' })).toEqual(['/cart', '/cart/items'])
+          expect(await paths({ rule: 'rule-intent' })).toEqual(['/cart'])
+          expect(await paths({ rule: 'nobody' })).toEqual([])
+          // Filters add up, and they work along with the search.
+          expect(await paths({ participation: 'excluded', intent: 'indexable' })).toEqual([
+            '/cart/items',
+          ])
+          expect(await paths({ participation: 'excluded', search: 'items' })).toEqual([
+            '/cart/items',
+          ])
+          expect(
+            await db.crawls.countListed({
+              crawlId: crawl.crawlId,
+              view: 'pages',
+              participation: 'excluded',
+            }),
+          ).toBe(2)
+          expect(
+            await db.crawls.countListed({
+              crawlId: crawl.crawlId,
+              view: 'external',
+              participation: 'excluded',
+            }),
+          ).toBe(0)
+          // A crawl analysed without this has nothing to filter by.
+          const earlier = await analysedCrawl(0)
+          expect(
+            await db.crawls.countListed({
+              crawlId: earlier.crawlId,
+              view: 'pages',
+              participation: 'audited',
+            }),
+          ).toBe(0)
+        })
+
+        it('counts how many URLs each rule decided, whatever the dimension', async () => {
+          const crawl = await analysedCrawl(1)
+          await save(crawl)
+          const counts = await db.crawls.auditRuleCounts(crawl.crawlId)
+          expect(Object.fromEntries(counts)).toEqual({
+            'rule-cart': 2,
+            'rule-intent': 1,
+            'rule-blog': 1,
+          })
+          expect((await db.crawls.auditRuleCounts('missing')).size).toBe(0)
+        })
+
+        it('lists the internal URLs of a crawl briefly, in a stable order', async () => {
+          const crawl = await analysedCrawl(1)
+          await db.crawls.addUrls(crawl.crawlId, [
+            newUrl('https://elsewhere.org/', { scope: 'external', source: 'link' }),
+          ])
+          const first = await db.crawls.urlBriefs(crawl.crawlId, { limit: 3, offset: 0 })
+          const rest = await db.crawls.urlBriefs(crawl.crawlId, { limit: 3, offset: 3 })
+          const all = [...first, ...rest]
+          expect(all.map((row) => row.url).sort()).toEqual(
+            ['/', '/blog', '/cart', '/cart/items'].map((path) => `${site}${path}`).sort(),
+          )
+          expect(first).toHaveLength(3)
+          expect(rest).toHaveLength(1)
+          expect(all[0]).toEqual({
+            urlHash: expect.any(String),
+            url: expect.any(String),
+            kind: 'page',
+            state: 'done',
+          })
+          expect(new Set(all.map((row) => row.urlHash)).size).toBe(4)
+        })
+
+        it('replaces the previous analysis, with the same version or a later one', async () => {
+          const crawl = await analysedCrawl(2)
+          expect(await save(crawl, { issue: 'title-missing' })).toBe(true)
+          expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([
+            { issue: 'title-missing', pages: 1 },
+          ])
+          expect(await save(crawl)).toBe(true)
+          expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([])
+          expect(await save(crawl, { version: 5, cart: 'audited' })).toBe(true)
+          expect(await db.crawls.get(crawl.crawlId)).toMatchObject({ auditVersion: 5 })
+          expect(
+            (await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart')]))[0]?.participation,
+          ).toBe('audited')
+        })
+
+        it('never lets an analysis with an older configuration replace a newer one', async () => {
+          const crawl = await analysedCrawl(1)
+          expect(await save(crawl, { version: 4, cart: 'audited', issue: 'title-missing' })).toBe(
+            true,
+          )
+          expect(await save(crawl, { version: 3, cart: 'excluded' })).toBe(false)
+          expect(await save(crawl, { version: 0, cart: 'excluded' })).toBe(false)
+          // Nothing of the older one got in: not the totals, not the URLs, not the issues.
+          expect(await db.crawls.get(crawl.crawlId)).toMatchObject({ auditVersion: 4 })
+          expect(
+            (await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart')]))[0]?.participation,
+          ).toBe('audited')
+          expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([
+            { issue: 'title-missing', pages: 1 },
+          ])
+        })
+
+        it('ends with the newest configuration when analyses race, in whatever order they land', async () => {
+          for (let round = 0; round < 3; round++) {
+            const crawl = await analysedCrawl(0)
+            const versions = [3, 1, 4, 2, 4]
+            const saved = await Promise.all(
+              versions.map((version) =>
+                save(crawl, {
+                  version,
+                  cart: version === 4 ? 'audited' : 'excluded',
+                  issue: `v${version}`,
+                }),
+              ),
+            )
+            expect(saved.filter(Boolean).length).toBeGreaterThanOrEqual(1)
+            const stored = await db.crawls.get(crawl.crawlId)
+            expect(stored?.auditVersion).toBe(4)
+            expect(
+              (await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart')]))[0]?.participation,
+            ).toBe('audited')
+            expect((await db.crawls.issueCounts(crawl.crawlId)).map((row) => row.issue)).toEqual([
+              'v4',
+            ])
+          }
+        })
+
+        it('does not analyse a crawl whose results are gone', async () => {
+          const domainId = await domain()
+          const oldest = await finishedCrawl(domainId)
+          await finishedCrawl(domainId)
+          await db.crawls.prune({ domainId, type: 'full', keep: 1 })
+          expect(
+            await saveIssues({
+              crawlId: oldest.id,
+              issues: [],
+              pages: none,
+              withType: none,
+              catalog: 'v1',
+              audit: { snapshot: { version: 1, rules: [] } },
+            }),
+          ).toBe(false)
+          expect(await db.crawls.get(oldest.id)).toMatchObject({ auditVersion: null })
+          expect(
+            await saveIssues({
+              crawlId: 'missing',
+              issues: [],
+              pages: none,
+              withType: none,
+              catalog: 'v1',
+            }),
+          ).toBe(false)
         })
       })
 

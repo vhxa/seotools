@@ -17,7 +17,7 @@ import {
 } from '@seotools/core'
 import type { Crawl, CrawlLink, CrawlUrlResult, Database, NewCrawlUrl } from '@seotools/db'
 import { JobInterruptedError } from '../types'
-import { analyseCrawl } from './analysis'
+import { analyseCrawl, currentAuditConfig } from './analysis'
 import {
   extractCssUrls,
   extractHtml,
@@ -578,7 +578,7 @@ export async function runCrawl(
   // Only a full crawl says what the pages of the site are like: a priority one sees a few of them.
   if (finished && crawl.type === 'full') {
     try {
-      await analyseCrawl(db, crawlId)
+      await analyseCrawl(db, crawlId, await currentAuditConfig(db, crawl.domainId))
     } catch (error) {
       log.warn({ err: error }, 'could not check the pages for issues')
     }

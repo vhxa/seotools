@@ -1,5 +1,7 @@
-import type { Crawl, CrawlUrl, CrawlUrlIssue } from '@seotools/db'
+import { auditResultsState, type AuditResultsState } from '@seotools/core/crawl/audit'
+import type { Crawl, CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
 import type { CrawlLinkKind } from '@seotools/core'
+import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
 import { getDb } from './db'
 
 export interface UrlDetailData {
@@ -12,6 +14,18 @@ export interface UrlDetailData {
   hasMoreIn: boolean
   hasMoreOut: boolean
   priority: boolean
+  /**
+   * What the analysis concluded about this URL: whether it was audited, what is expected of it and
+   * what the crawl saw. `null` for an external URL, or one in a crawl analysed before this existed.
+   */
+  audit: CrawlUrlAudit | null
+  /**
+   * What the URL is under the rules in force now, with the exceptions set on it: what its actions
+   * start from and show under each choice. Not what the last analysis concluded.
+   */
+  current: UrlAuditCurrent
+  /** Whether the analysis reflects the audit configuration in force. */
+  results: AuditResultsState
 }
 
 /**
@@ -20,16 +34,20 @@ export interface UrlDetailData {
  */
 export async function loadUrlDetail(input: {
   domainId: string
+  /** The host of the domain, to resolve the rules the way an analysis does. */
+  host: string
   crawl: Crawl
   urlHash: string
   linkLimit: number
 }): Promise<UrlDetailData | null> {
-  const { domainId, crawl, urlHash, linkLimit } = input
+  const { domainId, host, crawl, urlHash, linkLimit } = input
   const db = await getDb()
   const url = await db.crawls.getUrl(crawl.id, urlHash)
   if (!url) return null
-  const [issues, linksIn, linksOut, priorities] = await Promise.all([
+  const [issues, audit, config, linksIn, linksOut, priorities] = await Promise.all([
     db.crawls.issuesOf(crawl.id, [urlHash]),
+    db.crawls.auditOf(crawl.id, [urlHash]),
+    db.audit.config(domainId),
     db.crawls.linkSources(crawl.id, urlHash, { limit: linkLimit + 1 }),
     db.crawls.linkTargets(crawl.id, urlHash, { limit: linkLimit + 1 }),
     db.priorityUrls.list(domainId),
@@ -43,5 +61,8 @@ export async function loadUrlDetail(input: {
     hasMoreIn: linksIn.length > linkLimit,
     hasMoreOut: linksOut.length > linkLimit,
     priority: priorities.some((p) => p.urlHash === urlHash),
+    audit: audit[0] ?? null,
+    current: currentAuditOf(config, host, url.url),
+    results: auditResultsState(crawl, config),
   }
 }

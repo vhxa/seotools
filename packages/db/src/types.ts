@@ -1,4 +1,12 @@
 import type {
+  AuditRule,
+  AuditSnapshot,
+  AuditValue,
+  IndexIntent,
+  LanguageConfig,
+  NewAuditRule,
+  PagesAudit,
+  UrlAuditState,
   CrawlFileData,
   CrawlFileKind,
   ExtraCrawlFileKind,
@@ -145,6 +153,19 @@ export interface Crawl {
    * issues of the crawl were worked out with. `null`: not analysed, or analysed before this was kept.
    */
   issueCatalog: string | null
+  /**
+   * How the pages split by audit participation and technical indexability. `null` when the crawl was
+   * analysed before these were kept and its results are gone, so they cannot be worked out: they are
+   * never made up. Survives pruning.
+   */
+  pagesAudit: PagesAudit | null
+  /**
+   * The version of the domain's audit configuration the analysis used. `null`: analysed before the
+   * configuration existed (no rules, the same as version 0), or not analysed.
+   */
+  auditVersion: number | null
+  /** The rules that analysis used: what it takes to read it, or repeat it, as it was. */
+  auditSnapshot: AuditSnapshot | null
   robots: CrawlRobotsFiles | null
   /** The results per URL were removed by the domain's retention setting; the counts remain. */
   pruned: boolean
@@ -211,6 +232,12 @@ export interface CrawlUrlQuery {
    * are not only for pages, and a broken link is not even on this site.
    */
   issue?: string
+  /** Only URLs the analysis audited, or only those it left out. Within the `view`. */
+  participation?: 'audited' | 'excluded'
+  /** Only URLs the analysis found this expectation for. Within the `view`. */
+  intent?: IndexIntent
+  /** Only URLs the analysis applied this rule to, for either dimension. Within the `view`. */
+  rule?: string
 }
 
 /** An issue found on a URL of a crawl. */
@@ -219,6 +246,27 @@ export interface CrawlUrlIssue {
   issue: string
   /** What `PAGE_ISSUES` says this issue details. Absent when it details nothing. */
   details?: string[]
+}
+
+/** What an analysis concluded about a URL of a crawl. */
+export interface CrawlUrlAudit extends UrlAuditState {
+  urlHash: string
+}
+
+/** The lightest description of a URL of a crawl, for work that only needs to look at addresses. */
+export interface CrawlUrlBrief {
+  urlHash: string
+  url: string
+  kind: CrawlUrlKind
+  state: CrawlUrlState
+}
+
+/** What an analysis stores about a crawl (see `CrawlRepository.saveAnalysis`). */
+export interface CrawlAuditAnalysis {
+  /** The configuration it used, as it was when the analysis started. */
+  snapshot: AuditSnapshot
+  pages: PagesAudit
+  urls: CrawlUrlAudit[]
 }
 
 /** A hreflang alternate that a sitemap declares for a page. */
@@ -318,17 +366,24 @@ export interface CrawlRepository {
   pendingExternalLinks(crawlId: string, limit: number): Promise<NewCrawlUrl[]>
 
   /**
-   * Replaces the issues of a crawl with these and records how many pages have each type as their
-   * worst, which also marks the crawl as analysed.
+   * Replaces the analysis of a crawl: its issues, what was concluded about each URL, and the totals
+   * of both, which also marks the crawl as analysed. All or nothing.
+   *
+   * An analysis made with an older configuration never replaces one made with a newer: returns
+   * `false`, writing nothing, if the crawl already has the result of a later `audit.snapshot.version`
+   * (or its results were pruned meanwhile). The same version again replaces it, so repeating an
+   * analysis is safe.
    */
-  saveIssues(input: {
+  saveAnalysis(input: {
     crawlId: string
     issues: CrawlUrlIssue[]
+    /** Audited pages by the worst type of finding they have. */
     pages: PagesByWorstIssue
     withType: PagesWithType
     /** `ISSUE_CATALOG_VERSION`, to find the analyses a later catalog leaves out of date. */
     catalog: string
-  }): Promise<void>
+    audit: CrawlAuditAnalysis
+  }): Promise<boolean>
   /**
    * Crawls that were analysed with another version of the catalog than `catalog`, and still have
    * the results per URL to analyse them again. Oldest first.
@@ -338,8 +393,102 @@ export interface CrawlRepository {
   issueCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
+  /**
+   * What the analysis of the crawl concluded about these URLs. Internal URLs of a crawl analysed
+   * with this feature have an entry; the rest do not, and neither do the URLs of older analyses.
+   */
+  auditOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlAudit[]>
+  /** For each rule the analysis applied, how many URLs it decided (for either dimension). */
+  auditRuleCounts(crawlId: string): Promise<Map<string, number>>
+  /**
+   * The internal URLs of a crawl in a stable order, in the lightest form there is. Page through it
+   * to match addresses against rules without loading the data of each page.
+   */
+  urlBriefs(crawlId: string, options: { limit: number; offset: number }): Promise<CrawlUrlBrief[]>
   /** For each hash that has one, the most recent result in any retained crawl of the domain. */
   latestResults(domainId: string, urlHashes: string[]): Promise<CrawlUrl[]>
+}
+
+/** A rule as stored: with the domain it belongs to and when it was made. */
+export type AuditRuleRecord = AuditRule & { domainId: string; createdAt: Date; updatedAt: Date }
+
+export interface AuditConfig {
+  /** Grows with every change to the rules. `0`: the domain never had any. */
+  version: number
+  /** Every rule of the domain, enabled or not, oldest first. */
+  rules: AuditRuleRecord[]
+  /** The language directories shared rules look at. None until the domain declares some. */
+  languages: LanguageConfig
+  /** The last recalculation that gave up, if no change has been made since. */
+  recomputeError: { message: string; version: number } | null
+}
+
+export type AuditMutation =
+  | { ok: true; version: number; changed: boolean; rule?: AuditRuleRecord }
+  | {
+      ok: false
+      /**
+       * `conflict`: an enabled rule of that dimension already has that selector. `limit`: too many
+       * rules. `not-found`: no such rule in the domain.
+       */
+      error: 'conflict' | 'not-found' | 'limit'
+    }
+
+/** What to do with the audit of a URL: leave it to the rules, or set it. */
+export type UrlAuditChoice = 'inherit' | AuditValue
+export type UrlIntentChoice = 'inherit' | IndexIntent
+
+export interface AuditRepository {
+  /**
+   * The rules of a domain and the version they are at, read together: the version is read before
+   * and after the rules, and the read repeats if it moved, so a version never labels other rules.
+   */
+  config(domainId: string): Promise<AuditConfig>
+
+  /**
+   * Every change below runs in one transaction that writes the rules, moves the version up (only if
+   * something changed) and asks the worker to analyse the latest full crawl again (only if there is
+   * one with results, and a request is not already waiting). Changes to one domain take turns.
+   */
+
+  /** Creates a rule, or replaces the one with `id`. */
+  saveRule(input: { domainId: string; id?: string; rule: NewAuditRule }): Promise<AuditMutation>
+  setRuleEnabled(input: { domainId: string; id: string; enabled: boolean }): Promise<AuditMutation>
+  deleteRule(input: { domainId: string; id: string }): Promise<AuditMutation>
+  /**
+   * Sets what is declared for exact URLs, the one model behind the table, the detail and the
+   * settings. `inherit` removes the rule about that URL, and with it whatever it said. A dimension
+   * left out is not touched; `acceptNofollow` alone changes only that, and a `reason` left out keeps
+   * the one each exception has (`planUrlConfig`). The URLs must be normalized and internal: the
+   * caller checked. `host` is the domain's, to work out what a new exception has to inherit.
+   */
+  setUrlConfig(input: {
+    domainId: string
+    host: string
+    urls: string[]
+    audit?: UrlAuditChoice
+    intent?: UrlIntentChoice
+    acceptNofollow?: boolean
+    reason?: string | null
+  }): Promise<AuditMutation>
+  /**
+   * Declares the language directories shared rules look at. Moves the version only if they are not
+   * these already.
+   */
+  setLanguages(input: { domainId: string; languages: LanguageConfig }): Promise<AuditMutation>
+  /**
+   * Brings the rules of every domain to the current meaning of a configuration (`AUDIT_SEMANTICS`):
+   * the rules that said `none` go, and the version of each domain with rules or a crawl moves, so that
+   * its latest crawl is analysed again. Runs once, when migrations are applied; safe to repeat.
+   */
+  upgradeSemantics(): Promise<void>
+
+  /** Asks again for the recalculation that failed: forgets the failure and queues the job. */
+  retryRecompute(domainId: string): Promise<void>
+  /** Records that the recalculation for `version` gave up. Ignored if the rules moved on since. */
+  failRecompute(input: { domainId: string; version: number; error: string }): Promise<void>
+  /** Forgets a failure of `version` or older: a recalculation for that version has succeeded. */
+  clearRecomputeFailure(input: { domainId: string; version: number }): Promise<void>
 }
 
 export interface PriorityUrl {
@@ -496,6 +645,7 @@ export interface Database {
   readonly companies: CompanyRepository
   readonly domains: DomainRepository
   readonly crawls: CrawlRepository
+  readonly audit: AuditRepository
   readonly priorityUrls: PriorityUrlRepository
   readonly crawlSchedules: CrawlScheduleRepository
   readonly favicons: FaviconRepository

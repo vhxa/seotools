@@ -7,6 +7,8 @@ import {
   type IssueDetailKind,
 } from '@seotools/core/crawl/issues'
 import type { CrawlUrlKind } from '@seotools/core'
+import type { AuditParticipation, RecordedIntent } from '@seotools/core/crawl/audit'
+import type { IndexabilityState } from '@seotools/core/crawl/indexability'
 import type { CrawlUrlSort } from '@seotools/db'
 import {
   columnVisibilityFeature,
@@ -23,8 +25,10 @@ import {
   ArrowUpIcon,
   ChevronDownIcon,
   Columns3Icon,
+  EyeOffIcon,
   ExternalLinkIcon,
   SearchIcon,
+  SlidersHorizontalIcon,
   StarIcon,
   XIcon,
 } from 'lucide-react'
@@ -36,6 +40,14 @@ import {
   setPriorityUrlAction,
   setPriorityUrlsAction,
 } from '@/app/(protected)/domains/[host]/actions'
+import { AuditDialog, type AuditDialogPreset } from '@/components/audit/audit-dialog'
+import {
+  IndexabilityBadge,
+  IntentBadge,
+  NofollowAcceptedBadge,
+  ParticipationBadge,
+  RuleOrigin,
+} from '@/components/audit/state-badges'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueBadge, IssueDetails, useIssueLabel } from '@/components/pages/issue-mark'
 import { Badge } from '@/components/ui/badge'
@@ -60,6 +72,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useLocalStorage } from '@/hooks/use-local-storage'
+import type { RuleRef } from '@/lib/audit-rules'
 import { formatBytes } from '@/lib/format'
 import { detailHref, nextSort, type DetailQuery } from '@/lib/pages-query'
 import { cn } from '@/lib/utils'
@@ -83,6 +96,19 @@ export interface PageRow {
   issueDetails: string[]
   /** Marked as a priority page: what the star toggles. */
   priority: boolean
+  /** A URL of the site, which is the only kind the audit can be configured for. */
+  internal: boolean
+  /** Audited or left out; `null`: the analysis has no state for this URL. */
+  participation: AuditParticipation | null
+  participationRule: RuleRef
+  /** What the user expects of its indexation (the default when no rule says); `null` as above. */
+  intent: RecordedIntent | null
+  intentRule: RuleRef
+  /** The page's own nofollow is accepted, by the rule that decided its expectation. */
+  acceptNofollow: boolean
+  /** What the crawl saw of whether it can be indexed; `null` as above. */
+  indexability: IndexabilityState | null
+  blockers: string[]
 }
 
 const features = tableFeatures({ rowSelectionFeature, columnVisibilityFeature })
@@ -100,6 +126,10 @@ const columns = helper.columns([
   // Only there when filtering by an issue that details something: the filter says, not the user.
   helper.display({ id: 'issueDetail', enableHiding: false }),
   helper.display({ id: 'issues' }),
+  helper.display({ id: 'audit' }),
+  helper.display({ id: 'intent' }),
+  helper.display({ id: 'indexability' }),
+  helper.display({ id: 'origin' }),
   helper.display({ id: 'depth' }),
   helper.display({ id: 'responseTime' }),
   helper.display({ id: 'bytes' }),
@@ -121,6 +151,8 @@ const SORTABLE: Partial<Record<string, CrawlUrlSort>> = {
 /** URL, title and status; the actions are always there. The rest is up to each user. */
 const DEFAULT_VISIBILITY: ColumnVisibilityState = {
   issues: false,
+  intent: false,
+  origin: false,
   depth: false,
   responseTime: false,
   bytes: false,
@@ -131,6 +163,10 @@ const HIDEABLE = [
   'title',
   'status',
   'issues',
+  'audit',
+  'intent',
+  'indexability',
+  'origin',
   'depth',
   'responseTime',
   'bytes',
@@ -190,10 +226,29 @@ function PriorityStar({ host, row }: { host: string; row: PageRow }) {
 /** Rows have to stay rows: a page can have dozens of issues, and its detail lists them all. */
 const MAX_ISSUE_BADGES = 3
 
-function IssueBadges({ ids }: { ids: string[] }) {
+function IssueBadges({
+  ids,
+  participation,
+  analysed,
+}: {
+  ids: string[]
+  participation: AuditParticipation | null
+  /** Whether the crawl was checked for issues at all. */
+  analysed: boolean
+}) {
   const t = useTranslations('PagesDetails')
   const label = useIssueLabel()
-  if (ids.length === 0) return <span className="text-muted-foreground">—</span>
+  // Four things that are not the same: left out, never checked, checked and clean, and findings.
+  if (participation === 'excluded') {
+    return (
+      <span className="inline-flex items-center gap-1 text-muted-foreground">
+        <EyeOffIcon aria-hidden className="size-3.5" />
+        {t('findings.excluded')}
+      </span>
+    )
+  }
+  if (!analysed) return <span className="text-muted-foreground">{t('findings.notAnalysed')}</span>
+  if (ids.length === 0) return <span className="text-muted-foreground">{t('findings.none')}</span>
   const ranked = [...ids].sort(
     (a, b) =>
       Number(isPageIssueId(b)) - Number(isPageIssueId(a)) ||
@@ -223,6 +278,7 @@ function Cell({
   row,
   host,
   query,
+  analysed,
   selected,
   onSelect,
 }: {
@@ -230,6 +286,7 @@ function Cell({
   row: PageRow
   host: string
   query: DetailQuery
+  analysed: boolean
   selected: boolean
   onSelect: (value: boolean) => void
 }) {
@@ -284,7 +341,38 @@ function Cell({
         <Muted>—</Muted>
       )
     case 'issues':
-      return <IssueBadges ids={row.issues} />
+      return <IssueBadges ids={row.issues} participation={row.participation} analysed={analysed} />
+    case 'audit':
+      return row.internal ? (
+        <ParticipationBadge participation={row.participation} />
+      ) : (
+        <Muted>—</Muted>
+      )
+    case 'intent':
+      // The expectation is about pages: an image or a redirect has nothing to meet.
+      return row.internal && row.kind === 'page' ? (
+        <div className="flex flex-wrap gap-1">
+          <IntentBadge intent={row.intent} isDefault={row.intentRule === null} />
+          {row.acceptNofollow && <NofollowAcceptedBadge />}
+        </div>
+      ) : (
+        <Muted>—</Muted>
+      )
+    case 'indexability':
+      return row.internal ? (
+        <IndexabilityBadge state={row.indexability} blockers={row.blockers} />
+      ) : (
+        <Muted>—</Muted>
+      )
+    case 'origin':
+      return row.internal && row.participation !== null ? (
+        <div className="grid max-w-xs gap-1.5 text-xs">
+          <RuleOrigin rule={row.participationRule} />
+          {row.intentRule !== null && <RuleOrigin rule={row.intentRule} />}
+        </div>
+      ) : (
+        <Muted>—</Muted>
+      )
     case 'depth':
       return <span className="tabular-nums">{format.number(row.depth)}</span>
     case 'responseTime':
@@ -399,12 +487,15 @@ export function PagesTable({
   rows,
   total,
   query,
+  analysed,
 }: {
   host: string
   rows: PageRow[]
   /** Rows matching the query, over every page. */
   total: number
   query: DetailQuery
+  /** Whether the crawl was checked for issues: a URL with none is then clean, not unchecked. */
+  analysed: boolean
 }) {
   const t = useTranslations('PagesDetails')
   const tCatalog = useTranslations('IssueCatalog')
@@ -414,6 +505,7 @@ export function PagesTable({
     query.issue && isPageIssueId(query.issue) ? PAGE_ISSUES[query.issue].detail : undefined
   const [pending, startTransition] = useTransition()
   const [selection, setSelection] = useState<Record<string, true>>({})
+  const [auditDialog, setAuditDialog] = useState<AuditDialogPreset | null>(null)
 
   const table = useTable({
     features,
@@ -435,6 +527,8 @@ export function PagesTable({
   const selected = rows.filter((row) => selection[row.urlHash])
   // Only pages can be prioritised.
   const selectedPages = selected.filter((row) => row.kind === 'page')
+  // The audit is configured for the URLs of the site, whatever they turned out to be.
+  const selectedInternal = selected.filter((row) => row.internal)
   const allSelected = rows.length > 0 && selected.length === rows.length
   const visibleColumns = table.getVisibleLeafColumns()
 
@@ -472,7 +566,7 @@ export function PagesTable({
             >
               <XIcon />
             </Button>
-            {selectedPages.length > 0 && (
+            {(selectedPages.length > 0 || selectedInternal.length > 0) && (
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={<Button variant="outline" size="sm" disabled={pending} />}
@@ -481,14 +575,33 @@ export function PagesTable({
                   <ChevronDownIcon />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="min-w-52">
-                  <DropdownMenuItem onClick={() => mark(true)}>
-                    <StarIcon className="fill-current" />
-                    {t('bulk.mark')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => mark(false)}>
-                    <StarIcon />
-                    {t('bulk.unmark')}
-                  </DropdownMenuItem>
+                  {selectedPages.length > 0 && (
+                    <>
+                      <DropdownMenuItem onClick={() => mark(true)}>
+                        <StarIcon className="fill-current" />
+                        {t('bulk.mark')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => mark(false)}>
+                        <StarIcon />
+                        {t('bulk.unmark')}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {selectedPages.length > 0 && selectedInternal.length > 0 && (
+                    <DropdownMenuSeparator />
+                  )}
+                  {selectedInternal.length > 0 && (
+                    <>
+                      <DropdownMenuItem onClick={() => setAuditDialog({ audit: 'exclude' })}>
+                        <EyeOffIcon />
+                        {t('bulk.excludeFromAudit')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setAuditDialog({})}>
+                        <SlidersHorizontalIcon />
+                        {t('bulk.configureAudit')}
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -587,6 +700,7 @@ export function PagesTable({
                     row={row.original}
                     host={host}
                     query={query}
+                    analysed={analysed}
                     selected={row.getIsSelected()}
                     onSelect={(value) => row.toggleSelected(value)}
                   />
@@ -596,6 +710,14 @@ export function PagesTable({
           ))}
         </TableBody>
       </Table>
+      <AuditDialog
+        host={host}
+        urls={selectedInternal.map((row) => row.url)}
+        open={auditDialog !== null}
+        onOpenChange={(open) => !open && setAuditDialog(null)}
+        preset={auditDialog ?? {}}
+        onApplied={() => setSelection({})}
+      />
     </div>
   )
 }

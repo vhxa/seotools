@@ -33,6 +33,7 @@ export default async function UrlPage({
   if (!latest) notFound()
   const data = await loadUrlDetail({
     domainId: domain.id,
+    host: domain.host,
     crawl: latest,
     urlHash: hash,
     linkLimit: 100,

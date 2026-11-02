@@ -31,6 +31,8 @@ export const JOB_TYPES = {
   exampleEcho: 'example.echo',
   mailSend: 'mail.send',
   crawlRun: 'crawl.run',
+  /** Analyses a domain's latest full crawl again with its current audit configuration. */
+  auditRecompute: 'audit.recompute',
 } as const
 
 export const exampleEchoPayload = z.object({
@@ -49,6 +51,9 @@ export type MailSendPayload = z.infer<typeof mailSendPayload>
 
 export const crawlRunPayload = z.object({ crawlId: z.string().min(1) })
 export type CrawlRunPayload = z.infer<typeof crawlRunPayload>
+
+export const auditRecomputePayload = z.object({ domainId: z.string().min(1) })
+export type AuditRecomputePayload = z.infer<typeof auditRecomputePayload>
 
 /** Delay before retrying a job that failed `attempts` times: 5s, 10s, 20s… capped at 15 min. */
 export function retryDelayMs(attempts: number, baseMs = 5_000, maxMs = 15 * 60_000): number {

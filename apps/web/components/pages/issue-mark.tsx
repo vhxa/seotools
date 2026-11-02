@@ -104,17 +104,24 @@ export function IssueBadge({ issue }: { issue: string }) {
   )
 }
 
+const BLOCKERS = ['noindex', 'canonical', 'robots', 'redirect', 'http-error'] as const
+
 /**
- * What an issue says about a URL, e.g. where a hreflang was declared. The names of security headers
- * are what they are in any language.
+ * What an issue says about a URL, e.g. where a hreflang was declared or what keeps it from being
+ * indexable. The names of security headers are what they are in any language.
  */
 export function IssueDetails({ details }: { details: readonly string[] }) {
   const t = useTranslations('IssueCatalog.hreflangSources')
+  const tBlockers = useTranslations('AuditState.blockers')
   return (
     <div className="flex flex-wrap gap-1">
       {details.map((detail) => (
         <Badge key={detail} variant="outline" className="font-normal">
-          {detail === 'html' || detail === 'header' || detail === 'sitemap' ? t(detail) : detail}
+          {detail === 'html' || detail === 'header' || detail === 'sitemap'
+            ? t(detail)
+            : (BLOCKERS as readonly string[]).includes(detail)
+              ? tBlockers(detail as (typeof BLOCKERS)[number])
+              : detail}
         </Badge>
       ))}
     </div>

@@ -8,6 +8,9 @@ const base: DetailQuery = {
   direction: 'asc',
   search: '',
   issue: null,
+  participation: null,
+  intent: null,
+  rule: null,
   url: null,
 }
 
@@ -26,6 +29,9 @@ describe('parseDetailQuery', () => {
         dir: 'desc',
         q: '  blog ',
         issue: 'title-missing',
+        audit: 'excluded',
+        intent: 'not-indexable',
+        rule: '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f11',
         url: hash,
       }),
     ).toEqual({
@@ -35,6 +41,9 @@ describe('parseDetailQuery', () => {
       direction: 'desc',
       search: 'blog',
       issue: 'title-missing',
+      participation: 'excluded',
+      intent: 'not-indexable',
+      rule: '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f11',
       url: hash,
     })
   })
@@ -47,6 +56,9 @@ describe('parseDetailQuery', () => {
         sort: 'nope',
         dir: 'sideways',
         issue: 'toString',
+        audit: 'maybe',
+        intent: 'whatever',
+        rule: "x' or 1=1 --",
         url: 'not-a-hash',
       }),
     ).toEqual(base)
@@ -108,6 +120,9 @@ describe('detailHref', () => {
       direction: 'desc',
       search: '50% off & more',
       issue: 'description-missing',
+      participation: 'audited',
+      intent: 'indexable',
+      rule: null,
       url: 'b'.repeat(32),
     }
     const href = detailHref('acme.com', query)
@@ -129,6 +144,32 @@ describe('nextSort', () => {
     expect(nextSort({ sort: 'title', direction: 'desc' }, 'url')).toEqual({
       sort: 'url',
       direction: 'asc',
+    })
+  })
+})
+
+describe('the filters on the audit', () => {
+  it('are kept in the address, and left out when they are not set', () => {
+    const query = { ...base, participation: 'excluded', intent: 'indexable' } as DetailQuery
+    const href = detailHref('acme.com', query)
+    expect(href).toBe('/domains/acme.com/pages/details?audit=excluded&intent=indexable')
+    expect(parseDetailQuery(Object.fromEntries(new URL(href, 'http://x').searchParams))).toEqual(
+      query,
+    )
+    expect(detailHref('acme.com', query, { participation: null, intent: null })).toBe(
+      '/domains/acme.com/pages/details',
+    )
+  })
+
+  it('go with the other filters, and the rule of a link from the settings', () => {
+    const rule = '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f11'
+    const href = detailHref('acme.com', { ...base, rule, search: 'cart', page: 2 })
+    expect(
+      parseDetailQuery(Object.fromEntries(new URL(href, 'http://x').searchParams)),
+    ).toMatchObject({
+      rule,
+      search: 'cart',
+      page: 2,
     })
   })
 })

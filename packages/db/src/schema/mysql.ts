@@ -248,6 +248,24 @@ export const crawls = mysqlTable(
     pagesWithOpportunityCount: int('pages_with_opportunity_count'),
     /** `ISSUE_CATALOG_VERSION` the issues were found with. `null`: not analysed. */
     issueCatalog: varchar('issue_catalog', { length: 64 }),
+    /**
+     * What the audit looks like in this crawl, by pages. `null`: the crawl was analysed before
+     * these existed (or not at all) and they are not made up: see `pagesWithType` for what it has.
+     * `pagesAuditedCount` and `pagesExcludedCount` add up to the pages of the crawl; the other three
+     * are over every page, excluded or not.
+     */
+    pagesAuditedCount: int('pages_audited_count'),
+    pagesExcludedCount: int('pages_excluded_count'),
+    pagesIndexableCount: int('pages_indexable_count'),
+    pagesNotIndexableCount: int('pages_not_indexable_count'),
+    pagesUnknownIndexabilityCount: int('pages_unknown_indexability_count'),
+    /**
+     * The version of the domain's audit configuration (`domain_audit_config`) the analysis used.
+     * `null`: analysed before configuration existed, which is the same as version 0 (no rules).
+     */
+    auditVersion: int('audit_version'),
+    /** JSON (`AuditSnapshot`): the rules that analysis used, to read and repeat it as it was. */
+    auditSnapshot: longtext('audit_snapshot'),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: boolean('pruned').notNull().default(false),
     error: text('error'),
@@ -315,7 +333,7 @@ export const crawlLinks = mysqlTable(
 
 /**
  * The issues each page of a crawl had (`PAGE_ISSUES` in @seotools/core), written when the crawl
- * ends. A page without a row is correct. Removed along with the results per URL of old crawls.
+ * ends or is analysed again. Only audited URLs have rows: an excluded one has no findings of its own. Removed along with the results per URL of old crawls.
  */
 export const crawlUrlIssues = mysqlTable(
   'crawl_url_issues',
@@ -331,6 +349,117 @@ export const crawlUrlIssues = mysqlTable(
   (t) => [
     primaryKey({ columns: [t.crawlId, t.urlHash, t.issue] }),
     index('crawl_url_issues_issue_idx').on(t.crawlId, t.issue),
+  ],
+)
+
+/**
+ * The version of a domain's audit configuration, which grows with every change to its rules, and
+ * how the recalculation that follows a change is going. A domain without a row is at version 0.
+ */
+export const domainAuditConfig = mysqlTable('domain_audit_config', {
+  domainId: id('domain_id')
+    .primaryKey()
+    .references(() => domains.id, { onDelete: 'cascade' }),
+  version: int('version').notNull().default(0),
+  /** Why the last recalculation gave up, and for which version. `null`: nothing has failed. */
+  recomputeError: text('recompute_error'),
+  recomputeErrorVersion: int('recompute_error_version'),
+  /**
+   * The language directories shared rules look at (`LanguageConfig` in @seotools/core): a JSON array
+   * of directories such as `/es`, or `null` for none. They are part of the configuration: changing
+   * them moves the version.
+   */
+  languagePrefixes: text('language_prefixes'),
+  /** The domain has pages of its default language without a language directory. */
+  languageUnprefixed: boolean('language_unprefixed').notNull().default(false),
+  updatedAt: ts('updated_at').notNull().$defaultFn(now),
+})
+
+/**
+ * Rules and exceptions that say which URLs of a domain are audited and which are expected to be
+ * indexable (`@seotools/core/crawl/audit`). They hang off the domain, not off a crawl: they outlive
+ * every crawl and every pruning of results. An exception for one URL is a rule whose selector is
+ * that URL.
+ */
+export const auditRules = mysqlTable(
+  'audit_rules',
+  {
+    id: id('id').primaryKey(),
+    domainId: id('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    dimension: varchar('dimension', { length: 16, enum: ['audit', 'intent'] }).notNull(),
+    /** `exclude` or `include` for `audit`; `none`, `indexable` or `not-indexable` for `intent`. */
+    value: varchar('value', { length: 16 }).notNull(),
+    selectorKind: varchar('selector_kind', {
+      length: 16,
+      enum: ['url', 'path', 'prefix'],
+    }).notNull(),
+    /** The normalized URL, or the path. */
+    selector: text('selector').notNull(),
+    queryMode: varchar('query_mode', { length: 16, enum: ['any', 'exact'] }).notNull(),
+    /** The query asked for, without the `?`. Empty is a query too. `null` when it is ignored. */
+    queryValue: text('query_value'),
+    /** Where a path or prefix rule looks for its path: as it is, or shared between languages. */
+    scope: varchar('scope', { length: 16, enum: ['literal', 'shared'] })
+      .notNull()
+      .default('literal'),
+    /** Intent rules only: the page's own `nofollow` is accepted as intended. */
+    acceptNofollow: boolean('accept_nofollow').notNull().default(false),
+    /** Hash of `selectorKey`: two selectors with the same one are the same selector. */
+    selectorHash: varchar('selector_hash', { length: 32 }).notNull(),
+    /** `selector_hash` while the rule is enabled, `null` after: unique per domain and dimension. */
+    activeKey: varchar('active_key', { length: 32 }),
+    reason: text('reason'),
+    enabled: boolean('enabled').notNull(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+    updatedAt: ts('updated_at').notNull().$defaultFn(now),
+  },
+  (t) => [
+    index('audit_rules_domain_idx').on(t.domainId),
+    uniqueIndex('audit_rules_active_idx').on(t.domainId, t.dimension, t.activeKey),
+  ],
+)
+
+/**
+ * What an analysis concluded about each internal URL of a crawl: whether it was audited, what was
+ * expected of its indexation, and what the crawl saw. A crawl analysed before this existed has no
+ * rows. Removed along with the results per URL of old crawls.
+ */
+export const crawlUrlAudit = mysqlTable(
+  'crawl_url_audit',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    urlHash: varchar('url_hash', { length: 32 }).notNull(),
+    participation: varchar('participation', {
+      length: 16,
+      enum: ['audited', 'excluded'],
+    }).notNull(),
+    /** The rule that decided it. `null`: the default, or a rule that was deleted since. */
+    participationRule: id('participation_rule'),
+    intent: varchar('intent', {
+      length: 16,
+      enum: ['none', 'indexable', 'not-indexable'],
+    }).notNull(),
+    intentRule: id('intent_rule'),
+    /** The page's own `nofollow` was accepted, by the rule that decided the intent. */
+    acceptNofollow: boolean('accept_nofollow').notNull().default(false),
+    /** What the crawl saw, whatever was expected and whether or not it was audited. */
+    indexability: varchar('indexability', {
+      length: 16,
+      enum: ['indexable', 'not-indexable', 'unknown'],
+    }).notNull(),
+    /** JSON array of `INDEXABILITY_BLOCKERS`. `null` when nothing stands in the way. */
+    blockers: text('blockers'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.urlHash] }),
+    index('crawl_url_audit_participation_idx').on(t.crawlId, t.participation),
+    index('crawl_url_audit_intent_idx').on(t.crawlId, t.intent),
+    index('crawl_url_audit_participation_rule_idx').on(t.crawlId, t.participationRule),
+    index('crawl_url_audit_intent_rule_idx').on(t.crawlId, t.intentRule),
   ],
 )
 

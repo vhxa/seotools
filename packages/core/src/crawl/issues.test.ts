@@ -17,7 +17,7 @@ describe('the catalog', () => {
     // An id repeated across categories would be lost in `PAGE_ISSUES`.
     expect(new Set(listed).size).toBe(listed.length)
     expect([...listed].sort()).toEqual([...PAGE_ISSUE_IDS].sort())
-    expect(listed).toHaveLength(102)
+    expect(listed).toHaveLength(104)
   })
 
   it('knows the category of each issue', () => {
@@ -50,6 +50,17 @@ describe('the catalog', () => {
       expect(PAGE_ISSUES[id].detail).toBe('hreflang-source')
     }
     expect(PAGE_ISSUES['title-missing'].detail).toBeUndefined()
+    expect(PAGE_ISSUES['expected-indexable-blocked'].detail).toBe('indexability-blocker')
+  })
+
+  it('has issues for what is declared against what the crawl saw', () => {
+    expect(issuesOfCategory('indexing-intent')).toEqual([
+      'expected-indexable-blocked',
+      'expected-not-indexable-but-indexable',
+    ])
+    for (const id of issuesOfCategory('indexing-intent')) {
+      expect(PAGE_ISSUES[id]).toMatchObject({ type: 'issue', importance: 'high' })
+    }
   })
 })
 

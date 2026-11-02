@@ -18,6 +18,7 @@ describeDatabaseContract(
           'worker_heartbeats',
           'settings',
           'user',
+          'crawl_url_audit',
           'crawl_url_issues',
           'crawl_sitemap_hreflang',
           'crawl_links',
@@ -29,6 +30,8 @@ describeDatabaseContract(
           'domain_favicons',
           'crawl_files',
           'crawl_file_checks',
+          'audit_rules',
+          'domain_audit_config',
           'domains',
           'companies',
         ]) {

@@ -1,13 +1,25 @@
 import { crawlUrlHash } from '@seotools/core'
+import { intentOutcome } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import { ExternalLinkIcon } from 'lucide-react'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
+import {
+  BlockerList,
+  IndexabilityBadge,
+  IntentBadge,
+  IntentOutcomeText,
+  NofollowAcceptedBadge,
+  ParticipationBadge,
+  RuleOrigin,
+} from '@/components/audit/state-badges'
+import { UrlAuditActions } from '@/components/audit/url-audit-actions'
 import { PriorityToggle, UrlLink } from '@/components/crawl/url-cells'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { OpenUrlLink } from '@/components/pages/url-drawer'
 import { Badge } from '@/components/ui/badge'
+import { ruleRefsOf } from '@/lib/audit-rules'
 import { formatBytes } from '@/lib/format'
 import type { UrlDetailData } from '@/lib/url-detail'
 
@@ -57,8 +69,13 @@ export async function UrlDetail({
     getTranslations('LinkKinds'),
     getFormatter(),
   ])
-  const { url, crawl } = data
+  const { url, crawl, audit } = data
   const isPage = url.kind === 'page'
+  const [tAudit, tState] = await Promise.all([
+    getTranslations('UrlDetail.audit'),
+    getTranslations('AuditState'),
+  ])
+  const refOf = ruleRefsOf(crawl.auditSnapshot)
   const notSet = <span className="text-muted-foreground">{t('notSet')}</span>
   const text = (value: string | null | undefined) => (value ? value : notSet)
 
@@ -93,6 +110,9 @@ export async function UrlDetail({
         <StatusCell row={url} />
         <Badge variant="outline">{t(`kinds.${url.kind}`)}</Badge>
         {isPage && <PriorityToggle host={host} url={url.url} marked={data.priority} />}
+        {url.scope === 'internal' && (
+          <UrlAuditActions host={host} url={url.url} current={data.current} />
+        )}
         <a
           href={url.url}
           target="_blank"
@@ -130,9 +150,61 @@ export async function UrlDetail({
         </Fields>
       </Section>
 
+      {url.scope === 'internal' && (
+        <Section title={t('sections.audit')}>
+          {data.results.kind === 'pending' || data.results.kind === 'failed' ? (
+            <p className="text-sm text-muted-foreground">{tAudit('pendingNote')}</p>
+          ) : null}
+          {audit === null ? (
+            <p className="text-sm text-muted-foreground">{tAudit('notAnalysed')}</p>
+          ) : (
+            <>
+              <Fields>
+                <Field label={tAudit('participation')}>
+                  <div className="grid gap-1">
+                    <ParticipationBadge participation={audit.participation} />
+                    <RuleOrigin rule={refOf(audit.participationRule)} />
+                  </div>
+                </Field>
+                <Field label={tAudit('intent')}>
+                  {isPage ? (
+                    <div className="grid gap-1">
+                      <div className="flex flex-wrap gap-1">
+                        <IntentBadge intent={audit.intent} isDefault={audit.intentRule === null} />
+                        {audit.acceptNofollow && <NofollowAcceptedBadge />}
+                      </div>
+                      <RuleOrigin rule={refOf(audit.intentRule)} />
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">{tState('intent.notApplicable')}</span>
+                  )}
+                </Field>
+                <Field label={tAudit('technical')}>
+                  <div className="grid gap-1.5">
+                    <IndexabilityBadge state={audit.indexability} />
+                    <BlockerList blockers={audit.blockers} />
+                  </div>
+                </Field>
+              </Fields>
+              {isPage && (
+                <IntentOutcomeText
+                  outcome={intentOutcome(audit.intent, audit.indexability, audit.blockers)}
+                />
+              )}
+              {audit.participation === 'excluded' && (
+                <p className="text-sm text-muted-foreground">{tAudit('excludedNote')}</p>
+              )}
+              <p className="text-xs text-muted-foreground">{tState('technicalNote')}</p>
+            </>
+          )}
+        </Section>
+      )}
+
       <Section title={t('sections.issues')}>
         {crawl.pagesByWorstIssue === null ? (
           <p className="text-sm text-muted-foreground">{t('notChecked')}</p>
+        ) : audit?.participation === 'excluded' ? (
+          <p className="text-sm text-muted-foreground">{t('excludedFindings')}</p>
         ) : data.issues.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noIssues')}</p>
         ) : (

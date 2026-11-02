@@ -12,17 +12,21 @@ import {
 } from '@/components/ui/chart'
 import { cn } from '@/lib/utils'
 
-/** How the pages of a full crawl were when it ended. */
+/**
+ * How the pages of a full crawl were when it ended. `indexable` counts over every page crawled, and
+ * is `null` for a crawl analysed before it was kept, whose results are gone: it is not worked out
+ * from the findings, which say nothing about it. The other three count over the audited pages.
+ */
 export interface PagesPoint {
   /** When the crawl ended, in milliseconds since the epoch. */
   at: number
-  indexable: number
+  indexable: number | null
   issues: number
   warnings: number
   opportunities: number
 }
 
-/** The figures of the last crawl. `null` when it has not been checked for issues. */
+/** The figures of the last crawl. `null` when it has not been checked, or too little is known. */
 export type PagesStats = Record<Series, number | null>
 
 const SERIES = ['indexable', 'issues', 'warnings', 'opportunities'] as const
@@ -102,7 +106,19 @@ function Tile({
  * The figures of the pages overview and the history behind them, in the manner of Search Console:
  * clicking one shows or hides its line. One line always stays on.
  */
-export function PagesChart({ stats, points }: { stats: PagesStats; points: PagesPoint[] }) {
+export function PagesChart({
+  stats,
+  points,
+  crawled,
+  audited,
+}: {
+  stats: PagesStats
+  points: PagesPoint[]
+  /** Pages the last crawl found: what the indexable ones are counted among. */
+  crawled: number | null
+  /** Pages it audited: what issues, warnings and opportunities are counted among. */
+  audited: number | null
+}) {
   const t = useTranslations('Pages')
   const format = useFormatter()
   const [shown, setShown] = useState<readonly Series[]>(DEFAULT_SHOWN)
@@ -116,7 +132,16 @@ export function PagesChart({ stats, points }: { stats: PagesStats; points: Pages
         : [...current, series],
     )
   const number = (value: number | null) => (value === null ? '—' : format.number(value))
-  const notChecked = stats.indexable === null ? t('stats.notChecked') : undefined
+  // Say what each figure is a part of, so that no one reads them against the wrong total.
+  const hintFor = (series: Series) => {
+    if (stats.issues === null) return t('stats.notChecked')
+    if (stats[series] === null) return t('stats.baseNone')
+    const base = series === 'indexable' ? crawled : audited
+    if (base === null) return undefined
+    return series === 'indexable'
+      ? t('stats.baseCrawled', { count: base })
+      : t('stats.baseAudited', { count: base })
+  }
   const marker = (series: Series) =>
     points.length <= MARKER_LIMIT
       ? {
@@ -139,7 +164,7 @@ export function PagesChart({ stats, points }: { stats: PagesStats; points: Pages
                 key={series}
                 label={t(`stats.${series}`)}
                 value={number(stats[series])}
-                hint={notChecked}
+                hint={hintFor(series)}
                 series={series}
                 pressed={shown.includes(series)}
                 onToggle={() => toggle(series)}
@@ -232,7 +257,7 @@ export function PagesChart({ stats, points }: { stats: PagesStats; points: Pages
                       {format.dateTime(point.at, { dateStyle: 'medium', timeStyle: 'short' })}
                     </td>
                     {SERIES.map((series) => (
-                      <td key={series}>{format.number(point[series])}</td>
+                      <td key={series}>{number(point[series])}</td>
                     ))}
                   </tr>
                 ))}
