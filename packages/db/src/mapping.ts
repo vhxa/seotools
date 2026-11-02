@@ -22,6 +22,7 @@ import {
   type ExtraCrawlFileKind,
   type Job,
   type JobStatus,
+  type PagesByWorstIssue,
 } from '@seotools/core'
 import type {
   Company,
@@ -43,6 +44,7 @@ import type {
   FaviconImage,
   NewCrawlFile,
   NewCrawlUrl,
+  SitemapHreflang,
 } from './types'
 
 export interface JobRow {
@@ -112,7 +114,12 @@ export function groupDomains(companies: Company[], domains: Domain[]): CompanyWi
 
 // --- crawls --------------------------------------------------------------
 
-export type CrawlRow = Omit<Crawl, 'robots'> & { robots: string | null }
+export type CrawlRow = Omit<Crawl, 'robots' | 'pagesByWorstIssue'> & {
+  robots: string | null
+  pagesWorstIssueCount: number | null
+  pagesWorstWarningCount: number | null
+  pagesWorstOpportunityCount: number | null
+}
 export type CrawlUrlRow = Omit<CrawlUrl, 'data' | 'source' | 'scope' | 'kind' | 'state'> & {
   data: string | null
   source: string
@@ -122,9 +129,26 @@ export type CrawlUrlRow = Omit<CrawlUrl, 'data' | 'source' | 'scope' | 'kind' | 
 }
 export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
 
-export const toCrawl = ({ robots, ...row }: CrawlRow): Crawl => ({
+export const toCrawl = ({
+  robots,
+  pagesWorstIssueCount: issue,
+  pagesWorstWarningCount: warning,
+  pagesWorstOpportunityCount: opportunity,
+  ...row
+}: CrawlRow): Crawl => ({
   ...row,
+  pagesByWorstIssue:
+    issue === null || warning === null || opportunity === null
+      ? null
+      : { issue, warning, opportunity },
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
+})
+
+/** The columns of `crawls` that say how many pages have each type as their worst issue. */
+export const pagesByWorstIssueColumns = ({ issue, warning, opportunity }: PagesByWorstIssue) => ({
+  pagesWorstIssueCount: issue,
+  pagesWorstWarningCount: warning,
+  pagesWorstOpportunityCount: opportunity,
 })
 
 export const toCrawlUrl = ({ data, ...row }: CrawlUrlRow): CrawlUrl => ({
@@ -198,7 +222,7 @@ export const crawlRobotsColumn = (robots: CrawlRobotsFiles) =>
     ),
   )
 
-/** External URLs are recorded, never requested, so they don't enter the queue. */
+/** External URLs are recorded, not crawled, so they don't enter the queue. */
 export const newCrawlUrlRow = (crawlId: string, url: NewCrawlUrl) => ({
   crawlId,
   ...url,
@@ -247,7 +271,7 @@ const containsPattern = (text: string) =>
 
 /**
  * The condition that selects the URLs of a query. `withIssue` is a query for the hashes of the
- * pages that have `query.issue`, built by the dialect since it needs its own `db`.
+ * URLs that have `query.issue`, built by the dialect since it needs its own `db`.
  */
 export function crawlUrlWhere(
   columns: CrawlUrlColumns,
@@ -257,9 +281,10 @@ export function crawlUrlWhere(
   const pattern = query.search ? containsPattern(query.search) : null
   return and(
     eq(columns.crawlId, query.crawlId),
-    eq(columns.scope, crawlViewScope(query.view)),
-    query.view === 'pages' ? eq(columns.kind, 'page') : undefined,
-    query.view === 'other' ? ne(columns.kind, 'page') : undefined,
+    // An issue picks its URLs wherever they are: a redirect or a broken link is not a page.
+    query.issue ? undefined : eq(columns.scope, crawlViewScope(query.view)),
+    !query.issue && query.view === 'pages' ? eq(columns.kind, 'page') : undefined,
+    !query.issue && query.view === 'other' ? ne(columns.kind, 'page') : undefined,
     pattern
       ? sql`(lower(${columns.url}) like ${pattern} escape '!' or lower(${columns.title}) like ${pattern} escape '!')`
       : undefined,
@@ -284,12 +309,38 @@ export function crawlUrlOrder(
   ]
 }
 
-/** One row per page and issue: asking twice for the same one is not an error. */
+/** One row per URL and issue: asking twice for the same one is not an error. */
 export function crawlIssueRows(crawlId: string, issues: CrawlUrlIssue[]) {
   const unique = new Map<string, CrawlUrlIssue>()
   for (const issue of issues) unique.set(`${issue.urlHash}:${issue.issue}`, issue)
-  return [...unique.values()].map(({ urlHash, issue }) => ({ crawlId, urlHash, issue }))
+  return [...unique.values()].map(({ urlHash, issue, details }) => ({
+    crawlId,
+    urlHash,
+    issue,
+    details: details?.length ? JSON.stringify(details) : null,
+  }))
 }
+
+export const toCrawlUrlIssue = (row: {
+  urlHash: string
+  issue: string
+  details: string | null
+}): CrawlUrlIssue => ({
+  urlHash: row.urlHash,
+  issue: row.issue,
+  ...(row.details === null ? {} : { details: parseJson(row.details) as string[] }),
+})
+
+const MAX_HREFLANG_LENGTH = 35
+
+/** Whatever a sitemap declares has to fit, and the same alternate twice is one row. */
+export const sitemapHreflangRow = (crawlId: string, entry: SitemapHreflang) => ({
+  crawlId,
+  pageHash: entry.pageHash,
+  lang: cleanText(entry.lang, MAX_HREFLANG_LENGTH),
+  targetHash: crawlUrlHash(entry.url),
+  url: entry.url,
+})
 
 /** Multi-row inserts are split so they stay under every driver's parameter limit. */
 export function chunk<T>(items: T[], size = 500): T[][] {

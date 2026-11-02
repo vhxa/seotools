@@ -181,15 +181,11 @@
     },
     "issues": {
       "title": "Issues",
-      "description": "What the last full crawl found on the pages. Open one to see the pages that have it.",
-      "empty": "No issues found: every page is correct.",
+      "description": "What the last full crawl found, worst first. Open one to see the URLs that have it.",
+      "empty": "Nothing was found.",
       "notChecked": "The last full crawl has not been checked for issues. Run a new full crawl to see them here.",
       "noCrawl": "Issues appear here once the domain has been crawled.",
-      "pages": "{count, plural, one {# page} other {# pages}}",
-      "severity": {
-        "error": "Error",
-        "warning": "Warning"
-      }
+      "pages": "{count, plural, one {# URL} other {# URLs}}"
     },
     "priority": {
       "mark": "Mark as priority",
@@ -210,7 +206,7 @@
     "viewHints": {
       "pages": "URLs of this site that answered with HTML, whatever their status. These are the ones counted as pages.",
       "other": "Redirects, images, stylesheets, scripts, PDFs, robots.txt, sitemaps and URLs that did not answer.",
-      "external": "URLs on other sites linked from this one. They are recorded, but never requested or counted."
+      "external": "URLs on other sites linked from this one. Those of '<a>' links are requested once to find out whether they work; none counts as a page."
     },
     "search": {
       "label": "Search URLs",
@@ -251,7 +247,8 @@
     },
     "actionsMenu": {
       "label": "Actions"
-    }
+    },
+    "moreIssues": "+{count, number} more"
   },
   "UrlDetail": {
     "back": "Back to the detail",
@@ -289,7 +286,7 @@
       "unknown": "Unknown"
     },
     "notSet": "Not set",
-    "noIssues": "No issues found on this page.",
+    "noIssues": "Nothing was found on this URL.",
     "notChecked": "This crawl has not been checked for issues.",
     "noLinks": "None found.",
     "moreLinks": "There are more.",
@@ -297,17 +294,405 @@
     "loading": "Loading the detail of the URL"
   },
   "PageIssues": {
-    "http-error": {
-      "name": "HTTP error status",
-      "description": "The page answered with a 4xx or 5xx status code."
+    "no-response": {
+      "name": "No response (internal)",
+      "description": "A URL of this site that never answered: a network or DNS error, or a timeout."
     },
-    "missing-title": {
-      "name": "Missing title",
+    "server-error": {
+      "name": "Server error 5xx (internal)",
+      "description": "A URL of this site answered with a server error."
+    },
+    "client-error": {
+      "name": "Client error 4xx (internal)",
+      "description": "A URL of this site answered that it does not exist or cannot be accessed."
+    },
+    "redirect-loop": {
+      "name": "Redirect loop",
+      "description": "Following the redirects of this URL never reaches a page."
+    },
+    "soft-404": {
+      "name": "Soft 404",
+      "description": "Answers 200, but going by its content it looks like a \"not found\" page. Detected from the text, not the status code."
+    },
+    "redirect-chain": {
+      "name": "Redirect chain",
+      "description": "Redirects to another URL that also redirects. It should point straight at the final target."
+    },
+    "refresh-redirect": {
+      "name": "Meta refresh or Refresh header redirect",
+      "description": "Redirects from the HTML or with the Refresh header instead of a 3xx status code."
+    },
+    "robots-blocked": {
+      "name": "Blocked by robots.txt",
+      "description": "robots.txt does not let Googlebot request this URL. This crawler requests it all the same to audit it."
+    },
+    "redirect-3xx": {
+      "name": "3xx redirect (internal)",
+      "description": "A URL of this site that redirects. Links to it should point at its target."
+    },
+    "broken-external-link": {
+      "name": "Broken external link",
+      "description": "A link to another site that does not answer or answers with an error. Answers typical of blocking bots, such as 403 or 429, are ignored."
+    },
+    "directive-outside-head": {
+      "name": "Directive outside the '<head>'",
+      "description": "There is a meta robots tag in the body of the page, where search engines may ignore it."
+    },
+    "directives-conflict": {
+      "name": "Conflicting directives",
+      "description": "The page says one thing and its opposite at once, such as index and noindex."
+    },
+    "noindex": {
+      "name": "noindex",
+      "description": "The page asks not to appear in search results."
+    },
+    "nofollow": {
+      "name": "nofollow",
+      "description": "The page asks not to follow any of its links."
+    },
+    "snippet-limited": {
+      "name": "nosnippet / max-snippet",
+      "description": "The page limits the snippet that can be shown. Relevant for GEO, since AI engines cannot quote it either."
+    },
+    "noimageindex": {
+      "name": "noimageindex",
+      "description": "The page asks not to index its images."
+    },
+    "unavailable-after": {
+      "name": "unavailable_after",
+      "description": "The page asks to stop appearing in results after a date."
+    },
+    "canonical-outside-head": {
+      "name": "Outside the '<head>'",
+      "description": "The canonical is in the body of the page, where search engines ignore it."
+    },
+    "canonical-conflict": {
+      "name": "Conflicting canonicals",
+      "description": "Declares several canonicals pointing at different URLs, so search engines may ignore them all."
+    },
+    "canonical-not-indexable": {
+      "name": "Points at a non-indexable URL",
+      "description": "The canonical leads to a URL that redirects, fails or has noindex."
+    },
+    "canonical-fragment": {
+      "name": "Contains a fragment",
+      "description": "The canonical URL has a #fragment, which is not part of the address of a page."
+    },
+    "canonical-missing": {
+      "name": "Missing",
+      "description": "The page does not declare a canonical."
+    },
+    "canonicalised": {
+      "name": "Canonicalised to another URL",
+      "description": "The canonical points at another URL, so search engines will index that one instead of this one."
+    },
+    "canonical-relative": {
+      "name": "Relative",
+      "description": "The canonical is a relative path rather than a full URL."
+    },
+    "canonical-repeated": {
+      "name": "Repeated with the same value",
+      "description": "Declares the same canonical more than once."
+    },
+    "sitemap-too-big": {
+      "name": "Sitemap over the limits (50,000 URLs or 50 MB)",
+      "description": "Search engines ignore what is past those limits. It should be split with a sitemap index."
+    },
+    "sitemap-not-indexable": {
+      "name": "Non-indexable URL in the sitemap",
+      "description": "The sitemap lists a URL that redirects, fails, has noindex or canonicalises to another. Only indexable ones belong there."
+    },
+    "orphan-in-sitemap": {
+      "name": "Orphan URL (only in the sitemap)",
+      "description": "No page of the site links to it: only the sitemap leads to it."
+    },
+    "indexable-not-in-sitemap": {
+      "name": "Indexable URL not in a sitemap",
+      "description": "An indexable page that is in no sitemap."
+    },
+    "in-many-sitemaps": {
+      "name": "URL in several sitemaps",
+      "description": "The same URL appears in more than one sitemap."
+    },
+    "hreflang-not-200": {
+      "name": "Hreflang URL does not answer 200",
+      "description": "A hreflang points at a URL of this site that does not answer 200."
+    },
+    "hreflang-no-return": {
+      "name": "Missing return link",
+      "description": "The page the hreflang points at does not link back. Without a return link, search engines ignore the annotation."
+    },
+    "hreflang-invalid-code": {
+      "name": "Invalid language or region code",
+      "description": "The value is not an ISO 639-1 language with an optional ISO 3166-1 region. For example, the region of the UK is GB, not UK."
+    },
+    "hreflang-outside-head": {
+      "name": "Outside the '<head>'",
+      "description": "The hreflang is in the body of the page, where search engines ignore it."
+    },
+    "hreflang-non-canonical": {
+      "name": "Return to a non-canonical URL",
+      "description": "A hreflang points at a URL whose canonical leads to another."
+    },
+    "hreflang-noindex": {
+      "name": "Return to a noindex URL",
+      "description": "A hreflang points at a URL with noindex."
+    },
+    "hreflang-same-language": {
+      "name": "Several entries for the same language",
+      "description": "The same language points at different URLs."
+    },
+    "hreflang-no-self": {
+      "name": "Missing self-reference",
+      "description": "The hreflang annotations of the page do not include the page itself."
+    },
+    "hreflang-no-x-default": {
+      "name": "Missing x-default",
+      "description": "The hreflang annotations of the page do not say which one to show by default."
+    },
+    "title-missing": {
+      "name": "Missing",
       "description": "The page has no title, or it is empty."
     },
-    "missing-description": {
-      "name": "Missing meta description",
+    "title-outside-head": {
+      "name": "Outside the '<head>'",
+      "description": "The title is in the body of the page."
+    },
+    "title-multiple": {
+      "name": "Multiple",
+      "description": "The page has more than one title."
+    },
+    "title-duplicate": {
+      "name": "Duplicate",
+      "description": "Another indexable page has the same title."
+    },
+    "title-too-long": {
+      "name": "Too long",
+      "description": "Over 60 characters: search results may cut it short."
+    },
+    "title-too-short": {
+      "name": "Too short",
+      "description": "Under 30 characters: it is not being made the most of."
+    },
+    "title-same-as-h1": {
+      "name": "Same as the H1",
+      "description": "The title and the H1 say exactly the same."
+    },
+    "description-multiple": {
+      "name": "Multiple",
+      "description": "The page has more than one meta description."
+    },
+    "description-outside-head": {
+      "name": "Outside the '<head>'",
+      "description": "The meta description is in the body of the page."
+    },
+    "description-missing": {
+      "name": "Missing",
       "description": "The page has no meta description, or it is empty."
+    },
+    "description-duplicate": {
+      "name": "Duplicate",
+      "description": "Another indexable page has the same meta description."
+    },
+    "description-too-long": {
+      "name": "Too long",
+      "description": "Over 155 characters: search results may cut it short."
+    },
+    "description-too-short": {
+      "name": "Too short",
+      "description": "Under 70 characters: it is not being made the most of."
+    },
+    "h1-missing": {
+      "name": "H1 missing",
+      "description": "The page has no H1."
+    },
+    "h1-multiple": {
+      "name": "Multiple H1",
+      "description": "The page has more than one H1."
+    },
+    "heading-empty": {
+      "name": "Empty heading",
+      "description": "There is a heading with no text."
+    },
+    "heading-skipped-level": {
+      "name": "Non-sequential hierarchy",
+      "description": "It skips heading levels, for example from H2 to H4."
+    },
+    "h2-missing": {
+      "name": "H2 missing",
+      "description": "The page has no H2."
+    },
+    "h1-duplicate": {
+      "name": "Duplicate H1",
+      "description": "Another indexable page has the same H1."
+    },
+    "heading-too-long": {
+      "name": "Heading too long",
+      "description": "There is a heading of over 70 characters."
+    },
+    "content-duplicate": {
+      "name": "Exact duplicate",
+      "description": "Another indexable page has exactly the same text."
+    },
+    "content-near-duplicate": {
+      "name": "Near duplicate",
+      "description": "Another indexable page has nearly the same text."
+    },
+    "content-placeholder": {
+      "name": "Placeholder text (lorem ipsum)",
+      "description": "The page contains placeholder text that was never replaced."
+    },
+    "content-thin": {
+      "name": "Thin content",
+      "description": "Under 200 words of content, leaving out menus, header and footer."
+    },
+    "img-no-alt": {
+      "name": "No alt attribute",
+      "description": "There are images with no alt attribute."
+    },
+    "img-empty-alt": {
+      "name": "Empty alt",
+      "description": "There are images with an empty alt. It can be right for decorative images."
+    },
+    "img-too-heavy": {
+      "name": "Over 100 KB",
+      "description": "An image of this site is over 100 KB, going by what its server declares."
+    },
+    "img-no-size": {
+      "name": "No width/height",
+      "description": "There are images with no width or height, which makes the page shift as it loads."
+    },
+    "img-long-alt": {
+      "name": "Alt too long",
+      "description": "There are images with an alt of over 100 characters."
+    },
+    "json-ld-invalid": {
+      "name": "JSON-LD that does not parse",
+      "description": "There is a JSON-LD block with syntax errors, so search engines ignore it."
+    },
+    "no-structured-data": {
+      "name": "No structured data",
+      "description": "The page has no JSON-LD, microdata or RDFa."
+    },
+    "link-to-localhost": {
+      "name": "Link to localhost",
+      "description": "The page links to localhost or 127.0.0.1, left over from a development environment."
+    },
+    "uncrawlable-links": {
+      "name": "Uncrawlable internal links",
+      "description": "There are links that only work with JavaScript, such as javascript: or an '<a>' with no href, which search engines cannot follow."
+    },
+    "only-nofollow-inlinks": {
+      "name": "Only receives nofollow links",
+      "description": "Every link reaching this page is nofollow."
+    },
+    "only-noindex-inlinks": {
+      "name": "Only linked from non-indexable pages",
+      "description": "Every link reaching this page comes from pages that will not be indexed."
+    },
+    "no-outgoing-links": {
+      "name": "No outgoing internal links",
+      "description": "The page links to no other page of this site."
+    },
+    "internal-nofollow-links": {
+      "name": "Internal links with nofollow",
+      "description": "The page links to other URLs of this site with nofollow."
+    },
+    "deep-page": {
+      "name": "High crawl depth",
+      "description": "It takes over 3 clicks from the home page to reach it."
+    },
+    "anchor-empty": {
+      "name": "Empty anchor",
+      "description": "There are links with no text or anything else saying where they lead."
+    },
+    "anchor-vague": {
+      "name": "Non-descriptive anchor",
+      "description": "There are links with text like \"here\" or \"read more\", which says nothing about the target."
+    },
+    "url-multiple-slashes": {
+      "name": "Multiple slashes",
+      "description": "The path contains two slashes in a row."
+    },
+    "url-spaces": {
+      "name": "Contains spaces",
+      "description": "The URL contains spaces encoded as %20."
+    },
+    "url-tracking": {
+      "name": "Tracking parameters",
+      "description": "The URL has parameters such as utm_source or gclid. Internal links should not carry them."
+    },
+    "url-uppercase": {
+      "name": "Uppercase",
+      "description": "The path contains uppercase letters. /Page and /page are different URLs to a search engine."
+    },
+    "url-non-ascii": {
+      "name": "Non-ASCII characters",
+      "description": "The URL contains characters that have to be encoded, such as accents."
+    },
+    "url-parameters": {
+      "name": "Parameters",
+      "description": "The URL has parameters, which can multiply the versions of a page."
+    },
+    "url-repetitive-path": {
+      "name": "Repetitive path",
+      "description": "Part of the path repeats, typical of a badly written relative link."
+    },
+    "url-internal-search": {
+      "name": "Internal search",
+      "description": "It looks like a results page of the internal search, which should not be indexed."
+    },
+    "url-underscores": {
+      "name": "Underscores",
+      "description": "The path uses underscores, which do not separate words for a search engine. Hyphens are better."
+    },
+    "url-too-long": {
+      "name": "Too long",
+      "description": "The URL has over 115 characters."
+    },
+    "http-url": {
+      "name": "URL over HTTP",
+      "description": "The page answers over HTTP without redirecting to HTTPS."
+    },
+    "mixed-content": {
+      "name": "Mixed content",
+      "description": "An HTTPS page loads resources over HTTP, which browsers may block."
+    },
+    "insecure-form": {
+      "name": "Insecure form",
+      "description": "There is a form that sends its data over HTTP."
+    },
+    "missing-security-header": {
+      "name": "Missing security header",
+      "description": "The response leaves out a security header. They are all fixed in the same place, the server configuration."
+    },
+    "unsafe-cross-origin-links": {
+      "name": "Unsafe cross-origin links",
+      "description": "There are links to other sites with target=\"_blank\" and no rel=\"noopener\"."
+    },
+    "protocol-relative": {
+      "name": "Protocol-relative resources",
+      "description": "There are resources loaded with URLs starting with //, with no scheme."
+    },
+    "invalid-head-elements": {
+      "name": "Invalid elements in the '<head>'",
+      "description": "There are elements that cannot be in the '<head>'. They can end it early and make Google ignore the canonical or robots."
+    },
+    "missing-head-or-body": {
+      "name": "Missing '<head>' or '<body>'",
+      "description": "The document has no '<head>' or '<body>' tag."
+    },
+    "multiple-head-or-body": {
+      "name": "Multiple '<head>' or '<body>'",
+      "description": "The document has more than one '<head>' or '<body>' tag."
+    },
+    "document-too-big": {
+      "name": "Document over 2 MB",
+      "description": "The HTML is over 2 MB, more than Googlebot reads of a page."
+    },
+    "head-not-first": {
+      "name": "'<head>' is not the first element",
+      "description": "Something comes before the '<head>', which can make browsers end it early."
     }
   },
   "LinkKinds": {
@@ -327,7 +712,8 @@
     "redirect": "Redirect",
     "sitemap": "Sitemap",
     "llms": "llms.txt",
-    "other": "Other"
+    "other": "Other",
+    "anchor-nofollow": "Nofollow link"
   },
   "Jobs": {
     "metaTitle": "Scheduled jobs · {host} · seotools",
@@ -383,7 +769,8 @@
     "navLabel": "Settings sections",
     "sections": {
       "crawl": "Crawling",
-      "priority": "Priority pages"
+      "priority": "Priority pages",
+      "issues": "Issues"
     }
   },
   "CrawlSettings": {
@@ -848,5 +1235,73 @@
     "addLabel": "Add a priority page",
     "addPlaceholder": "/pricing or https://{host}/pricing",
     "add": "Add"
+  },
+  "IssueCatalog": {
+    "groups": {
+      "crawling": "Crawling",
+      "indexing": "Indexing",
+      "on-page": "On-page",
+      "architecture": "Architecture",
+      "technical": "Technical"
+    },
+    "categories": {
+      "response-codes": "Response codes",
+      "directives": "Directives",
+      "canonicals": "Canonicals",
+      "sitemaps": "Sitemaps",
+      "hreflang": "Hreflang",
+      "title": "Title",
+      "meta-description": "Meta description",
+      "headings": "Headings",
+      "content": "Content",
+      "images": "Images",
+      "structured-data": "Structured data",
+      "links": "Links",
+      "urls": "URLs",
+      "security": "Security",
+      "html": "HTML"
+    },
+    "types": {
+      "issue": "Issue",
+      "warning": "Warning",
+      "opportunity": "Opportunity"
+    },
+    "importance": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "detailColumns": {
+      "hreflang-source": "Source",
+      "security-header": "Header"
+    },
+    "hreflangSources": {
+      "html": "HTML",
+      "header": "Header",
+      "sitemap": "Sitemap"
+    },
+    "mark": "{type}, {importance} importance",
+    "noneFound": "Checked: no URL has it.",
+    "categoryToggle": "Show or hide {category}",
+    "qualified": "{category}: {name}"
+  },
+  "IssueSettings": {
+    "metaTitle": "Issue settings · {host} · seotools",
+    "title": "Issue settings",
+    "description": "What counts as a problem on {host}.",
+    "threshold": {
+      "label": "A page counts as \"with issues\" if it has",
+      "hint": "Decides the figures and the chart of correct pages. It applies at once, to earlier crawls too, without crawling again. Everything found is still listed whatever this says.",
+      "options": {
+        "issue": "An Issue",
+        "warning": "An Issue or a Warning",
+        "opportunity": "Anything, even an Opportunity"
+      }
+    },
+    "save": "Save settings",
+    "saved": "Saved.",
+    "errors": {
+      "threshold": "Choose one of the options."
+    }
   }
 }

@@ -1,12 +1,13 @@
-import { PAGE_ISSUES } from '@seotools/core/crawl/issues'
+import { pagesWithIssues } from '@seotools/core/crawl/issues'
+import type { Crawl } from '@seotools/db'
 import { ChevronRightIcon, TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
+import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { PagesChart, type PagesPoint } from '@/components/pages/pages-chart'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
 import { rankIssueCounts } from '@/lib/pages-issues'
@@ -34,32 +35,38 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
   ])
   const db = await getDb()
 
-  const [active, latest, crawls] = await Promise.all([
+  const [active, latest, crawls, settings] = await Promise.all([
     db.crawls.active(domain.id),
     db.crawls.latestWithResults(domain.id, 'full'),
     db.crawls.list(domain.id, { type: 'full', limit: HISTORY_CRAWLS }),
+    db.crawls.settings(domain.id),
   ])
 
   // The pages of a crawl that was checked for issues. Counts outlive the per-URL results, so
-  // crawls that were pruned still draw their point.
-  const checked = (latest?.pagesWithIssuesCount ?? null) !== null
-  const withIssues = latest?.pagesWithIssuesCount ?? 0
+  // crawls that were pruned still draw their point. What counts as "with issues" is up to the
+  // domain, and applies to its whole history.
+  const flagged = (crawl: Crawl) =>
+    crawl.pagesByWorstIssue && pagesWithIssues(crawl.pagesByWorstIssue, settings.issueThreshold)
+  const checked = latest?.pagesByWorstIssue != null
+  const withIssues = (latest && flagged(latest)) ?? 0
   const points: PagesPoint[] = crawls
     .filter(
       (crawl) =>
         (crawl.status === 'completed' || crawl.status === 'incomplete') &&
-        crawl.pagesWithIssuesCount !== null,
+        crawl.pagesByWorstIssue !== null,
     )
-    .map((crawl) => ({
-      at: (crawl.finishedAt ?? crawl.createdAt).getTime(),
-      correct: Math.max(0, crawl.pagesCount - (crawl.pagesWithIssuesCount ?? 0)),
-      issues: crawl.pagesWithIssuesCount ?? 0,
-    }))
+    .map((crawl) => {
+      const issues = flagged(crawl) ?? 0
+      return {
+        at: (crawl.finishedAt ?? crawl.createdAt).getTime(),
+        correct: Math.max(0, crawl.pagesCount - issues),
+        issues,
+      }
+    })
     .sort((a, b) => a.at - b.at)
 
   const counts = latest && checked ? await db.crawls.issueCounts(latest.id) : []
   const issues = rankIssueCounts(counts)
-  const tSeverity = await getTranslations('Pages.issues.severity')
   const defaultQuery = parseDetailQuery({})
 
   return (
@@ -124,14 +131,8 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
                   >
                     <div className="grid min-w-0 flex-1 gap-0.5">
                       <span className="flex items-center gap-2 text-sm font-medium">
-                        {tIssues(`${issue}.name`)}
-                        <Badge
-                          variant={
-                            PAGE_ISSUES[issue].severity === 'error' ? 'destructive' : 'secondary'
-                          }
-                        >
-                          {tSeverity(PAGE_ISSUES[issue].severity)}
-                        </Badge>
+                        <IssueLabel issue={issue} />
+                        <IssueMark issue={issue} />
                       </span>
                       <span className="text-sm text-muted-foreground">
                         {tIssues(`${issue}.description`)}

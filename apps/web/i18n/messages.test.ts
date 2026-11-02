@@ -1,5 +1,10 @@
 import { CRAWL_LINK_KINDS } from '@seotools/core'
-import { PAGE_ISSUE_IDS } from '@seotools/core/crawl/issues'
+import {
+  ISSUE_GROUPS,
+  ISSUE_IMPORTANCES,
+  ISSUE_TYPES,
+  PAGE_ISSUE_IDS,
+} from '@seotools/core/crawl/issues'
 import { describe, expect, it } from 'vitest'
 import en from '../messages/en.json'
 import es from '../messages/es.json'
@@ -57,6 +62,19 @@ describe('messages of the registries in @seotools/core', () => {
         description: true,
       })
     }
+  })
+
+  it.each(Object.entries(catalogs))('%s names how issues are organised', (_locale, catalog) => {
+    const names = catalog.IssueCatalog
+    const missing = [
+      ...ISSUE_GROUPS.map((group) => (names.groups as Record<string, string>)[group.id]),
+      ...ISSUE_GROUPS.flatMap((group) =>
+        group.categories.map((id) => (names.categories as Record<string, string>)[id]),
+      ),
+      ...ISSUE_TYPES.map((type) => names.types[type]),
+      ...ISSUE_IMPORTANCES.map((importance) => names.importance[importance]),
+    ].filter((name) => !name)
+    expect(missing).toEqual([])
   })
 
   it.each(Object.entries(catalogs))('%s names every kind of link', (_locale, catalog) => {

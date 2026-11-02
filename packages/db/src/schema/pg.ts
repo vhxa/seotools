@@ -175,6 +175,10 @@ export const crawlSettings = pgTable('crawl_settings', {
   /** JSON array of `OptionalCrawlFile`. `null`: none. */
   optionalFiles: text('optional_files'),
   indexNowKey: text('index_now_key'),
+  /** A page counts as having issues from this type up: `IssueType`. */
+  issueThreshold: text('issue_threshold', { enum: ['issue', 'warning', 'opportunity'] })
+    .notNull()
+    .default('warning'),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
 
@@ -225,9 +229,14 @@ export const crawls = pgTable(
     urlsCount: integer('urls_count').notNull().default(0),
     urlsDoneCount: integer('urls_done_count').notNull().default(0),
     externalCount: integer('external_count').notNull().default(0),
-    /** Pages with at least one issue. `null`: the crawl was not analysed (yet). */
-    pagesWithIssuesCount: integer('pages_with_issues_count'),
     robots: text('robots'),
+    /**
+     * Pages by the worst type of issue they have, so that what counts as "with issues" can change
+     * without analysing again. `null`: the crawl was not analysed (yet).
+     */
+    pagesWorstIssueCount: integer('pages_worst_issue_count'),
+    pagesWorstWarningCount: integer('pages_worst_warning_count'),
+    pagesWorstOpportunityCount: integer('pages_worst_opportunity_count'),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: boolean('pruned').notNull().default(false),
     error: text('error'),
@@ -305,11 +314,31 @@ export const crawlUrlIssues = pgTable(
       .references(() => crawls.id, { onDelete: 'cascade' }),
     urlHash: text('url_hash').notNull(),
     issue: text('issue').notNull(),
+    /** JSON array of what `PAGE_ISSUES` says the issue details, e.g. which headers are missing. */
+    details: text('details'),
   },
   (t) => [
     primaryKey({ columns: [t.crawlId, t.urlHash, t.issue] }),
     index('crawl_url_issues_issue_idx').on(t.crawlId, t.issue),
   ],
+)
+
+/**
+ * The hreflang alternates sitemaps declare for each page. A sitemap holds up to 50,000 pages with
+ * several alternates each, too much for the JSON of the sitemap's own row.
+ */
+export const crawlSitemapHreflang = pgTable(
+  'crawl_sitemap_hreflang',
+  {
+    crawlId: text('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    pageHash: text('page_hash').notNull(),
+    lang: text('lang').notNull(),
+    targetHash: text('target_hash').notNull(),
+    url: text('url').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.crawlId, t.pageHash, t.lang, t.targetHash] })],
 )
 
 /** The URLs marked as priority from the panel. They survive crawls, so they hang off the domain. */

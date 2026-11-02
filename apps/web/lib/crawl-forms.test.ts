@@ -22,11 +22,13 @@ const validSettings = {
   retainCrawls: '10',
 }
 
+const { issueThreshold: _issueThreshold, ...settingsOfTheForm } = DEFAULT_CRAWL_SETTINGS
+
 describe('parseCrawlSettingsForm', () => {
   it('reads the defaults back', () => {
     expect(parseCrawlSettingsForm(formOf(validSettings))).toEqual({
       ok: true,
-      settings: DEFAULT_CRAWL_SETTINGS,
+      settings: settingsOfTheForm,
     })
   })
 

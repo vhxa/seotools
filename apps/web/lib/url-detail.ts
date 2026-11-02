@@ -5,7 +5,7 @@ import { getDb } from './db'
 export interface UrlDetailData {
   crawl: Crawl
   url: CrawlUrl
-  issues: string[]
+  issues: CrawlUrlIssue[]
   /** Pages of the crawl that link here, and what this URL links to: capped, see `hasMore*`. */
   linksIn: { url: string; kind: CrawlLinkKind }[]
   linksOut: { url: string; kind: CrawlLinkKind }[]
@@ -37,7 +37,7 @@ export async function loadUrlDetail(input: {
   return {
     crawl,
     url,
-    issues: issues.map((issue: CrawlUrlIssue) => issue.issue),
+    issues,
     linksIn: linksIn.slice(0, linkLimit),
     linksOut: linksOut.slice(0, linkLimit),
     hasMoreIn: linksIn.length > linkLimit,

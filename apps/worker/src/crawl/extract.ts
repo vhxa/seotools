@@ -1,11 +1,14 @@
 import {
   normalizeCrawlUrl,
   type CrawlLinkKind,
+  type CrawlPageFacts,
   type FeedSummary,
+  type HreflangEntry,
   type OpenSearchSummary,
   type SitemapSummary,
 } from '@seotools/core'
 import { Parser } from 'htmlparser2'
+import { PageFactsCollector } from './page-facts'
 
 export interface ExtractedLink {
   url: string
@@ -21,12 +24,14 @@ export interface ExtractedHtml {
   /** Directives aimed at one bot, e.g. `<meta name="googlebot">`, by lowercase bot name. */
   botRobots: Record<string, string>
   canonical: string | null
-  hreflang: { lang: string; url: string }[]
+  hreflang: HreflangEntry[]
   /** What the page announces with `<link rel="alternate">`. They are in `links` as well. */
   feeds: string[]
   /** What the page announces with `<link rel="search">`. They are in `links` as well. */
   openSearch: string[]
   links: ExtractedLink[]
+  /** What the checks for issues look at. */
+  facts: CrawlPageFacts
 }
 
 const MAX_H1 = 10
@@ -124,6 +129,7 @@ function collectAbsoluteUrls(value: unknown, into: string[]) {
 
 /** Extracts the data of an HTML document, and every URL referenced anywhere in it. */
 export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
+  const collector = new PageFactsCollector(pageUrl, (raw) => normalizeCrawlUrl(raw, base))
   const result: ExtractedHtml = {
     title: null,
     description: null,
@@ -135,6 +141,7 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
     feeds: [],
     openSearch: [],
     links: [],
+    facts: collector.facts,
   }
   let base = pageUrl
   let baseSet = false
@@ -150,6 +157,7 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
     const value = raw.trim()
     // `#section` and an empty href point at the page itself: they are not links to anything.
     if (!value || value.startsWith('#')) return
+    collector.sawUrl(value, kind)
     const url = normalizeCrawlUrl(value, base)
     if (url) result.links.push({ url, kind })
   }
@@ -177,7 +185,12 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
       add(href, 'hreflang')
       const url = href === undefined ? null : normalizeCrawlUrl(href, base)
       if (url && result.hreflang.length < MAX_HREFLANG) {
-        result.hreflang.push({ lang: attributes.hreflang, url })
+        result.hreflang.push({
+          lang: attributes.hreflang,
+          url,
+          source: 'html',
+          ...(collector.inHead ? {} : { outsideHead: true }),
+        })
       }
     } else if (rel.includes('stylesheet')) {
       add(href, 'style')
@@ -194,7 +207,9 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
     const content = attributes.content
     if (content === undefined) return
     if ((attributes['http-equiv'] ?? '').toLowerCase() === 'refresh') {
-      add(parseRefresh(content), 'meta')
+      const target = parseRefresh(content)
+      add(target, 'meta')
+      if (target !== undefined) collector.facts.refresh ??= normalizeCrawlUrl(target, base)
     } else if (name === 'robots') {
       robots.push(collapse(content))
     } else if (name === 'description') {
@@ -210,6 +225,7 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
     {
       onopentag(rawName, attributes) {
         const name = rawName.toLowerCase()
+        collector.open(name, attributes)
         if (name === 'svg') svgDepth++
         if (name === 'base' && !baseSet && attributes.href) {
           const resolved = normalizeCrawlUrl(attributes.href, base)
@@ -232,21 +248,27 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
         if (name === 'script' && (attributes.type ?? '').toLowerCase() === 'application/ld+json') {
           rawText = { kind: 'json-ld', text: '' }
         }
-        for (const [attribute, kind, list] of URL_ATTRIBUTES[name] ?? []) {
+        for (const [attribute, ruleKind, list] of URL_ATTRIBUTES[name] ?? []) {
           const value = attributes[attribute]
           if (value === undefined) continue
+          const nofollow =
+            ruleKind === 'anchor' &&
+            (attributes.rel ?? '').toLowerCase().split(/\s+/).includes('nofollow')
+          const kind = nofollow ? 'anchor-nofollow' : ruleKind
           if (list) for (const url of parseSrcset(value)) add(url, kind)
           else add(value, kind)
         }
         if (attributes.style) addCss(attributes.style)
       },
       ontext(text) {
+        collector.onText(text)
         if (title !== null) title += text
         if (h1 !== null) h1 += text
         if (rawText) rawText.text += text
       },
       onclosetag(rawName) {
         const name = rawName.toLowerCase()
+        collector.close(name)
         if (name === 'svg' && svgDepth > 0) svgDepth--
         if (name === 'title' && title !== null) {
           result.title = collapse(title)
@@ -268,7 +290,7 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
             try {
               collectAbsoluteUrls(JSON.parse(text), urls)
             } catch {
-              // Malformed JSON-LD is a finding for a future feature, not a crawl error.
+              // Malformed JSON-LD is an issue of the page (`jsonLdInvalid`), not a crawl error.
             }
             for (const url of urls) add(url, 'structured-data')
           }
@@ -281,6 +303,7 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
   parser.end()
 
   if (robots.length > 0) result.metaRobots = robots.join(', ')
+  collector.finish({ title: result.title, h1: result.h1[0] ?? null, links: result.links })
   return result
 }
 
@@ -305,7 +328,7 @@ export function extractCssUrls(css: string, base: string): ExtractedLink[] {
 export interface ParsedLinkHeader {
   links: ExtractedLink[]
   canonical: string | null
-  hreflang: { lang: string; url: string }[]
+  hreflang: HreflangEntry[]
 }
 
 /** The RFC 8288 `Link` response header, which can declare canonicals and hreflangs too. */
@@ -326,7 +349,7 @@ export function parseLinkHeader(value: string, base: string): ParsedLinkHeader {
       parsed.canonical ??= url
     } else if (rel.includes('alternate') && hreflang) {
       parsed.links.push({ url, kind: 'hreflang' })
-      parsed.hreflang.push({ lang: hreflang, url })
+      parsed.hreflang.push({ lang: hreflang, url, source: 'header' })
     } else {
       parsed.links.push({ url, kind: 'http-header' })
     }
@@ -345,6 +368,8 @@ export interface ParsedSitemap {
   entries: number
   /** The most recent `<lastmod>`, as ISO 8601. */
   lastModified: string | null
+  /** The hreflang alternates it declares for its pages. */
+  hreflang: { page: string; lang: string; url: string }[]
 }
 
 /** The later of a date kept as ISO 8601 and one as a site wrote it, ignoring what is not a date. */
@@ -364,6 +389,7 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
     format: null,
     entries: 0,
     lastModified: null,
+    hreflang: [],
   }
   const push = (into: string[], raw: string) => {
     const url = normalizeCrawlUrl(raw, base)
@@ -381,6 +407,9 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
 
   const stack: string[] = []
   let text = ''
+  // A `<url>` lists its alternates in any order around its `<loc>`, which they belong to.
+  let loc: string | null = null
+  let alternates: { lang: string; url: string }[] = []
   const parser = new Parser(
     {
       onopentag(rawName, attributes) {
@@ -391,7 +420,11 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
         }
         stack.push(name)
         text = ''
-        if (name === 'xhtml:link' && attributes.href) push(parsed.urls, attributes.href)
+        if (name === 'xhtml:link' && attributes.href) {
+          push(parsed.urls, attributes.href)
+          const url = normalizeCrawlUrl(attributes.href, base)
+          if (url && attributes.hreflang) alternates.push({ lang: attributes.hreflang, url })
+        }
       },
       ontext(chunk) {
         text += chunk
@@ -400,6 +433,14 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
         const name = rawName.toLowerCase()
         stack.pop()
         const parent = stack[stack.length - 1]
+        if (name === 'loc' && parent === 'url') loc = normalizeCrawlUrl(text, base)
+        if (name === 'url') {
+          if (loc) {
+            for (const alternate of alternates) parsed.hreflang.push({ page: loc, ...alternate })
+          }
+          loc = null
+          alternates = []
+        }
         if (name === 'loc' && parent === 'sitemap') push(parsed.sitemaps, text)
         else if (name === 'loc' && parent === 'url') push(parsed.urls, text)
         else if (SITEMAP_ENTRY_LOCS.has(name)) push(parsed.urls, text)

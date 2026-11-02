@@ -49,14 +49,17 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
   const sort = first(params.sort)
   const issue = first(params.issue)
   const url = first(params.url)
+  const validIssue = issue && isPageIssueId(issue) ? issue : null
   return {
-    view: DETAIL_VIEWS.find((view) => view === first(params.view)) ?? 'pages',
+    // An issue picks its own URLs, in whichever view they are.
+    view: validIssue
+      ? 'pages'
+      : (DETAIL_VIEWS.find((view) => view === first(params.view)) ?? 'pages'),
     page: Math.max(1, Math.floor(Number(first(params.page))) || 1),
     sort: DETAIL_SORTS.find((option) => option === sort) ?? null,
     direction: first(params.dir) === 'desc' ? 'desc' : 'asc',
     search: (first(params.q) ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
-    // Only pages have issues: the other views would just come up empty.
-    issue: issue && isPageIssueId(issue) ? issue : null,
+    issue: validIssue,
     url: url && isUrlHash(url) ? url : null,
   }
 }

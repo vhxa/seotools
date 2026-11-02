@@ -181,15 +181,11 @@
     },
     "issues": {
       "title": "Issues",
-      "description": "Lo que encontró el último rastreo completo en las páginas. Abre una para ver las páginas que la tienen.",
-      "empty": "No se han encontrado issues: todas las páginas son correctas.",
+      "description": "Lo que encontró el último rastreo completo, de lo más grave a lo menos. Abre uno para ver las URLs que lo tienen.",
+      "empty": "No se ha encontrado nada.",
       "notChecked": "El último rastreo completo no se ha comprobado en busca de issues. Lanza uno nuevo para verlas aquí.",
       "noCrawl": "Las issues aparecen aquí cuando el dominio se haya rastreado.",
-      "pages": "{count, plural, one {# página} other {# páginas}}",
-      "severity": {
-        "error": "Error",
-        "warning": "Aviso"
-      }
+      "pages": "{count, plural, one {# URL} other {# URLs}}"
     },
     "priority": {
       "mark": "Marcar como prioritaria",
@@ -210,7 +206,7 @@
     "viewHints": {
       "pages": "URLs de esta web que respondieron con HTML, sea cual sea su estado. Son las que cuentan como páginas.",
       "other": "Redirecciones, imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps y URLs que no respondieron.",
-      "external": "URLs de otros sitios enlazadas desde esta web. Se registran, pero nunca se piden ni se cuentan."
+      "external": "URLs de otros sitios enlazadas desde esta web. Las de los enlaces '<a>' se piden una vez para saber si funcionan; ninguna cuenta como página."
     },
     "search": {
       "label": "Buscar URLs",
@@ -251,7 +247,8 @@
     },
     "actionsMenu": {
       "label": "Acciones"
-    }
+    },
+    "moreIssues": "+{count, number} más"
   },
   "UrlDetail": {
     "back": "Volver al detalle",
@@ -289,7 +286,7 @@
       "unknown": "Desconocido"
     },
     "notSet": "Sin definir",
-    "noIssues": "No se han encontrado issues en esta página.",
+    "noIssues": "No se ha encontrado nada en esta URL.",
     "notChecked": "Este rastreo no se ha comprobado en busca de issues.",
     "noLinks": "No se ha encontrado ninguno.",
     "moreLinks": "Hay más.",
@@ -297,17 +294,405 @@
     "loading": "Cargando el detalle de la URL"
   },
   "PageIssues": {
-    "http-error": {
-      "name": "Estado HTTP de error",
-      "description": "La página respondió con un código de estado 4xx o 5xx."
+    "no-response": {
+      "name": "Sin respuesta (interna)",
+      "description": "Una URL de esta web que no llegó a responder: error de red, de DNS o tiempo de espera agotado."
     },
-    "missing-title": {
-      "name": "Falta el título",
-      "description": "La página no tiene título, o está vacío."
+    "server-error": {
+      "name": "Error de servidor 5xx (interna)",
+      "description": "Una URL de esta web respondió con un error del servidor."
     },
-    "missing-description": {
-      "name": "Falta la meta description",
-      "description": "La página no tiene meta description, o está vacía."
+    "client-error": {
+      "name": "Error de cliente 4xx (interna)",
+      "description": "Una URL de esta web respondió que no existe o que no se puede acceder a ella."
+    },
+    "redirect-loop": {
+      "name": "Bucle de redirección",
+      "description": "Seguir las redirecciones de esta URL no lleva nunca a ninguna página."
+    },
+    "soft-404": {
+      "name": "Soft 404",
+      "description": "Responde 200, pero por su contenido parece una página de «no encontrado». Se detecta por el texto, no por el código."
+    },
+    "redirect-chain": {
+      "name": "Cadena de redirecciones",
+      "description": "Redirige a otra URL que también redirige. Mejor apuntar directamente al destino final."
+    },
+    "refresh-redirect": {
+      "name": "Redirección por meta refresh o cabecera Refresh",
+      "description": "Redirige desde el HTML o con la cabecera Refresh en lugar de con un código 3xx."
+    },
+    "robots-blocked": {
+      "name": "Bloqueada por robots.txt",
+      "description": "robots.txt no deja a Googlebot pedir esta URL. Este rastreador la pide igualmente para poder auditarla."
+    },
+    "redirect-3xx": {
+      "name": "Redirección 3xx (interna)",
+      "description": "Una URL de esta web que redirige. Los enlaces que apuntan a ella deberían ir al destino."
+    },
+    "broken-external-link": {
+      "name": "Enlace externo roto",
+      "description": "Un enlace a otro sitio que no responde o responde con un error. Se ignoran las respuestas típicas de bloqueo a bots, como 403 o 429."
+    },
+    "directive-outside-head": {
+      "name": "Directiva fuera del '<head>'",
+      "description": "Hay una meta robots en el cuerpo de la página, donde los buscadores pueden ignorarla."
+    },
+    "directives-conflict": {
+      "name": "Directivas contradictorias",
+      "description": "La página dice a la vez una cosa y la contraria, por ejemplo index y noindex."
+    },
+    "noindex": {
+      "name": "noindex",
+      "description": "La página pide no aparecer en los resultados de búsqueda."
+    },
+    "nofollow": {
+      "name": "nofollow",
+      "description": "La página pide no seguir ninguno de sus enlaces."
+    },
+    "snippet-limited": {
+      "name": "nosnippet / max-snippet",
+      "description": "La página limita el fragmento que se puede mostrar. Es relevante para GEO, porque los motores de IA tampoco pueden citarlo."
+    },
+    "noimageindex": {
+      "name": "noimageindex",
+      "description": "La página pide no indexar sus imágenes."
+    },
+    "unavailable-after": {
+      "name": "unavailable_after",
+      "description": "La página pide dejar de aparecer en los resultados a partir de una fecha."
+    },
+    "canonical-outside-head": {
+      "name": "Fuera del '<head>'",
+      "description": "El canonical está en el cuerpo de la página, donde los buscadores lo ignoran."
+    },
+    "canonical-conflict": {
+      "name": "Varios contradictorios",
+      "description": "Declara varios canonicals que apuntan a URLs distintas, así que los buscadores pueden ignorarlos todos."
+    },
+    "canonical-not-indexable": {
+      "name": "Apunta a URL no indexable",
+      "description": "El canonical lleva a una URL que redirige, da error o tiene noindex."
+    },
+    "canonical-fragment": {
+      "name": "Contiene fragmento",
+      "description": "La URL del canonical lleva un #fragmento, que no forma parte de la dirección de una página."
+    },
+    "canonical-missing": {
+      "name": "Ausente",
+      "description": "La página no declara ningún canonical."
+    },
+    "canonicalised": {
+      "name": "Canonicalizada a otra URL",
+      "description": "El canonical apunta a otra URL, así que los buscadores indexarán aquella en lugar de esta."
+    },
+    "canonical-relative": {
+      "name": "Relativo",
+      "description": "El canonical es una ruta relativa, no una URL completa."
+    },
+    "canonical-repeated": {
+      "name": "Repetido con el mismo valor",
+      "description": "Declara varias veces el mismo canonical."
+    },
+    "sitemap-too-big": {
+      "name": "Sitemap supera límites (50.000 URLs o 50 MB)",
+      "description": "Los buscadores ignoran lo que quede por encima de esos límites. Hay que dividirlo con un índice de sitemaps."
+    },
+    "sitemap-not-indexable": {
+      "name": "URL no indexable en el sitemap",
+      "description": "El sitemap lista una URL que redirige, da error, tiene noindex o canonicaliza a otra. Solo deberían estar las indexables."
+    },
+    "orphan-in-sitemap": {
+      "name": "URL huérfana (solo está en el sitemap)",
+      "description": "Ninguna página de la web la enlaza: solo se llega a ella por el sitemap."
+    },
+    "indexable-not-in-sitemap": {
+      "name": "URL indexable fuera del sitemap",
+      "description": "Una página indexable que no está en ningún sitemap."
+    },
+    "in-many-sitemaps": {
+      "name": "URL en varios sitemaps",
+      "description": "La misma URL aparece en más de un sitemap."
+    },
+    "hreflang-not-200": {
+      "name": "URL de hreflang no devuelve 200",
+      "description": "Un hreflang apunta a una URL de esta web que no responde 200."
+    },
+    "hreflang-no-return": {
+      "name": "Falta enlace de retorno",
+      "description": "La página a la que apunta el hreflang no la enlaza de vuelta. Sin retorno, los buscadores ignoran la anotación."
+    },
+    "hreflang-invalid-code": {
+      "name": "Código de idioma o región inválido",
+      "description": "El valor no es un idioma ISO 639-1 con una región ISO 3166-1 opcional. Por ejemplo, la región del Reino Unido es GB, no UK."
+    },
+    "hreflang-outside-head": {
+      "name": "Fuera del '<head>'",
+      "description": "El hreflang está en el cuerpo de la página, donde los buscadores lo ignoran."
+    },
+    "hreflang-non-canonical": {
+      "name": "Retorno a URL no canónica",
+      "description": "Un hreflang apunta a una URL cuyo canonical lleva a otra."
+    },
+    "hreflang-noindex": {
+      "name": "Retorno a URL con noindex",
+      "description": "Un hreflang apunta a una URL con noindex."
+    },
+    "hreflang-same-language": {
+      "name": "Varias entradas para el mismo idioma",
+      "description": "El mismo idioma apunta a URLs distintas."
+    },
+    "hreflang-no-self": {
+      "name": "Falta autorreferencia",
+      "description": "Las anotaciones hreflang de la página no la incluyen a ella misma."
+    },
+    "hreflang-no-x-default": {
+      "name": "Falta x-default",
+      "description": "Las anotaciones hreflang de la página no indican cuál mostrar por defecto."
+    },
+    "title-missing": {
+      "name": "Ausente",
+      "description": "La página no tiene título o está vacío."
+    },
+    "title-outside-head": {
+      "name": "Fuera del '<head>'",
+      "description": "El título está en el cuerpo de la página."
+    },
+    "title-multiple": {
+      "name": "Múltiple",
+      "description": "La página tiene más de un título."
+    },
+    "title-duplicate": {
+      "name": "Duplicado",
+      "description": "Otra página indexable tiene el mismo título."
+    },
+    "title-too-long": {
+      "name": "Demasiado largo",
+      "description": "Tiene más de 60 caracteres: los resultados de búsqueda pueden cortarlo."
+    },
+    "title-too-short": {
+      "name": "Demasiado corto",
+      "description": "Tiene menos de 30 caracteres: se está desaprovechando."
+    },
+    "title-same-as-h1": {
+      "name": "Igual al H1",
+      "description": "El título y el H1 dicen exactamente lo mismo."
+    },
+    "description-multiple": {
+      "name": "Múltiple",
+      "description": "La página tiene más de una meta description."
+    },
+    "description-outside-head": {
+      "name": "Fuera del '<head>'",
+      "description": "La meta description está en el cuerpo de la página."
+    },
+    "description-missing": {
+      "name": "Ausente",
+      "description": "La página no tiene meta description o está vacía."
+    },
+    "description-duplicate": {
+      "name": "Duplicada",
+      "description": "Otra página indexable tiene la misma meta description."
+    },
+    "description-too-long": {
+      "name": "Demasiado larga",
+      "description": "Tiene más de 155 caracteres: los resultados de búsqueda pueden cortarla."
+    },
+    "description-too-short": {
+      "name": "Demasiado corta",
+      "description": "Tiene menos de 70 caracteres: se está desaprovechando."
+    },
+    "h1-missing": {
+      "name": "H1 ausente",
+      "description": "La página no tiene H1."
+    },
+    "h1-multiple": {
+      "name": "H1 múltiple",
+      "description": "La página tiene más de un H1."
+    },
+    "heading-empty": {
+      "name": "Encabezado vacío",
+      "description": "Hay un encabezado sin texto."
+    },
+    "heading-skipped-level": {
+      "name": "Jerarquía no secuencial",
+      "description": "Se salta niveles de encabezado, por ejemplo de H2 a H4."
+    },
+    "h2-missing": {
+      "name": "H2 ausente",
+      "description": "La página no tiene ningún H2."
+    },
+    "h1-duplicate": {
+      "name": "H1 duplicado",
+      "description": "Otra página indexable tiene el mismo H1."
+    },
+    "heading-too-long": {
+      "name": "Encabezado demasiado largo",
+      "description": "Hay un encabezado de más de 70 caracteres."
+    },
+    "content-duplicate": {
+      "name": "Duplicado exacto",
+      "description": "Otra página indexable tiene exactamente el mismo texto."
+    },
+    "content-near-duplicate": {
+      "name": "Casi duplicado",
+      "description": "Otra página indexable tiene casi el mismo texto."
+    },
+    "content-placeholder": {
+      "name": "Texto de relleno (lorem ipsum)",
+      "description": "La página contiene texto de relleno que nunca se sustituyó."
+    },
+    "content-thin": {
+      "name": "Poco contenido",
+      "description": "Tiene menos de 200 palabras de contenido, sin contar menús, cabecera ni pie."
+    },
+    "img-no-alt": {
+      "name": "Sin atributo alt",
+      "description": "Hay imágenes sin atributo alt."
+    },
+    "img-empty-alt": {
+      "name": "Alt vacío",
+      "description": "Hay imágenes con el alt vacío. Puede ser correcto en imágenes decorativas."
+    },
+    "img-too-heavy": {
+      "name": "Peso mayor de 100 KB",
+      "description": "Una imagen de esta web pesa más de 100 KB, según lo que declara su servidor."
+    },
+    "img-no-size": {
+      "name": "Sin width/height",
+      "description": "Hay imágenes sin width o height, lo que hace que la página se mueva al cargar."
+    },
+    "img-long-alt": {
+      "name": "Alt demasiado largo",
+      "description": "Hay imágenes con un alt de más de 100 caracteres."
+    },
+    "json-ld-invalid": {
+      "name": "JSON-LD que no parsea",
+      "description": "Hay un bloque JSON-LD con errores de sintaxis, así que los buscadores lo ignoran."
+    },
+    "no-structured-data": {
+      "name": "Sin datos estructurados",
+      "description": "La página no tiene JSON-LD, microdatos ni RDFa."
+    },
+    "link-to-localhost": {
+      "name": "Enlace a localhost",
+      "description": "La página enlaza a localhost o a 127.0.0.1, un resto del entorno de desarrollo."
+    },
+    "uncrawlable-links": {
+      "name": "Enlaces internos no rastreables",
+      "description": "Hay enlaces que solo funcionan con JavaScript, como javascript: o un '<a>' sin href, y los buscadores no pueden seguirlos."
+    },
+    "only-nofollow-inlinks": {
+      "name": "Solo recibe enlaces nofollow",
+      "description": "Todos los enlaces que llegan a esta página son nofollow."
+    },
+    "only-noindex-inlinks": {
+      "name": "Solo enlazada desde páginas no indexables",
+      "description": "Todos los enlaces que llegan a esta página salen de páginas que no se indexarán."
+    },
+    "no-outgoing-links": {
+      "name": "Sin enlaces internos salientes",
+      "description": "La página no enlaza a ninguna otra de esta web."
+    },
+    "internal-nofollow-links": {
+      "name": "Enlaces internos con nofollow",
+      "description": "La página enlaza con nofollow a otras URLs de esta web."
+    },
+    "deep-page": {
+      "name": "Profundidad de rastreo alta",
+      "description": "Se necesitan más de 3 clics desde la página de inicio para llegar a ella."
+    },
+    "anchor-empty": {
+      "name": "Anchor vacío",
+      "description": "Hay enlaces sin texto ni nada que indique a dónde llevan."
+    },
+    "anchor-vague": {
+      "name": "Anchor poco descriptivo",
+      "description": "Hay enlaces con textos como «aquí» o «leer más», que no dicen nada del destino."
+    },
+    "url-multiple-slashes": {
+      "name": "Barras múltiples",
+      "description": "La ruta contiene dos barras seguidas."
+    },
+    "url-spaces": {
+      "name": "Contiene espacios",
+      "description": "La URL contiene espacios codificados como %20."
+    },
+    "url-tracking": {
+      "name": "Parámetros de tracking",
+      "description": "La URL lleva parámetros como utm_source o gclid. Los enlaces internos no deberían llevarlos."
+    },
+    "url-uppercase": {
+      "name": "Mayúsculas",
+      "description": "La ruta contiene mayúsculas. /Pagina y /pagina son URLs distintas para un buscador."
+    },
+    "url-non-ascii": {
+      "name": "Caracteres no ASCII",
+      "description": "La URL contiene caracteres que hay que codificar, como acentos."
+    },
+    "url-parameters": {
+      "name": "Parámetros",
+      "description": "La URL lleva parámetros, que pueden multiplicar las versiones de una misma página."
+    },
+    "url-repetitive-path": {
+      "name": "Ruta repetitiva",
+      "description": "Una parte de la ruta se repite, algo típico de un enlace relativo mal escrito."
+    },
+    "url-internal-search": {
+      "name": "Búsqueda interna",
+      "description": "Parece una página de resultados del buscador interno, que no conviene indexar."
+    },
+    "url-underscores": {
+      "name": "Guiones bajos",
+      "description": "La ruta usa guiones bajos, que no separan palabras para un buscador. Mejor guiones."
+    },
+    "url-too-long": {
+      "name": "Demasiado larga",
+      "description": "La URL tiene más de 115 caracteres."
+    },
+    "http-url": {
+      "name": "URL en HTTP",
+      "description": "La página responde por HTTP sin redirigir a HTTPS."
+    },
+    "mixed-content": {
+      "name": "Contenido mixto",
+      "description": "Una página HTTPS carga recursos por HTTP, y los navegadores pueden bloquearlos."
+    },
+    "insecure-form": {
+      "name": "Formulario inseguro",
+      "description": "Hay un formulario que envía los datos por HTTP."
+    },
+    "missing-security-header": {
+      "name": "Falta cabecera de seguridad",
+      "description": "La respuesta no incluye alguna cabecera de seguridad. Todas se arreglan en el mismo sitio, la configuración del servidor."
+    },
+    "unsafe-cross-origin-links": {
+      "name": "Enlaces cross-origin inseguros",
+      "description": "Hay enlaces a otros sitios con target=\"_blank\" sin rel=\"noopener\"."
+    },
+    "protocol-relative": {
+      "name": "Recursos protocol-relative",
+      "description": "Hay recursos cargados con URLs que empiezan por //, sin esquema."
+    },
+    "invalid-head-elements": {
+      "name": "Elementos inválidos en el '<head>'",
+      "description": "Hay elementos que no pueden estar en el '<head>'. Pueden cerrarlo antes de tiempo y hacer que Google ignore el canonical o el robots."
+    },
+    "missing-head-or-body": {
+      "name": "Falta '<head>' o '<body>'",
+      "description": "El documento no tiene etiqueta '<head>' o '<body>'."
+    },
+    "multiple-head-or-body": {
+      "name": "Varios '<head>' o '<body>'",
+      "description": "El documento tiene más de una etiqueta '<head>' o '<body>'."
+    },
+    "document-too-big": {
+      "name": "Documento de más de 2 MB",
+      "description": "El HTML pesa más de 2 MB, más de lo que Googlebot lee de una página."
+    },
+    "head-not-first": {
+      "name": "'<head>' no es el primer elemento",
+      "description": "Hay algo antes del '<head>', lo que puede hacer que los navegadores lo cierren antes de tiempo."
     }
   },
   "LinkKinds": {
@@ -327,7 +712,8 @@
     "redirect": "Redirección",
     "sitemap": "Sitemap",
     "llms": "llms.txt",
-    "other": "Otro"
+    "other": "Otro",
+    "anchor-nofollow": "Enlace nofollow"
   },
   "Jobs": {
     "metaTitle": "Tareas programadas · {host} · seotools",
@@ -383,7 +769,8 @@
     "navLabel": "Secciones de ajustes",
     "sections": {
       "crawl": "Rastreo",
-      "priority": "Páginas prioritarias"
+      "priority": "Páginas prioritarias",
+      "issues": "Issues"
     }
   },
   "CrawlSettings": {
@@ -848,5 +1235,73 @@
     "addLabel": "Añadir una página prioritaria",
     "addPlaceholder": "/precios o https://{host}/precios",
     "add": "Añadir"
+  },
+  "IssueCatalog": {
+    "groups": {
+      "crawling": "Rastreo",
+      "indexing": "Indexación",
+      "on-page": "On-page",
+      "architecture": "Arquitectura",
+      "technical": "Técnico"
+    },
+    "categories": {
+      "response-codes": "Códigos de respuesta",
+      "directives": "Directivas",
+      "canonicals": "Canonicals",
+      "sitemaps": "Sitemaps",
+      "hreflang": "Hreflang",
+      "title": "Title",
+      "meta-description": "Meta description",
+      "headings": "Encabezados",
+      "content": "Contenido",
+      "images": "Imágenes",
+      "structured-data": "Datos estructurados",
+      "links": "Enlaces",
+      "urls": "URLs",
+      "security": "Seguridad",
+      "html": "HTML"
+    },
+    "types": {
+      "issue": "Issue",
+      "warning": "Warning",
+      "opportunity": "Opportunity"
+    },
+    "importance": {
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Baja"
+    },
+    "detailColumns": {
+      "hreflang-source": "Origen",
+      "security-header": "Cabecera"
+    },
+    "hreflangSources": {
+      "html": "HTML",
+      "header": "Cabecera",
+      "sitemap": "Sitemap"
+    },
+    "mark": "{type}, importancia {importance}",
+    "noneFound": "Comprobado: ninguna URL lo tiene.",
+    "categoryToggle": "Mostrar u ocultar {category}",
+    "qualified": "{category}: {name}"
+  },
+  "IssueSettings": {
+    "metaTitle": "Ajustes de issues · {host} · seotools",
+    "title": "Ajustes de issues",
+    "description": "Qué se considera un problema en {host}.",
+    "threshold": {
+      "label": "Una página cuenta como «con issues» si tiene",
+      "hint": "Decide las cifras y la gráfica de páginas correctas. Se aplica al momento, también a los rastreos anteriores, sin rastrear de nuevo. Todo lo encontrado se sigue listando sea cual sea este ajuste.",
+      "options": {
+        "issue": "Algún Issue",
+        "warning": "Algún Issue o Warning",
+        "opportunity": "Cualquier cosa, también una Opportunity"
+      }
+    },
+    "save": "Guardar ajustes",
+    "saved": "Guardado.",
+    "errors": {
+      "threshold": "Elige una de las opciones."
+    }
   }
 }

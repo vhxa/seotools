@@ -25,7 +25,7 @@ describe('parseDetailQuery', () => {
         sort: 'responseTime',
         dir: 'desc',
         q: '  blog ',
-        issue: 'missing-title',
+        issue: 'title-missing',
         url: hash,
       }),
     ).toEqual({
@@ -34,7 +34,7 @@ describe('parseDetailQuery', () => {
       sort: 'responseTime',
       direction: 'desc',
       search: 'blog',
-      issue: 'missing-title',
+      issue: 'title-missing',
       url: hash,
     })
   })
@@ -54,6 +54,14 @@ describe('parseDetailQuery', () => {
     expect(parseDetailQuery({ page: '2.9' }).page).toBe(2)
   })
 
+  it('shows an issue wherever its URLs are, whatever view the address says', () => {
+    expect(parseDetailQuery({ view: 'other', issue: 'client-error' })).toMatchObject({
+      view: 'pages',
+      issue: 'client-error',
+    })
+    expect(parseDetailQuery({ view: 'other', issue: 'nope' }).view).toBe('other')
+  })
+
   it('takes the first value of a repeated parameter and caps the search', () => {
     expect(parseDetailQuery({ view: ['other', 'external'] }).view).toBe('other')
     expect(parseDetailQuery({ q: 'x'.repeat(500) }).search).toHaveLength(200)
@@ -70,24 +78,24 @@ describe('detailHref', () => {
       detailHref('acme.com', {
         ...base,
         search: 'a b',
-        issue: 'http-error',
+        issue: 'client-error',
         sort: 'title',
         direction: 'desc',
         page: 2,
       }),
-    ).toBe('/domains/acme.com/pages/details?q=a+b&issue=http-error&sort=title&dir=desc&page=2')
+    ).toBe('/domains/acme.com/pages/details?q=a+b&issue=client-error&sort=title&dir=desc&page=2')
   })
 
   it('applies changes without touching the query', () => {
     const query = { ...base, search: 'blog', page: 4 }
-    expect(detailHref('acme.com', query, { page: 1, issue: 'missing-title' })).toBe(
-      '/domains/acme.com/pages/details?q=blog&issue=missing-title',
+    expect(detailHref('acme.com', query, { page: 1, issue: 'title-missing' })).toBe(
+      '/domains/acme.com/pages/details?q=blog&issue=title-missing',
     )
     expect(query.page).toBe(4)
   })
 
   it('does not carry an issue to views that have none', () => {
-    expect(detailHref('acme.com', { ...base, issue: 'http-error' }, { view: 'other' })).toBe(
+    expect(detailHref('acme.com', { ...base, issue: 'client-error' }, { view: 'other' })).toBe(
       '/domains/acme.com/pages/details?view=other',
     )
   })
@@ -99,7 +107,7 @@ describe('detailHref', () => {
       sort: 'bytes',
       direction: 'desc',
       search: '50% off & more',
-      issue: 'missing-description',
+      issue: 'description-missing',
       url: 'b'.repeat(32),
     }
     const href = detailHref('acme.com', query)

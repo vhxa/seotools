@@ -5,71 +5,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { JobInterruptedError } from '../types'
 import { analyseCrawl } from './analysis'
 import { runCrawl, type CrawlEngineOptions } from './engine'
-import { FetchError, type FetchedResponse, type Fetcher } from './fetcher'
+import { fakeSite, html, moved, notFound } from './fake-site'
+import { FetchError, type FetchedResponse } from './fetcher'
 
 const log = createLogger('test', 'silent')
-
-type Answer = Partial<FetchedResponse> | Error | (() => Partial<FetchedResponse> | Error)
-
-const html = (body: string, headers: Record<string, string> = {}): Partial<FetchedResponse> => ({
-  statusCode: 200,
-  headers: { 'content-type': 'text/html', ...headers },
-  body: Buffer.from(body),
-})
-const moved = (location: string, statusCode = 301): Partial<FetchedResponse> => ({
-  statusCode,
-  headers: { location },
-  body: null,
-})
-const notFound: Partial<FetchedResponse> = {
-  statusCode: 404,
-  headers: { 'content-type': 'text/html' },
-  body: Buffer.from('<title>Not found</title>'),
-}
-
-/** A website in a map. URLs that are not in it answer 404, like a real site would. */
-function fakeSite(site: Record<string, Answer>, latencyMs = 1) {
-  const requests: string[] = []
-  const configs: { userAgent: string; timeoutMs: number; concurrency: number }[] = []
-  let active = 0
-  let peak = 0
-  let closed = 0
-  const createFetcher: CrawlEngineOptions['createFetcher'] = (config) => {
-    configs.push(config)
-    const fetcher: Fetcher = {
-      close: () => {
-        closed++
-      },
-      async fetch(url, { signal }) {
-        if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
-        requests.push(url)
-        peak = Math.max(peak, ++active)
-        await new Promise((r) => setTimeout(r, latencyMs))
-        active--
-        const answer = site[url] ?? notFound
-        const resolved = typeof answer === 'function' ? answer() : answer
-        if (resolved instanceof Error) throw resolved
-        return {
-          statusCode: 200,
-          headers: {},
-          body: null,
-          truncated: false,
-          bytes: resolved.body?.length ?? null,
-          responseTimeMs: 1,
-          ...resolved,
-        }
-      },
-    }
-    return fetcher
-  }
-  return {
-    createFetcher,
-    requests,
-    configs,
-    peak: () => peak,
-    closed: () => closed,
-  }
-}
 
 let db: Database
 let domainId: string
@@ -213,7 +152,7 @@ describe('full crawl', () => {
     })
   })
 
-  it('records external URLs and who links to them, without requesting them or counting them', async () => {
+  it('records external URLs and who links to them, without counting them', async () => {
     const site = fakeSite({
       'https://example.com/': html(`
         <a href="https://elsewhere.org/a">x</a>
@@ -231,9 +170,6 @@ describe('full crawl', () => {
       'https://elsewhere.org/a',
       'https://example.com:8080/',
     ])
-    for (const url of await urls(crawl.id, 'external')) {
-      expect(site.requests).not.toContain(url)
-    }
     expect(crawl.externalCount).toBe(4)
     const sources = await db.crawls.linkSources(crawl.id, crawlUrlHash('https://elsewhere.org/a'))
     expect(sources.map((s) => s.url).sort()).toEqual([
@@ -435,51 +371,150 @@ describe('settings', () => {
 })
 
 describe('page issues', () => {
-  // Besides the home page, /bare and /missing, the crawl seeds the other schemes and `www`: the
-  // fake site answers 404 to those three, with a title but no description.
+  // Besides the home page, /bare and /missing, the crawl tries the other schemes and `www`. Those
+  // answer 404 but nothing links to them, so they are not issues of the site.
   const site = () =>
     fakeSite({
       'https://example.com/': html(
-        `<title>Home</title><meta name="description" content="Desc"><a href="/bare">x</a><a href="/missing">x</a>`,
+        `<title>Home</title><a href="/bare">x</a><a href="/missing">x</a>`,
       ),
       'https://example.com/bare': html('<p>Nothing here</p>'),
     })
   const issuesOf = async (crawlId: string, url: string) =>
-    (await db.crawls.issuesOf(crawlId, [crawlUrlHash(url)])).map((i) => i.issue).sort()
+    (await db.crawls.issuesOf(crawlId, [crawlUrlHash(url)])).map((i) => i.issue)
 
-  it('checks every page of a full crawl when it ends', async () => {
+  it('checks every URL of a full crawl when it ends', async () => {
     const { crawl } = await crawlWith(site())
-    expect(crawl).toMatchObject({ pagesCount: 6, pagesWithIssuesCount: 5 })
-    expect(await issuesOf(crawl.id, 'https://example.com/')).toEqual([])
-    expect(await issuesOf(crawl.id, 'https://example.com/bare')).toEqual([
-      'missing-description',
-      'missing-title',
-    ])
-    expect(await issuesOf(crawl.id, 'https://example.com/missing')).toEqual([
-      'http-error',
-      'missing-description',
-    ])
-    expect(
-      (await db.crawls.issueCounts(crawl.id)).sort((a, b) => a.issue.localeCompare(b.issue)),
-    ).toEqual([
-      { issue: 'http-error', pages: 4 },
-      { issue: 'missing-description', pages: 5 },
-      { issue: 'missing-title', pages: 1 },
-    ])
+    expect(crawl.pagesCount).toBe(6)
+    const counted = crawl.pagesByWorstIssue!
+    expect(counted.issue + counted.warning + counted.opportunity).toBeLessThanOrEqual(6)
+    expect(await issuesOf(crawl.id, 'https://example.com/bare')).toContain('title-missing')
+    expect(await issuesOf(crawl.id, 'https://example.com/missing')).toEqual(['client-error'])
+    // Only the crawler ever asked for this one.
+    expect(await issuesOf(crawl.id, 'https://www.example.com/')).toEqual([])
+    const counts = await db.crawls.issueCounts(crawl.id)
+    expect(counts).toContainEqual({ issue: 'client-error', pages: 1 })
+  })
+
+  it('sorts pages by the worst type of issue they have', async () => {
+    const { crawl } = await crawlWith(site())
+    // The home page has no H1, /bare no title, and /missing does not exist. The other three pages
+    // are what the site answered to URLs only the crawler tried, so they have nothing at all.
+    expect(crawl.pagesByWorstIssue).toEqual({ issue: 3, warning: 0, opportunity: 0 })
   })
 
   it('leaves a priority crawl unanalysed: it only sees a few pages', async () => {
     await db.priorityUrls.add({ domainId, url: 'https://example.com/bare' })
     const { crawl } = await crawlWith(site(), 'priority')
-    expect(crawl.pagesWithIssuesCount).toBeNull()
+    expect(crawl.pagesByWorstIssue).toBeNull()
   })
 
   it('can check a crawl again', async () => {
     const { crawl } = await crawlWith(site())
-    await db.crawls.saveIssues({ crawlId: crawl.id, issues: [] })
-    expect((await db.crawls.get(crawl.id))?.pagesWithIssuesCount).toBe(0)
-    expect(await analyseCrawl(db, crawl.id)).toEqual({ pages: 6, withIssues: 5 })
-    expect((await db.crawls.get(crawl.id))?.pagesWithIssuesCount).toBe(5)
+    const before = crawl.pagesByWorstIssue
+    await db.crawls.saveIssues({
+      crawlId: crawl.id,
+      issues: [],
+      pages: { issue: 0, warning: 0, opportunity: 0 },
+    })
+    const again = await analyseCrawl(db, crawl.id)
+    expect(again.pages).toBe(6)
+    expect(again.pagesByWorstIssue).toEqual(before)
+    expect((await db.crawls.get(crawl.id))?.pagesByWorstIssue).toEqual(before)
+  })
+})
+
+describe('links to other sites', () => {
+  it('requests the URLs anchors link to, once each, and nothing else of other sites', async () => {
+    const site = fakeSite({
+      'https://example.com/': html(`
+        <a href="https://elsewhere.org/a">x</a>
+        <a rel="nofollow" href="https://elsewhere.org/nofollow">x</a>
+        <a href="https://example.com:8080/">other port</a>
+        <img src="https://cdn.org/i.png">`),
+      'https://example.com/b': html('<a href="https://elsewhere.org/a">again</a>'),
+      'https://www.example.com/': html('<a href="https://example.com/b">b</a>'),
+      'https://elsewhere.org/a': html('fine'),
+    })
+    const { crawl } = await crawlWith(site)
+
+    expect(site.requests.filter((url) => url === 'https://elsewhere.org/a')).toHaveLength(1)
+    expect(site.requests).toContain('https://elsewhere.org/nofollow')
+    expect(site.requests).not.toContain('https://cdn.org/i.png')
+    // A link should not be able to point the crawler at any service of a host.
+    expect(site.requests).not.toContain('https://example.com:8080/')
+    expect(await db.crawls.pendingExternalLinks(crawl.id, 10)).toEqual([])
+
+    const external = await db.crawls.listUrls({
+      crawlId: crawl.id,
+      view: 'external',
+      limit: 10,
+      offset: 0,
+    })
+    expect(external.find((url) => url.url.endsWith('/a'))).toMatchObject({
+      statusCode: 200,
+      kind: 'unknown',
+      state: 'done',
+    })
+    expect(external.find((url) => url.url.endsWith('/nofollow'))?.statusCode).toBe(404)
+    expect(crawl).toMatchObject({ externalCount: 4 })
+  })
+
+  it('never asks for them in a priority crawl', async () => {
+    await db.priorityUrls.add({ domainId, url: 'https://example.com/p' })
+    const site = fakeSite({
+      'https://example.com/p': html('<a href="https://elsewhere.org/a">x</a>'),
+    })
+    await crawlWith(site, 'priority')
+    expect(site.requests).toEqual(['https://example.com/p'])
+  })
+
+  it('tells a broken link from a site that only refuses bots', async () => {
+    const site = fakeSite({
+      'https://example.com/': html(`
+        <a href="https://elsewhere.org/ok">x</a>
+        <a href="https://elsewhere.org/gone">x</a>
+        <a href="https://elsewhere.org/refuses">x</a>
+        <a href="https://elsewhere.org/down">x</a>`),
+      'https://elsewhere.org/ok': html('fine'),
+      'https://elsewhere.org/refuses': { statusCode: 403, headers: {} },
+      'https://elsewhere.org/down': new FetchError('ENOTFOUND', 'no such host'),
+    })
+    const { crawl } = await crawlWith(site)
+    const broken = await db.crawls.listUrls({
+      crawlId: crawl.id,
+      view: 'pages',
+      issue: 'broken-external-link',
+      limit: 10,
+      offset: 0,
+    })
+    expect(broken.map((url) => url.url).sort()).toEqual([
+      'https://elsewhere.org/down',
+      'https://elsewhere.org/gone',
+    ])
+  })
+
+  it('can be cancelled while it checks them', async () => {
+    let cancel = () => {}
+    const site = fakeSite({
+      'https://example.com/': html(
+        Array.from({ length: 30 }, (_, i) => `<a href="https://elsewhere.org/${i}">x</a>`).join(''),
+      ),
+      'https://elsewhere.org/0': () => {
+        cancel()
+        return html('fine')
+      },
+    })
+    const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    cancel = () => void db.crawls.cancel(crawl!.id)
+    const summary = await runCrawl(crawl!.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+      retryBaseMs: 1,
+    })
+    expect(summary?.status).toBe('cancelled')
   })
 })
 

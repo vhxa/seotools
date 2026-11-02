@@ -1,0 +1,1 @@
+ALTER TABLE `crawls` DROP COLUMN `pages_with_issues_count`;
