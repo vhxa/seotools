@@ -562,6 +562,25 @@ describe('resuming, stopping and failing', () => {
     expect(await db.verifications.active(domainId)).toBeNull()
   })
 
+  it('hands the recheck back if the worker is told to stop before anything was requested', async () => {
+    const site = website()
+    await fullCrawl(site)
+    const verification = await recheck(['/good', '/broken'])
+    const shutdown = new AbortController()
+    shutdown.abort()
+
+    const { fake, result } = run(verification.id, site, { signal: shutdown.signal })
+    await expect(result).rejects.toBeInstanceOf(JobInterruptedError)
+    expect(fake.requests).toEqual([])
+    expect((await db.verifications.urlsOf(verification.id)).map((u) => u.state)).toEqual([
+      'queued',
+      'queued',
+    ])
+    // Nothing was lost: the same recheck runs to its end later.
+    const again = run(verification.id, site)
+    expect((await again.result)?.status).toBe('completed')
+  })
+
   it('does nothing for a recheck that was cancelled before it ran', async () => {
     const site = website()
     await fullCrawl(site)

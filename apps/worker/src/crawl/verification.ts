@@ -167,19 +167,26 @@ export async function runVerification(
     const robotsTexts = new Map<string, string | null>()
     for (const origin of new Set(requestable.map((item) => new URL(item.url).origin))) {
       if (stopSignal.aborted) break
-      const response = await requester.fetchWithRetries(
-        `${origin}/robots.txt`,
-        crawlFileFetchOptions('robots'),
-      )
-      robotsTexts.set(
-        origin,
-        !(response instanceof FetchError) && response.statusCode === 200 && response.body
-          ? decodeText(
-              response.body.subarray(0, MAX_ROBOTS_BYTES),
-              response.headers['content-type'],
-            )
-          : null,
-      )
+      try {
+        const response = await requester.fetchWithRetries(
+          `${origin}/robots.txt`,
+          crawlFileFetchOptions('robots'),
+        )
+        robotsTexts.set(
+          origin,
+          !(response instanceof FetchError) && response.statusCode === 200 && response.body
+            ? decodeText(
+                response.body.subarray(0, MAX_ROBOTS_BYTES),
+                response.headers['content-type'],
+              )
+            : null,
+        )
+      } catch (error) {
+        // Stopped while waiting for its turn: shutting down, cancelled or a crawl started. Which
+        // of them is decided below; nothing was concluded from a robots.txt that was not read.
+        if (stopSignal.aborted) break
+        throw error
+      }
     }
     const context = recheckContext({ host, now: new Date(), config, robotsTexts, answered })
 
