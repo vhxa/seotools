@@ -213,7 +213,10 @@ export async function UrlDetail({
                   )}
                 </Field>
                 <Field label={tAudit('technical')}>
-                  <IndexabilityBadge state={audit.indexability} />
+                  <div className="grid gap-1.5">
+                    <IndexabilityBadge state={audit.indexability} />
+                    <BlockerList blockers={audit.blockers} />
+                  </div>
                 </Field>
               </Fields>
               {isPage && (
@@ -226,7 +229,6 @@ export async function UrlDetail({
               )}
               <p className="text-xs text-muted-foreground">{tState('technicalNote')}</p>
               <Disclosure title={t('sections.ruleOrigins')}>
-                <BlockerList blockers={audit.blockers} />
                 <Fields>
                   <Field label={tAudit('participation')}>
                     <RuleOrigin rule={refOf(audit.participationRule)} />

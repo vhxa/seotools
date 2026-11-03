@@ -477,7 +477,7 @@
       "linksOut": "Links to",
       "audit": "Audit and indexing",
       "technical": "Technical metadata",
-      "ruleOrigins": "Blockers and rule origins"
+      "ruleOrigins": "Rule origins"
     },
     "fields": {
       "contentType": "Content type",
