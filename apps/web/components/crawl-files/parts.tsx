@@ -18,6 +18,9 @@ const STATE_VARIANTS: Record<CrawlFileState, 'outline' | 'secondary' | 'destruct
   redirect: 'secondary',
   missing: 'secondary',
   invalid: 'destructive',
+  'access-denied': 'destructive',
+  'http-error': 'destructive',
+  'unexpected-response': 'secondary',
   'server-error': 'destructive',
   unreachable: 'destructive',
 }

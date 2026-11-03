@@ -83,6 +83,7 @@ import { cn } from '@/lib/utils'
 
 /** What the table needs of a URL. Plain data: it crosses from the server to this component. */
 export interface PageRow {
+  automaticCheck: boolean
   urlHash: string
   url: string
   title: string | null
@@ -337,7 +338,7 @@ function Cell({
         <Muted>—</Muted>
       )
     case 'status':
-      return <StatusCell row={row} />
+      return <StatusCell row={row} automaticCheck={row.automaticCheck} />
     case 'issueDetail':
       return row.issueDetails.length > 0 ? (
         <IssueDetails details={row.issueDetails} />

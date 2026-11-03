@@ -20,6 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { auditTabHref, tabOfDimension } from '@/lib/audit-tabs'
 import { browsableCrawls, selectCrawl } from '@/lib/crawl-history'
+import { automaticFileChecks } from '@/lib/automatic-checks'
 import { getDb } from '@/lib/db'
 import {
   DETAIL_VIEWS,
@@ -47,6 +48,7 @@ const toRow = (
   audit: CrawlUrlAudit | undefined,
   refOf: ReturnType<typeof ruleRefsOf>,
 ): PageRow => ({
+  automaticCheck: false,
   urlHash: url.urlHash,
   url: url.url,
   title: url.title,
@@ -144,9 +146,10 @@ export default async function PagesDetailsPage({
       db.priorityUrls.list(domain.id),
     ])
     const hashes = urls.map((url) => url.urlHash)
-    const [issues, audits] = await Promise.all([
+    const [issues, audits, automaticChecks] = await Promise.all([
       db.crawls.issuesOf(browsable.id, hashes),
       db.crawls.auditOf(browsable.id, hashes),
+      automaticFileChecks(db.crawls, browsable.id, urls),
     ])
     const auditByUrl = new Map(audits.map((audit) => [audit.urlHash, audit]))
     const refOf = ruleRefsOf(browsable.auditSnapshot)
@@ -155,8 +158,8 @@ export default async function PagesDetailsPage({
       issuesByUrl.set(issue.urlHash, [...(issuesByUrl.get(issue.urlHash) ?? []), issue])
     }
     const priorities = new Set(priorityUrls.map((p) => p.urlHash))
-    rows = urls.map((url) =>
-      toRow(
+    rows = urls.map((url) => ({
+      ...toRow(
         url,
         issuesByUrl.get(url.urlHash) ?? [],
         query.issue,
@@ -164,7 +167,8 @@ export default async function PagesDetailsPage({
         auditByUrl.get(url.urlHash),
         refOf,
       ),
-    )
+      automaticCheck: automaticChecks.has(url.urlHash),
+    }))
   }
 
   // The drawer: the URL in the address, if the crawl has it.

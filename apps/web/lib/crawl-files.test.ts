@@ -176,8 +176,8 @@ describe('sitemapsView', () => {
       robots,
       host,
     )
-    expect(view.rows).toHaveLength(1)
-    expect(view.triedCount).toBe(2)
+    expect(view.rows).toHaveLength(2)
+    expect(view.triedCount).toBe(1)
   })
 
   it('reports a child sitemap that is broken', () => {
@@ -280,5 +280,23 @@ describe('indexNowKeyMatches', () => {
     expect(indexNowKeyMatches(file({ body: ' abcd1234\n' }), 'abcd1234')).toBe(true)
     expect(indexNowKeyMatches(file({ body: 'other' }), 'abcd1234')).toBe(false)
     expect(indexNowKeyMatches(file({ body: null }), 'abcd1234')).toBe(false)
+  })
+})
+
+describe('unreadable files are not absent', () => {
+  it.each([401, 403, 429, 204, 304, 302])('keeps HTTP %s unknown', (statusCode) => {
+    const response = file({ statusCode, body: null })
+    expect(robotsView([response])).toMatchObject({ findings: ['unavailable'], unknown: true })
+    expect(llmsView([{ ...response, kind: 'llms' }]).findings).toEqual(['unavailable'])
+  })
+
+  it('does not hide an access denied response at a default sitemap location', () => {
+    const view = sitemapsView(
+      [sitemap('https://example.com/sitemap.xml', null, { statusCode: 403 })],
+      [],
+      'example.com',
+    )
+    expect(view.triedCount).toBe(0)
+    expect(view.rows[0]?.state).toBe('access-denied')
   })
 })

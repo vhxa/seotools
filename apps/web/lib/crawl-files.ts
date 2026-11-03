@@ -71,8 +71,8 @@ export function robotsView(files: CrawlFile[]): RobotsView {
   const file = primaryFile(files)
   const states = files.map(stateOf)
   if (!file || file.body === null) {
-    // A 5xx is the worst of these: search engines take it to mean the whole site is off limits.
-    const unavailable = states.some((state) => state === 'server-error' || state === 'unreachable')
+    // Only an explicit not-found response establishes absence; other outcomes stay unknown.
+    const unavailable = states.some((state) => state !== 'missing' && state !== 'invalid')
     const invalid = states.includes('invalid')
     return {
       file: null,
@@ -143,7 +143,7 @@ export function sitemapsView(
     const state = stateOf(file)
     const isDeclared = declared.has(file.url)
     const isDefault = isDefaultSitemapUrl(file.url)
-    if (!isDeclared && isDefault && state !== 'ok') {
+    if (!isDeclared && isDefault && state === 'missing') {
       triedCount++
       continue
     }
@@ -211,7 +211,7 @@ export function llmsView(files: CrawlFile[]): LlmsView {
     const states = files.map(stateOf)
     const finding: LlmsFinding = states.includes('invalid')
       ? 'invalid'
-      : states.some((state) => state === 'server-error' || state === 'unreachable')
+      : states.some((state) => state !== 'missing' && state !== 'invalid')
         ? 'unavailable'
         : 'missing'
     return { file: null, parsed: null, findings: files.length === 0 ? [] : [finding] }

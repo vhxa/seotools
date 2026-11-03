@@ -164,12 +164,23 @@ export function isDefaultSitemapUrl(url: string): boolean {
  * - `ok`: it is there.
  * - `invalid`: it answered 200 with something else, like the HTML a site serves for any path.
  * - `redirect`: it moved. The target has a row of its own, if it is on the site.
- * - `missing`: 4xx.
+ * - `missing`: 404 or 410.
+ * - `access-denied`: 401 or 403.
+ * - `http-error`: other 4xx.
+ * - `unexpected-response`: other statuses without a usable file (including 204 and 304).
  * - `server-error`: 5xx.
  * - `unreachable`: no answer at all.
  */
 export type CrawlFileState =
-  'ok' | 'invalid' | 'redirect' | 'missing' | 'server-error' | 'unreachable'
+  | 'ok'
+  | 'invalid'
+  | 'redirect'
+  | 'missing'
+  | 'access-denied'
+  | 'http-error'
+  | 'unexpected-response'
+  | 'server-error'
+  | 'unreachable'
 
 export function crawlFileState(file: {
   kind: CrawlFileKind
@@ -181,7 +192,10 @@ export function crawlFileState(file: {
   if (status === null) return 'unreachable'
   if (status >= 500) return 'server-error'
   if (status >= 300 && status < 400 && status !== 304) return 'redirect'
-  if (status !== 200) return 'missing'
+  if (status === 404 || status === 410) return 'missing'
+  if (status === 401 || status === 403) return 'access-denied'
+  if (status >= 400) return 'http-error'
+  if (status !== 200) return 'unexpected-response'
   switch (file.kind) {
     case 'sitemap':
       return file.data?.sitemap?.format ? 'ok' : 'invalid'

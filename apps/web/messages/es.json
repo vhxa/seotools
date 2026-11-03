@@ -1215,7 +1215,10 @@
       "redirect": "Redirige",
       "missing": "No encontrado",
       "server-error": "Error del servidor",
-      "unreachable": "Sin respuesta"
+      "unreachable": "Sin respuesta",
+      "access-denied": "Acceso denegado",
+      "http-error": "Error HTTP",
+      "unexpected-response": "Respuesta inesperada"
     },
     "requests": {
       "url": "URL",
@@ -1240,7 +1243,7 @@
         },
         "unavailable": {
           "title": "No se pudo leer robots.txt",
-          "description": "Los buscadores pueden dejar de rastrear todo el sitio mientras su robots.txt responda con un error del servidor o no responda."
+          "description": "La comprobación no pudo leer el archivo. Consulta la respuesta HTTP o el error de conexión de cada solicitud; esto no demuestra que el archivo no exista."
         },
         "invalid": {
           "title": "La URL no sirve un robots.txt",
@@ -1333,7 +1336,7 @@
       "findings": {
         "none": {
           "title": "No se encontró ningún sitemap",
-          "description": "Ni robots.txt ni las ubicaciones habituales llevan a uno."
+          "description": "No se encontró ningún sitemap legible. Consulta los resultados de las solicitudes antes de concluir que no existe ninguno."
         },
         "not-declared": {
           "title": "robots.txt no declara los sitemaps",
@@ -1392,7 +1395,7 @@
         },
         "unavailable": {
           "title": "No se pudo leer llms.txt",
-          "description": "Responde con un error del servidor, o no responde."
+          "description": "La comprobación no pudo leer el archivo. Consulta la respuesta de cada solicitud; su ausencia no está confirmada."
         },
         "invalid": {
           "title": "La URL no sirve un llms.txt",
@@ -1425,7 +1428,8 @@
       },
       "full": {
         "found": "El texto completo para modelos de IA, en un solo archivo: «{title}», con {headings, plural, one {# encabezado} other {# encabezados}}.",
-        "missing": "El complemento opcional con todo el texto en un archivo. Este sitio no lo tiene."
+        "missing": "El complemento opcional con todo el texto en un archivo. Este sitio no lo tiene.",
+        "unavailable": "No se pudo leer el archivo complementario opcional. Consulta los resultados de las solicitudes."
       }
     },
     "extra": {
@@ -2159,5 +2163,9 @@
         "description": "Las URL a las que no llegó no están ausentes, y los hallazgos que miran otras páginas (duplicados, enlaces entrantes, redirecciones) no se llaman nuevos ni resueltos para él."
       }
     }
+  },
+  "HttpStatus": {
+    "automaticCheck": "Comprobación automática",
+    "notFound": "No encontrado"
   }
 }

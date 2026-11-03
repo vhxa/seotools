@@ -2,11 +2,13 @@ import { auditResultsState, type AuditResultsState } from '@seotools/core/crawl/
 import type { Crawl, CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
 import { crawlUrlHash, type CrawlLinkKind } from '@seotools/core'
 import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
+import { automaticFileChecks } from './automatic-checks'
 import { getDb } from './db'
 import { crawlUrlsInEvidence } from './issue-evidence'
 import { canRecheck, viewRecheck, type RecheckView } from './recheck'
 
 export interface UrlDetailData {
+  automaticCheck: boolean
   crawl: Crawl
   url: CrawlUrl
   issues: CrawlUrlIssue[]
@@ -90,6 +92,7 @@ export async function loadUrlDetail(input: {
     async (address) => (await db.crawls.getUrl(crawl.id, crawlUrlHash(address))) !== null,
   )
   return {
+    automaticCheck: (await automaticFileChecks(db.crawls, crawl.id, [url])).has(urlHash),
     crawl,
     url,
     issues,

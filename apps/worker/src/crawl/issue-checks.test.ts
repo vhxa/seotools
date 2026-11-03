@@ -839,6 +839,17 @@ describe('what is not an issue', () => {
     }
   })
 
+  it.each(['<a href="/llms.txt">File</a>', '<img src="/llms.txt" alt="File">'])(
+    'keeps failures of referenced probes actionable: %s',
+    async (homeLinks) => {
+      const crawlId = await only({ at: '/', homeLinks })
+      const stored = await db.crawls.getUrl(crawlId, crawlUrlHash(`${SITE}/llms.txt`))
+      expect(stored?.source).toBe('llms')
+      expect(stored?.statusCode).toBe(404)
+      expect(await has(crawlId, '/llms.txt', 'client-error')).toBe(true)
+    },
+  )
+
   it('does blame it for them if the whole site is down', async () => {
     const crawlId = await crawl({ [`${SITE}/`]: new FetchError('ECONNREFUSED', 'refused') })
     expect(await has(crawlId, '/', 'no-response')).toBe(true)

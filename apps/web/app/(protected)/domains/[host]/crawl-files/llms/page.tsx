@@ -1,4 +1,4 @@
-import { normalizeCrawlUrl } from '@seotools/core'
+import { crawlFileState, normalizeCrawlUrl } from '@seotools/core'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { CrawlFilesHeader } from '@/components/crawl-files/page-header'
 import { FileRequestsTable, FileSize, Finding } from '@/components/crawl-files/parts'
@@ -138,7 +138,11 @@ export default async function LlmsPage({ params }: { params: Promise<{ host: str
                     title: full.title ?? t('untitled'),
                     headings: full.headingCount,
                   })
-                : t('full.missing')}
+                : t(
+                    fullFiles.every((file) => crawlFileState(file) === 'missing')
+                      ? 'full.missing'
+                      : 'full.unavailable',
+                  )}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">

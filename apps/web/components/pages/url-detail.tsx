@@ -161,7 +161,7 @@ export async function UrlDetail({
                 {t('httpUnknown')}
               </Badge>
             ) : (
-              <StatusCell row={url} />
+              <StatusCell row={url} automaticCheck={data.automaticCheck} />
             )}
           </Field>
           {url.error && <Field label={t('fields.error')}>{url.error}</Field>}

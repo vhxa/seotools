@@ -1215,7 +1215,10 @@
       "redirect": "Redirects",
       "missing": "Not found",
       "server-error": "Server error",
-      "unreachable": "No answer"
+      "unreachable": "No answer",
+      "access-denied": "Access denied",
+      "http-error": "HTTP error",
+      "unexpected-response": "Unexpected response"
     },
     "requests": {
       "url": "URL",
@@ -1240,7 +1243,7 @@
         },
         "unavailable": {
           "title": "robots.txt could not be read",
-          "description": "Search engines may stop crawling the whole site while its robots.txt answers with a server error or not at all."
+          "description": "The check could not read the file. See each request for the HTTP response or connection error; this does not establish that the file is absent."
         },
         "invalid": {
           "title": "The URL does not serve a robots.txt",
@@ -1333,7 +1336,7 @@
       "findings": {
         "none": {
           "title": "No sitemap was found",
-          "description": "Neither robots.txt nor the usual locations lead to one."
+          "description": "No readable sitemap was found. Check the request results before assuming that none exists."
         },
         "not-declared": {
           "title": "robots.txt does not declare the sitemaps",
@@ -1392,7 +1395,7 @@
         },
         "unavailable": {
           "title": "llms.txt could not be read",
-          "description": "It answers with a server error, or not at all."
+          "description": "The check could not read the file. See each request for its response; its absence is not confirmed."
         },
         "invalid": {
           "title": "The URL does not serve an llms.txt",
@@ -1425,7 +1428,8 @@
       },
       "full": {
         "found": "The full text for AI models, in one file: “{title}”, with {headings, plural, one {# heading} other {# headings}}.",
-        "missing": "The optional companion with the full text in one file. This site does not have one."
+        "missing": "The optional companion with the full text in one file. This site does not have one.",
+        "unavailable": "The optional companion could not be read. See the request results below."
       }
     },
     "extra": {
@@ -2159,5 +2163,9 @@
         "description": "URLs it did not reach are not missing, and findings that look at other pages (duplicates, inbound links, redirects) are not called new or resolved for it."
       }
     }
+  },
+  "HttpStatus": {
+    "automaticCheck": "Automatic check",
+    "notFound": "Not found"
   }
 }
