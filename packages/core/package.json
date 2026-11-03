@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./crawl/audit": "./src/crawl/audit.ts",
+    "./crawl/compare": "./src/crawl/compare.ts",
     "./crawl/files": "./src/crawl/files.ts",
     "./crawl/indexability": "./src/crawl/indexability.ts",
     "./crawl/issues": "./src/crawl/issues.ts",

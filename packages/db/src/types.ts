@@ -1,5 +1,8 @@
 import type {
   AuditRule,
+  CompareView,
+  CrawlChange,
+  UrlSnapshot,
   AuditSnapshot,
   AuditValue,
   IndexIntent,
@@ -289,6 +292,8 @@ export interface CrawlRepository {
    */
   start(input: { domainId: string; type: CrawlType; trigger: CrawlTrigger }): Promise<Crawl | null>
   get(id: string): Promise<Crawl | null>
+  /** The crawl with this id if it belongs to the domain; `null` for any other domain's, or none. */
+  getInDomain(domainId: string, id: string): Promise<Crawl | null>
   active(domainId: string): Promise<Crawl | null>
   /** Newest first. Every type unless told otherwise. */
   list(domainId: string, options?: { limit?: number; type?: CrawlType }): Promise<Crawl[]>
@@ -407,6 +412,89 @@ export interface CrawlRepository {
   urlBriefs(crawlId: string, options: { limit: number; offset: number }): Promise<CrawlUrlBrief[]>
   /** For each hash that has one, the most recent result in any retained crawl of the domain. */
   latestResults(domainId: string, urlHashes: string[]): Promise<CrawlUrl[]>
+
+  /**
+   * Comparing two full crawls of a domain, `baseId` the earlier one and `targetId` the later one.
+   * Both must be full crawls of `domainId` that finished with results (`completed` or `incomplete`)
+   * and still have them (not pruned), and be two different crawls: otherwise there is nothing to
+   * compare and these return `null`, `0` or `[]`, whatever the ids. Only URLs of the site are
+   * compared (never external ones), and nothing is requested: it reads what the crawls stored.
+   */
+  compareCounts(input: {
+    domainId: string
+    baseId: string
+    targetId: string
+    view: CompareView
+  }): Promise<CrawlComparisonCounts | null>
+  /** The URLs that changed in the way `query.change` says, sorted by URL, a page at a time. */
+  compareUrls(
+    query: CrawlComparisonQuery & { limit: number; offset: number },
+  ): Promise<CrawlUrlComparison[]>
+  /** How many URLs `compareUrls` would list for the same query, ignoring the page. */
+  countCompared(query: CrawlComparisonQuery): Promise<number>
+  /**
+   * What the crawls of the domain recorded of these URLs: for each crawl that has a URL, one entry.
+   * Crawls that are not full crawls of the domain (or that were pruned, and so have nothing) give
+   * none. Page through `urlHashes` for more than a few hundred.
+   */
+  urlHistory(input: {
+    domainId: string
+    crawlIds: string[]
+    urlHashes: string[]
+  }): Promise<CrawlUrlTrace[]>
+}
+
+/** Which URLs a comparison of two crawls lists. */
+export interface CrawlComparisonQuery {
+  domainId: string
+  baseId: string
+  targetId: string
+  change: CrawlChange
+  view: CompareView
+  /** Text the URL or the title (of the later crawl, or the earlier one for `missing`) contains. */
+  search?: string
+  /** Only for `gained` and `lost`: those that are about this issue (an id from `PAGE_ISSUES`). */
+  issue?: string
+}
+
+/** A URL in a comparison, as each crawl recorded it. `null`: that crawl does not have the URL. */
+export interface CrawlUrlComparison {
+  urlHash: string
+  url: string
+  base: UrlSnapshot | null
+  target: UrlSnapshot | null
+}
+
+/**
+ * How many URLs of the site changed in each way between two crawls. The view only narrows what is
+ * counted for `added`, `missing` and the ones below `compared`.
+ */
+export interface CrawlComparisonCounts {
+  /** In the later crawl and not in the earlier one. */
+  added: number
+  /** In the earlier crawl and not in the later one. */
+  missing: number
+  /** In both, but at least one of the crawls found the URL and did not request it. Every view. */
+  unrequested: number
+  /** In both and requested by both, which is what the rest are among. */
+  compared: number
+  status: number
+  title: number
+  canonical: number
+  robots: number
+  gained: number
+  lost: number
+}
+
+/** What one crawl recorded of a URL, with its findings and what the analysis concluded about it. */
+export interface CrawlUrlTrace {
+  crawlId: string
+  urlHash: string
+  url: string
+  snapshot: UrlSnapshot
+  issues: CrawlUrlIssue[]
+  /** `null`: the crawl was analysed before the audit state per URL was kept, or not analysed. */
+  audit: CrawlUrlAudit | null
 }
 
 /** A rule as stored: with the domain it belongs to and when it was made. */

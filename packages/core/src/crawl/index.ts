@@ -1,4 +1,5 @@
 export * from './audit'
+export * from './compare'
 export * from './files'
 export * from './indexability'
 export * from './issues'
