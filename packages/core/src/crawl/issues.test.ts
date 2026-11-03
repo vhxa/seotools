@@ -44,6 +44,11 @@ describe('the catalog', () => {
     expect(PAGE_ISSUES['title-missing']).toMatchObject({ type: 'warning', importance: 'high' })
   })
 
+  it('treats heuristic soft 404s as warnings and empty alt as an optional review', () => {
+    expect(PAGE_ISSUES['soft-404-confirmed'].type).toBe('warning')
+    expect(PAGE_ISSUES['img-empty-alt'].type).toBe('opportunity')
+  })
+
   it('says which issues carry a detail', () => {
     expect(PAGE_ISSUES['missing-security-header'].detail).toBe('security-header')
     for (const id of issuesOfCategory('hreflang')) {
@@ -51,6 +56,7 @@ describe('the catalog', () => {
     }
     expect(PAGE_ISSUES['title-missing'].detail).toBeUndefined()
     expect(PAGE_ISSUES['expected-indexable-blocked'].detail).toBe('indexability-blocker')
+    expect(PAGE_ISSUES['canonical-not-indexable'].detail).toBe('indexability-blocker')
   })
 
   it('has issues for what is declared against what the crawl saw', () => {

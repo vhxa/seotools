@@ -439,7 +439,8 @@ export class PageFactsCollector {
 
   private onImage(attributes: Record<string, string>) {
     const { alt, width, height } = attributes
-    // Marked as decorative on purpose, which is the one case where an empty alt is right.
+    // Explicit decorative markers need no alt review. Empty alt alone is also valid for decoration;
+    // keep other empty-alt samples only for an optional contextual review.
     const role = (attributes.role ?? '').toLowerCase()
     const decorative =
       role === 'presentation' ||

@@ -543,6 +543,7 @@
       "related-urls": "{total, plural, one {# otra página} other {# otras páginas}}"
     },
     "labels": {
+      "canonical-not-indexable": "Destino canonical (bloqueos indicados arriba)",
       "img-no-alt": "Imágenes sin atributo alt",
       "img-empty-alt": "Imágenes con el atributo alt vacío",
       "img-long-alt": "Imágenes con un texto alt largo",
@@ -609,8 +610,8 @@
       "description": "Seguir las redirecciones de esta URL no lleva nunca a ninguna página."
     },
     "soft-404-confirmed": {
-      "name": "Soft 404 confirmado",
-      "description": "Responde 200, pero su título o su encabezado principal dicen que la página no se ha encontrado. Lo dice la propia página."
+      "name": "Soft 404 probable (título o encabezado)",
+      "description": "Responde correctamente con poco texto y su título o encabezado principal contiene una frase de página no encontrada. Es una heurística local, no una confirmación de Google; revisa la página."
     },
     "soft-404-possible": {
       "name": "Posible soft 404 detectado por contenido",
@@ -782,11 +783,11 @@
     },
     "title-too-long": {
       "name": "Demasiado largo",
-      "description": "Tiene más de 60 caracteres: los resultados de búsqueda pueden cortarlo."
+      "description": "Supera 60 caracteres, un umbral orientativo de revisión. El ancho mostrado varía; revisa la claridad y cómo aparece el título en los resultados."
     },
     "title-too-short": {
       "name": "Demasiado corto",
-      "description": "Tiene menos de 30 caracteres: se está desaprovechando."
+      "description": "Menos de 30 caracteres, un umbral orientativo de revisión. Un título breve puede ser adecuado si describe bien la página."
     },
     "description-multiple": {
       "name": "Múltiple",
@@ -806,11 +807,11 @@
     },
     "description-too-long": {
       "name": "Demasiado larga",
-      "description": "Tiene más de 155 caracteres: los resultados de búsqueda pueden cortarla."
+      "description": "Supera 155 caracteres, un umbral orientativo de revisión, no un límite del buscador. La longitud y el contenido del fragmento varían."
     },
     "description-too-short": {
       "name": "Demasiado corta",
-      "description": "Tiene menos de 70 caracteres: se está desaprovechando."
+      "description": "Menos de 70 caracteres, un umbral orientativo de revisión. Comprueba si explica la página; una descripción breve puede ser adecuada."
     },
     "h1-missing": {
       "name": "H1 ausente",
@@ -830,7 +831,7 @@
     },
     "h2-missing": {
       "name": "H2 ausente",
-      "description": "La página no tiene H2 y tiene texto suficiente para dividirse en subsecciones."
+      "description": "No hay H2 en una página con al menos 300 palabras. Es una heurística de revisión; las subsecciones son útiles cuando el contenido las necesita."
     },
     "h1-duplicate": {
       "name": "H1 duplicado",
@@ -838,7 +839,7 @@
     },
     "heading-too-long": {
       "name": "Encabezado demasiado largo",
-      "description": "Hay un encabezado de más de 70 caracteres."
+      "description": "Un encabezado supera 70 caracteres. Es un umbral orientativo de revisión; valora su legibilidad en contexto."
     },
     "content-duplicate": {
       "name": "Duplicado exacto",
@@ -854,27 +855,27 @@
     },
     "content-thin": {
       "name": "Poco contenido",
-      "description": "Tiene menos de 200 palabras de contenido, sin contar menús, cabecera ni pie."
+      "description": "Menos de 200 palabras, sin menús, cabecera ni pie. Este umbral orientativo no determina la calidad ni un mínimo de palabras para SEO; revisa si la página cumple su propósito."
     },
     "img-no-alt": {
       "name": "Sin atributo alt",
       "description": "Hay imágenes sin atributo alt."
     },
     "img-empty-alt": {
-      "name": "alt vacío",
-      "description": "Hay imágenes con el alt vacío. Puede ser correcto en imágenes decorativas, y las que están marcadas como tales (role=\"presentation\" o aria-hidden) no se avisan."
+      "name": "Revisar alt vacío",
+      "description": "El alt vacío es válido para imágenes decorativas y no requiere role=\"presentation\". Revisa únicamente si alguna transmite información que necesite texto alternativo; el alt vacío por sí solo no es un error."
     },
     "img-too-heavy": {
       "name": "Peso mayor de 100 KB",
-      "description": "Una imagen de esta web pesa más de 100 KB, según lo que declara su servidor."
+      "description": "El servidor declara una imagen de más de 100 KB. Es un umbral orientativo de revisión; el tamaño adecuado depende de las dimensiones, el formato y el uso."
     },
     "img-no-size": {
       "name": "Sin width/height",
-      "description": "Hay imágenes sin width o height, lo que hace que la página se mueva al cargar."
+      "description": "Hay imágenes sin atributos width o height. Revisa la estabilidad visual; CSS o aspect-ratio pueden reservar ya el espacio necesario."
     },
     "img-long-alt": {
       "name": "Alt demasiado largo",
-      "description": "Hay imágenes con un alt de más de 100 caracteres."
+      "description": "El alt supera 100 caracteres. Es un umbral orientativo de revisión, no un límite de accesibilidad; usa el texto necesario para transmitir la función de la imagen."
     },
     "json-ld-invalid": {
       "name": "JSON-LD que no parsea",
@@ -1551,6 +1552,8 @@
     "add": "Añadir"
   },
   "IssueCatalog": {
+    "noFindings": "Sin hallazgos registrados; la aplicabilidad puede ser incompleta",
+    "unavailable": "No comprobable: datos de indexación no disponibles",
     "groups": {
       "crawling": "Rastreo",
       "indexing": "Indexación",

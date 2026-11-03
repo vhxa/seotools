@@ -674,7 +674,7 @@ describe('what is not an issue', () => {
   const has = async (crawlId: string, at: string, id: PageIssueId) =>
     (await issuesAt(crawlId, at)).some((row) => row.issue === id)
 
-  it('tells a confirmed soft 404 from a possible one', async () => {
+  it('tells a headline-based probable soft 404 from a content-only possible one', async () => {
     const crawlId = await only({
       at: '/x',
       pages: {
@@ -686,6 +686,43 @@ describe('what is not an issue', () => {
     expect(await has(crawlId, '/x', 'soft-404-possible')).toBe(false)
     expect(await has(crawlId, '/y', 'soft-404-possible')).toBe(true)
     expect(await has(crawlId, '/y', 'soft-404-confirmed')).toBe(false)
+  })
+
+  it('does not infer a non-indexable canonical target from unknown data or self-reference', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', { canonical: `${SITE}/resource` }),
+        '/resource': { statusCode: 200, headers: { 'content-type': 'image/png' } },
+        '/self': page('/self', { head: '<meta name="robots" content="noindex">' }),
+        '/failed': page('/failed', { canonical: `${SITE}/error` }),
+        '/error': new FetchError('network', 'Unavailable'),
+      },
+    })
+    for (const path of ['/x', '/self', '/failed']) {
+      expect(await has(crawlId, path, 'canonical-not-indexable')).toBe(false)
+    }
+  })
+
+  it('keeps canonical relation evidence even when both pages are expected not indexable', async () => {
+    const crawlId = await crawl(
+      websiteOf({
+        at: '/x',
+        pages: {
+          '/x': page('/x', {
+            canonical: `${SITE}/y`,
+            head: '<meta name="robots" content="noindex">',
+          }),
+          '/y': page('/y', { head: '<meta name="robots" content="noindex">' }),
+        },
+      }),
+      [expecting('/x', 'not-indexable'), expecting('/y', 'not-indexable')],
+    )
+    const finding = (await issuesAt(crawlId, '/x')).find(
+      ({ issue }) => issue === 'canonical-not-indexable',
+    )
+    expect(finding?.details).toEqual(['noindex'])
+    expect(finding?.evidence).toEqual({ kind: 'related-urls', total: 1, urls: [`${SITE}/y`] })
   })
 
   it('does not take a long page that mentions it for a soft 404', async () => {

@@ -543,6 +543,7 @@
       "related-urls": "{total, plural, one {# other page} other {# other pages}}"
     },
     "labels": {
+      "canonical-not-indexable": "Canonical target (blockers shown above)",
       "img-no-alt": "Images with no alt attribute",
       "img-empty-alt": "Images with an empty alt attribute",
       "img-long-alt": "Images with a long alt text",
@@ -609,8 +610,8 @@
       "description": "Following the redirects of this URL never reaches a page."
     },
     "soft-404-confirmed": {
-      "name": "Confirmed soft 404",
-      "description": "Answers 200, but its title or main heading says the page was not found. The page says it itself."
+      "name": "Probable soft 404 (title or heading)",
+      "description": "Answers successfully with little text, and its title or main heading contains a not-found phrase. This is a local heuristic, not confirmation by Google; review the page."
     },
     "soft-404-possible": {
       "name": "Possible soft 404 (detected from content)",
@@ -782,11 +783,11 @@
     },
     "title-too-long": {
       "name": "Too long",
-      "description": "Over 60 characters: search results may cut it short."
+      "description": "Over 60 characters, an advisory review threshold. Display width varies; check clarity and how the title appears in results."
     },
     "title-too-short": {
       "name": "Too short",
-      "description": "Under 30 characters: it is not being made the most of."
+      "description": "Under 30 characters, an advisory review threshold. A short title can be appropriate if it describes the page clearly."
     },
     "description-multiple": {
       "name": "Multiple",
@@ -806,11 +807,11 @@
     },
     "description-too-long": {
       "name": "Too long",
-      "description": "Over 155 characters: search results may cut it short."
+      "description": "Over 155 characters, an advisory review threshold rather than a search engine limit. Snippet length and content vary."
     },
     "description-too-short": {
       "name": "Too short",
-      "description": "Under 70 characters: it is not being made the most of."
+      "description": "Under 70 characters, an advisory review threshold. Review whether it explains the page; shorter descriptions can be appropriate."
     },
     "h1-missing": {
       "name": "H1 missing",
@@ -830,7 +831,7 @@
     },
     "h2-missing": {
       "name": "H2 missing",
-      "description": "The page has no H2, and it has enough text to be split into subsections."
+      "description": "No H2 on a page with at least 300 words. This is a review heuristic; subsections are useful only when the content needs them."
     },
     "h1-duplicate": {
       "name": "Duplicate H1",
@@ -838,7 +839,7 @@
     },
     "heading-too-long": {
       "name": "Heading too long",
-      "description": "There is a heading of over 70 characters."
+      "description": "A heading exceeds 70 characters. This is an advisory review threshold; judge readability in context."
     },
     "content-duplicate": {
       "name": "Exact duplicate",
@@ -854,27 +855,27 @@
     },
     "content-thin": {
       "name": "Thin content",
-      "description": "Under 200 words of content, leaving out menus, header and footer."
+      "description": "Under 200 words, excluding menus, header and footer. This advisory threshold does not establish content quality or a minimum SEO word count; review whether the page meets its purpose."
     },
     "img-no-alt": {
       "name": "No alt attribute",
       "description": "There are images with no alt attribute."
     },
     "img-empty-alt": {
-      "name": "Empty alt",
-      "description": "There are images with an empty alt. It can be right for decorative images, and those marked as such (role=\"presentation\" or aria-hidden) are not reported."
+      "name": "Review empty alt",
+      "description": "Empty alt is valid for decorative images and does not require role=\"presentation\". Review only whether any of these images convey information that needs alternative text; an empty alt alone is not an error."
     },
     "img-too-heavy": {
       "name": "Over 100 KB",
-      "description": "An image of this site is over 100 KB, going by what its server declares."
+      "description": "The server declares an image over 100 KB. This is an advisory review threshold; suitable size depends on dimensions, format and use."
     },
     "img-no-size": {
       "name": "No width/height",
-      "description": "There are images with no width or height, which makes the page shift as it loads."
+      "description": "Some images lack width or height attributes. Review layout stability; CSS or aspect-ratio may already reserve the needed space."
     },
     "img-long-alt": {
       "name": "Alt too long",
-      "description": "There are images with an alt of over 100 characters."
+      "description": "Alt text exceeds 100 characters. This is an advisory review threshold, not an accessibility limit; use the text needed to convey the image’s purpose."
     },
     "json-ld-invalid": {
       "name": "JSON-LD that does not parse",
@@ -1551,6 +1552,8 @@
     "add": "Add"
   },
   "IssueCatalog": {
+    "noFindings": "No findings recorded; applicability may be incomplete",
+    "unavailable": "Not checkable: indexing data unavailable",
     "groups": {
       "crawling": "Crawling",
       "indexing": "Indexing",

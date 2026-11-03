@@ -38,6 +38,7 @@ export const ISSUE_EVIDENCE = {
   'h1-duplicate': 'related-urls',
   'content-duplicate': 'related-urls',
   'content-near-duplicate': 'related-urls',
+  'canonical-not-indexable': 'related-urls',
   'canonical-conflict': 'canonicals',
   'canonical-repeated': 'canonicals',
   'canonical-outside-head': 'canonicals',

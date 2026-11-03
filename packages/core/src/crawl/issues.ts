@@ -43,7 +43,7 @@ const ISSUE_CATALOG = {
     'server-error': ['issue', 'high'],
     'client-error': ['issue', 'high'],
     'redirect-loop': ['issue', 'high'],
-    'soft-404-confirmed': ['issue', 'high'],
+    'soft-404-confirmed': ['warning', 'high'],
     'soft-404-possible': ['warning', 'high'],
     'redirect-chain': ['warning', 'medium'],
     'refresh-redirect': ['warning', 'medium'],
@@ -71,7 +71,7 @@ const ISSUE_CATALOG = {
   canonicals: {
     'canonical-outside-head': ['issue', 'high'],
     'canonical-conflict': ['issue', 'high'],
-    'canonical-not-indexable': ['issue', 'high'],
+    'canonical-not-indexable': ['issue', 'high', 'indexability-blocker'],
     'canonical-fragment': ['warning', 'medium'],
     'canonical-missing': ['warning', 'low'],
     canonicalised: ['warning', 'low'],
@@ -129,7 +129,7 @@ const ISSUE_CATALOG = {
   },
   images: {
     'img-no-alt': ['warning', 'high'],
-    'img-empty-alt': ['warning', 'low'],
+    'img-empty-alt': ['opportunity', 'low'],
     'img-too-heavy': ['opportunity', 'low'],
     'img-no-size': ['opportunity', 'low'],
     'img-long-alt': ['opportunity', 'low'],
@@ -221,7 +221,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  * Bump when a check in the worker changes what it finds without the catalog changing (the catalog
  * changing is noticed by itself).
  */
-const CHECKS_REVISION = 4
+const CHECKS_REVISION = 5
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.

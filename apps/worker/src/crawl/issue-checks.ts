@@ -31,6 +31,7 @@ import {
  * finding the crawl cannot back up: the page was parsed before that was kept.
  */
 interface Found {
+  details?: string[]
   evidence?: IssueEvidence
 }
 
@@ -290,13 +291,18 @@ export const CHECKS: Record<PageIssueId, Check> = {
   ),
   'canonical-not-indexable': onPage((url, _, site) => {
     const target = url.url.canonical ? site.get(url.url.canonical) : undefined
-    return (
-      target !== undefined &&
-      target !== url &&
-      target.internal &&
-      target.url.state === 'done' &&
-      !target.indexable
+    if (
+      !target ||
+      target === url ||
+      !target.internal ||
+      target.indexability.state !== 'not-indexable'
     )
+      return false
+    const address = boundedUrl(target.url.url)
+    return {
+      ...backedBy({ kind: 'related-urls', total: 1, urls: address ? [address] : [] }),
+      details: target.indexability.blockers,
+    }
   }),
   'canonical-fragment': onPage((_, facts) =>
     facts.canonicals.some((c) => c.raw.includes('#'))
@@ -577,7 +583,11 @@ export function detectIssues(url: AuditedUrl, site: Site): Finding[] {
     else if (Array.isArray(result)) {
       if (result.length > 0) found.push({ issue, details: result })
     } else if (result !== false) {
-      found.push({ issue, ...(result.evidence ? { evidence: result.evidence } : {}) })
+      found.push({
+        issue,
+        ...(result.details ? { details: result.details } : {}),
+        ...(result.evidence ? { evidence: result.evidence } : {}),
+      })
     }
   }
   return applyAuditPolicy(url, found)

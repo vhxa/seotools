@@ -1,11 +1,11 @@
-import { CheckIcon } from 'lucide-react'
+import { MinusIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { IssueCategory } from '@/components/pages/issue-category'
 import { IssueMark, ISSUE_TYPE_STYLES } from '@/components/pages/issue-mark'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { summariseIssues } from '@/lib/pages-issues'
+import { summariseIssues, zeroFindingState } from '@/lib/pages-issues'
 import { detailHref, type DetailQuery } from '@/lib/pages-query'
 import { cn } from '@/lib/utils'
 
@@ -20,8 +20,8 @@ const rowClass = (active: boolean) =>
 
 /**
  * Every issue there is, in its group and category, to filter the table by one. Each is a link: the
- * filter lives in the address, like the rest of what the table shows. An issue nothing has stays
- * there, dimmed and with a check, because knowing it was looked at is worth something too. Beside
+ * filter lives in the address, like the rest of what the table shows. Zero counts indicate no recorded
+ * findings, never proof that every URL was checkable or passed. Beside
  * the table on a wide screen, above it on a narrow one.
  */
 export async function IssuesFilter({
@@ -97,8 +97,8 @@ export async function IssuesFilter({
                             </Badge>
                           ) : (
                             <Badge variant="outline" className="text-muted-foreground">
-                              <CheckIcon aria-hidden />
-                              <span className="sr-only">{tCatalog('noneFound')}</span>
+                              <MinusIcon aria-hidden />
+                              <span className="sr-only">{tCatalog('noFindings')}</span>
                             </Badge>
                           )}
                         </>
@@ -122,7 +122,12 @@ export async function IssuesFilter({
                                 count === 0 && 'text-muted-foreground opacity-70',
                               )}
                             >
-                              <span>{tIssues(`${issue}.name`)}</span>
+                              <span>
+                                {tIssues(`${issue}.name`)}
+                                {count === 0 && zeroFindingState(issue) === 'unavailable' && (
+                                  <span className="block text-xs">{tCatalog('unavailable')}</span>
+                                )}
+                              </span>
                               {count > 0 && (
                                 <span className="text-muted-foreground tabular-nums">
                                   {format.number(count)}
@@ -133,12 +138,14 @@ export async function IssuesFilter({
                               {count > 0 ? (
                                 <IssueMark issue={issue} />
                               ) : (
-                                <span title={tCatalog('noneFound')}>
-                                  <CheckIcon
+                                <span title={tCatalog(zeroFindingState(issue))}>
+                                  <MinusIcon
                                     aria-hidden
                                     className="size-3.5 text-muted-foreground opacity-70"
                                   />
-                                  <span className="sr-only">{tCatalog('noneFound')}</span>
+                                  <span className="sr-only">
+                                    {tCatalog(zeroFindingState(issue))}
+                                  </span>
                                 </span>
                               )}
                             </span>

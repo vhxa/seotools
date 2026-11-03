@@ -64,3 +64,9 @@ export function summariseIssues(counts: { issue: string; pages: number }[]): Iss
     }),
   }))
 }
+
+/** Counts alone cannot establish applicability or successful checks for every URL. */
+export function zeroFindingState(issue: PageIssueId): 'unavailable' | 'noFindings' {
+  // No indexing source is collected yet; keep this distinct from crawl indexability.
+  return issue === 'indexed-not-in-sitemap' ? 'unavailable' : 'noFindings'
+}

@@ -1,6 +1,6 @@
 import { PAGE_ISSUE_IDS } from '@seotools/core/crawl/issues'
 import { describe, expect, it } from 'vitest'
-import { rankIssueCounts, summariseIssues } from './pages-issues'
+import { rankIssueCounts, summariseIssues, zeroFindingState } from './pages-issues'
 
 describe('rankIssueCounts', () => {
   it('puts the worst type first, then the most important, then the most widespread', () => {
@@ -68,5 +68,16 @@ describe('summariseIssues', () => {
     // Canonicals has issues in the catalog, but only a warning was found.
     expect(category('canonicals')?.worst).toBe('warning')
     expect(category('html')?.worst).toBeNull()
+  })
+})
+
+describe('zeroFindingState', () => {
+  it('does not interpret absent indexing evidence as a passed check', () => {
+    expect(zeroFindingState('indexed-not-in-sitemap')).toBe('unavailable')
+  })
+  it('does not claim exhaustive applicability from a zero count', () => {
+    for (const issue of PAGE_ISSUE_IDS.filter((id) => id !== 'indexed-not-in-sitemap')) {
+      expect(zeroFindingState(issue)).toBe('noFindings')
+    }
   })
 })
