@@ -1,0 +1,231 @@
+import {
+  URL_SCOPED_ISSUES,
+  compileAuditSnapshot,
+  crawlUrlHash,
+  isInternalUrl,
+  parseRobots,
+  type AuditResolver,
+  type AuditSnapshot,
+  type CrawlLinkKind,
+  type CrawlUrlSource,
+  type ParsedRobots,
+  type PageIssueId,
+  type VerificationOutcome,
+} from '@seotools/core'
+import type { CrawlUrl, CrawlUrlResult } from '@seotools/db'
+import { CHECKS, applyAuditPolicy, type Finding } from './issue-checks'
+import { auditUrl, type AuditedUrl, type Site } from './site-audit'
+
+/**
+ * Thrown by anything a recheck cannot know because it is about the rest of the site: other pages,
+ * who links here, the sitemaps. A check that reaches for it was not made, which is not the same as
+ * finding nothing.
+ */
+export class SiteContextError extends Error {
+  override name = 'SiteContextError'
+  constructor(what: string) {
+    super(`A recheck of some URLs does not know ${what}: only a full crawl does`)
+  }
+}
+
+const refuse = (what: string) => () => {
+  throw new SiteContextError(what)
+}
+
+/** What of a URL's place in the site is only known by looking at the whole site. */
+const SITE_FIELDS = [
+  'anchorsIn',
+  'followedAnchorsIn',
+  'anchorsFromIndexable',
+  'sitemaps',
+  'linksTo',
+  'clickDepth',
+] as const
+
+/**
+ * The URL as a recheck knows it: its own answer, and nothing the last crawl said about the rest of
+ * the site. Fields that come from the link graph or the sitemaps throw when read, so that a check
+ * that needs them cannot quietly run on zeros.
+ */
+function withoutSiteContext(url: AuditedUrl): AuditedUrl {
+  for (const field of SITE_FIELDS) {
+    Object.defineProperty(url, field, { get: refuse(`the ${field} of a URL`), configurable: true })
+  }
+  return url
+}
+
+/**
+ * A site that knows nothing but the time, the configuration and whether the site answers at all.
+ * Every other part of it throws when read.
+ */
+function siteOfARecheck(input: { now: Date; config: AuditSnapshot; answered: boolean }): Site {
+  const site = { now: input.now, config: input.config, answered: input.answered } as Site
+  const unknown: Record<string, string> = {
+    urls: 'the other URLs of the site',
+    titles: 'the titles of the other pages',
+    descriptions: 'the descriptions of the other pages',
+    h1s: 'the headings of the other pages',
+    texts: 'the texts of the other pages',
+    nearDuplicates: 'the texts of the other pages',
+  }
+  for (const [field, what] of Object.entries(unknown)) {
+    Object.defineProperty(site, field, { get: refuse(what) })
+  }
+  site.get = refuse('the other URLs of the site')
+  return site
+}
+
+/** What a recheck has besides the URLs themselves. */
+export interface RecheckContext {
+  host: string
+  now: Date
+  /** The audit configuration in force when the recheck ran. */
+  config: AuditSnapshot
+  resolver: AuditResolver
+  /** `robots.txt` as it answered to this recheck, by origin; an origin without a body is absent. */
+  robots: ReadonlyMap<string, ParsedRobots>
+  /**
+   * Whether the site answered at the last full crawl. Only used to tell a URL the crawler merely
+   * tried from one that is linked: see `linksIn`.
+   */
+  answered: boolean
+}
+
+export function recheckContext(input: {
+  host: string
+  now: Date
+  config: AuditSnapshot
+  /** The text of each origin's `robots.txt`, or `null` when it did not answer with one. */
+  robotsTexts: ReadonlyMap<string, string | null>
+  answered: boolean
+}): RecheckContext {
+  const robots = new Map<string, ParsedRobots>()
+  for (const [origin, text] of input.robotsTexts) {
+    if (text !== null) robots.set(origin, parseRobots(text))
+  }
+  return {
+    host: input.host,
+    now: input.now,
+    config: input.config,
+    resolver: compileAuditSnapshot(input.config, input.host),
+    robots,
+    answered: input.answered,
+  }
+}
+
+/**
+ * Counts the anchors a page has to other URLs of the site the way a crawl stores them (once per
+ * target and kind, never the page itself), so the two agree on `no-outgoing-links`.
+ */
+export function createAnchorCounter(host: string, pageUrl: string) {
+  const seen = new Set<string>()
+  let internal = 0
+  let nofollow = 0
+  return {
+    add(url: string, kind: CrawlLinkKind) {
+      if (kind !== 'anchor' && kind !== 'anchor-nofollow') return
+      if (url === pageUrl || !isInternalUrl(url, host)) return
+      const key = `${kind}:${url}`
+      if (seen.has(key)) return
+      seen.add(key)
+      internal++
+      if (kind === 'anchor-nofollow') nofollow++
+    },
+    get internal() {
+      return internal
+    },
+    get nofollow() {
+      return nofollow
+    },
+  }
+}
+
+export interface RecheckedUrl {
+  url: string
+  source: CrawlUrlSource
+  /** What it answered to the recheck, as a crawl would have kept it. */
+  answer: CrawlUrlResult
+  /**
+   * Whether the last full crawl found a link to it. It decides only whether the crawler merely
+   * tried the URL on its own (other schemes and `www` of the home page), which is not blamed for
+   * failing. Nothing else of the link graph is used.
+   */
+  linksIn: number
+  /** Anchors to other URLs of the site that the fresh page has: `createAnchorCounter`. */
+  anchors: { internal: number; nofollow: number }
+}
+
+/**
+ * What a recheck concludes about a URL: whether it is audited and what is expected of it under the
+ * configuration in force, what it saw, and the findings among the issues that can be told from the
+ * URL itself (`URL_SCOPED_ISSUES`). The checks are the ones of a full crawl, with the same audit
+ * policy applied after them; the rest of the site is not available to them.
+ *
+ * An issue that needs the site is not in the findings and not in `unchecked`: it is not a recheck's
+ * to say. One that was meant to be settled here and could not be (a check that reached for the
+ * site) is in `unchecked`, so it is never read as absent.
+ */
+/**
+ * The URL and the site a check is run against in a recheck: the fresh answer, and nothing of the
+ * rest of the site (see `withoutSiteContext` and `siteOfARecheck`).
+ */
+export function recheckSubject(
+  input: RecheckedUrl,
+  context: RecheckContext,
+): { url: AuditedUrl; site: Site } {
+  const row: CrawlUrl = {
+    ...input.answer,
+    crawlId: 'recheck',
+    url: input.url,
+    urlHash: crawlUrlHash(input.url),
+    scope: 'internal',
+    source: input.source,
+    depth: 0,
+    state: 'done',
+    fetchedAt: context.now,
+  }
+  const url = withoutSiteContext(auditUrl(row, context.robots, context.resolver))
+  url.linksIn = input.linksIn
+  url.internalAnchorsOut = input.anchors.internal
+  url.nofollowAnchorsOut = input.anchors.nofollow
+  const site = siteOfARecheck({
+    now: context.now,
+    config: context.config,
+    answered: context.answered,
+  })
+  return { url, site }
+}
+
+export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): VerificationOutcome {
+  const { url, site } = recheckSubject(input, context)
+  const found: Finding[] = []
+  const unchecked: PageIssueId[] = []
+  for (const issue of URL_SCOPED_ISSUES) {
+    try {
+      const result = CHECKS[issue](url, site)
+      if (result === true) found.push({ issue })
+      else if (Array.isArray(result)) {
+        if (result.length > 0) found.push({ issue, details: result })
+      } else if (result !== false) {
+        found.push({ issue, ...(result.evidence ? { evidence: result.evidence } : {}) })
+      }
+    } catch (error) {
+      if (!(error instanceof SiteContextError)) throw error
+      unchecked.push(issue)
+    }
+  }
+
+  return {
+    audit: {
+      participation: url.participation,
+      participationRule: url.participationRule?.id ?? null,
+      intent: url.intent,
+      intentRule: url.intentRule?.id ?? null,
+      acceptNofollow: url.acceptNofollow,
+      indexability: url.indexability.state,
+      blockers: url.indexability.blockers,
+    },
+    findings: applyAuditPolicy(url, found),
+    unchecked,
+  }
+}

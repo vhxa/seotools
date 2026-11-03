@@ -114,4 +114,25 @@ describe('runDueSchedules', () => {
       error: 'out of attempts',
     })
   })
+
+  it('frees domains whose recheck job gave up, and leaves their crawls alone', async () => {
+    const recheck = await db.verifications.start({
+      domainId,
+      baseCrawlId: 'a-crawl',
+      urls: [{ url: 'https://example.com/a', urlHash: 'a'.repeat(32), source: 'link' }],
+    })
+    const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    await db.jobs.claim({ workerId: 'w', limit: 1 })
+    await db.jobs.fail({ id: recheck!.jobId, workerId: 'w', error: 'out of attempts' })
+
+    await runDueSchedules(db, log, now)
+
+    expect(await db.verifications.active(domainId)).toBeNull()
+    expect(await db.verifications.get(recheck!.id)).toMatchObject({
+      status: 'failed',
+      error: 'out of attempts',
+    })
+    // The crawl's job is still waiting, so its crawl is still active.
+    expect((await db.crawls.active(domainId))?.id).toBe(crawl!.id)
+  })
 })

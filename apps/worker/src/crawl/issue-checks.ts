@@ -513,7 +513,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'content-before-head': onPage((_, facts) => facts.headNotFirst),
 }
 
-type Finding = { issue: PageIssueId; details?: string[]; evidence?: IssueEvidence }
+export type Finding = { issue: PageIssueId; details?: string[]; evidence?: IssueEvidence }
 
 /**
  * The finding each blocker of indexation already has when nobody declared anything. A page the user

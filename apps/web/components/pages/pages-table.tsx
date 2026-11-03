@@ -8,6 +8,7 @@ import {
 } from '@seotools/core/crawl/issues'
 import type { CrawlUrlKind } from '@seotools/core'
 import type { AuditParticipation, RecordedIntent } from '@seotools/core/crawl/audit'
+import { MAX_VERIFICATION_URLS } from '@seotools/core/crawl/verification'
 import type { IndexabilityState } from '@seotools/core/crawl/indexability'
 import type { CrawlUrlSort } from '@seotools/db'
 import {
@@ -25,6 +26,7 @@ import {
   ArrowUpIcon,
   ChevronDownIcon,
   Columns3Icon,
+  RefreshCwIcon,
   EyeOffIcon,
   ExternalLinkIcon,
   SearchIcon,
@@ -40,6 +42,7 @@ import {
   setPriorityUrlAction,
   setPriorityUrlsAction,
 } from '@/app/(protected)/domains/[host]/actions'
+import { recheckUrlsAction } from '@/app/(protected)/domains/[host]/verify-actions'
 import { AuditDialog, type AuditDialogPreset } from '@/components/audit/audit-dialog'
 import {
   IndexabilityBadge,
@@ -50,6 +53,7 @@ import {
 } from '@/components/audit/state-badges'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueBadge, IssueDetails, useIssueLabel } from '@/components/pages/issue-mark'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { OpenUrlLink } from '@/components/pages/url-drawer'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -499,6 +503,9 @@ export function PagesTable({
 }) {
   const t = useTranslations('PagesDetails')
   const tCatalog = useTranslations('IssueCatalog')
+  const tRecheck = useTranslations('Verification')
+  const router = useRouter()
+  const [recheckError, setRecheckError] = useState<string | null>(null)
   const [stored, saveColumns] = useLocalStorage(STORAGE_KEY)
   const columnVisibility = useMemo(() => parseVisibility(stored), [stored])
   const detail: IssueDetailKind | undefined =
@@ -542,8 +549,30 @@ export function PagesTable({
       setSelection({})
     })
 
+  /** Asks the worker to request the selected URLs again, without a crawl. */
+  const recheck = () =>
+    startTransition(async () => {
+      setRecheckError(null)
+      const state = await recheckUrlsAction(
+        host,
+        selectedInternal.map((row) => row.url),
+      )
+      if (state.error) {
+        setRecheckError(state.error)
+        return
+      }
+      setSelection({})
+      // The banner above the table follows it from here.
+      router.refresh()
+    })
+
   return (
     <div className="grid gap-3">
+      {recheckError && (
+        <Alert variant="destructive">
+          <AlertDescription>{recheckError}</AlertDescription>
+        </Alert>
+      )}
       {/* One row whatever the selection: what appears for it goes between the search and the
           right-hand controls, and nothing there changes size, so nothing below ever moves. */}
       <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
@@ -599,6 +628,15 @@ export function PagesTable({
                       <DropdownMenuItem onClick={() => setAuditDialog({})}>
                         <SlidersHorizontalIcon />
                         {t('bulk.configureAudit')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={selectedInternal.length > MAX_VERIFICATION_URLS}
+                        onClick={recheck}
+                      >
+                        <RefreshCwIcon />
+                        {selectedInternal.length > MAX_VERIFICATION_URLS
+                          ? tRecheck('bulk.recheckLimit', { max: MAX_VERIFICATION_URLS })
+                          : tRecheck('bulk.recheck')}
                       </DropdownMenuItem>
                     </>
                   )}

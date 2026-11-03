@@ -160,6 +160,146 @@
       "invalidSchedule": "Revisa la frecuencia, el día y la hora de la programación."
     }
   },
+  "Verification": {
+    "starting": "Iniciando…",
+    "recheckUrl": "Volver a comprobar esta URL",
+    "bulk": {
+      "recheck": "Volver a comprobar sin rastreo",
+      "recheckLimit": "Volver a comprobar sin rastreo (hasta {max, number} URLs)"
+    },
+    "errors": {
+      "none": "Elige al menos una URL para volver a comprobar.",
+      "invalid": "Ninguna de ellas es una URL de {host}.",
+      "tooMany": "Una recomprobación admite hasta {max, number} URLs a la vez. Elige menos.",
+      "noCrawl": "Todavía no hay un rastreo completo con el que comparar. Lanza uno primero.",
+      "notInCrawl": "El último rastreo completo no tiene esas URLs, o son archivos para rastreadores, que se actualizan desde Archivos de rastreo.",
+      "alreadyRunning": "Este dominio ya está recomprobando URLs. Espera a que termine o cancélala."
+    },
+    "status": {
+      "pending": "esperando para empezar",
+      "running": "en curso",
+      "completed": "terminada",
+      "failed": "fallida",
+      "cancelled": "cancelada"
+    },
+    "banner": {
+      "active": {
+        "title": "Recomprobando {count, plural, one {# URL} other {# URLs}}",
+        "progressLabel": "Progreso de la recomprobación",
+        "waiting": "Empieza en cuanto no haya ningún rastreo de este dominio en curso.",
+        "progress": "{done, number} de {total, number} URLs solicitadas de nuevo."
+      },
+      "viewResults": "Ver resultados",
+      "cancel": "Cancelar",
+      "done": {
+        "title": "Recomprobadas {count, plural, one {# URL} other {# URLs}}",
+        "description": "El último rastreo completo no ha cambiado. Abre los resultados para ver qué está corregido y qué sigue necesitando un rastreo completo."
+      },
+      "failed": {
+        "title": "La recomprobación ha fallado",
+        "description": "{error}"
+      }
+    },
+    "detail": {
+      "title": "Recomprobación",
+      "scope": "Una recomprobación solicita esta URL de nuevo y juzga lo que responde por sí sola, sin rastreo. El último rastreo completo no cambia. Los hallazgos que dependen de otras páginas o de enlaces (duplicados, enlaces hacia esta página, sitemaps, hreflang, cadenas de redirecciones) solo los confirma un rastreo completo.",
+      "waiting": "Esta URL está esperando a ser solicitada de nuevo.",
+      "busy": "Hay otra recomprobación de este dominio en curso. Un dominio recomprueba un lote cada vez.",
+      "never": "No se ha recomprobado desde el último rastreo completo.",
+      "rechecked": "Recomprobada {when}",
+      "rules": {
+        "current": "Con las reglas actuales",
+        "changed": "Las reglas han cambiado",
+        "changedNote": "Las reglas de auditoría cambiaron después de esta recomprobación, así que las exclusiones y la indexación esperada pueden ser distintas ahora. Vuelve a comprobarla para aplicarlas."
+      },
+      "fields": {
+        "status": "Estado",
+        "error": "Error",
+        "redirectTo": "Redirige a",
+        "responseTime": "Tiempo de respuesta",
+        "title": "Título ahora",
+        "canonical": "Canonical ahora",
+        "metaRobots": "Meta robots ahora",
+        "xRobotsTag": "X-Robots-Tag ahora",
+        "audit": "Auditoría",
+        "indexability": "Estado técnico"
+      },
+      "notSet": "Sin definir",
+      "responseTime": "{value, number} ms",
+      "excluded": "Esta URL está fuera de la auditoría, así que no tiene hallazgos propios. Aun así se ha solicitado de nuevo.",
+      "found": {
+        "title": "Encontrado en la recomprobación",
+        "none": "La recomprobación no ha encontrado ninguno de los problemas que puede determinar.",
+        "remaining": "Sigue ahí",
+        "appeared": "Nuevo"
+      },
+      "fixed": {
+        "title": "Ya no se encuentra",
+        "note": "El rastreo del {when} encontró esto en esta URL; la recomprobación no."
+      },
+      "notComparable": {
+        "rules-changed": "No se ha comparado con el último rastreo completo: se analizó con otras reglas de auditoría, así que un hallazgo podría aparecer o desaparecer solo porque las reglas cambiaron.",
+        "not-analysed": "No se ha comparado con el último rastreo completo: no se ha analizado en busca de problemas."
+      },
+      "unchecked": {
+        "title": "No se ha podido comprobar solo con esta URL"
+      },
+      "pending": {
+        "title": "Pendiente de un rastreo completo",
+        "none": "El último rastreo completo no encontró en esta URL nada que solo un rastreo completo pueda determinar.",
+        "note": "Dependen de otras páginas o de enlaces. Quedan como los dejó el rastreo del {when}: una recomprobación no dice si siguen ahí.",
+        "badge": "Necesita un rastreo completo"
+      }
+    },
+    "results": {
+      "metaTitle": "Recomprobación · {host} · seotools",
+      "back": "Volver a las tareas",
+      "title": "Recomprobación de {count, plural, one {# URL} other {# URLs}}",
+      "cancel": "Cancelar",
+      "summary": "{done, number} de {total, number} URLs solicitadas de nuevo · iniciada {when}",
+      "failed": {
+        "title": "La recomprobación ha fallado",
+        "description": "{error}"
+      },
+      "waiting": {
+        "title": "Esperando para empezar",
+        "description": "Una recomprobación espera mientras haya un rastreo de este dominio en curso, y empieza en cuanto termina."
+      },
+      "totals": {
+        "title": "Qué ha encontrado la recomprobación",
+        "fixed": "Ya no se encuentran",
+        "remaining": "Siguen ahí",
+        "appeared": "Nuevos",
+        "pending": "Pendientes de un rastreo completo"
+      },
+      "scope": "Comparado con el último rastreo completo del que se eligieron las URLs, que una recomprobación no cambia. Los hallazgos que dependen de otras páginas o de enlaces se cuentan como pendientes: solo un rastreo completo dice si siguen ahí.",
+      "notComparable": "Algunas URLs no se compararon con el rastreo: se analizó con otras reglas de auditoría, o no se analizó.",
+      "stale": "Las reglas de auditoría cambiaron después de recomprobar algunas de estas. Vuelve a comprobarlas para aplicar las reglas actuales.",
+      "columns": {
+        "url": "URL",
+        "status": "Estado",
+        "found": "Encontrados ahora",
+        "fixed": "Ya no se encuentran",
+        "remaining": "Siguen ahí",
+        "appeared": "Nuevos",
+        "pending": "Pendientes"
+      },
+      "excluded": "Fuera de la auditoría",
+      "rulesChanged": "Las reglas han cambiado",
+      "queued": "Esperando"
+    },
+    "jobs": {
+      "title": "Recomprobaciones",
+      "description": "Solicita algunas URLs de nuevo tras una corrección, sin rastreo, y juzga lo que responde cada una por sí sola. Inicia una desde la tabla de páginas o desde el detalle de una URL.",
+      "status": "Estado",
+      "started": "Inicio",
+      "urls": "URLs",
+      "urlsDone": "{done, number} de {total, number}",
+      "error": "Error",
+      "empty": "Todavía no hay recomprobaciones.",
+      "view": "Ver"
+    }
+  },
   "Pages": {
     "metaTitle": "Páginas · {host} · seotools",
     "title": "Páginas",

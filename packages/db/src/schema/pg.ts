@@ -480,6 +480,77 @@ export const priorityUrls = pgTable(
 )
 
 /**
+ * A recheck of some URLs of a domain, without a crawl: what asked for it, how it is going and what
+ * ran it. It hangs off the domain and never changes a crawl. A domain has one active recheck at most.
+ */
+export const urlVerifications = pgTable(
+  'url_verifications',
+  {
+    id: text('id').primaryKey(),
+    domainId: text('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    status: text('status', {
+      enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
+    })
+      .notNull()
+      .default('pending'),
+    jobId: text('job_id').notNull(),
+    /** The domain id while the recheck is active, `null` after: unique, so one per domain at most. */
+    activeKey: text('active_key').unique(),
+    /** The full crawl the URLs were picked from. Not a reference: it outlives its results. */
+    baseCrawlId: text('base_crawl_id').notNull(),
+    urlsCount: integer('urls_count').notNull().default(0),
+    urlsDoneCount: integer('urls_done_count').notNull().default(0),
+    error: text('error'),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+    startedAt: ts('started_at'),
+    finishedAt: ts('finished_at'),
+  },
+  (t) => [index('url_verifications_domain_created_idx').on(t.domainId, t.createdAt)],
+)
+
+/**
+ * The URLs of a recheck: the queue of what is left to request, and what each one answered and
+ * concluded. Removed with the recheck.
+ */
+export const urlVerificationUrls = pgTable(
+  'url_verification_urls',
+  {
+    verificationId: text('verification_id')
+      .notNull()
+      .references(() => urlVerifications.id, { onDelete: 'cascade' }),
+    urlHash: text('url_hash').notNull(),
+    url: text('url').notNull(),
+    source: text('source').notNull(),
+    state: text('state', { enum: ['queued', 'done'] }).notNull(),
+    kind: text('kind', { enum: ['page', 'redirect', 'resource', 'unknown'] })
+      .notNull()
+      .default('unknown'),
+    statusCode: integer('status_code'),
+    contentType: text('content_type'),
+    redirectTo: text('redirect_to'),
+    title: text('title'),
+    metaRobots: text('meta_robots'),
+    xRobotsTag: text('x_robots_tag'),
+    canonical: text('canonical'),
+    responseTimeMs: integer('response_time_ms'),
+    bytes: integer('bytes'),
+    error: text('error'),
+    /** The version of the audit configuration `outcome` was concluded under. */
+    auditVersion: integer('audit_version'),
+    /** JSON (`VerificationOutcome`): what was concluded about the URL. */
+    outcome: text('outcome'),
+    fetchedAt: ts('fetched_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.verificationId, t.urlHash] }),
+    index('url_verification_urls_queue_idx').on(t.verificationId, t.state),
+    index('url_verification_urls_hash_idx').on(t.urlHash),
+  ],
+)
+
+/**
  * What a domain's files for crawlers answered the last time they were requested, by a crawl or a
  * refresh. There is no history: each request replaces the row of its URL.
  */

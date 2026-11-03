@@ -19,6 +19,7 @@ import { createFaviconRefresher } from './favicon/refresh'
 import { handlers } from './handlers'
 import { createAuditRecomputeHandler } from './handlers/audit-recompute'
 import { createCrawlRunHandler } from './handlers/crawl-run'
+import { createUrlVerifyHandler } from './handlers/url-verify'
 import { createRunner } from './runner'
 import { runDueSchedules } from './scheduler'
 
@@ -47,7 +48,8 @@ async function main() {
     pollIntervalMs: env.WORKER_POLL_INTERVAL_MS,
     lockTimeoutMs: env.JOB_LOCK_TIMEOUT_MS,
   }
-  const crawlTypes = [JOB_TYPES.crawlRun]
+  // Both make requests to a site, so both run in the crawl lane.
+  const crawlTypes = [JOB_TYPES.crawlRun, JOB_TYPES.urlVerify]
   const runner = createRunner({
     ...shared,
     log,
@@ -61,6 +63,11 @@ async function main() {
     log: log.child({ lane: 'crawl' }),
     handlers: {
       [JOB_TYPES.crawlRun]: createCrawlRunHandler({
+        db,
+        allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
+        appVersion: pkg.version,
+      }),
+      [JOB_TYPES.urlVerify]: createUrlVerifyHandler({
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,

@@ -19,6 +19,7 @@ import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { OpenUrlLink } from '@/components/pages/url-drawer'
+import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Badge } from '@/components/ui/badge'
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { formatBytes } from '@/lib/format'
@@ -231,6 +232,8 @@ export async function UrlDetail({
           </ul>
         )}
       </Section>
+
+      <UrlRecheck host={host} data={data} />
 
       {isPage && (
         <Section title={t('sections.page')}>

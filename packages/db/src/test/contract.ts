@@ -4,13 +4,22 @@ import {
   EMPTY_AUDIT_SNAPSHOT,
   JOB_TYPES,
   compileAuditRules,
+  MAX_VERIFICATION_URLS,
   crawlUrlHash,
   type CrawlRecurrence,
   type CrawlUrlKind,
+  type VerificationOutcome,
 } from '@seotools/core'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createFirstAdmin, needsSetup } from '../admin'
-import type { CrawlUrlResult, Database, NewCrawlFile, NewCrawlUrl } from '../types'
+import type {
+  CrawlUrlResult,
+  Database,
+  NewCrawlFile,
+  NewCrawlUrl,
+  NewVerificationUrl,
+  VerificationAnswer,
+} from '../types'
 import { addDomain, createCompany } from '../workspace'
 
 const minutes = (n: number) => n * 60_000
@@ -167,6 +176,26 @@ export function describeDatabaseContract(
           id: job.id,
           attempts: 1,
         })
+      })
+
+      it('can hand a job back to run later, not before', async () => {
+        const job = await db.jobs.enqueue({ type: 't' })
+        const now = new Date()
+        await db.jobs.claim({ workerId: 'w1', limit: 1, now })
+
+        const later = new Date(now.getTime() + minutes(10))
+        await db.jobs.release({ id: job.id, workerId: 'w1', runAt: later })
+        expect(await db.jobs.get(job.id)).toMatchObject({
+          status: 'pending',
+          attempts: 0,
+          lockedBy: null,
+        })
+        expect(await db.jobs.claim({ workerId: 'w1', limit: 1, now })).toEqual([])
+        expect(
+          (
+            await db.jobs.claim({ workerId: 'w1', limit: 1, now: new Date(later.getTime() + 1) })
+          ).map((claimed) => claimed.id),
+        ).toEqual([job.id])
       })
 
       it('lists newest first and counts by status', async () => {
@@ -3130,6 +3159,411 @@ export function describeDatabaseContract(
             expect(history.map((entry) => entry.urlHash)).toEqual([hashOf('/')])
           })
         })
+      })
+    })
+
+    describe('rechecks of some URLs', () => {
+      const verificationUrl = (url: string, overrides: Partial<NewVerificationUrl> = {}) => ({
+        url,
+        urlHash: crawlUrlHash(url),
+        source: 'link' as const,
+        ...overrides,
+      })
+      const answer = (overrides: Partial<VerificationAnswer> = {}): VerificationAnswer => ({
+        kind: 'page',
+        statusCode: 200,
+        contentType: 'text/html',
+        redirectTo: null,
+        title: 'A title',
+        metaRobots: null,
+        xRobotsTag: null,
+        canonical: null,
+        responseTimeMs: 15,
+        bytes: 1200,
+        error: null,
+        ...overrides,
+      })
+      const outcome = (issues: string[] = [], overrides: Partial<VerificationOutcome> = {}) => ({
+        audit: {
+          participation: 'audited' as const,
+          participationRule: null,
+          intent: 'indexable' as const,
+          intentRule: null,
+          acceptNofollow: false,
+          indexability: 'indexable' as const,
+          blockers: [],
+        },
+        findings: issues.map((issue) => ({ issue })),
+        unchecked: [],
+        ...overrides,
+      })
+      const domainOf = async (host = 'acme.com') => {
+        const created = await createCompany(db, { name: host, domain: host })
+        if (!created.ok) throw new Error('setup failed')
+        return created.domain.id
+      }
+      const startVerification = async (
+        domainId: string,
+        urls = [verificationUrl('https://acme.com/a')],
+      ) => {
+        const started = await db.verifications.start({
+          domainId,
+          baseCrawlId: 'a-full-crawl',
+          urls,
+        })
+        if (!started) throw new Error('recheck did not start')
+        return started
+      }
+
+      it('starts a recheck together with its URLs and the job that runs it', async () => {
+        const domainId = await domainOf()
+        const urls = [verificationUrl('https://acme.com/b'), verificationUrl('https://acme.com/a')]
+        const verification = await startVerification(domainId, urls)
+
+        expect(verification).toMatchObject({
+          domainId,
+          status: 'pending',
+          baseCrawlId: 'a-full-crawl',
+          urlsCount: 2,
+          urlsDoneCount: 0,
+          error: null,
+          startedAt: null,
+          finishedAt: null,
+        })
+        expect(await db.jobs.get(verification.jobId)).toMatchObject({
+          type: JOB_TYPES.urlVerify,
+          status: 'pending',
+          payload: { verificationId: verification.id },
+        })
+        expect((await db.verifications.active(domainId))?.id).toBe(verification.id)
+        expect(await db.verifications.queued(verification.id, 10)).toEqual([
+          verificationUrl('https://acme.com/a'),
+          verificationUrl('https://acme.com/b'),
+        ])
+        expect(await db.verifications.urlsOf(verification.id)).toMatchObject([
+          { url: 'https://acme.com/a', state: 'queued', outcome: null, fetchedAt: null },
+          { url: 'https://acme.com/b', state: 'queued' },
+        ])
+      })
+
+      it('is not a crawl: it leaves the crawls alone and does not block them', async () => {
+        const domainId = await domainOf()
+        await startVerification(domainId)
+        expect(await db.crawls.active(domainId)).toBeNull()
+        expect(await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })).not.toBeNull()
+        expect(await db.crawls.list(domainId)).toHaveLength(1)
+      })
+
+      it('allows one active recheck per domain, and the other domains their own', async () => {
+        const domainId = await domainOf()
+        const otherId = await domainOf('other.com')
+        const first = await startVerification(domainId)
+
+        expect(
+          await db.verifications.start({
+            domainId,
+            baseCrawlId: 'a-full-crawl',
+            urls: [verificationUrl('https://acme.com/z')],
+          }),
+        ).toBeNull()
+        expect(await db.verifications.list(domainId)).toHaveLength(1)
+        expect((await db.jobs.countByStatus()).pending).toBe(1)
+        expect(
+          await db.verifications.start({
+            domainId: otherId,
+            baseCrawlId: 'a-full-crawl',
+            urls: [verificationUrl('https://other.com/')],
+          }),
+        ).not.toBeNull()
+
+        await db.verifications.finish(first.id, { status: 'completed' })
+        expect(await db.verifications.active(domainId)).toBeNull()
+        expect(
+          await db.verifications.start({
+            domainId,
+            baseCrawlId: 'a-full-crawl',
+            urls: [verificationUrl('https://acme.com/z')],
+          }),
+        ).not.toBeNull()
+      })
+
+      it('lets exactly one of several concurrent starts win', async () => {
+        const domainId = await domainOf()
+        const results = await Promise.all(
+          [1, 2, 3, 4].map(() =>
+            db.verifications.start({
+              domainId,
+              baseCrawlId: 'a-full-crawl',
+              urls: [verificationUrl('https://acme.com/a')],
+            }),
+          ),
+        )
+        expect(results.filter(Boolean)).toHaveLength(1)
+        expect(await db.verifications.list(domainId)).toHaveLength(1)
+        expect((await db.jobs.countByStatus()).pending).toBe(1)
+      })
+
+      it('takes a bounded number of URLs, each once, and writes nothing otherwise', async () => {
+        const domainId = await domainOf()
+        const many = Array.from({ length: MAX_VERIFICATION_URLS + 1 }, (_, i) =>
+          verificationUrl(`https://acme.com/${i}`),
+        )
+        const start = (urls: NewVerificationUrl[]) =>
+          db.verifications.start({ domainId, baseCrawlId: 'a-full-crawl', urls })
+
+        await expect(start([])).rejects.toThrow(RangeError)
+        await expect(start(many)).rejects.toThrow(RangeError)
+        await expect(
+          start([verificationUrl('https://acme.com/a'), verificationUrl('https://acme.com/a')]),
+        ).rejects.toThrow(RangeError)
+        expect(await db.verifications.list(domainId)).toEqual([])
+        expect((await db.jobs.countByStatus()).pending).toBe(0)
+        await expect(start(many.slice(0, MAX_VERIFICATION_URLS))).resolves.not.toBeNull()
+      })
+
+      it('runs, cancels and finishes only while active', async () => {
+        const domainId = await domainOf()
+        const verification = await startVerification(domainId)
+
+        const running = await db.verifications.markRunning(verification.id)
+        expect(running?.status).toBe('running')
+        expect(running?.startedAt).toBeInstanceOf(Date)
+        // Running it again (a retry) neither fails nor moves when it started.
+        expect((await db.verifications.markRunning(verification.id))?.startedAt).toEqual(
+          running?.startedAt,
+        )
+
+        expect(await db.verifications.cancel(verification.id)).toBe(true)
+        expect(await db.verifications.cancel(verification.id)).toBe(false)
+        expect(await db.verifications.markRunning(verification.id)).toBeNull()
+        expect(await db.verifications.finish(verification.id, { status: 'completed' })).toBe(false)
+        expect(await db.verifications.get(verification.id)).toMatchObject({ status: 'cancelled' })
+        expect((await db.verifications.get(verification.id))?.finishedAt).toBeInstanceOf(Date)
+        expect(await db.verifications.active(domainId)).toBeNull()
+      })
+
+      it('records what a URL answered and concluded, and counts it once', async () => {
+        const domainId = await domainOf()
+        const a = verificationUrl('https://acme.com/a')
+        const b = verificationUrl('https://acme.com/b')
+        const verification = await startVerification(domainId, [a, b])
+        await db.verifications.markRunning(verification.id)
+
+        const first = {
+          verificationId: verification.id,
+          urlHash: a.urlHash,
+          answer: answer({ title: 'Fresh title', statusCode: 200 }),
+          auditVersion: 4,
+          outcome: outcome(['title-too-short'], { unchecked: ['noindex'] }),
+        }
+        expect(await db.verifications.recordResult(first)).toBe(true)
+        // Idempotent: a retried job writes the same result again, and the count does not grow.
+        expect(await db.verifications.recordResult(first)).toBe(true)
+
+        expect(await db.verifications.queued(verification.id, 10)).toEqual([b])
+        expect((await db.verifications.get(verification.id))?.urlsDoneCount).toBe(1)
+        const [stored] = await db.verifications.urlsOf(verification.id)
+        expect(stored).toMatchObject({
+          url: a.url,
+          state: 'done',
+          kind: 'page',
+          statusCode: 200,
+          title: 'Fresh title',
+          auditVersion: 4,
+          outcome: outcome(['title-too-short'], { unchecked: ['noindex'] }),
+        })
+        expect(stored?.fetchedAt).toBeInstanceOf(Date)
+      })
+
+      it('stores a failed request as an answer of its own', async () => {
+        const domainId = await domainOf()
+        const a = verificationUrl('https://acme.com/a')
+        const verification = await startVerification(domainId, [a])
+        await db.verifications.recordResult({
+          verificationId: verification.id,
+          urlHash: a.urlHash,
+          answer: answer({
+            kind: 'unknown',
+            statusCode: null,
+            contentType: null,
+            title: null,
+            error: 'ETIMEDOUT: timed out',
+            bytes: null,
+          }),
+          auditVersion: 0,
+          outcome: outcome(['no-response']),
+        })
+        expect((await db.verifications.urlsOf(verification.id))[0]).toMatchObject({
+          state: 'done',
+          kind: 'unknown',
+          statusCode: null,
+          error: 'ETIMEDOUT: timed out',
+        })
+      })
+
+      it('writes nothing once the recheck has ended, or for a URL it does not have', async () => {
+        const domainId = await domainOf()
+        const a = verificationUrl('https://acme.com/a')
+        const verification = await startVerification(domainId, [a])
+        const result = (urlHash: string) => ({
+          verificationId: verification.id,
+          urlHash,
+          answer: answer(),
+          auditVersion: 0,
+          outcome: outcome(),
+        })
+
+        expect(await db.verifications.recordResult(result('not-a-url-of-it'))).toBe(false)
+        await db.verifications.cancel(verification.id)
+        expect(await db.verifications.recordResult(result(a.urlHash))).toBe(false)
+        expect((await db.verifications.urlsOf(verification.id))[0]?.state).toBe('queued')
+        expect((await db.verifications.get(verification.id))?.urlsDoneCount).toBe(0)
+      })
+
+      it('keeps a recheck of one domain from writing to another domain’s', async () => {
+        const domainId = await domainOf()
+        const otherId = await domainOf('other.com')
+        const a = verificationUrl('https://acme.com/a')
+        const mine = await startVerification(domainId, [a])
+        await db.verifications.start({
+          domainId: otherId,
+          baseCrawlId: 'a-full-crawl',
+          urls: [verificationUrl('https://other.com/a')],
+        })
+        const ofOther = (await db.verifications.active(otherId))!
+
+        // The same hash under the other recheck is not a URL of it.
+        expect(
+          await db.verifications.recordResult({
+            verificationId: ofOther.id,
+            urlHash: a.urlHash,
+            answer: answer(),
+            auditVersion: 0,
+            outcome: outcome(),
+          }),
+        ).toBe(false)
+        expect((await db.verifications.urlsOf(mine.id))[0]?.state).toBe('queued')
+      })
+
+      it('ends with the count of what was done', async () => {
+        const domainId = await domainOf()
+        const a = verificationUrl('https://acme.com/a')
+        const b = verificationUrl('https://acme.com/b')
+        const verification = await startVerification(domainId, [a, b])
+        await db.verifications.recordResult({
+          verificationId: verification.id,
+          urlHash: a.urlHash,
+          answer: answer(),
+          auditVersion: 0,
+          outcome: outcome(),
+        })
+
+        expect(
+          await db.verifications.finish(verification.id, { status: 'failed', error: 'boom' }),
+        ).toBe(true)
+        expect(await db.verifications.get(verification.id)).toMatchObject({
+          status: 'failed',
+          error: 'boom',
+          urlsCount: 2,
+          urlsDoneCount: 1,
+        })
+      })
+
+      it('fails active rechecks whose job has given up', async () => {
+        const domainId = await domainOf()
+        const verification = await startVerification(domainId)
+        expect(await db.verifications.failOrphaned()).toBe(0)
+
+        await db.jobs.claim({ workerId: 'w1', limit: 1 })
+        await db.jobs.fail({ id: verification.jobId, workerId: 'w1', error: 'it broke' })
+        expect(await db.verifications.failOrphaned()).toBe(1)
+        expect(await db.verifications.get(verification.id)).toMatchObject({
+          status: 'failed',
+          error: 'it broke',
+        })
+        expect(await db.verifications.active(domainId)).toBeNull()
+        expect(await db.verifications.failOrphaned()).toBe(0)
+      })
+
+      it('finds the latest finished result of each URL, in the domain asked about only', async () => {
+        const domainId = await domainOf()
+        const otherId = await domainOf('other.com')
+        const a = verificationUrl('https://acme.com/a')
+        const b = verificationUrl('https://acme.com/b')
+        const record = async (
+          id: string,
+          url: NewVerificationUrl,
+          issues: string[],
+          version: number,
+        ) => {
+          await db.verifications.recordResult({
+            verificationId: id,
+            urlHash: url.urlHash,
+            answer: answer(),
+            auditVersion: version,
+            outcome: outcome(issues),
+          })
+        }
+
+        const first = await startVerification(domainId, [a, b])
+        await record(first.id, a, ['title-missing'], 1)
+        await db.verifications.finish(first.id, { status: 'completed' })
+        await new Promise((r) => setTimeout(r, 5))
+        const second = await startVerification(domainId, [a])
+        await record(second.id, a, [], 2)
+
+        // The same URL under the same hash, in another domain's recheck.
+        const foreign = await db.verifications.start({
+          domainId: otherId,
+          baseCrawlId: 'a-full-crawl',
+          urls: [a],
+        })
+        await record(foreign!.id, a, ['noindex'], 9)
+
+        const latest = await db.verifications.latestFor(domainId, [a.urlHash, b.urlHash, 'nope'])
+        // `b` was never answered, so it has no result to show; `a` has the one of the second recheck.
+        expect(latest).toHaveLength(1)
+        expect(latest[0]).toMatchObject({
+          url: a.url,
+          verificationId: second.id,
+          auditVersion: 2,
+          outcome: { findings: [] },
+        })
+        expect(await db.verifications.latestFor(domainId, [])).toEqual([])
+        expect((await db.verifications.latestFor(otherId, [a.urlHash]))[0]?.auditVersion).toBe(9)
+      })
+
+      it('keeps the newest ended rechecks and never an active one', async () => {
+        const domainId = await domainOf()
+        const otherId = await domainOf('other.com')
+        const ids: string[] = []
+        for (let i = 0; i < 4; i++) {
+          const verification = await startVerification(domainId, [
+            verificationUrl(`https://acme.com/${i}`),
+          ])
+          ids.push(verification.id)
+          await db.verifications.finish(verification.id, { status: 'completed' })
+          await new Promise((r) => setTimeout(r, 3))
+        }
+        const active = await startVerification(domainId, [verificationUrl('https://acme.com/live')])
+        const foreign = await db.verifications.start({
+          domainId: otherId,
+          baseCrawlId: 'a-full-crawl',
+          urls: [verificationUrl('https://other.com/')],
+        })
+        await db.verifications.finish(foreign!.id, { status: 'completed' })
+
+        expect(await db.verifications.prune({ domainId, keep: 2 })).toBe(2)
+        expect((await db.verifications.list(domainId)).map((v) => v.id)).toEqual([
+          active.id,
+          ids[3],
+          ids[2],
+        ])
+        // Their URLs went with them.
+        expect(await db.verifications.urlsOf(ids[0]!)).toEqual([])
+        expect(await db.verifications.urlsOf(ids[3]!)).toHaveLength(1)
+        expect(await db.verifications.list(otherId)).toHaveLength(1)
+        expect(await db.verifications.prune({ domainId, keep: 2 })).toBe(0)
       })
     })
 

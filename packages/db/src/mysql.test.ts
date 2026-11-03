@@ -26,6 +26,8 @@ describeDatabaseContract(
           'crawls',
           'crawl_schedules',
           'crawl_settings',
+          'url_verification_urls',
+          'url_verifications',
           'priority_urls',
           'domain_favicons',
           'crawl_files',

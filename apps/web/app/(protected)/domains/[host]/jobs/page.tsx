@@ -1,11 +1,14 @@
 import { CRAWL_TYPES, type CrawlType } from '@seotools/core'
 import type { CrawlSchedule } from '@seotools/db'
+import Link from 'next/link'
 import { getFormatter, getLocale, getTranslations } from 'next-intl/server'
 import { cancelCrawlAction } from '@/app/(protected)/domains/[host]/actions'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { ScheduleForm, type ScheduleFormValues } from '@/components/crawl/schedule-form'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
+import { RecheckBanner, recheckHref } from '@/components/verification/recheck-banner'
+import { RecheckStatusBadge } from '@/components/verification/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -66,17 +69,19 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
 export default async function JobsPage({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
   const { domain } = await requireDomain(host)
-  const [t, tCrawl, format, locale] = await Promise.all([
+  const [t, tCrawl, tRecheck, format, locale] = await Promise.all([
     getTranslations('Jobs'),
     getTranslations('Crawl'),
+    getTranslations('Verification.jobs'),
     getFormatter(),
     getLocale(),
   ])
   const db = await getDb()
-  const [active, schedules, history] = await Promise.all([
+  const [active, schedules, history, rechecks] = await Promise.all([
     db.crawls.active(domain.id),
     db.crawlSchedules.list(domain.id),
     db.crawls.list(domain.id, { limit: HISTORY_SIZE }),
+    db.verifications.list(domain.id, { limit: HISTORY_SIZE }),
   ])
 
   return (
@@ -87,6 +92,7 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
       </div>
 
       {active && <ActiveCrawl host={domain.host} crawl={active} />}
+      <RecheckBanner host={domain.host} domainId={domain.id} />
 
       {CRAWL_TYPES.map((type) => {
         const schedule = schedules.find((s) => s.type === type)
@@ -184,6 +190,64 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
                         </Button>
                       </form>
                     )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{tRecheck('title')}</CardTitle>
+          <CardDescription>{tRecheck('description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{tRecheck('status')}</TableHead>
+                <TableHead>{tRecheck('started')}</TableHead>
+                <TableHead className="text-right">{tRecheck('urls')}</TableHead>
+                <TableHead>{tRecheck('error')}</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rechecks.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    {tRecheck('empty')}
+                  </TableCell>
+                </TableRow>
+              )}
+              {rechecks.map((recheck) => (
+                <TableRow key={recheck.id}>
+                  <TableCell>
+                    <RecheckStatusBadge status={recheck.status} />
+                  </TableCell>
+                  <TableCell>
+                    {format.relativeTime(recheck.startedAt ?? recheck.createdAt)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {tRecheck('urlsDone', {
+                      done: recheck.urlsDoneCount,
+                      total: recheck.urlsCount,
+                    })}
+                  </TableCell>
+                  <TableCell
+                    className="max-w-xs truncate text-muted-foreground"
+                    title={recheck.error ?? undefined}
+                  >
+                    {recheck.error ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={recheckHref(domain.host, recheck)}
+                      className="text-sm underline-offset-4 hover:underline"
+                    >
+                      {tRecheck('view')}
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))}

@@ -12,6 +12,7 @@ import { AuditFilters } from '@/components/pages/audit-filters'
 import { IssueLabel } from '@/components/pages/issue-mark'
 import { IssuesFilter } from '@/components/pages/issues-filter'
 import { PagesTable, type PageRow } from '@/components/pages/pages-table'
+import { RecheckBanner } from '@/components/verification/recheck-banner'
 import { UrlDetail } from '@/components/pages/url-detail'
 import { UrlDrawer } from '@/components/pages/url-drawer'
 import { buttonVariants } from '@/components/ui/button'
@@ -216,6 +217,7 @@ export default async function PagesDetailsPage({
       )}
 
       <AuditResultsNotice host={domain.host} state={results} />
+      <RecheckBanner host={domain.host} domainId={domain.id} />
 
       {selected?.pruned && (
         <Card>

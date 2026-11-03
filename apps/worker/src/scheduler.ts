@@ -23,6 +23,10 @@ async function fire(db: Database, schedule: CrawlSchedule): Promise<CrawlSchedul
 export async function runDueSchedules(db: Database, log: Logger, now = new Date()) {
   const orphaned = await db.crawls.failOrphaned()
   if (orphaned > 0) log.warn({ orphaned }, 'failed crawls whose job gave up')
+  const orphanedRechecks = await db.verifications.failOrphaned()
+  if (orphanedRechecks > 0) {
+    log.warn({ orphaned: orphanedRechecks }, 'failed rechecks whose job gave up')
+  }
 
   for (const schedule of await db.crawlSchedules.due({ now, limit: DUE_BATCH })) {
     const claimed = await db.crawlSchedules.advance({

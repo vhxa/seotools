@@ -6,81 +6,35 @@ import {
   defaultCrawlerUserAgent,
   isInternalUrl,
   normalizeCrawlUrl,
-  parseLlms,
   type CrawlLinkKind,
-  type CrawlPageData,
   type CrawlRobotsFiles,
   type CrawlSettings,
-  type CrawlUrlKind,
   type CrawlUrlSource,
   type Logger,
 } from '@seotools/core'
 import type { Crawl, CrawlLink, CrawlUrlResult, Database, NewCrawlUrl } from '@seotools/db'
 import { JobInterruptedError } from '../types'
 import { analyseCrawl, currentAuditConfig } from './analysis'
-import {
-  extractCssUrls,
-  extractHtml,
-  parseLinkHeader,
-  parseRefresh,
-  parseRobotsSitemaps,
-  parseSitemap,
-  type ExtractedLink,
-  type ParsedSitemap,
-} from './extract'
+import type { ParsedSitemap } from './extract'
 import {
   FetchError,
-  decodeSitemapBody,
   decodeText,
   type FetchedResponse,
   type Fetcher,
   type FetcherConfig,
 } from './fetcher'
-import { missingSecurityHeaders, withResponseFacts } from './page-facts'
-import {
-  CRAWL_FILE_REFRESH_INTERVAL_MS,
-  captureCrawlFile,
-  crawlFileFetchOptions,
-  readTextFile,
-} from './files'
-import {
-  PERMANENT_ERRORS,
-  RETRYABLE_STATUS,
-  RETRY_BASE_MS,
-  abortableSleep,
-  isRedirect,
-  parseRetryAfter,
-} from './requests'
+import { CRAWL_FILE_REFRESH_INTERVAL_MS, captureCrawlFile, crawlFileFetchOptions } from './files'
+import { createRequester } from './requester'
+import { PERMANENT_ERRORS, RETRY_BASE_MS, abortableSleep, isRedirect } from './requests'
+import { MAX_ROBOTS_BYTES, analyseResponse, emptyResult, failureResult } from './response'
 
 /** How many queued URLs are read from the database at a time. Must exceed the max concurrency. */
 const QUEUE_BATCH = 200
 /** How often the progress is saved and a cancellation looked for. */
 const PROGRESS_INTERVAL_MS = 2000
-/** robots.txt files past this size are ignored by Google, so nothing past it matters to an audit. */
-const MAX_ROBOTS_BYTES = 512 * 1024
 
 /** Whether a link to another site works does not depend on its body: the least that can be read. */
 const EXTERNAL_BODY_BYTES = 1
-
-/** A URL that was not requested, or that never answered. */
-const emptyResult: CrawlUrlResult = {
-  kind: 'unknown',
-  statusCode: null,
-  contentType: null,
-  redirectTo: null,
-  title: null,
-  metaRobots: null,
-  xRobotsTag: null,
-  canonical: null,
-  responseTimeMs: null,
-  bytes: null,
-  error: null,
-  data: null,
-}
-
-const HTML = /^(text\/html|application\/xhtml\+xml)\b/i
-const CSS = /^text\/css\b/i
-const XML = /^(text\/xml|application\/(xml|[\w.+-]*\+xml))\b/i
 
 export interface CrawlEngineOptions {
   db: Database
@@ -197,187 +151,34 @@ export async function runCrawl(
     await db.crawls.addUrls(crawlId, urls)
   }
 
-  /** Paces requests: `requestsPerSecond` across all of them, and any pause a server asked for. */
-  const interval = 1000 / settings.requestsPerSecond
-  let nextSlot = 0
-  let pausedUntil = 0
-  async function waitForSlot() {
-    const now = Date.now()
-    const at = Math.max(now, nextSlot, pausedUntil)
-    nextSlot = at + interval
-    await abortableSleep(at - now, stopSignal)
-    // A pause may have started while this request was waiting its turn.
-    while (Date.now() < pausedUntil && !stopSignal.aborted) {
-      await abortableSleep(pausedUntil - Date.now(), stopSignal)
-    }
-  }
+  const { waitForSlot, fetchWithRetries: request } = createRequester({
+    fetcher,
+    settings,
+    signal: stopSignal,
+    retryBaseMs,
+    log,
+  })
 
-  async function fetchWithRetries(item: NewCrawlUrl): Promise<FetchedResponse | FetchError> {
+  function fetchWithRetries(item: NewCrawlUrl) {
     const fileKind = crawlFileKindOf(item.source)
-    const fetchOptions = fileKind ? crawlFileFetchOptions(fileKind) : { readBody: 'auto' as const }
-    for (let attempt = 0; ; attempt++) {
-      await waitForSlot()
-      if (stopSignal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
-      const backoff = retryBaseMs * 2 ** attempt
-      try {
-        const response = await fetcher.fetch(item.url, { signal: stopSignal, ...fetchOptions })
-        if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= settings.maxRetries) {
-          return response
-        }
-        // The server asked to slow down: every request of the domain waits, not just this one.
-        const wait = parseRetryAfter(response.headers['retry-after']) ?? backoff
-        pausedUntil = Math.max(pausedUntil, Date.now() + wait)
-        log.info({ url: item.url, status: response.statusCode, wait }, 'server asked to slow down')
-      } catch (error) {
-        if (!(error instanceof FetchError)) throw error
-        if (PERMANENT_ERRORS.has(error.code) || attempt >= settings.maxRetries) return error
-        await abortableSleep(backoff, stopSignal)
-      }
-    }
+    return request(item.url, fileKind ? crawlFileFetchOptions(fileKind) : { readBody: 'auto' })
   }
 
   function analyse(
     item: NewCrawlUrl,
     response: FetchedResponse,
   ): { result: CrawlUrlResult; found: Discovered; sitemap?: ParsedSitemap | null } {
-    const { statusCode, headers, body } = response
     const found: Discovered = { urls: [], links: [] }
-    const contentType = headers['content-type'] ?? null
     const depth = item.depth + 1
-    const fromHere = (url: string, kind: CrawlLinkKind, source: CrawlUrlSource = 'link') =>
-      discover(found, item.urlHash, url, kind, source, depth)
-    const addAll = (links: ExtractedLink[]) => {
-      for (const { url, kind } of links) fromHere(url, kind)
-    }
-
-    let kind: CrawlUrlKind = 'resource'
-    let redirectTo: string | null = null
-    let canonical: string | null = null
-    let title: string | null = null
-    let metaRobots: string | null = null
-    const data: CrawlPageData = {}
-    const fileKind = crawlFileKindOf(item.source)
-    let sitemap: ParsedSitemap | null = null
-
-    const linkHeader = headers.link ? parseLinkHeader(headers.link, item.url) : null
-    if (linkHeader) {
-      addAll(linkHeader.links)
-      canonical = linkHeader.canonical
-      if (linkHeader.hreflang.length > 0) data.hreflang = linkHeader.hreflang
-    }
-    const refreshHeader = headers.refresh
-      ? normalizeCrawlUrl(parseRefresh(headers.refresh) ?? '', item.url)
-      : null
-    if (refreshHeader) fromHere(refreshHeader, 'http-header')
-
-    if (isRedirect(statusCode)) {
-      kind = 'redirect'
-      redirectTo = headers.location ? normalizeCrawlUrl(headers.location, item.url) : null
-      if (redirectTo) {
-        // A moved crawl file is still one, so it gets read as such where it landed.
-        fromHere(redirectTo, 'redirect', fileKind ? item.source : 'redirect')
-      }
-    } else if (item.source === 'robots') {
-      const text =
-        statusCode === 200 && body
-          ? decodeText(body.subarray(0, MAX_ROBOTS_BYTES), contentType ?? undefined)
-          : null
-      if (text !== null) {
-        for (const sitemap of parseRobotsSitemaps(text, item.url)) {
-          fromHere(sitemap, 'sitemap', 'sitemap-file')
-        }
-      }
-    } else if (fileKind && fileKind !== 'sitemap') {
-      // Never a page, even when a site answers every path with one: that page is not this file.
-      if (fileKind === 'llms') {
-        const text = readTextFile(response)
-        for (const section of text === null ? [] : parseLlms(text).sections) {
-          for (const link of section.links) {
-            const url = normalizeCrawlUrl(link.url, item.url)
-            if (url) fromHere(url, 'llms')
-          }
-        }
-      }
-    } else if (item.source === 'sitemap-file' || (body && contentType && XML.test(contentType))) {
-      if (statusCode === 200 && body) {
-        try {
-          const text = decodeSitemapBody(body)
-          sitemap = parseSitemap(text, item.url)
-          if (sitemap.format !== null) {
-            data.sitemapSize = { entries: sitemap.entries, bytes: Buffer.byteLength(text) }
-          }
-          for (const url of sitemap.urls) fromHere(url, 'sitemap', 'sitemap')
-          for (const url of sitemap.sitemaps) fromHere(url, 'sitemap', 'sitemap-file')
-        } catch (error) {
-          log.warn({ url: item.url, err: error }, 'could not read sitemap')
-        }
-      }
-    } else if (contentType && HTML.test(contentType)) {
-      kind = 'page'
-      if (body) {
-        const page = extractHtml(decodeText(body, contentType), item.url)
-        // Before the links, which include them: the first source a URL is found under is the one.
-        if (item.source === 'seed' || item.source === 'redirect') {
-          const wanted = settings.optionalFiles
-          if (wanted.includes('feed')) {
-            for (const url of page.feeds) fromHere(url, 'head-link', 'feed')
-          }
-          if (wanted.includes('opensearch')) {
-            for (const url of page.openSearch) fromHere(url, 'head-link', 'opensearch')
-          }
-        }
-        addAll(page.links)
-        title = page.title
-        metaRobots = page.metaRobots
-        canonical = page.canonical ?? canonical
-        if (page.description) data.description = page.description
-        if (page.h1.length > 0) data.h1 = page.h1
-        if (page.hreflang.length > 0) data.hreflang = [...(data.hreflang ?? []), ...page.hreflang]
-        if (Object.keys(page.botRobots).length > 0) data.botRobots = page.botRobots
-        data.facts = withResponseFacts(page.facts, {
-          canonical: linkHeader?.canonical
-            ? {
-                url: linkHeader.canonical,
-                raw: linkHeader.canonical,
-                inHead: true,
-                source: 'header',
-              }
-            : null,
-          refresh: refreshHeader,
-          missing: missingSecurityHeaders(headers, item.url.startsWith('https:')),
-        })
-      }
-    } else if (contentType && CSS.test(contentType) && body) {
-      addAll(extractCssUrls(decodeText(body, contentType), item.url))
-    }
-    if (response.truncated) data.truncated = true
-
-    return {
-      found,
-      sitemap,
-      result: {
-        kind,
-        statusCode,
-        contentType,
-        redirectTo,
-        title,
-        metaRobots,
-        xRobotsTag: headers['x-robots-tag'] ?? null,
-        canonical,
-        responseTimeMs: response.responseTimeMs,
-        bytes: response.bytes,
-        error: null,
-        data: Object.keys(data).length > 0 ? data : null,
-      },
-    }
-  }
-
-  function failureResult(error: FetchError): CrawlUrlResult {
-    return {
-      ...emptyResult,
-      responseTimeMs: error.responseTimeMs,
-      error: `${error.code}: ${error.message}`,
-    }
+    const { result, sitemap } = analyseResponse({
+      item,
+      response,
+      optionalFiles: settings.optionalFiles,
+      log,
+      discover: (url, kind, source = 'link') =>
+        discover(found, item.urlHash, url, kind, source, depth),
+    })
+    return { result, found, sitemap }
   }
 
   async function processUrl(item: NewCrawlUrl) {

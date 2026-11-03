@@ -1,6 +1,7 @@
 import { retryDelayMs, type Job, type Logger } from '@seotools/core'
 import type { Database } from '@seotools/db'
 import {
+  JobDeferredError,
   JobInterruptedError,
   PermanentJobError,
   type HandlerContext,
@@ -66,6 +67,13 @@ export function createRunner(options: RunnerOptions) {
           .release({ id: job.id, workerId })
           .catch((e) => jobLog.error({ err: e }, 'could not release job'))
         jobLog.info('job handed back to the queue')
+        return
+      }
+      if (error instanceof JobDeferredError) {
+        await db.jobs
+          .release({ id: job.id, workerId, runAt: new Date(Date.now() + error.delayMs) })
+          .catch((e) => jobLog.error({ err: e }, 'could not put the job off'))
+        jobLog.info({ delayMs: error.delayMs, reason: error.message }, 'job put off')
         return
       }
       const message = error instanceof Error ? error.message : String(error)

@@ -54,13 +54,17 @@ import {
   crawlFileColumns,
   crawlFileRow,
   crawlSettingsColumns,
+  assertVerificationUrls,
   enabledFilesByDomain,
+  expiredVerifications,
   faviconRow,
   foldCrawlCounts,
   groupDomains,
   newCrawlLinkRow,
   newCrawlUrlRow,
   newestPerUrl,
+  newestVerifiedPerUrl,
+  newVerificationUrlRows,
   priorityUrlRow,
   toCrawl,
   toCrawlSchedule,
@@ -70,7 +74,12 @@ import {
   toCrawlSettings,
   toDomainFavicon,
   toJob,
+  toVerification,
+  toVerifiedUrl,
   truncateError,
+  verificationAnswerColumns,
+  verificationJobValues,
+  verificationOutcomeColumn,
 } from '../mapping'
 import {
   AUDIT_SEMANTICS,
@@ -107,7 +116,9 @@ import type {
   CrawlUrlIssue,
   Database,
   NewCrawlUrl,
+  NewVerificationUrl,
   SitemapHreflang,
+  VerifiedUrl,
 } from '../types'
 
 const {
@@ -132,6 +143,8 @@ const {
   priorityUrls,
   auditRules,
   domainAuditConfig,
+  urlVerifications,
+  urlVerificationUrls,
 } = schema
 
 /** `limit` when a list is not capped. */
@@ -539,12 +552,13 @@ export function createMysqlDatabase(options: {
           .where(and(eq(jobs.id, id), eq(jobs.status, 'running'), eq(jobs.lockedBy, workerId)))
       },
 
-      async release({ id, workerId }) {
+      async release({ id, workerId, runAt }) {
         await db
           .update(jobs)
           .set({
             status: 'pending',
             attempts: sql`${jobs.attempts} - 1`,
+            ...(runAt ? { runAt } : {}),
             lockedAt: null,
             lockedBy: null,
             updatedAt: new Date(),
@@ -1512,6 +1526,238 @@ export function createMysqlDatabase(options: {
               lte(domainAuditConfig.recomputeErrorVersion, version),
             ),
           )
+      },
+    },
+
+    verifications: {
+      async start({ domainId, baseCrawlId, urls }) {
+        assertVerificationUrls(urls)
+        const now = new Date()
+        const id = randomUUID()
+        const jobId = randomUUID()
+        try {
+          await db.transaction(async (tx) => {
+            await tx.insert(jobs).values(verificationJobValues(id, jobId, now))
+            await tx.insert(urlVerifications).values({
+              id,
+              domainId,
+              jobId,
+              baseCrawlId,
+              activeKey: domainId,
+              urlsCount: urls.length,
+              createdAt: now,
+            })
+            await tx.insert(urlVerificationUrls).values(newVerificationUrlRows(id, urls))
+          })
+        } catch (error) {
+          // Lost the race on the unique `active_key`: some other recheck of this domain is active.
+          if (await this.active(domainId)) return null
+          throw error
+        }
+        return this.get(id)
+      },
+
+      async get(id) {
+        const row = (await db.select().from(urlVerifications).where(eq(urlVerifications.id, id)))[0]
+        return row ? toVerification(row) : null
+      },
+
+      async active(domainId) {
+        const row = (
+          await db.select().from(urlVerifications).where(eq(urlVerifications.activeKey, domainId))
+        )[0]
+        return row ? toVerification(row) : null
+      },
+
+      async list(domainId, { limit = 20 } = {}) {
+        const rows = await db
+          .select()
+          .from(urlVerifications)
+          .where(eq(urlVerifications.domainId, domainId))
+          .orderBy(desc(urlVerifications.createdAt), desc(urlVerifications.id))
+          .limit(limit)
+        return rows.map(toVerification)
+      },
+
+      async markRunning(id) {
+        const active = and(eq(urlVerifications.id, id), isNotNull(urlVerifications.activeKey))
+        await db
+          .update(urlVerifications)
+          .set({ status: 'running', startedAt: new Date() })
+          .where(and(active, isNull(urlVerifications.startedAt)))
+        await db.update(urlVerifications).set({ status: 'running' }).where(active)
+        const verification = await this.get(id)
+        return verification && verification.status === 'running' ? verification : null
+      },
+
+      async queued(verificationId, limit) {
+        const rows = await db
+          .select({
+            url: urlVerificationUrls.url,
+            urlHash: urlVerificationUrls.urlHash,
+            source: urlVerificationUrls.source,
+          })
+          .from(urlVerificationUrls)
+          .where(
+            and(
+              eq(urlVerificationUrls.verificationId, verificationId),
+              eq(urlVerificationUrls.state, 'queued'),
+            ),
+          )
+          .orderBy(asc(urlVerificationUrls.url))
+          .limit(limit)
+        return rows as NewVerificationUrl[]
+      },
+
+      async recordResult({ verificationId, urlHash, answer, auditVersion, outcome }) {
+        return db.transaction(async (tx) => {
+          // Locked: a cancellation, or the end of the recheck, waits for this write or precedes it.
+          const active = (
+            await tx
+              .select({ id: urlVerifications.id })
+              .from(urlVerifications)
+              .where(
+                and(eq(urlVerifications.id, verificationId), isNotNull(urlVerifications.activeKey)),
+              )
+              .for('update')
+          )[0]
+          if (!active) return false
+          const written = await tx
+            .update(urlVerificationUrls)
+            .set({
+              ...verificationAnswerColumns(answer, new Date()),
+              auditVersion,
+              outcome: verificationOutcomeColumn(outcome),
+            })
+            .where(
+              and(
+                eq(urlVerificationUrls.verificationId, verificationId),
+                eq(urlVerificationUrls.urlHash, urlHash),
+              ),
+            )
+          if (affected(written) === 0) return false
+          const done = (
+            await tx
+              .select({ count: sql<number>`count(*)` })
+              .from(urlVerificationUrls)
+              .where(
+                and(
+                  eq(urlVerificationUrls.verificationId, verificationId),
+                  eq(urlVerificationUrls.state, 'done'),
+                ),
+              )
+          )[0]
+          await tx
+            .update(urlVerifications)
+            .set({ urlsDoneCount: Number(done?.count ?? 0) })
+            .where(eq(urlVerifications.id, verificationId))
+          return true
+        })
+      },
+
+      async urlsOf(verificationId) {
+        const rows = await db
+          .select()
+          .from(urlVerificationUrls)
+          .where(eq(urlVerificationUrls.verificationId, verificationId))
+          .orderBy(asc(urlVerificationUrls.url))
+        return rows.map(toVerifiedUrl)
+      },
+
+      async finish(id, { status, error }) {
+        const done = (
+          await db
+            .select({ count: sql<number>`count(*)` })
+            .from(urlVerificationUrls)
+            .where(
+              and(
+                eq(urlVerificationUrls.verificationId, id),
+                eq(urlVerificationUrls.state, 'done'),
+              ),
+            )
+        )[0]
+        const result = await db
+          .update(urlVerifications)
+          .set({
+            urlsDoneCount: Number(done?.count ?? 0),
+            status,
+            error: error === undefined ? null : truncateError(error),
+            activeKey: null,
+            finishedAt: new Date(),
+          })
+          .where(and(eq(urlVerifications.id, id), isNotNull(urlVerifications.activeKey)))
+        return affected(result) > 0
+      },
+
+      async cancel(id) {
+        const result = await db
+          .update(urlVerifications)
+          .set({ status: 'cancelled', activeKey: null, finishedAt: new Date() })
+          .where(and(eq(urlVerifications.id, id), isNotNull(urlVerifications.activeKey)))
+        return affected(result) > 0
+      },
+
+      async failOrphaned() {
+        const orphans = await db
+          .select({ id: urlVerifications.id, jobError: jobs.lastError })
+          .from(urlVerifications)
+          .innerJoin(jobs, eq(urlVerifications.jobId, jobs.id))
+          .where(
+            and(
+              isNotNull(urlVerifications.activeKey),
+              inArray(jobs.status, ['failed', 'completed']),
+            ),
+          )
+        let failed = 0
+        for (const orphan of orphans) {
+          const ended = await this.finish(orphan.id, {
+            status: 'failed',
+            error: orphan.jobError ?? 'The recheck job ended unexpectedly',
+          })
+          if (ended) failed++
+        }
+        return failed
+      },
+
+      async latestFor(domainId, urlHashes) {
+        const found: VerifiedUrl[] = []
+        for (const batch of chunk(urlHashes)) {
+          const rows = await db
+            .select({ row: urlVerificationUrls })
+            .from(urlVerificationUrls)
+            .innerJoin(
+              urlVerifications,
+              eq(urlVerifications.id, urlVerificationUrls.verificationId),
+            )
+            .where(
+              and(
+                eq(urlVerifications.domainId, domainId),
+                inArray(urlVerificationUrls.urlHash, batch),
+                eq(urlVerificationUrls.state, 'done'),
+              ),
+            )
+          found.push(...rows.map(({ row }) => toVerifiedUrl(row)))
+        }
+        return newestVerifiedPerUrl(found)
+      },
+
+      async prune({ domainId, keep }) {
+        const ended = await db
+          .select({ id: urlVerifications.id })
+          .from(urlVerifications)
+          .where(and(eq(urlVerifications.domainId, domainId), isNull(urlVerifications.activeKey)))
+          .orderBy(desc(urlVerifications.createdAt), desc(urlVerifications.id))
+        const expired = expiredVerifications(ended, keep)
+        if (expired.length === 0) return 0
+        await db.transaction(async (tx) => {
+          for (const batch of chunk(expired)) {
+            await tx
+              .delete(urlVerificationUrls)
+              .where(inArray(urlVerificationUrls.verificationId, batch))
+            await tx.delete(urlVerifications).where(inArray(urlVerifications.id, batch))
+          }
+        })
+        return expired.length
       },
     },
 

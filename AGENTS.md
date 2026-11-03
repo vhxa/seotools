@@ -77,6 +77,7 @@ The most important third-party packages are:
 - Crawls run in their own lane (`CRAWL_CONCURRENCY`, `crawl.run` jobs), so that they cannot hold up other jobs.
 - `audit.recompute` jobs (default lane) analyse a domain's latest full crawl again from what it stored, with no requests; they are safe to repeat and to run concurrently. Change rules with `db.audit.*`, which queues the job together with the change.
 - A domain has one active crawl at most, enforced by the unique `crawls.active_key`. Start crawls with `db.crawls.start`, which creates the crawl and its job together; never enqueue `crawl.run` directly.
+- A recheck of some URLs (`url.verify`, `runVerification`) is not a crawl: it has its own tables and one active recheck per domain, never changes a crawl, and is started with `db.verifications.start`, never by enqueueing the job. It runs in the crawl lane, steps aside for a crawl of its domain (`JobDeferredError`), and requests only URLs of the domain plus their `robots.txt`, through `createRequester` and `createHttpFetcher`. It runs only the issues classified `url` in `@seotools/core/crawl/verification` (TypeScript fails until a new issue is classified), with the rest of the site unreadable (`SiteContextError`): an issue that needs other pages, links or sitemaps is `site`, and a recheck never reports it fixed or new, nor compares it with a crawl analysed under other audit rules.
 
 ## Development
 

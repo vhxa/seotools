@@ -15,6 +15,7 @@ import {
 } from 'drizzle-orm'
 import {
   JOB_TYPES,
+  MAX_VERIFICATION_URLS,
   crawlUrlHash,
   enabledExtraFiles,
   parseAuditSnapshot,
@@ -33,6 +34,8 @@ import {
   type PagesByWorstIssue,
   type PagesWithType,
   type UrlSnapshot,
+  type CrawlUrlSource,
+  type VerificationOutcome,
 } from '@seotools/core'
 import type {
   Company,
@@ -58,7 +61,11 @@ import type {
   FaviconImage,
   NewCrawlFile,
   NewCrawlUrl,
+  NewVerificationUrl,
   SitemapHreflang,
+  Verification,
+  VerificationAnswer,
+  VerifiedUrl,
 } from './types'
 
 export interface JobRow {
@@ -867,3 +874,72 @@ export function foldTraces(
     ]
   })
 }
+// --- rechecks ------------------------------------------------------------
+
+/** The job that runs a recheck, ready for insertion alongside it. */
+export function verificationJobValues(verificationId: string, jobId: string, now: Date) {
+  return {
+    id: jobId,
+    type: JOB_TYPES.urlVerify,
+    payload: JSON.stringify({ verificationId }),
+    runAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+/** A recheck takes between one and `MAX_VERIFICATION_URLS` URLs, each once. */
+export function assertVerificationUrls(urls: readonly NewVerificationUrl[]) {
+  if (urls.length === 0) throw new RangeError('A recheck needs at least one URL')
+  if (urls.length > MAX_VERIFICATION_URLS) {
+    throw new RangeError(`A recheck takes at most ${MAX_VERIFICATION_URLS} URLs`)
+  }
+  if (new Set(urls.map((url) => url.urlHash)).size !== urls.length) {
+    throw new RangeError('A recheck takes each URL once')
+  }
+}
+
+export const newVerificationUrlRows = (
+  verificationId: string,
+  urls: readonly NewVerificationUrl[],
+) => urls.map((url) => ({ verificationId, ...url, state: 'queued' as const }))
+
+/** What a recheck stores of an answer: the columns of a crawl's result, without what is extracted. */
+export function verificationAnswerColumns(answer: VerificationAnswer, now: Date) {
+  const { data: _data, ...columns } = crawlResultColumns({ ...answer, data: null }, now)
+  return columns
+}
+
+export const verificationOutcomeColumn = (outcome: VerificationOutcome) => JSON.stringify(outcome)
+
+export const toVerification = ({
+  activeKey: _activeKey,
+  ...row
+}: Verification & { activeKey: string | null }): Verification => row
+
+type VerifiedUrlRow = Omit<VerifiedUrl, 'outcome' | 'source'> & {
+  source: string
+  outcome: string | null
+}
+
+export const toVerifiedUrl = ({ outcome, source, ...row }: VerifiedUrlRow): VerifiedUrl => ({
+  ...row,
+  source: source as CrawlUrlSource,
+  outcome: outcome === null ? null : (parseJson(outcome) as VerificationOutcome),
+})
+
+/** Keeps the most recent result of each URL. */
+export function newestVerifiedPerUrl(rows: VerifiedUrl[]): VerifiedUrl[] {
+  const newest = new Map<string, VerifiedUrl>()
+  for (const row of rows) {
+    const current = newest.get(row.urlHash)
+    if (!current || (row.fetchedAt?.getTime() ?? 0) > (current.fetchedAt?.getTime() ?? 0)) {
+      newest.set(row.urlHash, row)
+    }
+  }
+  return [...newest.values()]
+}
+
+/** The rechecks beyond the newest `keep` of those that ended: what `prune` removes. */
+export const expiredVerifications = (ended: readonly { id: string }[], keep: number): string[] =>
+  ended.slice(Math.max(0, keep)).map((verification) => verification.id)

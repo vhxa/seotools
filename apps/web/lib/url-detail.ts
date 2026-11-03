@@ -4,6 +4,7 @@ import { crawlUrlHash, type CrawlLinkKind } from '@seotools/core'
 import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
 import { getDb } from './db'
 import { crawlUrlsInEvidence } from './issue-evidence'
+import { canRecheck, viewRecheck, type RecheckView } from './recheck'
 
 export interface UrlDetailData {
   crawl: Crawl
@@ -32,6 +33,19 @@ export interface UrlDetailData {
   current: UrlAuditCurrent
   /** Whether the analysis reflects the audit configuration in force. */
   results: AuditResultsState
+  /**
+   * Rechecking this URL without a crawl. It is kept apart from the crawl, which it never changes.
+   */
+  recheck: {
+    /** A URL of the site that is not a file for crawlers: the only kind that can be rechecked. */
+    available: boolean
+    /** The latest recheck that finished, read next to the crawl. `null`: none, or the crawl is newer. */
+    view: RecheckView | null
+    /** It is waiting in a recheck that has not ended. */
+    waiting: boolean
+    /** The domain has a recheck under way (a domain runs one at a time). */
+    busy: boolean
+  }
 }
 
 /**
@@ -55,14 +69,22 @@ export async function loadUrlDetail(input: {
   const db = await getDb()
   const url = await db.crawls.getUrl(crawl.id, urlHash)
   if (!url) return null
-  const [issues, audit, config, linksIn, linksOut, priorities] = await Promise.all([
-    db.crawls.issuesOf(crawl.id, [urlHash]),
-    db.crawls.auditOf(crawl.id, [urlHash]),
-    db.audit.config(domainId),
-    db.crawls.linkSources(crawl.id, urlHash, { limit: linkLimit + 1 }),
-    db.crawls.linkTargets(crawl.id, urlHash, { limit: linkLimit + 1 }),
-    db.priorityUrls.list(domainId),
-  ])
+  const [issues, audit, config, linksIn, linksOut, priorities, verified, activeRecheck] =
+    await Promise.all([
+      db.crawls.issuesOf(crawl.id, [urlHash]),
+      db.crawls.auditOf(crawl.id, [urlHash]),
+      db.audit.config(domainId),
+      db.crawls.linkSources(crawl.id, urlHash, { limit: linkLimit + 1 }),
+      db.crawls.linkTargets(crawl.id, urlHash, { limit: linkLimit + 1 }),
+      db.priorityUrls.list(domainId),
+      db.verifications.latestFor(domainId, [urlHash]),
+      db.verifications.active(domainId),
+    ])
+  const waiting = activeRecheck
+    ? (await db.verifications.urlsOf(activeRecheck.id)).some(
+        (queued) => queued.urlHash === urlHash && queued.state === 'queued',
+      )
+    : false
   const evidenceUrls = await crawlUrlsInEvidence(
     issues,
     async (address) => (await db.crawls.getUrl(crawl.id, crawlUrlHash(address))) !== null,
@@ -82,5 +104,17 @@ export async function loadUrlDetail(input: {
     results: historical
       ? auditResultsState(crawl, { version: crawl.auditVersion ?? 0, recomputeError: null })
       : auditResultsState(crawl, config),
+    recheck: {
+      available: canRecheck(url),
+      view: viewRecheck({
+        verified: verified[0] ?? null,
+        crawl,
+        crawledAt: url.fetchedAt,
+        crawlIssues: issues.map(({ issue }) => issue),
+        configVersion: config.version,
+      }),
+      waiting,
+      busy: activeRecheck !== null,
+    },
   }
 }
