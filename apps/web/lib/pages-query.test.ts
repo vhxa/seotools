@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { detailHref, nextSort, parseDetailQuery, type DetailQuery } from './pages-query'
 
 const base: DetailQuery = {
+  crawl: null,
   view: 'pages',
   page: 1,
   sort: null,
@@ -23,6 +24,7 @@ describe('parseDetailQuery', () => {
     const hash = 'a'.repeat(32)
     expect(
       parseDetailQuery({
+        crawl: '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f12',
         view: 'pages',
         page: '3',
         sort: 'responseTime',
@@ -35,6 +37,7 @@ describe('parseDetailQuery', () => {
         url: hash,
       }),
     ).toEqual({
+      crawl: '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f12',
       view: 'pages',
       page: 3,
       sort: 'responseTime',
@@ -60,6 +63,7 @@ describe('parseDetailQuery', () => {
         intent: 'whatever',
         rule: "x' or 1=1 --",
         url: 'not-a-hash',
+        crawl: "x' or 1=1 --",
       }),
     ).toEqual(base)
     expect(parseDetailQuery({ page: 'abc' }).page).toBe(1)
@@ -112,8 +116,22 @@ describe('detailHref', () => {
     )
   })
 
+  it('keeps the crawl being browsed in every address, and leaves the latest out', () => {
+    const crawl = '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f12'
+    expect(detailHref('acme.com', { ...base, crawl })).toBe(
+      `/domains/acme.com/pages/details?crawl=${crawl}`,
+    )
+    expect(detailHref('acme.com', { ...base, crawl }, { view: 'other', page: 1 })).toBe(
+      `/domains/acme.com/pages/details?crawl=${crawl}&view=other`,
+    )
+    expect(detailHref('acme.com', { ...base, crawl }, { crawl: null })).toBe(
+      '/domains/acme.com/pages/details',
+    )
+  })
+
   it('round-trips through parseDetailQuery', () => {
     const query: DetailQuery = {
+      crawl: '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f12',
       view: 'pages',
       page: 5,
       sort: 'bytes',

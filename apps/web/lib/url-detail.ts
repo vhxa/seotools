@@ -39,8 +39,13 @@ export async function loadUrlDetail(input: {
   crawl: Crawl
   urlHash: string
   linkLimit: number
+  /**
+   * The crawl is not the latest one. Its analysis is never recalculated when the rules change, so
+   * it is not "behind" the configuration: it is what it was analysed with.
+   */
+  historical?: boolean
 }): Promise<UrlDetailData | null> {
-  const { domainId, host, crawl, urlHash, linkLimit } = input
+  const { domainId, host, crawl, urlHash, linkLimit, historical = false } = input
   const db = await getDb()
   const url = await db.crawls.getUrl(crawl.id, urlHash)
   if (!url) return null
@@ -63,6 +68,8 @@ export async function loadUrlDetail(input: {
     priority: priorities.some((p) => p.urlHash === urlHash),
     audit: audit[0] ?? null,
     current: currentAuditOf(config, host, url.url),
-    results: auditResultsState(crawl, config),
+    results: historical
+      ? auditResultsState(crawl, { version: crawl.auditVersion ?? 0, recomputeError: null })
+      : auditResultsState(crawl, config),
   }
 }

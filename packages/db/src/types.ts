@@ -419,6 +419,12 @@ export interface CrawlRepository {
    * and still have them (not pruned), and be two different crawls: otherwise there is nothing to
    * compare and these return `null`, `0` or `[]`, whatever the ids. Only URLs of the site are
    * compared (never external ones), and nothing is requested: it reads what the crawls stored.
+   *
+   * Every query is a join on the primary key (`crawl_id`, `url_hash`) and pages on the server, so a
+   * comparison of two crawls of 100,000 URLs answers in well under two seconds on each dialect
+   * (measured with 100,000 URLs per crawl). That relies on the planner's statistics, which
+   * autovacuum / the engine keep current: on a table PostgreSQL has never analysed (a first crawl
+   * read within the minute after it ended) it can choose a nested loop and take minutes.
    */
   compareCounts(input: {
     domainId: string

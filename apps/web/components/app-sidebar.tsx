@@ -191,6 +191,8 @@ export function AppSidebar({
           links: [
             { label: t('pagesOverview'), href: `/domains/${activeHost}/pages`, exact: true },
             { label: t('pagesDetails'), href: `/domains/${activeHost}/pages/details` },
+            { label: t('pagesHistory'), href: `/domains/${activeHost}/pages/history` },
+            { label: t('pagesCompare'), href: `/domains/${activeHost}/pages/compare` },
           ],
         },
         {

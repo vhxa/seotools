@@ -190,7 +190,7 @@ export function UrlDrawer({
             <div>
               {target && (
                 <Link
-                  href={`/domains/${host}/pages/details/${target.hash}`}
+                  href={`/domains/${host}/pages/details/${target.hash}${query.crawl ? `?crawl=${query.crawl}` : ''}`}
                   className={buttonVariants({ variant: 'outline', size: 'sm' })}
                 >
                   <ExpandIcon />
