@@ -11,7 +11,7 @@
   },
   "Login": {
     "metaTitle": "Iniciar sesión · seotools",
-    "description": "Inicia sesión con la cuenta de administrador.",
+    "description": "Inicia sesión con tu cuenta de usuario.",
     "email": "Correo electrónico",
     "password": "Contraseña",
     "submit": "Iniciar sesión",
@@ -97,11 +97,31 @@
     "pagesHistory": "Historial",
     "pagesCompare": "Comparar"
   },
+  "ProtectedShell": {
+    "skipToContent": "Saltar al contenido principal"
+  },
   "DomainHome": {
     "metaTitle": "{host} · seotools",
     "company": "Empresa: {company}",
-    "emptyTitle": "Todavía no hay nada que mostrar",
-    "emptyDescription": "Las auditorías y el seguimiento de {host} aparecerán aquí a medida que se añadan funciones."
+    "crawlTitle": "Último rastreo completo disponible",
+    "lastCrawl": "Resultados guardados del {when}.",
+    "noCrawl": "Todavía no hay resultados de un rastreo completo. Inicia uno para recopilar páginas y hallazgos de auditoría.",
+    "coverage": "{done, number} de {total, number} URL descubiertas procesadas · {pages, number} páginas encontradas",
+    "auditCoverage": "En este análisis: {audited, number} páginas auditadas · {excluded, number} excluidas · {unknown, number} con indexabilidad desconocida",
+    "incomplete": "Este rastreo alcanzó su límite de URL. La cobertura y los hallazgos son parciales.",
+    "crawlSettings": "Revisar límites de rastreo",
+    "lastAttempt": "Intento de rastreo completo más reciente:",
+    "jobs": "Ver trabajos",
+    "linksLabel": "Explorar resultados del dominio",
+    "overview": "Resumen de páginas",
+    "history": "Historial de rastreos",
+    "prioritiesTitle": "Hallazgos que revisar primero",
+    "prioritiesDescription": "Hasta tres hallazgos registrados, ordenados por tipo, importancia y URL afectadas. Estos resultados describen el rastreo guardado, no la indexación en buscadores.",
+    "stale": "Los hallazgos prioritarios estarán disponibles cuando el análisis refleje la configuración de auditoría actual.",
+    "notChecked": "Este rastreo no tiene el análisis necesario para mostrar hallazgos prioritarios. Inicia un nuevo rastreo completo para obtener datos actuales.",
+    "noPriorities": "No se registraron hallazgos conocidos en este análisis. Esto no confirma una cobertura completa ni la indexación en buscadores.",
+    "affectedUrls": "{count, plural, one {# URL} other {# URL}}",
+    "allFindings": "Ver todos los hallazgos"
   },
   "System": {
     "metaTitle": "Sistema · seotools",

@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
@@ -9,6 +10,7 @@ import { requireSession } from '@/lib/session'
 
 export default async function ProtectedLayout({ children }: { children: ReactNode }) {
   const session = await requireSession()
+  const t = await getTranslations('ProtectedShell')
   const db = await getDb()
   const [companies, faviconVersions, enabledFiles] = await Promise.all([
     db.companies.list(),
@@ -24,6 +26,12 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   return (
     <TooltipProvider>
       <SidebarProvider defaultOpen={defaultOpen}>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-foreground focus:ring-2 focus:ring-ring"
+        >
+          {t('skipToContent')}
+        </a>
         <AppSidebar
           companies={companies.map((company) => ({
             id: company.id,
@@ -48,7 +56,11 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
             <SidebarTrigger className="-ml-1" />
           </header>
           {/* Readable width by default; a page that needs the whole screen marks its <main data-wide>. */}
-          <div className="mx-auto w-full max-w-5xl flex-1 p-4 has-[>main[data-wide]]:max-w-none md:p-8">
+          <div
+            id="main-content"
+            tabIndex={-1}
+            className="mx-auto w-full max-w-5xl flex-1 scroll-mt-14 p-4 outline-none has-[>main[data-wide]]:max-w-none md:p-8"
+          >
             {children}
           </div>
         </div>

@@ -11,7 +11,7 @@
   },
   "Login": {
     "metaTitle": "Sign in · seotools",
-    "description": "Sign in with the admin account.",
+    "description": "Sign in with your user account.",
     "email": "Email",
     "password": "Password",
     "submit": "Sign in",
@@ -97,11 +97,31 @@
     "pagesHistory": "History",
     "pagesCompare": "Compare"
   },
+  "ProtectedShell": {
+    "skipToContent": "Skip to main content"
+  },
   "DomainHome": {
     "metaTitle": "{host} · seotools",
     "company": "Company: {company}",
-    "emptyTitle": "Nothing to show yet",
-    "emptyDescription": "Audits and monitoring for {host} will appear here as features are added."
+    "crawlTitle": "Latest available full crawl",
+    "lastCrawl": "Stored results from {when}.",
+    "noCrawl": "No full crawl results are available yet. Start a full crawl to collect pages and audit findings.",
+    "coverage": "{done, number} of {total, number} discovered URLs processed · {pages, number} pages found",
+    "auditCoverage": "In this analysis: {audited, number} pages audited · {excluded, number} excluded · {unknown, number} with unknown indexability",
+    "incomplete": "This crawl reached its URL limit. Coverage and findings are partial.",
+    "crawlSettings": "Review crawl limits",
+    "lastAttempt": "Most recent full crawl attempt:",
+    "jobs": "View jobs",
+    "linksLabel": "Explore domain results",
+    "overview": "Pages overview",
+    "history": "Crawl history",
+    "prioritiesTitle": "Findings to review first",
+    "prioritiesDescription": "Up to three recorded findings, ordered by type, importance and affected URLs. These results describe the stored crawl, not search engine indexing.",
+    "stale": "Priority findings will be available when the analysis reflects the current audit configuration.",
+    "notChecked": "This crawl does not have the analysis needed to show priority findings. Run a new full crawl to collect current data.",
+    "noPriorities": "No known findings were recorded in this analysis. This does not confirm complete coverage or search engine indexing.",
+    "affectedUrls": "{count, plural, one {# URL} other {# URLs}}",
+    "allFindings": "View all findings"
   },
   "System": {
     "metaTitle": "System · seotools",
