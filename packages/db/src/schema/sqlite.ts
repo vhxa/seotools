@@ -324,7 +324,11 @@ export const crawlUrlIssues = sqliteTable(
       .references(() => crawls.id, { onDelete: 'cascade' }),
     urlHash: text('url_hash').notNull(),
     issue: text('issue').notNull(),
-    /** JSON array of what `PAGE_ISSUES` says the issue details, e.g. which headers are missing. */
+    /**
+     * What the issue says about the URL, as JSON: an array of strings (what `PAGE_ISSUES` says the
+     * issue details, e.g. which headers are missing), or, for a finding with evidence, an object
+     * `{ details?, evidence }` (`serializeIssueDetails`).
+     */
     details: text('details'),
   },
   (t) => [

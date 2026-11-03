@@ -159,14 +159,16 @@ export interface Site {
   /** Whether any URL of the site answered as a page, unlike a site that is down. */
   answered: boolean
   /**
-   * How many indexable pages share each value, which is what makes one a duplicate. Pages left out
-   * of the audit are not counted: they would make audited pages look like copies.
+   * The indexable pages that share each value, in URL order, which is what makes one a duplicate:
+   * only values that several pages share are here. Pages left out of the audit are not in them: they
+   * would make audited pages look like copies, and be listed as the copy.
    */
-  titles: Map<string, number>
-  descriptions: Map<string, number>
-  h1s: Map<string, number>
-  texts: Map<string, number>
-  nearDuplicates: ReadonlySet<AuditedUrl>
+  titles: Map<string, AuditedUrl[]>
+  descriptions: Map<string, AuditedUrl[]>
+  h1s: Map<string, AuditedUrl[]>
+  texts: Map<string, AuditedUrl[]>
+  /** For each page that has near copies, some of them (`MAX_NEAR_PARTNERS`), in URL order. */
+  nearDuplicates: ReadonlyMap<AuditedUrl, readonly AuditedUrl[]>
 }
 
 /** The form two titles, descriptions or headings are compared in. */
@@ -282,12 +284,25 @@ function measureClickDepth(urls: readonly AuditedUrl[], byHash: ReadonlyMap<stri
   }
 }
 
-function countValues(values: Iterable<string>) {
-  const counts = new Map<string, number>()
-  for (const value of values) {
-    if (value) counts.set(value, (counts.get(value) ?? 0) + 1)
+const byAddress = (a: AuditedUrl, b: AuditedUrl) =>
+  a.url.url < b.url.url ? -1 : a.url.url > b.url.url ? 1 : 0
+
+/** The pages that share each value of `key`, leaving out the empty ones and the values of one page. */
+function sharedValues(urls: readonly AuditedUrl[], key: (url: AuditedUrl) => string | null) {
+  const groups = new Map<string, AuditedUrl[]>()
+  for (const url of urls) {
+    const value = key(url)
+    if (!value) continue
+    const group = groups.get(value)
+    if (group) group.push(url)
+    else groups.set(value, [url])
   }
-  return counts
+  for (const [value, group] of groups) {
+    if (group.length < 2) groups.delete(value)
+    // Sorted once here: a value that thousands of pages share is read once per page.
+    else group.sort(byAddress)
+  }
+  return groups
 }
 
 /**
@@ -365,11 +380,16 @@ export async function loadSite(
     urls,
     get: (url) => byHash.get(crawlUrlHash(url)),
     answered: urls.some((url) => url.contentPage),
-    titles: countValues(indexable.map((url) => comparable(url.url.title))),
-    descriptions: countValues(indexable.map((url) => comparable(url.url.data?.description))),
-    h1s: countValues(indexable.map((url) => comparable(url.url.data?.h1?.[0]))),
-    texts: countValues(indexable.map((url) => url.facts?.textHash ?? '')),
-    nearDuplicates: new Set([...findNearDuplicates(comparableTexts)].map((item) => item.url)),
+    titles: sharedValues(indexable, (url) => comparable(url.url.title)),
+    descriptions: sharedValues(indexable, (url) => comparable(url.url.data?.description)),
+    h1s: sharedValues(indexable, (url) => comparable(url.url.data?.h1?.[0])),
+    texts: sharedValues(indexable, (url) => url.facts?.textHash ?? null),
+    nearDuplicates: new Map(
+      [...findNearDuplicates(comparableTexts)].map(([item, partners]) => [
+        item.url,
+        [...partners].map((partner) => partner.url).sort(byAddress),
+      ]),
+    ),
   }
 }
 

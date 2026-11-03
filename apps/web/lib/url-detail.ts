@@ -1,13 +1,19 @@
 import { auditResultsState, type AuditResultsState } from '@seotools/core/crawl/audit'
 import type { Crawl, CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
-import type { CrawlLinkKind } from '@seotools/core'
+import { crawlUrlHash, type CrawlLinkKind } from '@seotools/core'
 import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
 import { getDb } from './db'
+import { crawlUrlsInEvidence } from './issue-evidence'
 
 export interface UrlDetailData {
   crawl: Crawl
   url: CrawlUrl
   issues: CrawlUrlIssue[]
+  /**
+   * The addresses in the evidence of `issues` that the crawl has a page for, as normalized URLs:
+   * the only ones the detail links to its own detail.
+   */
+  evidenceUrls: ReadonlySet<string>
   /** Pages of the crawl that link here, and what this URL links to: capped, see `hasMore*`. */
   linksIn: { url: string; kind: CrawlLinkKind }[]
   linksOut: { url: string; kind: CrawlLinkKind }[]
@@ -52,10 +58,15 @@ export async function loadUrlDetail(input: {
     db.crawls.linkTargets(crawl.id, urlHash, { limit: linkLimit + 1 }),
     db.priorityUrls.list(domainId),
   ])
+  const evidenceUrls = await crawlUrlsInEvidence(
+    issues,
+    async (address) => (await db.crawls.getUrl(crawl.id, crawlUrlHash(address))) !== null,
+  )
   return {
     crawl,
     url,
     issues,
+    evidenceUrls,
     linksIn: linksIn.slice(0, linkLimit),
     linksOut: linksOut.slice(0, linkLimit),
     hasMoreIn: linksIn.length > linkLimit,

@@ -221,7 +221,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  * Bump when a check in the worker changes what it finds without the catalog changing (the catalog
  * changing is noticed by itself).
  */
-const CHECKS_REVISION = 3
+const CHECKS_REVISION = 4
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.

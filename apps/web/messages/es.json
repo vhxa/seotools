@@ -356,6 +356,66 @@
     "noFindings": "Sin hallazgos.",
     "excludedFindings": "Excluida de la auditoría: no tiene hallazgos propios."
   },
+  "IssueEvidence": {
+    "unavailable": "Los ejemplos no están disponibles: este rastreo se analizó antes de guardarlos. Vuelve a rastrear el sitio para verlos.",
+    "noSamples": "No se guardó ningún ejemplo.",
+    "showing": "{total}, mostrando los primeros {shown, number}",
+    "atLeast": "Al menos {value}",
+    "units": {
+      "images": "{total, plural, one {# imagen} other {# imágenes}}",
+      "links": "{total, plural, one {# enlace} other {# enlaces}}",
+      "canonicals": "{total, plural, one {# declaración} other {# declaraciones}}",
+      "related-urls": "{total, plural, one {# otra página} other {# otras páginas}}"
+    },
+    "labels": {
+      "img-no-alt": "Imágenes sin atributo alt",
+      "img-empty-alt": "Imágenes con el atributo alt vacío",
+      "img-long-alt": "Imágenes con un texto alt largo",
+      "img-no-size": "Imágenes sin ancho ni alto",
+      "title-duplicate": "Otras páginas con el mismo título",
+      "description-duplicate": "Otras páginas con la misma meta descripción",
+      "h1-duplicate": "Otras páginas con el mismo H1",
+      "content-duplicate": "Otras páginas con exactamente el mismo texto",
+      "content-near-duplicate": "Otras páginas con un texto casi idéntico",
+      "canonical-conflict": "Canonicals declaradas que no coinciden",
+      "canonical-repeated": "Canonicals declaradas más de una vez",
+      "canonical-outside-head": "Canonicals declaradas fuera del head",
+      "canonical-fragment": "Canonicals con fragmento (#)",
+      "canonical-relative": "Canonicals que no son URL absolutas",
+      "link-to-localhost": "Enlaces a localhost",
+      "uncrawlable-links": "Enlaces que un rastreador no puede seguir",
+      "mixed-content": "Recursos cargados por HTTP",
+      "protocol-relative": "Recursos cuya dirección no indica el esquema (//)",
+      "insecure-form": "Formularios que envían por HTTP",
+      "unsafe-cross-origin-links": "Enlaces a otro sitio en una pestaña nueva, sin rel=\"noopener\"",
+      "anchor-empty": "Enlaces sin texto",
+      "anchor-vague": "Enlaces con un texto poco descriptivo"
+    },
+    "images": {
+      "noSource": "Sin dirección (falta src)",
+      "id": "id: {value}",
+      "class": "class: {value}",
+      "alt": "Texto alt: “{value}”"
+    },
+    "links": {
+      "noAddress": "Sin dirección",
+      "written": "escrito como {value}",
+      "text": "Texto: “{value}”",
+      "reasons": {
+        "javascript-url": "Una dirección javascript:, que no es una página",
+        "scripted": "Sin dirección real: un script gestiona el clic"
+      }
+    },
+    "canonicals": {
+      "empty": "(vacía)",
+      "inHead": "En el head",
+      "inBody": "En el body (se ignora)",
+      "resolvesTo": "Se resuelve a",
+      "source": {
+        "header": "Cabecera HTTP Link"
+      }
+    }
+  },
   "PageIssues": {
     "no-response": {
       "name": "Sin respuesta (interna)",

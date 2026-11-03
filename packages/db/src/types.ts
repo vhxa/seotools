@@ -24,6 +24,7 @@ import type {
   CrawlUrlSource,
   CrawlUrlState,
   EnqueueInput,
+  IssueEvidence,
   Job,
   JobStatus,
   SettingsStore,
@@ -246,6 +247,12 @@ export interface CrawlUrlIssue {
   issue: string
   /** What `PAGE_ISSUES` says this issue details. Absent when it details nothing. */
   details?: string[]
+  /**
+   * What the crawl saw that makes the URL have the issue (`ISSUE_EVIDENCE` says which issues have
+   * it), bounded: a total and the first few samples. Absent when the issue has none, or when the
+   * crawl cannot say, which is never filled in with guesses.
+   */
+  evidence?: IssueEvidence
 }
 
 /** What an analysis concluded about a URL of a crawl. */

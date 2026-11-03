@@ -343,7 +343,11 @@ export const crawlUrlIssues = mysqlTable(
       .references(() => crawls.id, { onDelete: 'cascade' }),
     urlHash: varchar('url_hash', { length: 32 }).notNull(),
     issue: varchar('issue', { length: 64 }).notNull(),
-    /** JSON array of what `PAGE_ISSUES` says the issue details, e.g. which headers are missing. */
+    /**
+     * What the issue says about the URL, as JSON: an array of strings (what `PAGE_ISSUES` says the
+     * issue details, e.g. which headers are missing), or, for a finding with evidence, an object
+     * `{ details?, evidence }` (`serializeIssueDetails`).
+     */
     details: longtext('details'),
   },
   (t) => [

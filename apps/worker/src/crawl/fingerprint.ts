@@ -59,13 +59,26 @@ const BAND_BITS = Math.floor(BITS / BANDS)
 const MAX_BUCKET = 2000
 
 /**
- * Which items are near copies of another one, without comparing every pair. Items with the same
- * `group` are exact copies of each other, which is a different finding, so they do not count.
+ * Most near copies kept per item. A page with more is said to have this many or more: what is shown
+ * of them is only a sample, and a template copied thousands of times would make every item hold
+ * thousands of others.
+ */
+export const MAX_NEAR_PARTNERS = 20
+
+/**
+ * Which items are near copies of another one, and of which (up to `MAX_NEAR_PARTNERS` each), without
+ * comparing every pair. Items with the same `group` are exact copies of each other, which is a
+ * different finding, so they do not count. An item that has no near copy is not in the result.
  */
 export function findNearDuplicates<T extends { simhash: string; group: string | null }>(
   items: readonly T[],
-): Set<T> {
-  const near = new Set<T>()
+): Map<T, Set<T>> {
+  const near = new Map<T, Set<T>>()
+  const pair = (item: T, partner: T) => {
+    let partners = near.get(item)
+    if (!partners) near.set(item, (partners = new Set()))
+    if (partners.size < MAX_NEAR_PARTNERS) partners.add(partner)
+  }
   const mask = (1n << BigInt(BAND_BITS)) - 1n
   for (let band = 0; band < BANDS; band++) {
     const shift = BigInt(band * BAND_BITS)
@@ -83,8 +96,8 @@ export function findNearDuplicates<T extends { simhash: string; group: string | 
           const b = bucket[j]!
           if (a.group !== null && a.group === b.group) continue
           if (hammingDistance(a.simhash, b.simhash) <= NEAR_DISTANCE) {
-            near.add(a)
-            near.add(b)
+            pair(a, b)
+            pair(b, a)
           }
         }
       }

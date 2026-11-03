@@ -72,8 +72,13 @@ export async function analyseCrawl(
   for (const url of site.urls) {
     // Nothing for a URL left out: it has none of its own, and the other URLs were checked above it.
     const found = detectIssues(url, site)
-    for (const { issue, details } of found) {
-      issues.push({ urlHash: url.url.urlHash, issue, ...(details ? { details } : {}) })
+    for (const { issue, details, evidence } of found) {
+      issues.push({
+        urlHash: url.url.urlHash,
+        issue,
+        ...(details ? { details } : {}),
+        ...(evidence ? { evidence } : {}),
+      })
     }
     if (!url.internal) continue
     urls.push({

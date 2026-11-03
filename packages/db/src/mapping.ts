@@ -17,6 +17,7 @@ import {
   crawlUrlHash,
   enabledExtraFiles,
   parseAuditSnapshot,
+  parseIssueEvidence,
   serializeAuditSnapshot,
   type AuditSnapshot,
   type CrawlFileData,
@@ -406,15 +407,44 @@ export function crawlUrlOrder(
   ]
 }
 
+/**
+ * What an issue row keeps in its `details` column. Rows written before evidence existed hold a JSON
+ * array of strings, and rows without evidence still do: only a finding with evidence is an object,
+ * `{ details?, evidence }`, so nothing already stored changes meaning.
+ */
+export function serializeIssueDetails(issue: CrawlUrlIssue): string | null {
+  const details = issue.details?.length ? issue.details : undefined
+  if (issue.evidence) {
+    return JSON.stringify({ ...(details ? { details } : {}), evidence: issue.evidence })
+  }
+  return details ? JSON.stringify(details) : null
+}
+
+/** The inverse of `serializeIssueDetails`. Evidence that does not check out is left out. */
+export function parseIssueDetails(
+  stored: string | null,
+): Pick<CrawlUrlIssue, 'details' | 'evidence'> {
+  if (stored === null) return {}
+  const value = parseJson(stored) as unknown
+  if (Array.isArray(value)) return { details: value as string[] }
+  if (typeof value !== 'object' || value === null) return {}
+  const { details, evidence } = value as { details?: unknown; evidence?: unknown }
+  const parsed = parseIssueEvidence(evidence)
+  return {
+    ...(Array.isArray(details) ? { details: details as string[] } : {}),
+    ...(parsed ? { evidence: parsed } : {}),
+  }
+}
+
 /** One row per URL and issue: asking twice for the same one is not an error. */
 export function crawlIssueRows(crawlId: string, issues: CrawlUrlIssue[]) {
   const unique = new Map<string, CrawlUrlIssue>()
   for (const issue of issues) unique.set(`${issue.urlHash}:${issue.issue}`, issue)
-  return [...unique.values()].map(({ urlHash, issue, details }) => ({
+  return [...unique.values()].map((issue) => ({
     crawlId,
-    urlHash,
-    issue,
-    details: details?.length ? JSON.stringify(details) : null,
+    urlHash: issue.urlHash,
+    issue: issue.issue,
+    details: serializeIssueDetails(issue),
   }))
 }
 
@@ -425,7 +455,7 @@ export const toCrawlUrlIssue = (row: {
 }): CrawlUrlIssue => ({
   urlHash: row.urlHash,
   issue: row.issue,
-  ...(row.details === null ? {} : { details: parseJson(row.details) as string[] }),
+  ...parseIssueDetails(row.details),
 })
 
 /** One row per internal URL of an analysis. */

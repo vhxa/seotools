@@ -16,6 +16,7 @@ import {
 import { UrlAuditActions } from '@/components/audit/url-audit-actions'
 import { PriorityToggle, UrlLink } from '@/components/crawl/url-cells'
 import { StatusCell } from '@/components/crawl/status-cell'
+import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { OpenUrlLink } from '@/components/pages/url-drawer'
 import { Badge } from '@/components/ui/badge'
@@ -209,7 +210,7 @@ export async function UrlDetail({
           <p className="text-sm text-muted-foreground">{t('noIssues')}</p>
         ) : (
           <ul className="grid gap-3 text-sm">
-            {data.issues.map(({ issue: id, details }) => (
+            {data.issues.map(({ issue: id, details, evidence }) => (
               <li key={id} className="grid gap-1">
                 <span className="flex flex-wrap items-center gap-2 font-medium">
                   <IssueLabel issue={id} />
@@ -219,6 +220,12 @@ export async function UrlDetail({
                   <span className="text-muted-foreground">{tIssues(`${id}.description`)}</span>
                 )}
                 {details && <IssueDetails details={details} />}
+                <IssueEvidenceView
+                  issue={id}
+                  evidence={evidence}
+                  known={data.evidenceUrls}
+                  hrefFor={hrefFor}
+                />
               </li>
             ))}
           </ul>
