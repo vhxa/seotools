@@ -9,10 +9,11 @@ import {
   selectorKey,
   type AuditSelector,
   type AuditValue,
+  type IndexIntent,
   type LanguageConfig,
   type NewAuditRule,
+  type IntentRuleValue,
   type QuerySelector,
-  type RecordedIntent,
   type SelectorScope,
 } from '@seotools/core'
 import type {
@@ -65,7 +66,7 @@ export function toAuditRule(row: AuditRuleRow): AuditRuleRecord {
     id: row.id,
     domainId: row.domainId,
     dimension: row.dimension,
-    value: row.value as AuditValue & RecordedIntent,
+    value: row.value as AuditValue & IntentRuleValue,
     selector,
     reason: row.reason,
     enabled: row.enabled,
@@ -214,13 +215,17 @@ export function planDeleteRule(rows: readonly AuditRuleRow[], input: { id: strin
 /**
  * What the table and the detail of a URL set: for each URL, the rule that is about that exact URL
  * in each dimension, created, changed or removed. `inherit` removes it, and with it the URL goes
- * back to what the broader rules say, including whether `nofollow` is accepted. A dimension left out
- * is not touched, and neither is anything of an exception that the change does not name:
- * - `acceptNofollow` alone changes only that, keeping the expectation the URL has now;
- * - an expectation alone keeps accepting `nofollow` as the URL does now;
+ * back to what the broader rules say. A dimension left out is not touched, and neither is anything
+ * of an exception that the change does not name:
+ * - the expectation and whether `nofollow` is accepted are independent. An exception that only
+ *   accepts `nofollow` leaves the expectation to the other rules (`inherit`), so that changing what
+ *   they say later still reaches the URL; it is made when the page has to differ from the rules, and
+ *   removed when it no longer does;
+ * - an exception that states an expectation also states `nofollow`, as the URL has it now unless
+ *   told otherwise, so making one never changes what it was not asked to change;
  * - a `reason` left out keeps the one the exception has.
- * Where a new exception has to take a value it was not given, it takes the URL's effective one, so
- * making an exception never changes what it was not asked to change.
+ * Disabled exceptions do not act: a change reuses one only when no enabled one exists, and `inherit`
+ * removes them all.
  */
 export function planUrlConfig(
   rows: readonly AuditRuleRow[],
@@ -237,9 +242,24 @@ export function planUrlConfig(
 ): AuditPlan {
   const changes: RuleChange[] = []
   let created = 0
+  const urls = new Set(input.urls)
+  const isException = (row: AuditRuleRow, dimension: 'audit' | 'intent', url: string) =>
+    row.dimension === dimension && row.selectorKind === 'url' && row.selector === url
   const resolver = compileAuditRules(rows.map(toAuditRule), input.host, {
     languages: context.languages,
   })
+  // What the rules say once these URLs' own exceptions are set aside: where an exception only
+  // changes something if the URL differs from it.
+  const underRules = compileAuditRules(
+    rows
+      .filter(
+        (row) =>
+          !(row.dimension === 'intent' && row.selectorKind === 'url' && urls.has(row.selector)),
+      )
+      .map(toAuditRule),
+    input.host,
+    { languages: context.languages },
+  )
 
   const write = (current: AuditRuleRow | undefined, rule: NewAuditRule) => {
     const columns = ruleColumns(rule)
@@ -266,44 +286,61 @@ export function planUrlConfig(
     })
   }
 
-  for (const url of new Set(input.urls)) {
-    const exception = (dimension: 'audit' | 'intent') =>
-      rows.find(
-        (row) => row.dimension === dimension && row.selectorKind === 'url' && row.selector === url,
-      )
+  for (const url of urls) {
+    const exceptions = (dimension: 'audit' | 'intent') => {
+      const all = rows.filter((row) => isException(row, dimension, url))
+      return { all, acting: all.find((row) => row.enabled) ?? all[0] }
+    }
     const selector: AuditSelector = { kind: 'url', url }
 
     if (input.audit !== undefined) {
-      const current = exception('audit')
+      const { all, acting } = exceptions('audit')
       if (input.audit === 'inherit') {
-        if (current) changes.push({ op: 'delete', id: current.id })
+        for (const row of all) changes.push({ op: 'delete', id: row.id })
       } else {
-        write(current, {
+        write(acting, {
           dimension: 'audit',
           value: input.audit,
           selector,
-          reason: input.reason !== undefined ? input.reason : (current?.reason ?? null),
+          reason: input.reason !== undefined ? input.reason : (acting?.reason ?? null),
           enabled: true,
         })
       }
     }
 
-    if (input.intent === 'inherit') {
-      const current = exception('intent')
-      if (current) changes.push({ op: 'delete', id: current.id })
-    } else if (input.intent !== undefined || input.acceptNofollow !== undefined) {
-      const current = exception('intent')
-      const effective = resolver.resolve(url).intent
-      // A rule of the retired `none` is no expectation: what the URL is expected to be then is the default.
-      const kept = current?.value ?? effective.value
-      write(current, {
-        dimension: 'intent',
-        value: input.intent ?? (kept === 'none' ? 'indexable' : (kept as RecordedIntent)),
-        selector,
-        acceptNofollow: input.acceptNofollow ?? current?.acceptNofollow ?? effective.acceptNofollow,
-        reason: input.reason !== undefined ? input.reason : (current?.reason ?? null),
-        enabled: true,
-      })
+    if (input.intent !== undefined || input.acceptNofollow !== undefined) {
+      const { all, acting } = exceptions('intent')
+      // A rule of the retired `none` states no expectation.
+      const stated: IndexIntent | null =
+        acting && (acting.value === 'indexable' || acting.value === 'not-indexable')
+          ? acting.value
+          : null
+      const value =
+        input.intent === undefined ? stated : input.intent === 'inherit' ? null : input.intent
+      const accept = input.acceptNofollow ?? acting?.acceptNofollow
+      const reason = input.reason !== undefined ? input.reason : (acting?.reason ?? null)
+      if (value !== null) {
+        write(acting, {
+          dimension: 'intent',
+          value,
+          selector,
+          acceptNofollow: accept ?? resolver.resolve(url).intent.acceptNofollow,
+          reason,
+          enabled: true,
+        })
+      } else if (accept === undefined || accept === underRules.resolve(url).intent.acceptNofollow) {
+        // Nothing left that differs from what the rules say.
+        for (const row of all) changes.push({ op: 'delete', id: row.id })
+      } else {
+        write(acting, {
+          dimension: 'intent',
+          value: 'inherit',
+          selector,
+          acceptNofollow: accept,
+          reason,
+          enabled: true,
+        })
+      }
     }
   }
   if (rows.length + created > AUDIT_LIMITS.rulesPerDomain) return { ok: false, error: 'limit' }

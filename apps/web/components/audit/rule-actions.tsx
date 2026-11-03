@@ -77,18 +77,23 @@ export function RuleRowActions({
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const label = text(rule.selector)
+  // An exception that only says about nofollow is edited from the dialog of its URL: the form here
+  // always states an expectation, and would stop it following the rules.
+  const editable = !(rule.dimension === 'intent' && rule.value === 'inherit')
 
   return (
     <div className="flex items-center justify-end gap-1">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`${t('list.edit')}: ${label}`}
-        title={t('list.edit')}
-        onClick={() => setEditing(true)}
-      >
-        <PencilIcon />
-      </Button>
+      {editable && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`${t('list.edit')}: ${label}`}
+          title={t('list.edit')}
+          onClick={() => setEditing(true)}
+        >
+          <PencilIcon />
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon-sm"

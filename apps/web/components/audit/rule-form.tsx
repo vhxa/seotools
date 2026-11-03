@@ -119,7 +119,9 @@ function RuleFormFields({
   const [acceptNofollow, setAcceptNofollow] = useState(start.acceptNofollow)
   const [reason, setReason] = useState(start.reason)
   const [enabled, setEnabled] = useState(start.enabled)
-  const [preview, setPreview] = useState<PreviewState | null>(null)
+  // The preview is kept with the form it was worked out for, and only shows while the form is still
+  // that one: changing anything that decides what the rule does makes it out of date.
+  const [preview, setPreview] = useState<{ form: string; result: PreviewState } | null>(null)
   const [previewing, startPreview] = useTransition()
 
   // A saved rule is news to whoever holds the form; `state` is a fresh object for every submit.
@@ -150,21 +152,25 @@ function RuleFormFields({
   const idBase = `${dimension}-${rule?.id ?? 'new'}`
   const hasScope = kind !== 'url'
 
+  // Everything that changes what the rule does. The reason does not.
+  const previewInput = {
+    id: rule?.id,
+    kind,
+    selector: address,
+    query,
+    queryValue,
+    scope: hasScope ? scope : 'literal',
+    acceptNofollow: dimension === 'intent' && acceptNofollow,
+    value,
+    enabled,
+    reason,
+  }
+  const formKey = JSON.stringify({ ...previewInput, reason: undefined })
+
   const runPreview = () =>
     startPreview(async () => {
-      setPreview(
-        await previewAuditRuleAction(host, dimension, {
-          id: rule?.id,
-          kind,
-          selector: address,
-          query,
-          queryValue,
-          scope: hasScope ? scope : 'literal',
-          acceptNofollow: dimension === 'intent' && acceptNofollow,
-          value,
-          reason,
-        }),
-      )
+      const result = await previewAuditRuleAction(host, dimension, previewInput)
+      setPreview({ form: formKey, result })
     })
 
   return (
@@ -344,7 +350,7 @@ function RuleFormFields({
         </div>
       </div>
 
-      {preview && <RulePreview state={preview} />}
+      {preview && preview.form === formKey && <RulePreview state={preview.result} />}
 
       {state.error && (
         <p role="alert" className="text-sm text-destructive">

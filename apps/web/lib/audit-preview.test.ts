@@ -164,6 +164,52 @@ describe('previewing a rule', () => {
     })
   })
 
+  it('counts what an edit stops doing, not only what the new selector covers', async () => {
+    const crawl = await crawlOf([`${SITE}/shop`, `${SITE}/shop/a`, `${SITE}/cart`, `${SITE}/about`])
+    const saved = await db.audit.saveRule({ domainId, rule: rule('/shop') })
+    const id = saved.ok ? saved.rule!.id : ''
+    // Moving the exclusion from /shop to /cart: /cart starts being excluded, and /shop stops.
+    const found = await preview(rule('/cart'), { crawl, replacing: id })
+    expect(found).toMatchObject({ status: 'ok', matches: 1, decides: 1, changes: 3 })
+    if (found.status !== 'ok') throw new Error('unreachable')
+    expect([...found.changeSamples].sort()).toEqual(
+      [`${SITE}/cart`, `${SITE}/shop`, `${SITE}/shop/a`].sort(),
+    )
+    // Editing without moving it changes nothing: the same URLs are decided the same way.
+    expect(await preview(rule('/shop'), { crawl, replacing: id })).toMatchObject({
+      matches: 2,
+      changes: 0,
+    })
+    // An edit that covers nothing any more still reports what it releases.
+    expect(await preview(rule('/nowhere'), { crawl, replacing: id })).toMatchObject({
+      matches: 0,
+      changes: 2,
+    })
+  })
+
+  it('previews a rule that is off as what it would cover, with the change that being off makes', async () => {
+    const crawl = await crawlOf([`${SITE}/cart`, `${SITE}/shop`])
+    const saved = await db.audit.saveRule({ domainId, rule: rule('/cart') })
+    const id = saved.ok ? saved.rule!.id : ''
+    // A new rule that is off changes nothing yet.
+    expect(await preview({ ...rule('/shop'), enabled: false }, { crawl })).toMatchObject({
+      active: false,
+      matches: 1,
+      decides: 1,
+      changes: 0,
+    })
+    // Switching off the one that is on releases what it was excluding, and does not clash with itself.
+    expect(
+      await preview({ ...rule('/cart'), enabled: false }, { crawl, replacing: id }),
+    ).toMatchObject({ active: false, matches: 1, decides: 1, changes: 1 })
+    // It does not clash with an enabled rule either: only enabled rules are unique.
+    expect(await preview({ ...rule('/cart'), enabled: false }, { crawl })).toMatchObject({
+      status: 'ok',
+      active: false,
+    })
+    expect(await preview(rule('/shop'), { crawl })).toMatchObject({ active: true, changes: 1 })
+  })
+
   it('refuses to preview what would clash with an enabled rule', async () => {
     const crawl = await crawlOf([`${SITE}/cart`])
     const saved = await db.audit.saveRule({ domainId, rule: rule('/cart') })

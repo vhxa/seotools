@@ -310,13 +310,10 @@ describe('parseUrlConfig', () => {
     ).toMatchObject({ ok: true, intent: 'not-indexable', acceptNofollow: false })
   })
 
-  it('does not take an acceptance of nofollow to go with going back to the rules', () => {
+  it('takes an acceptance of nofollow with going back to the rules, which are independent', () => {
     expect(
       parseUrlConfig({ urls: ok.urls, intent: 'inherit', acceptNofollow: true }, HOST),
-    ).toEqual({
-      ok: false,
-      error: 'choice',
-    })
+    ).toMatchObject({ ok: true, intent: 'inherit', acceptNofollow: true })
     expect(parseUrlConfig({ urls: ok.urls, acceptNofollow: 'yes' }, HOST)).toEqual({
       ok: false,
       error: 'choice',

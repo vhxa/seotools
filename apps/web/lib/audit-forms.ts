@@ -137,9 +137,9 @@ export type UrlConfigResult =
  * What the table and the detail of a URL send: the URLs, and what to change. A dimension that is not
  * in the request is not touched, so nothing the user did not edit can be reset by saving. Every URL
  * has to be one of the domain; one that is not refuses the whole request, so a change is never
- * applied to some of the URLs asked for. `inherit` is "according to the rules": it removes the
- * exception, and with it whatever the exception said, so it cannot come with an acceptance of
- * `nofollow` to set.
+ * applied to some of the URLs asked for. `inherit` is "according to the rules": the exception no
+ * longer states an expectation. Whether `nofollow` is accepted is its own choice: it can come with
+ * `inherit`, and then only that stays different from the rules.
  */
 export function parseUrlConfig(input: unknown, host: string): UrlConfigResult {
   if (typeof input !== 'object' || input === null) return { ok: false, error: 'urls' }
@@ -171,7 +171,6 @@ export function parseUrlConfig(input: unknown, host: string): UrlConfigResult {
   if (audit === undefined && intent === undefined && acceptNofollow === undefined) {
     return { ok: false, error: 'choice' }
   }
-  if (intent === 'inherit' && acceptNofollow !== undefined) return { ok: false, error: 'choice' }
 
   let cleanReason: string | null | undefined
   if (reason !== undefined) {

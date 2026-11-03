@@ -102,13 +102,18 @@ export type PreviewState = AuditPreview | { status: 'error'; error: string }
 export async function previewAuditRuleAction(
   host: string,
   dimension: AuditDimension,
-  input: Omit<RuleInput, 'enabled'> & { id?: unknown },
+  input: RuleInput & { id?: unknown },
 ): Promise<PreviewState> {
   const { domain } = await requireDomain(host)
   const t = await errorMessages()
   // Whatever arrives from a client is checked, including that it is an object at all.
   if (typeof input !== 'object' || input === null) return { status: 'error', error: t('value') }
-  const parsed = parseRuleInput({ ...input, enabled: true }, dimension, domain.host)
+  // Whether it is on matters: a rule that is off changes what it was deciding, and clashes with none.
+  const parsed = parseRuleInput(
+    { ...input, enabled: input.enabled === true },
+    dimension,
+    domain.host,
+  )
   if (!parsed.ok) return { status: 'error', error: ruleError(t, parsed.error) }
   const replacing = typeof input.id === 'string' && isRuleId(input.id) ? input.id : null
 

@@ -37,11 +37,17 @@ export type AuditPreview =
       crawledAt: string | null
       /** URLs of the crawl that were looked at: the internal ones. */
       scanned: number
+      /** Whether the rule would act: it is on. A rule that is off covers URLs and decides none. */
+      active: boolean
       /** URLs the selector covers, whether or not this rule decides them. */
       matches: number
-      /** Of those, the ones this rule would decide. */
+      /** Of those, the ones this rule would decide, were it on. */
       decides: number
-      /** URLs whose effective result would be different from what it is now. */
+      /**
+       * URLs whose effective result would be different from what it is now, wherever they are: the
+       * ones the selector covers, and also the ones the rule being edited covered before and no
+       * longer does.
+       */
       changes: number
       /** URLs it covers where a more specific rule decides. */
       overriddenCount: number
@@ -73,9 +79,11 @@ const effectOf = (resolution: AuditResolution, dimension: AuditDimension) =>
  * are now and over the rules as they would be, so the answer is the one the next analysis gives. It
  * only looks at known URLs; the rule will apply to the ones found later too.
  *
- * It tells apart the URLs the selector covers, the ones whose effective result would change (the
- * rule decides them and what it says differs from what they are now), and the ones it covers where a
- * more specific rule prevails.
+ * It tells apart the URLs the selector covers, the ones whose effective result would change, and the
+ * ones it covers where a more specific rule prevails. A change is any URL that is different between
+ * the rules as they are and as they would be: when a rule is edited, that includes what the old
+ * selector covered and the new one does not, and a rule that is switched off changes what it was
+ * deciding before. The URLs neither selector covers cannot change, so they are not resolved.
  */
 export async function previewRule(input: {
   db: Database
@@ -91,17 +99,28 @@ export async function previewRule(input: {
   if (!crawl) return { status: 'no-results' }
 
   const others = input.rules.filter((rule) => rule.id !== input.replacing)
+  const replaced = input.rules.find((rule) => rule.id === input.replacing) ?? null
   const key = selectorKey(candidate.selector)
   const clash = others.find(
     (rule) =>
       rule.enabled && rule.dimension === candidate.dimension && selectorKey(rule.selector) === key,
   )
-  if (clash) return { status: 'conflict', with: briefOf(clash) }
+  // A rule that is off cannot clash: only enabled rules are unique.
+  if (clash && candidate.enabled) return { status: 'conflict', with: briefOf(clash) }
 
-  // Previewed as if on: a rule that is switched off covers the same URLs, it just does not decide.
-  const previewed = { ...candidate, id: PREVIEW_ID, enabled: true } as AuditRule
+  const previewed = { ...candidate, id: PREVIEW_ID } as AuditRule
   const now = compileAuditRules(input.rules, host, { languages })
   const after = compileAuditRules([...others, previewed], host, { languages })
+  // What it would decide if it were on: the same unless it is off.
+  const ifOn = candidate.enabled
+    ? after
+    : compileAuditRules(
+        [...others.filter((rule) => rule !== clash), { ...previewed, enabled: true }],
+        host,
+        {
+          languages,
+        },
+      )
   const dimension = candidate.dimension
   let scanned = 0
   let matches = 0
@@ -116,26 +135,30 @@ export async function previewRule(input: {
     for (const { url } of batch) {
       scanned++
       const parts = urlPartsOf(url, host, languages)
-      if (!parts || !selectorMatches(candidate.selector, parts)) continue
-      matches++
-      if (matchSamples.length < MAX_SAMPLES) matchSamples.push(url)
-      const resolved = after.resolve(url)
-      const winner = resolved[dimension].rule
-      if (winner?.id === PREVIEW_ID) {
-        decides++
-        if (effectOf(resolved, dimension) !== effectOf(now.resolve(url), dimension)) {
-          changes++
-          if (changeSamples.length < MAX_SAMPLES) changeSamples.push(url)
+      if (!parts) continue
+      const covered = selectorMatches(candidate.selector, parts)
+      const wasCovered = replaced !== null && selectorMatches(replaced.selector, parts)
+      if (!covered && !wasCovered) continue
+      if (covered) {
+        matches++
+        if (matchSamples.length < MAX_SAMPLES) matchSamples.push(url)
+        const winner = ifOn.resolve(url)[dimension].rule
+        if (winner?.id === PREVIEW_ID) decides++
+        else if (winner) {
+          overriddenCount++
+          if (overridden.length < MAX_SAMPLES) overridden.push({ url, by: briefOf(winner) })
         }
-      } else if (winner) {
-        overriddenCount++
-        if (overridden.length < MAX_SAMPLES) overridden.push({ url, by: briefOf(winner) })
+      }
+      if (effectOf(after.resolve(url), dimension) !== effectOf(now.resolve(url), dimension)) {
+        changes++
+        if (changeSamples.length < MAX_SAMPLES) changeSamples.push(url)
       }
     }
     if (batch.length < BATCH) break
   }
   return {
     status: 'ok',
+    active: candidate.enabled,
     crawledAt: crawl.finishedAt?.toISOString() ?? null,
     scanned,
     matches,

@@ -28,6 +28,7 @@ import {
   type IndexIntent,
   type LanguageConfig,
   type QuerySelector,
+  type IntentRuleValue,
   type RecordedIntent,
   type SelectorScope,
 } from './audit'
@@ -53,7 +54,7 @@ const audit = (
   }) as AuditRule
 const intent = (
   selector: AuditSelector,
-  value: RecordedIntent,
+  value: IntentRuleValue,
   extra: Partial<AuditRule> & { acceptNofollow?: boolean } = {},
 ): AuditRule =>
   ({
@@ -357,7 +358,7 @@ describe('resolving a URL', () => {
   it('audits everything and expects it to be indexable when there are no rules', () => {
     expect(resolve([], 'https://example.com/cart')).toEqual({
       audit: { value: 'audited', rule: null },
-      intent: { value: 'indexable', rule: null, acceptNofollow: false },
+      intent: { value: 'indexable', rule: null, acceptNofollow: false, acceptRule: null },
     })
   })
 
@@ -370,6 +371,7 @@ describe('resolving a URL', () => {
       value: 'not-indexable',
       rule: expectation,
       acceptNofollow: false,
+      acceptRule: expectation,
     })
   })
 
@@ -1021,6 +1023,48 @@ describe('accepting nofollow', () => {
     expect(on([general, exception], '/a/c')).toMatchObject({ acceptNofollow: true })
   })
 
+  it('can be said on its own by an exception that leaves the expectation to the other rules', () => {
+    const general = intent(prefix('/a'), 'not-indexable')
+    const only = intent(url('https://example.com/a/b'), 'inherit', { acceptNofollow: true })
+    // The expectation is the general rule's; the acceptance is the exception's.
+    expect(on([general, only], '/a/b')).toMatchObject({
+      value: 'not-indexable',
+      rule: general,
+      acceptNofollow: true,
+      acceptRule: only,
+    })
+    // Another rule changing later still reaches the URL.
+    const changed = intent(prefix('/a'), 'indexable')
+    expect(on([changed, only], '/a/b')).toMatchObject({ value: 'indexable', acceptNofollow: true })
+    // The exception can also say it is not accepted where the rules accept it.
+    const accepting = intent(prefix('/a'), 'not-indexable', { acceptNofollow: true })
+    const refusing = intent(url('https://example.com/a/b'), 'inherit', { acceptNofollow: false })
+    expect(on([accepting, refusing], '/a/b')).toMatchObject({
+      value: 'not-indexable',
+      acceptNofollow: false,
+      acceptRule: refusing,
+    })
+    expect(on([accepting, refusing], '/a/c')).toMatchObject({ acceptNofollow: true })
+    // With nothing else to give an expectation, it is the default one.
+    expect(on([only], '/a/b')).toMatchObject({
+      value: 'indexable',
+      rule: null,
+      acceptNofollow: true,
+      acceptRule: only,
+    })
+    // A disabled one says nothing.
+    expect(on([general, { ...only, enabled: false }], '/a/b')).toMatchObject({
+      acceptNofollow: false,
+      acceptRule: general,
+    })
+  })
+
+  it('does not read an exception that only says nofollow in a configuration from before they existed', () => {
+    const only = intent(url('https://example.com/a/b'), 'inherit', { acceptNofollow: true })
+    const old = compileAuditRules([only], HOST, { semantics: 1 }).resolve('https://example.com/a/b')
+    expect(old.intent).toMatchObject({ value: 'none', acceptNofollow: false })
+  })
+
   it('follows the scope of its rule', () => {
     const rule = intent(sharedPrefix('/blog'), 'indexable', { acceptNofollow: true })
     expect(on([rule], '/es/blog/post')).toMatchObject({ acceptNofollow: true })
@@ -1050,6 +1094,7 @@ describe('what a configuration meant', () => {
       value: 'none',
       rule: null,
       acceptNofollow: false,
+      acceptRule: null,
     })
     expect(compileAuditRules([], HOST).resolve(HOME).intent.value).toBe('indexable')
   })

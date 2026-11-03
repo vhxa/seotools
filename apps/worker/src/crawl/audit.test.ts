@@ -1204,6 +1204,28 @@ describe('a page that accepts its own nofollow', () => {
     expect(after).not.toContain('nofollow')
   })
 
+  it('is accepted by an exception on the URL that leaves the expectation to the rules', async () => {
+    // The rules expect the whole site not to be indexed; this page also has a nofollow.
+    await addRules([expecting(prefix('/'), 'not-indexable')])
+    const { id } = await crawl(product('noindex, nofollow'))
+    expect(await findings(id, '/product')).toContain('nofollow')
+    // Only nofollow is said for the URL, through the same call the dialog uses.
+    const changed = await db.audit.setUrlConfig({
+      domainId,
+      host: 'example.com',
+      urls: [`${SITE}/product`],
+      acceptNofollow: true,
+    })
+    expect(changed).toMatchObject({ ok: true })
+    await recomputeAudit({ db, domainId, log, finalAttempt: false })
+    const found = await findings(id, '/product')
+    expect(found).not.toContain('nofollow')
+    // The expectation is still the rules': the noindex is what they expect, and it is met.
+    expect(found).not.toContain('noindex')
+    expect(found).not.toContain('expected-not-indexable-but-indexable')
+    expect(await stateOf(id, '/product')).toMatchObject({ acceptNofollow: true })
+  })
+
   it('reads `none` as a noindex and a nofollow, and keeps their consequences apart', async () => {
     const { id } = await crawl(product('none'))
     const found = await findings(id, '/product')
