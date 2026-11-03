@@ -1,11 +1,21 @@
 import {
   HREFLANG_SOURCES,
+  MAX_EVIDENCE_ITEMS,
   PAGE_ISSUE_IDS,
+  boundedText,
+  boundedUrl,
+  parseIssueEvidence,
+  type CanonicalEvidence,
   type CrawlPageFacts,
+  type DeclaredCanonical,
   type HreflangEntry,
+  type ImageProblem,
   type IndexabilityBlocker,
+  type IssueEvidence,
+  type LinkProblem,
   type PageIssueId,
 } from '@seotools/core'
+import { MAX_NEAR_PARTNERS } from './fingerprint'
 import { isValidHreflang } from './language-codes'
 import {
   comparable,
@@ -16,8 +26,20 @@ import {
   type Site,
 } from './site-audit'
 
-/** Whether a URL has the issue. A list says so too, unless empty, and is what the issue details. */
-type Check = (url: AuditedUrl, site: Site) => boolean | string[]
+/**
+ * A finding that comes with evidence, which is what an object says. Without `evidence` it is a
+ * finding the crawl cannot back up: the page was parsed before that was kept.
+ */
+interface Found {
+  evidence?: IssueEvidence
+}
+
+/**
+ * Whether a URL has the issue. A list says so too, unless empty, and is what the issue details; an
+ * object does, and is what backs it up.
+ */
+type Verdict = boolean | string[] | Found
+type Check = (url: AuditedUrl, site: Site) => Verdict
 
 const TITLE_MAX = 60
 const TITLE_MIN = 30
@@ -44,7 +66,7 @@ const judgeable = (url: AuditedUrl, site: Site) => url.contentPage && !isGuess(u
 
 /** The issue applies to pages that answered and were parsed, not to redirects or failures. */
 const onPage =
-  (test: (url: AuditedUrl, facts: CrawlPageFacts, site: Site) => boolean | string[]): Check =>
+  (test: (url: AuditedUrl, facts: CrawlPageFacts, site: Site) => Verdict): Check =>
   (url, site) =>
     url.contentPage && url.facts ? test(url, url.facts, site) : false
 
@@ -64,6 +86,60 @@ const valuesOf = (directives: ReadonlySet<string>, name: string) =>
   )
 
 const blank = (text: string | null | undefined) => !text || text.trim() === ''
+
+/** A finding with its evidence. Evidence that does not check out is left out, not stored. */
+const backedBy = (evidence: IssueEvidence): Found => {
+  const checked = parseIssueEvidence(evidence)
+  return checked ? { evidence: checked } : {}
+}
+
+/** Most pages of a long list to look at for ones to show: the rest is only counted. */
+const MAX_SCANNED = 50
+
+/**
+ * The finding that a page shares what makes it a duplicate with other pages, and which they are.
+ * `group` holds the audited indexable pages that share it (`Site.titles` and the rest), so a page
+ * left out of the audit is never named as a copy, and is not counted in the total.
+ */
+function duplicates(self: AuditedUrl, group: readonly AuditedUrl[] | undefined): Verdict {
+  if (!group || group.length < 2) return false
+  const others = group.length - (self.excluded ? 0 : 1)
+  const urls: string[] = []
+  for (let i = 0; i < group.length && i < MAX_SCANNED && urls.length < MAX_EVIDENCE_ITEMS; i++) {
+    const url = boundedUrl(group[i]!.url.url)
+    if (group[i] !== self && url) urls.push(url)
+  }
+  return backedBy({ kind: 'related-urls', total: others, urls })
+}
+
+/** The declarations of a page's canonical that `pick` says are the problem. */
+function declarations(facts: CrawlPageFacts, pick: (declared: DeclaredCanonical) => boolean) {
+  const picked = facts.canonicals.filter(pick)
+  const items: CanonicalEvidence[] = picked.slice(0, MAX_EVIDENCE_ITEMS).map((declared) => ({
+    raw: boundedText(declared.raw),
+    url: boundedUrl(declared.url),
+    inHead: declared.inHead,
+    source: declared.source ?? null,
+  }))
+  return backedBy({ kind: 'canonicals', total: picked.length, items })
+}
+
+/** The elements of a page the crawl kept as examples of a problem, if it kept any. */
+const imageProblem = (problem: ImageProblem, total: (facts: CrawlPageFacts) => number): Check =>
+  onPage((_, facts) => {
+    const count = total(facts)
+    if (count === 0) return false
+    const items = facts.evidence?.images?.[problem]
+    return items ? backedBy({ kind: 'images', total: count, items }) : {}
+  })
+
+const linkProblem = (problem: LinkProblem, total: (facts: CrawlPageFacts) => number): Check =>
+  onPage((_, facts) => {
+    const count = total(facts)
+    if (count === 0) return false
+    const items = facts.evidence?.links?.[problem]
+    return items ? backedBy({ kind: 'links', total: count, items }) : {}
+  })
 
 const sourcesOf = (entries: readonly HreflangEntry[]) =>
   HREFLANG_SOURCES.filter((source) => entries.some((entry) => entry.source === source))
@@ -204,9 +280,13 @@ export const CHECKS: Record<PageIssueId, Check> = {
   }),
 
   // --- canonicals ----------------------------------------------------------
-  'canonical-outside-head': onPage((_, facts) => facts.canonicals.some((c) => !c.inHead)),
-  'canonical-conflict': onPage(
-    (_, facts) => new Set(facts.canonicals.map((c) => c.url ?? c.raw)).size > 1,
+  'canonical-outside-head': onPage((_, facts) =>
+    facts.canonicals.some((c) => !c.inHead) ? declarations(facts, (c) => !c.inHead) : false,
+  ),
+  'canonical-conflict': onPage((_, facts) =>
+    new Set(facts.canonicals.map((c) => c.url ?? c.raw)).size > 1
+      ? declarations(facts, () => true)
+      : false,
   ),
   'canonical-not-indexable': onPage((url, _, site) => {
     const target = url.url.canonical ? site.get(url.url.canonical) : undefined
@@ -218,17 +298,24 @@ export const CHECKS: Record<PageIssueId, Check> = {
       !target.indexable
     )
   }),
-  'canonical-fragment': onPage((_, facts) => facts.canonicals.some((c) => c.raw.includes('#'))),
+  'canonical-fragment': onPage((_, facts) =>
+    facts.canonicals.some((c) => c.raw.includes('#'))
+      ? declarations(facts, (c) => c.raw.includes('#'))
+      : false,
+  ),
   'canonical-missing': onPage(
     (url, facts) => !url.noindex && facts.canonicals.length === 0 && url.url.canonical === null,
   ),
   canonicalised: onPage((url) => url.canonicalised),
-  'canonical-relative': onPage((_, facts) =>
-    facts.canonicals.some((c) => !/^https?:\/\//i.test(c.raw.trim())),
-  ),
+  'canonical-relative': onPage((_, facts) => {
+    const relative = (c: DeclaredCanonical) => !/^https?:\/\//i.test(c.raw.trim())
+    return facts.canonicals.some(relative) ? declarations(facts, relative) : false
+  }),
   'canonical-repeated': onPage((_, facts) => {
     const values = facts.canonicals.map((c) => c.url ?? c.raw)
-    return new Set(values).size < values.length
+    if (new Set(values).size === values.length) return false
+    // The declarations of a value that was declared more than once.
+    return declarations(facts, (c) => values.filter((v) => v === (c.url ?? c.raw)).length > 1)
   }),
 
   // --- sitemaps ------------------------------------------------------------
@@ -294,7 +381,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'title-outside-head': onPage((_, facts) => facts.titlesOutsideHead > 0),
   'title-multiple': onPage((_, facts) => facts.titles > 1),
   'title-duplicate': onPage(
-    (url, _, site) => url.indexable && (site.titles.get(comparable(url.url.title)) ?? 0) > 1,
+    (url, _, site) => url.indexable && duplicates(url, site.titles.get(comparable(url.url.title))),
   ),
   'title-too-long': onPage((url) => (url.url.title?.length ?? 0) > TITLE_MAX),
   'title-too-short': onPage(
@@ -307,7 +394,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'description-missing': onPage(({ url }) => blank(url.data?.description)),
   'description-duplicate': onPage(
     (url, _, site) =>
-      url.indexable && (site.descriptions.get(comparable(url.url.data?.description)) ?? 0) > 1,
+      url.indexable &&
+      duplicates(url, site.descriptions.get(comparable(url.url.data?.description))),
   ),
   'description-too-long': onPage(
     ({ url }) => (url.data?.description?.length ?? 0) > DESCRIPTION_MAX,
@@ -324,37 +412,48 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'heading-skipped-level': onPage((_, facts) => facts.headingLevelSkipped),
   'h2-missing': onPage((_, facts) => facts.h2s === 0 && facts.words >= SUBSECTIONS_MIN_WORDS),
   'h1-duplicate': onPage(
-    (url, _, site) => url.indexable && (site.h1s.get(comparable(url.url.data?.h1?.[0])) ?? 0) > 1,
+    (url, _, site) =>
+      url.indexable && duplicates(url, site.h1s.get(comparable(url.url.data?.h1?.[0]))),
   ),
   'heading-too-long': onPage((_, facts) => facts.longHeadings > 0),
 
   // --- content -------------------------------------------------------------
   'content-duplicate': onPage(
     (url, facts, site) =>
-      url.indexable && facts.textHash !== null && (site.texts.get(facts.textHash) ?? 0) > 1,
+      url.indexable && facts.textHash !== null && duplicates(url, site.texts.get(facts.textHash)),
   ),
-  'content-near-duplicate': onPage((url, _, site) => site.nearDuplicates.has(url)),
+  'content-near-duplicate': onPage((url, _, site) => {
+    const partners = site.nearDuplicates.get(url)
+    if (!partners) return false
+    const urls = partners.flatMap((partner) => boundedUrl(partner.url.url) ?? [])
+    return backedBy({
+      kind: 'related-urls',
+      total: partners.length,
+      ...(partners.length >= MAX_NEAR_PARTNERS ? { atLeast: true as const } : {}),
+      urls: urls.slice(0, MAX_EVIDENCE_ITEMS),
+    })
+  }),
   'content-placeholder': onPage((_, facts) => facts.placeholderText),
   'content-thin': onPage((_, facts) => facts.words < THIN_CONTENT_WORDS),
 
   // --- images --------------------------------------------------------------
-  'img-no-alt': onPage((_, facts) => facts.imagesNoAlt > 0),
-  'img-empty-alt': onPage((_, facts) => facts.imagesEmptyAlt > 0),
+  'img-no-alt': imageProblem('no-alt', (facts) => facts.imagesNoAlt),
+  'img-empty-alt': imageProblem('empty-alt', (facts) => facts.imagesEmptyAlt),
   'img-too-heavy': (url) =>
     url.internal &&
     statusIn(url, 200, 299) &&
     (url.url.contentType ?? '').toLowerCase().startsWith('image/') &&
     (url.url.bytes ?? 0) > IMAGE_MAX_BYTES,
-  'img-no-size': onPage((_, facts) => facts.imagesNoSize > 0),
-  'img-long-alt': onPage((_, facts) => facts.imagesLongAlt > 0),
+  'img-no-size': imageProblem('no-size', (facts) => facts.imagesNoSize),
+  'img-long-alt': imageProblem('long-alt', (facts) => facts.imagesLongAlt),
 
   // --- structured data -----------------------------------------------------
   'json-ld-invalid': onPage((_, facts) => facts.jsonLdInvalid > 0),
   'no-structured-data': onPage((_, facts) => facts.structuredData === 0),
 
   // --- links ---------------------------------------------------------------
-  'link-to-localhost': onPage((_, facts) => facts.localhostLinks > 0),
-  'uncrawlable-links': onPage((_, facts) => facts.uncrawlableLinks > 0),
+  'link-to-localhost': linkProblem('localhost', (facts) => facts.localhostLinks),
+  'uncrawlable-links': linkProblem('uncrawlable', (facts) => facts.uncrawlableLinks),
   'only-nofollow-inlinks': onPage((url) => url.anchorsIn > 0 && url.followedAnchorsIn === 0),
   'only-noindex-inlinks': onPage((url) => url.anchorsIn > 0 && url.anchorsFromIndexable === 0),
   // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
@@ -363,8 +462,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'no-outgoing-links': onPage((url) => url.internalAnchorsOut === 0),
   'internal-nofollow-links': onPage((url) => url.nofollowAnchorsOut > 0),
   'deep-page': onPage((url) => (url.clickDepth ?? 0) > CLICK_DEPTH_MAX),
-  'anchor-empty': onPage((_, facts) => facts.emptyAnchors > 0),
-  'anchor-vague': onPage((_, facts) => facts.vagueAnchors > 0),
+  'anchor-empty': linkProblem('empty-anchor', (facts) => facts.emptyAnchors),
+  'anchor-vague': linkProblem('vague-anchor', (facts) => facts.vagueAnchors),
 
   // --- URLs ----------------------------------------------------------------
   'url-multiple-slashes': onPage(({ parsed }) => parsed.pathname.includes('//')),
@@ -387,11 +486,11 @@ export const CHECKS: Record<PageIssueId, Check> = {
 
   // --- security ------------------------------------------------------------
   'http-url': onPage(({ parsed }) => parsed.protocol === 'http:'),
-  'mixed-content': onPage((_, facts) => facts.mixedContent > 0),
-  'insecure-form': onPage((_, facts) => facts.insecureForms > 0),
+  'mixed-content': linkProblem('mixed-content', (facts) => facts.mixedContent),
+  'insecure-form': linkProblem('insecure-form', (facts) => facts.insecureForms),
   'missing-security-header': onPage((_, facts) => facts.missingSecurityHeaders),
-  'unsafe-cross-origin-links': onPage((_, facts) => facts.unsafeBlankLinks > 0),
-  'protocol-relative': onPage((_, facts) => facts.protocolRelative > 0),
+  'unsafe-cross-origin-links': linkProblem('unsafe-blank', (facts) => facts.unsafeBlankLinks),
+  'protocol-relative': linkProblem('protocol-relative', (facts) => facts.protocolRelative),
 
   // --- HTML ----------------------------------------------------------------
   'invalid-head-elements': onPage((_, facts) => facts.invalidHeadElements.length > 0),
@@ -414,7 +513,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'content-before-head': onPage((_, facts) => facts.headNotFirst),
 }
 
-type Finding = { issue: PageIssueId; details?: string[] }
+type Finding = { issue: PageIssueId; details?: string[]; evidence?: IssueEvidence }
 
 /**
  * The finding each blocker of indexation already has when nobody declared anything. A page the user
@@ -475,7 +574,11 @@ export function detectIssues(url: AuditedUrl, site: Site): Finding[] {
   for (const issue of PAGE_ISSUE_IDS) {
     const result = CHECKS[issue](url, site)
     if (result === true) found.push({ issue })
-    else if (Array.isArray(result) && result.length > 0) found.push({ issue, details: result })
+    else if (Array.isArray(result)) {
+      if (result.length > 0) found.push({ issue, details: result })
+    } else if (result !== false) {
+      found.push({ issue, ...(result.evidence ? { evidence: result.evidence } : {}) })
+    }
   }
   return applyAuditPolicy(url, found)
 }

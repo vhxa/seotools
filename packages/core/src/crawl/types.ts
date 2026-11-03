@@ -98,6 +98,71 @@ export interface DeclaredCanonical {
   /** As the site wrote it. */
   raw: string
   inHead: boolean
+  /** Where it was declared. Absent in pages parsed before it was recorded. */
+  source?: 'html' | 'header'
+}
+
+/**
+ * Bounds on what a page's evidence keeps, since all of it is text a site wrote: each list holds at
+ * most this many samples (the counters in `CrawlPageFacts` keep counting), and each piece of text
+ * at most this many characters.
+ */
+export const MAX_EVIDENCE_ITEMS = 10
+export const MAX_EVIDENCE_TEXT = 200
+/** A URL longer than this is kept as text only, never as something to link to. */
+export const MAX_EVIDENCE_URL = 2048
+
+/** What is wrong with an `<img>` that evidence is kept for. */
+export const IMAGE_PROBLEMS = ['no-alt', 'empty-alt', 'long-alt', 'no-size'] as const
+export type ImageProblem = (typeof IMAGE_PROBLEMS)[number]
+
+/** What is wrong with a link that evidence is kept for. */
+export const LINK_PROBLEMS = [
+  'localhost',
+  'uncrawlable',
+  'mixed-content',
+  'protocol-relative',
+  'insecure-form',
+  'unsafe-blank',
+  'empty-anchor',
+  'vague-anchor',
+] as const
+export type LinkProblem = (typeof LINK_PROBLEMS)[number]
+
+/** An `<img>` with a problem, as the page wrote it. */
+export interface ImageEvidence {
+  /** What it points at, as written (`data:` sources keep only their type). */
+  src: string
+  /** `src` as a URL the crawler could request. `null`: inline, empty or too long. */
+  url: string | null
+  /** Identify the element in the page's HTML. */
+  id?: string
+  class?: string
+  /** Only kept when the alt text is the problem (too long). */
+  alt?: string
+}
+
+/** A link with a problem. */
+export interface LinkEvidence {
+  /** What holds it: an anchor, the source of an image or script, a form action… */
+  kind: CrawlLinkKind | 'form'
+  /** Where it points, resolved. `null`: it points nowhere a request could go (`javascript:`). */
+  url: string | null
+  /** The attribute value as written, when that says more than `url` does. */
+  raw?: string
+  /** What the link says, for those the problem is about. */
+  text?: string
+  /** Why it cannot be crawled. Only for `uncrawlable`. */
+  reason?: 'javascript-url' | 'scripted'
+}
+
+/**
+ * Samples of what is wrong on a page, kept next to the counters of `CrawlPageFacts`: the counter
+ * has the total, and this the first few. Only the problems the page has appear.
+ */
+export interface PageEvidenceFacts {
+  images?: Partial<Record<ImageProblem, ImageEvidence[]>>
+  links?: Partial<Record<LinkProblem, LinkEvidence[]>>
 }
 
 /** What the checks for issues look at, gathered while parsing a page. Counts unless it says not. */
@@ -150,7 +215,40 @@ export interface CrawlPageFacts {
   mixedContent: number
   /** Names of the security headers the response did not have. */
   missingSecurityHeaders: string[]
+  /**
+   * Samples of the images and links the counters above count. Pages parsed before they were kept
+   * do not have it: their findings have no examples to show, and none are made up.
+   */
+  evidence?: PageEvidenceFacts
 }
+
+/** A declared canonical, as shown with the finding it is the evidence of. */
+export interface CanonicalEvidence {
+  raw: string
+  url: string | null
+  inHead: boolean
+  /** `null`: the crawl does not say where it was declared. */
+  source: 'html' | 'header' | null
+}
+
+/**
+ * What an issue found on a URL says to back it, kept with the finding (`ISSUE_EVIDENCE` says which
+ * issues have it). Every list is bounded: `total` is how many there are, `items` the first few.
+ * - `images`, `links`: the elements of the page, from what the crawl gathered (`PageEvidenceFacts`).
+ * - `canonicals`: the declarations that make the finding.
+ * - `related-urls`: the other pages of the crawl that share what makes this one a duplicate.
+ */
+export type IssueEvidence =
+  | { kind: 'images'; total: number; items: ImageEvidence[] }
+  | { kind: 'links'; total: number; items: LinkEvidence[] }
+  | { kind: 'canonicals'; total: number; items: CanonicalEvidence[] }
+  | {
+      kind: 'related-urls'
+      /** Other pages. A lower bound when `atLeast` is set: the search for them is capped. */
+      total: number
+      atLeast?: true
+      urls: string[]
+    }
 
 /** Data extracted from a page that has no column of its own. */
 export interface CrawlPageData {

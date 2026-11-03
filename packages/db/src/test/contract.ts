@@ -1041,6 +1041,57 @@ export function describeDatabaseContract(
           expect(await db.crawls.issueCounts(id)).toEqual([])
         })
 
+        it('keeps the evidence of a finding next to what it details', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const images = {
+            kind: 'images' as const,
+            total: 12,
+            items: [{ src: '/a.png', url: 'https://acme.com/a.png', id: 'logo' }],
+          }
+          const related = {
+            kind: 'related-urls' as const,
+            total: 40,
+            atLeast: true as const,
+            urls: ['https://acme.com/b', 'https://acme.com/c'],
+          }
+          await saveIssues({
+            crawlId: id,
+            issues: [
+              { urlHash: 'a', issue: 'img-no-alt', evidence: images },
+              { urlHash: 'a', issue: 'title-duplicate', evidence: related },
+              // With and without details, as findings written before evidence existed are.
+              { urlHash: 'a', issue: 'missing-security-header', details: ['Referrer-Policy'] },
+              { urlHash: 'a', issue: 'noindex' },
+              { urlHash: 'a', issue: 'both', details: ['x'], evidence: images },
+            ],
+            pages: { issue: 1, warning: 0, opportunity: 0 },
+            withType: { issue: 1, warning: 0, opportunity: 0 },
+            catalog: 'v1',
+          })
+          const stored = new Map(
+            (await db.crawls.issuesOf(id, ['a'])).map((row) => [row.issue, row]),
+          )
+          expect(stored.get('img-no-alt')).toEqual({
+            urlHash: 'a',
+            issue: 'img-no-alt',
+            evidence: images,
+          })
+          expect(stored.get('title-duplicate')?.evidence).toEqual(related)
+          expect(stored.get('missing-security-header')).toEqual({
+            urlHash: 'a',
+            issue: 'missing-security-header',
+            details: ['Referrer-Policy'],
+          })
+          expect(stored.get('noindex')).toEqual({ urlHash: 'a', issue: 'noindex' })
+          expect(stored.get('both')).toEqual({
+            urlHash: 'a',
+            issue: 'both',
+            details: ['x'],
+            evidence: images,
+          })
+        })
+
         it('keeps the count of a pruned crawl but not its issues', async () => {
           const domainId = await domain()
           const oldest = await finishedCrawl(domainId)

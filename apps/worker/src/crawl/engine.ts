@@ -336,7 +336,12 @@ export async function runCrawl(
         if (Object.keys(page.botRobots).length > 0) data.botRobots = page.botRobots
         data.facts = withResponseFacts(page.facts, {
           canonical: linkHeader?.canonical
-            ? { url: linkHeader.canonical, raw: linkHeader.canonical, inHead: true }
+            ? {
+                url: linkHeader.canonical,
+                raw: linkHeader.canonical,
+                inHead: true,
+                source: 'header',
+              }
             : null,
           refresh: refreshHeader,
           missing: missingSecurityHeaders(headers, item.url.startsWith('https:')),

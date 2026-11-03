@@ -356,6 +356,66 @@
     "noFindings": "No findings.",
     "excludedFindings": "Excluded from the audit: it has no findings of its own."
   },
+  "IssueEvidence": {
+    "unavailable": "The examples are not available: this crawl was parsed before they were kept. Crawl the site again to see them.",
+    "noSamples": "No examples were kept.",
+    "showing": "{total}, showing the first {shown, number}",
+    "atLeast": "At least {value}",
+    "units": {
+      "images": "{total, plural, one {# image} other {# images}}",
+      "links": "{total, plural, one {# link} other {# links}}",
+      "canonicals": "{total, plural, one {# declaration} other {# declarations}}",
+      "related-urls": "{total, plural, one {# other page} other {# other pages}}"
+    },
+    "labels": {
+      "img-no-alt": "Images with no alt attribute",
+      "img-empty-alt": "Images with an empty alt attribute",
+      "img-long-alt": "Images with a long alt text",
+      "img-no-size": "Images without width and height",
+      "title-duplicate": "Other pages with the same title",
+      "description-duplicate": "Other pages with the same meta description",
+      "h1-duplicate": "Other pages with the same H1",
+      "content-duplicate": "Other pages with exactly the same text",
+      "content-near-duplicate": "Other pages with almost the same text",
+      "canonical-conflict": "Canonicals declared, which do not agree",
+      "canonical-repeated": "Canonicals declared more than once",
+      "canonical-outside-head": "Canonicals declared outside the head",
+      "canonical-fragment": "Canonicals with a fragment (#)",
+      "canonical-relative": "Canonicals that are not absolute URLs",
+      "link-to-localhost": "Links to localhost",
+      "uncrawlable-links": "Links a crawler cannot follow",
+      "mixed-content": "Resources loaded over HTTP",
+      "protocol-relative": "Resources whose address has no scheme (//)",
+      "insecure-form": "Forms that send over HTTP",
+      "unsafe-cross-origin-links": "Links to another site in a new tab, without rel=\"noopener\"",
+      "anchor-empty": "Links with no text",
+      "anchor-vague": "Links with vague text"
+    },
+    "images": {
+      "noSource": "No address (src is missing)",
+      "id": "id: {value}",
+      "class": "class: {value}",
+      "alt": "Alt text: “{value}”"
+    },
+    "links": {
+      "noAddress": "No address",
+      "written": "written as {value}",
+      "text": "Text: “{value}”",
+      "reasons": {
+        "javascript-url": "A javascript: address, which is not a page",
+        "scripted": "No real address: a script handles the click"
+      }
+    },
+    "canonicals": {
+      "empty": "(empty)",
+      "inHead": "In the head",
+      "inBody": "In the body (ignored)",
+      "resolvesTo": "Resolves to",
+      "source": {
+        "header": "HTTP Link header"
+      }
+    }
+  },
   "PageIssues": {
     "no-response": {
       "name": "No response (internal)",

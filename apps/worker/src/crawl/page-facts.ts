@@ -1,4 +1,16 @@
-import { crawlUrlHash, type CrawlPageFacts, type DeclaredCanonical } from '@seotools/core'
+import {
+  MAX_EVIDENCE_ITEMS,
+  boundedText,
+  boundedUrl,
+  crawlUrlHash,
+  type CrawlPageFacts,
+  type DeclaredCanonical,
+  type ImageEvidence,
+  type ImageProblem,
+  type LinkEvidence,
+  type LinkProblem,
+  type PageEvidenceFacts,
+} from '@seotools/core'
 import type { ExtractedLink } from './extract'
 import { simhash } from './fingerprint'
 
@@ -167,12 +179,13 @@ export class PageFactsCollector {
   private previousHeading = 1
   private heading: { text: string; level: number } | null = null
   private headingDepth = 0
-  private anchor: { text: string; named: boolean } | null = null
+  private anchor: { text: string; named: boolean; url: string } | null = null
   private anchorDepth = 0
   private jsonLd: string | null = null
   private textLength = 0
   private readonly text: string[] = []
   private readonly invalidHead = new Set<string>()
+  private readonly evidence: PageEvidenceFacts = {}
 
   readonly facts: CrawlPageFacts = {
     heads: 0,
@@ -323,15 +336,49 @@ export class PageFactsCollector {
 
     const https = this.pageUrl.startsWith('https:')
     for (const { url, kind } of page.links) {
-      if (isLocalhost(url)) facts.localhostLinks++
-      if (https && url.startsWith('http:') && RESOURCE_LINK_KINDS.has(kind)) facts.mixedContent++
+      if (isLocalhost(url)) {
+        facts.localhostLinks++
+        this.sampleLink('localhost', { kind, url: boundedUrl(url), raw: url })
+      }
+      if (https && url.startsWith('http:') && RESOURCE_LINK_KINDS.has(kind)) {
+        facts.mixedContent++
+        this.sampleLink('mixed-content', { kind, url: boundedUrl(url), raw: url })
+      }
     }
+    if (this.evidence.images || this.evidence.links) facts.evidence = this.evidence
     return facts
   }
 
   /** A URL in an attribute, before it gets resolved. */
   sawUrl(raw: string, kind: ExtractedLink['kind']) {
-    if (raw.trim().startsWith('//') && RESOURCE_LINK_KINDS.has(kind)) this.facts.protocolRelative++
+    if (raw.trim().startsWith('//') && RESOURCE_LINK_KINDS.has(kind)) {
+      this.facts.protocolRelative++
+      this.sampleLink('protocol-relative', { kind, url: boundedUrl(this.resolve(raw)), raw })
+    }
+  }
+
+  /**
+   * Keeps the first few examples of a problem, which are what the finding shows: the counters
+   * have the total. Text a site wrote is cut here, never stored as it came.
+   */
+  private sampleImage(problem: ImageProblem, image: ImageEvidence) {
+    const images = (this.evidence.images ??= {})
+    const list = (images[problem] ??= [])
+    if (list.length < MAX_EVIDENCE_ITEMS) list.push(image)
+  }
+
+  private sampleLink(problem: LinkProblem, link: LinkEvidence) {
+    const links = (this.evidence.links ??= {})
+    const list = (links[problem] ??= [])
+    if (list.length >= MAX_EVIDENCE_ITEMS) return
+    const { raw, text, ...rest } = link
+    // The raw value only when it says more than the URL: not when it is the URL.
+    const rawText = raw === undefined ? '' : boundedText(raw)
+    list.push({
+      ...rest,
+      ...(rawText && rawText !== rest.url ? { raw: rawText } : {}),
+      ...(text ? { text: boundedText(text) } : {}),
+    })
   }
 
   private count(total: 'titles' | 'descriptions', outside: keyof CrawlPageFacts) {
@@ -386,6 +433,7 @@ export class PageFactsCollector {
       url: this.resolve(raw),
       raw: raw.slice(0, MAX_CANONICAL_LENGTH),
       inHead: this.inHead,
+      source: 'html',
     })
   }
 
@@ -398,15 +446,53 @@ export class PageFactsCollector {
       role === 'none' ||
       attributes['aria-hidden']?.toLowerCase() === 'true'
     if (!(decorative && (alt === undefined || alt.trim() === ''))) {
-      if (alt === undefined) this.facts.imagesNoAlt++
-      else if (alt.trim() === '') this.facts.imagesEmptyAlt++
-      else if (alt.length > LONG_ALT) this.facts.imagesLongAlt++
+      if (alt === undefined) {
+        this.facts.imagesNoAlt++
+        this.sampleImage('no-alt', this.describeImage(attributes))
+      } else if (alt.trim() === '') {
+        this.facts.imagesEmptyAlt++
+        this.sampleImage('empty-alt', this.describeImage(attributes))
+      } else if (alt.length > LONG_ALT) {
+        this.facts.imagesLongAlt++
+        this.sampleImage('long-alt', this.describeImage(attributes, alt))
+      }
     }
-    if (width === undefined || height === undefined) this.facts.imagesNoSize++
+    if (width === undefined || height === undefined) {
+      this.facts.imagesNoSize++
+      this.sampleImage('no-size', this.describeImage(attributes))
+    }
     // An image is what a link or heading around it says.
     if (alt) {
       if (this.anchor && this.anchor.text.length < MAX_ANCHOR_TEXT) this.anchor.text += ` ${alt}`
       if (this.heading) this.heading.text += ` ${alt}`
+    }
+  }
+
+  /**
+   * What identifies an `<img>` to whoever has to fix it: where it points and the attributes that
+   * find it in the HTML. Lazy-loaded images keep their address in another attribute.
+   */
+  private describeImage(attributes: Record<string, string>, alt?: string): ImageEvidence {
+    const raw = (
+      attributes.src ??
+      attributes['data-src'] ??
+      attributes['data-lazy-src'] ??
+      attributes['data-original'] ??
+      ''
+    ).trim()
+    // An inline image is its own content: the type is all that identifies it.
+    const inline = /^data:/i.test(raw)
+    const src = inline
+      ? `${boundedText(raw.slice(0, 64).split(',')[0] ?? 'data:')},…`
+      : boundedText(raw)
+    const id = boundedText(attributes.id ?? '', 100)
+    const className = boundedText(attributes.class ?? '')
+    return {
+      src,
+      url: inline || raw === '' ? null : boundedUrl(this.resolve(raw)),
+      ...(id ? { id } : {}),
+      ...(className ? { class: className } : {}),
+      ...(alt === undefined ? {} : { alt: boundedText(alt) }),
     }
   }
 
@@ -416,18 +502,32 @@ export class PageFactsCollector {
     const routed = attributes.routerlink !== undefined || attributes['data-href'] !== undefined
     const asLink = attributes.role === 'link'
     if (href === undefined || href === '' || href === '#') {
-      if (scripted || routed || asLink) this.facts.uncrawlableLinks++
+      if (scripted || routed || asLink) {
+        this.facts.uncrawlableLinks++
+        this.sampleLink('uncrawlable', {
+          kind: 'anchor',
+          url: null,
+          raw: href ?? '',
+          reason: 'scripted',
+        })
+      }
       return
     }
     if (/^javascript:/i.test(href)) {
       this.facts.uncrawlableLinks++
+      this.sampleLink('uncrawlable', {
+        kind: 'anchor',
+        url: null,
+        raw: href,
+        reason: 'javascript-url',
+      })
       return
     }
     const url = this.resolve(href)
     if (!url) return
     if (this.anchorDepth === 0) {
       const named = Boolean(attributes['aria-label']?.trim() || attributes.title?.trim())
-      this.anchor = { text: name === 'area' ? (attributes.alt ?? '') : '', named }
+      this.anchor = { text: name === 'area' ? (attributes.alt ?? '') : '', named, url }
     }
     this.anchorDepth++
     if ((attributes.target ?? '').toLowerCase() === '_blank') {
@@ -435,13 +535,17 @@ export class PageFactsCollector {
       const sameOrigin = new URL(url).origin === new URL(this.pageUrl).origin
       if (!sameOrigin && !rel.includes('noopener') && !rel.includes('noreferrer')) {
         this.facts.unsafeBlankLinks++
+        this.sampleLink('unsafe-blank', { kind: 'anchor', url: boundedUrl(url) })
       }
     }
   }
 
   private onForm(attributes: Record<string, string>) {
     const action = attributes.action?.trim() ? this.resolve(attributes.action) : this.pageUrl
-    if (action?.startsWith('http:')) this.facts.insecureForms++
+    if (action?.startsWith('http:')) {
+      this.facts.insecureForms++
+      this.sampleLink('insecure-form', { kind: 'form', url: boundedUrl(action) })
+    }
   }
 
   private endHeading() {
@@ -462,8 +566,18 @@ export class PageFactsCollector {
     this.anchor = null
     if (!anchor) return
     const key = anchorKey(anchor.text.slice(0, MAX_ANCHOR_TEXT))
-    if (key === '' && !anchor.named) this.facts.emptyAnchors++
-    if (VAGUE_ANCHORS.has(key)) this.facts.vagueAnchors++
+    if (key === '' && !anchor.named) {
+      this.facts.emptyAnchors++
+      this.sampleLink('empty-anchor', { kind: 'anchor', url: boundedUrl(anchor.url) })
+    }
+    if (VAGUE_ANCHORS.has(key)) {
+      this.facts.vagueAnchors++
+      this.sampleLink('vague-anchor', {
+        kind: 'anchor',
+        url: boundedUrl(anchor.url),
+        text: anchor.text,
+      })
+    }
   }
 }
 

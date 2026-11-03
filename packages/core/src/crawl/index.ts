@@ -1,4 +1,5 @@
 export * from './audit'
+export * from './evidence'
 export * from './files'
 export * from './indexability'
 export * from './issues'
