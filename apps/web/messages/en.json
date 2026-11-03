@@ -116,10 +116,11 @@
     "overview": "Pages overview",
     "history": "Crawl history",
     "prioritiesTitle": "Findings to review first",
-    "prioritiesDescription": "Up to three recorded findings, ordered by type, importance and affected URLs. These results describe the stored crawl, not search engine indexing.",
+    "prioritiesDescription": "The top findings from this crawl.",
+    "pruned": "Detailed results from this crawl are no longer retained. Its totals remain available in history.",
     "stale": "Priority findings will be available when the analysis reflects the current audit configuration.",
     "notChecked": "This crawl does not have the analysis needed to show priority findings. Run a new full crawl to collect current data.",
-    "noPriorities": "No known findings were recorded in this analysis. This does not confirm complete coverage or search engine indexing.",
+    "noPriorities": "No findings were recorded in this analysis.",
     "affectedUrls": "{count, plural, one {# URL} other {# URLs}}",
     "allFindings": "View all findings"
   },

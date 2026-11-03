@@ -129,7 +129,13 @@ export default async function DomainPage({ params }: { params: Promise<{ host: s
           <CardContent className="grid gap-3">
             {priorities === null ? (
               <p className="text-sm text-muted-foreground">
-                {t(state.kind === 'pending' || state.kind === 'failed' ? 'stale' : 'notChecked')}
+                {t(
+                  latest.pruned
+                    ? 'pruned'
+                    : state.kind === 'pending' || state.kind === 'failed'
+                      ? 'stale'
+                      : 'notChecked',
+                )}
               </p>
             ) : priorities.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('noPriorities')}</p>
