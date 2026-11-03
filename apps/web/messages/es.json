@@ -1474,7 +1474,8 @@
       },
       "intent": {
         "indexable": "Se espera indexable",
-        "not-indexable": "Se espera no indexable"
+        "not-indexable": "Se espera no indexable",
+        "inherit": "Según las reglas"
       }
     },
     "valueHelp": {
@@ -1597,7 +1598,8 @@
       "overriddenExamples": "Cubiertas, pero prevalece otra regla:",
       "note": "Solo muestra las URLs que conoce el último crawl completo (terminó {when}). La regla también se aplicará a las URLs que aparezcan en crawls posteriores.",
       "noteUnknown": "Solo muestra las URLs que conoce el último crawl completo. La regla también se aplicará a las URLs que aparezcan en crawls posteriores.",
-      "scanned": "{count, plural, one {# URL revisada} other {# URLs revisadas}}."
+      "scanned": "{count, plural, one {# URL revisada} other {# URLs revisadas}}.",
+      "inactive": "Esta regla está desactivada, así que todavía no decide nada. Las coincidencias muestran lo que cubriría al activarla."
     },
     "status": {
       "pending": {
@@ -1660,6 +1662,10 @@
     "applying": "Aplicando…",
     "cancel": "Cancelar",
     "nothing": "Elige qué cambiar.",
-    "directivesLabel": "Directivas"
+    "directivesLabel": "Directivas",
+    "state": {
+      "now": "Ahora: {state}",
+      "afterSave": "Al guardar: {state}"
+    }
   }
 }

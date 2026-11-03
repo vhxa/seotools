@@ -51,12 +51,12 @@ export function RulePreview({ state }: { state: PreviewState }) {
       <p className="font-medium">
         {state.matches === 0 ? t('matchesNone') : t('matches', { count: state.matches })}
       </p>
-      {state.matches > 0 && (
-        <>
-          <p>{state.changes === 0 ? t('changesNone') : t('changes', { count: state.changes })}</p>
-          {state.overriddenCount > 0 && <p>{t('overridden', { count: state.overriddenCount })}</p>}
-        </>
+      {!state.active && <p>{t('inactive')}</p>}
+      {/* What changes can be more than what the selector covers: an edit stops covering URLs. */}
+      {(state.matches > 0 || state.changes > 0) && (
+        <p>{state.changes === 0 ? t('changesNone') : t('changes', { count: state.changes })}</p>
       )}
+      {state.overriddenCount > 0 && <p>{t('overridden', { count: state.overriddenCount })}</p>}
       <Urls title={t('matchExamples')} urls={state.matchSamples} />
       <Urls title={t('changeExamples')} urls={state.changeSamples} />
       {state.overridden.length > 0 && (

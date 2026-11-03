@@ -1,45 +1,56 @@
 import { useTranslations } from 'next-intl'
 import { useSelectorText } from '@/components/audit/selector-label'
-import type { UrlAuditCurrent } from '@/lib/audit-rules'
+import type { AuditOutcome, RuleSummary } from '@/lib/audit-rules'
 
 /**
- * Under a choice: what the URL is under the rules in force, and which rule (or exception) says so.
- * Always the effective result, never a guess from the choice: choosing "according to the rules"
- * shows what the rules give, not a copy of it.
+ * What a URL is, as a sentence, and which rule (or exception) says so. Always the effective result,
+ * never a guess from a choice: choosing "according to the rules" shows what the rules give, not a
+ * copy of what the URL has. `nofollow` names its own origin, since an exception can say only that.
  */
 export function EffectiveNote({
   kind,
-  current,
+  outcome,
+  prefix,
 }: {
   kind: 'audit' | 'intent' | 'nofollow'
-  current: UrlAuditCurrent
+  outcome: AuditOutcome
+  /** Introduces the sentence: when it is what the URL is now, or what it will be after saving. */
+  prefix?: 'now' | 'afterSave'
 }) {
   const t = useTranslations('AuditState.effective')
+  const tDialog = useTranslations('AuditDialog.state')
   const text = useSelectorText()
-  const rule = kind === 'audit' ? current.audit.rule : current.intent.rule
-  const by = rule ? text(rule.selector) : ''
+  const named = (rule: RuleSummary | null) => (rule && !rule.exception ? text(rule.selector) : '')
   let message: string
   if (kind === 'audit') {
-    const excluded = current.audit.value === 'excluded'
+    const { rule, value } = outcome.audit
+    const excluded = value === 'excluded'
     message = !rule
       ? t('audit.default')
       : rule.exception
         ? t(excluded ? 'audit.excludedByException' : 'audit.includedByException')
-        : t(excluded ? 'audit.excludedByRule' : 'audit.includedByRule', { rule: by })
+        : t(excluded ? 'audit.excludedByRule' : 'audit.includedByRule', { rule: named(rule) })
   } else if (kind === 'intent') {
-    const value = current.intent.value === 'not-indexable' ? 'notIndexable' : 'indexable'
+    const { rule, value } = outcome.intent
+    const key = value === 'not-indexable' ? 'notIndexable' : 'indexable'
     message = !rule
       ? t('intent.default')
       : rule.exception
-        ? t(`intent.${value}ByException`)
-        : t(`intent.${value}ByRule`, { rule: by })
+        ? t(`intent.${key}ByException`)
+        : t(`intent.${key}ByRule`, { rule: named(rule) })
   } else {
-    const accepted = current.intent.acceptNofollow
+    const { acceptRule: rule, acceptNofollow: accepted } = outcome.intent
     message = !rule
       ? t('nofollow.default')
       : rule.exception
         ? t(accepted ? 'nofollow.acceptedByException' : 'nofollow.notAcceptedByException')
-        : t(accepted ? 'nofollow.acceptedByRule' : 'nofollow.notAcceptedByRule', { rule: by })
+        : t(accepted ? 'nofollow.acceptedByRule' : 'nofollow.notAcceptedByRule', {
+            rule: named(rule),
+          })
   }
-  return <p className="text-xs text-muted-foreground">{message}</p>
+  return (
+    <p className="text-xs text-muted-foreground">
+      {prefix ? tDialog(prefix, { state: message }) : message}
+    </p>
+  )
 }

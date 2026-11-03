@@ -3,6 +3,7 @@ import {
   DEFAULT_CRAWL_SETTINGS,
   EMPTY_AUDIT_SNAPSHOT,
   JOB_TYPES,
+  compileAuditRules,
   crawlUrlHash,
   type CrawlRecurrence,
   type CrawlUrlKind,
@@ -1777,6 +1778,14 @@ export function describeDatabaseContract(
             (r) => r.dimension === dimension && r.selector.kind === 'url' && r.selector.url === url,
           )
         const URL_A = 'https://acme.com/es/cart'
+        const urlException = (value: 'exclude' | 'include', enabled: boolean) =>
+          ({
+            dimension: 'audit',
+            value,
+            selector: { kind: 'url', url: URL_A },
+            reason: null,
+            enabled,
+          }) as Parameters<Database['audit']['saveRule']>[0]['rule']
 
         it('keeps a shared rule and a literal one for the same path apart, and returns both', async () => {
           const domainId = await domain()
@@ -1828,7 +1837,7 @@ export function describeDatabaseContract(
         })
 
         describe('what the table and the detail set for exact URLs', () => {
-          it('removes only the dimension that is set back to the rules, with what it carried', async () => {
+          it('removes the audit exception when it is set back to the rules, with what it carried', async () => {
             const domainId = await domain()
             await db.audit.setUrlConfig({
               host: 'acme.com',
@@ -1843,13 +1852,132 @@ export function describeDatabaseContract(
               host: 'acme.com',
               domainId,
               urls: [URL_A],
-              intent: 'inherit',
+              audit: 'inherit',
             })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toBeUndefined()
-            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({
-              value: 'exclude',
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toBeUndefined()
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'not-indexable',
+              acceptNofollow: true,
               reason: 'Cart',
             })
+          })
+
+          it('leaves the expectation to the rules and keeps only the nofollow that differs from them', async () => {
+            const domainId = await domain()
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              intent: 'not-indexable',
+              acceptNofollow: true,
+              reason: 'Cart',
+            })
+            // Back to the rules for the expectation: accepting nofollow differs from them, so it stays.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              intent: 'inherit',
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'inherit',
+              acceptNofollow: true,
+              reason: 'Cart',
+            })
+            // Accepting it no more is what the rules say: nothing is left to keep.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              acceptNofollow: false,
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toBeUndefined()
+            // Both at once.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              intent: 'indexable',
+              acceptNofollow: true,
+            })
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              intent: 'inherit',
+              acceptNofollow: false,
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toBeUndefined()
+          })
+
+          it('does not pin the expectation when only nofollow is accepted, so later rules still reach the URL', async () => {
+            const domainId = await domain()
+            const broad = await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'not-indexable', '/es'),
+            })
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              acceptNofollow: true,
+            })
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'inherit',
+              acceptNofollow: true,
+            })
+            // The general rule changes later: the exception follows it for the expectation.
+            await db.audit.saveRule({
+              domainId,
+              id: broad.ok ? broad.rule!.id : '',
+              rule: rule('intent', 'indexable', '/es'),
+            })
+            const config = await db.audit.config(domainId)
+            const resolved = compileAuditRules(config.rules, 'acme.com', {
+              languages: config.languages,
+            }).resolve(URL_A).intent
+            expect(resolved.value).toBe('indexable')
+            expect(resolved.acceptNofollow).toBe(true)
+          })
+
+          it('does not use a disabled exception, and replaces or removes it when asked', async () => {
+            const domainId = await domain()
+            await db.audit.saveRule({ domainId, rule: urlException('exclude', false) })
+            const disabled = await exceptionOf(domainId, 'audit', URL_A)
+            expect(disabled).toMatchObject({ enabled: false })
+            // Choosing a value turns the same exception on, instead of adding a second one.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              audit: 'exclude',
+            })
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({
+              id: disabled!.id,
+              enabled: true,
+            })
+            // With an enabled one next to a disabled one, a change goes to the one that acts.
+            await db.audit.saveRule({ domainId, rule: urlException('include', false) })
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              audit: 'include',
+            })
+            const audit = (await db.audit.config(domainId)).rules.filter(
+              (r) => r.dimension === 'audit' && r.selector.kind === 'url',
+            )
+            expect(audit.filter((r) => r.enabled).map((r) => r.value)).toEqual(['include'])
+            // Back to the rules removes every exception of the URL, disabled ones too.
+            await db.audit.setUrlConfig({
+              host: 'acme.com',
+              domainId,
+              urls: [URL_A],
+              audit: 'inherit',
+            })
+            expect(
+              (await db.audit.config(domainId)).rules.filter((r) => r.dimension === 'audit'),
+            ).toEqual([])
           })
 
           it('does not touch what the change does not name', async () => {
@@ -1933,7 +2061,7 @@ export function describeDatabaseContract(
               urls: [URL_A],
               intent: 'inherit',
             })
-            // Only the acceptance: it keeps the expectation the rule gives the URL.
+            // Only the acceptance: the expectation stays the rule's, and is not copied.
             await db.audit.setUrlConfig({
               host: 'acme.com',
               domainId,
@@ -1941,12 +2069,12 @@ export function describeDatabaseContract(
               acceptNofollow: false,
             })
             expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'not-indexable',
+              value: 'inherit',
               acceptNofollow: false,
             })
           })
 
-          it('takes the default expectation for a URL no rule covers', async () => {
+          it('leaves the default expectation to the rules for a URL no rule covers', async () => {
             const domainId = await domain()
             await db.audit.setUrlConfig({
               host: 'acme.com',
@@ -1955,7 +2083,7 @@ export function describeDatabaseContract(
               acceptNofollow: true,
             })
             expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'indexable',
+              value: 'inherit',
               acceptNofollow: true,
             })
           })
@@ -1976,9 +2104,10 @@ export function describeDatabaseContract(
               urls: [URL_A],
               acceptNofollow: false,
             })
-            // /es/cart is under the shared rule, so the exception keeps its expectation.
+            // /es/cart is under the shared rule: it does not accept nofollow only here, and the
+            // expectation is still the rule's.
             expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'not-indexable',
+              value: 'inherit',
               acceptNofollow: false,
             })
           })

@@ -1474,7 +1474,8 @@
       },
       "intent": {
         "indexable": "Expected indexable",
-        "not-indexable": "Expected not indexable"
+        "not-indexable": "Expected not indexable",
+        "inherit": "According to the rules"
       }
     },
     "valueHelp": {
@@ -1597,7 +1598,8 @@
       "overriddenExamples": "Covered, but another rule prevails:",
       "note": "This only shows the URLs the last full crawl knows (finished {when}). The rule also applies to URLs found in later crawls.",
       "noteUnknown": "This only shows the URLs the last full crawl knows. The rule also applies to URLs found in later crawls.",
-      "scanned": "{count, plural, one {# URL} other {# URLs}} looked at."
+      "scanned": "{count, plural, one {# URL} other {# URLs}} looked at.",
+      "inactive": "This rule is switched off, so it decides nothing yet. The matches show what it would cover once it is on."
     },
     "status": {
       "pending": {
@@ -1660,6 +1662,10 @@
     "applying": "Applying…",
     "cancel": "Cancel",
     "nothing": "Choose what to change.",
-    "directivesLabel": "Directives"
+    "directivesLabel": "Directives",
+    "state": {
+      "now": "Now: {state}",
+      "afterSave": "After saving: {state}"
+    }
   }
 }

@@ -31,8 +31,9 @@ export type AuditValue = (typeof AUDIT_VALUES)[number]
  * - 1: a URL with no rule had no declared intent (`none`), and a rule could say `none` to cancel
  *   a broader one. Selectors were literal paths. This is what an analysis without a version used.
  * - 2: a URL with no rule is expected to be indexable. A rule or exception says `indexable` or
- *   `not-indexable`, can accept the page's own `nofollow`, and a path rule can be shared between the
- *   language directories of the domain.
+ *   `not-indexable`, can accept the page's own `nofollow` (an exception can do only that, leaving the
+ *   expectation to the other rules), and a path rule can be shared between the language
+ *   directories of the domain.
  */
 export const AUDIT_SEMANTICS = 2
 
@@ -45,6 +46,14 @@ export type IndexIntent = (typeof INDEX_INTENTS)[number]
  * snapshots from before semantics 2, and is never offered for a new configuration.
  */
 export type RecordedIntent = IndexIntent | 'none'
+
+/**
+ * What an intent rule says about the expectation. An exception on one URL can also say `inherit`:
+ * the expectation is left to the other rules, and the exception only says whether the page's own
+ * `nofollow` is accepted. That way accepting `nofollow` never pins the expectation the URL had when
+ * it was done.
+ */
+export type IntentRuleValue = RecordedIntent | 'inherit'
 
 export const AUDIT_PARTICIPATIONS = ['audited', 'excluded'] as const
 export type AuditParticipation = (typeof AUDIT_PARTICIPATIONS)[number]
@@ -101,11 +110,12 @@ export type AuditRule =
   | (RuleBase & { dimension: 'audit'; value: AuditValue })
   | (RuleBase & {
       dimension: 'intent'
-      value: RecordedIntent
+      value: IntentRuleValue
       /**
        * The page's own `nofollow` is accepted as intended: its generic finding is not raised. It says
-       * nothing about `noindex`, and does not need a `nofollow` to be there. The rule that decides the
-       * intent of a URL decides this too: nothing is merged between rules.
+       * nothing about `noindex`, and does not need a `nofollow` to be there. Every intent rule says
+       * it, so the rule that wins decides it; only a rule with the value `inherit` leaves the
+       * expectation to another one, and decides this alone.
        */
       acceptNofollow: boolean
     })
@@ -413,8 +423,13 @@ export interface Resolved<V> {
 export interface AuditResolution {
   audit: Resolved<AuditParticipation>
   intent: Resolved<RecordedIntent> & {
-    /** The page's own `nofollow` is accepted. Decided by the same rule as the intent. */
+    /** The page's own `nofollow` is accepted. */
     acceptNofollow: boolean
+    /**
+     * The rule that decided it: the one that decides the intent, unless an exception that leaves the
+     * intent to others says about `nofollow`. `null` when nothing did.
+     */
+    acceptRule: AuditRule | null
   }
 }
 
@@ -426,6 +441,7 @@ export function defaultResolution(semantics: number = AUDIT_SEMANTICS): AuditRes
       value: semantics >= 2 ? 'indexable' : 'none',
       rule: null,
       acceptNofollow: false,
+      acceptRule: null,
     },
   }
 }
@@ -449,6 +465,10 @@ interface Found {
 }
 
 const newBucket = (): Bucket => ({ any: null, exact: new Map() })
+
+/** The expectation a rule states, if it states one. */
+const statedIntent = (rule: AuditRule | null): RecordedIntent | null =>
+  rule && rule.dimension === 'intent' && rule.value !== 'inherit' ? rule.value : null
 
 /** The rules of one dimension, indexed so that a URL is resolved in a few lookups. */
 class DimensionIndex {
@@ -559,10 +579,17 @@ export function compileAuditRules(
       rule.enabled &&
       (semantics >= 2
         ? !(rule.dimension === 'intent' && rule.value === 'none')
-        : rule.selector.kind === 'url' || rule.selector.scope !== 'shared'),
+        : (rule.selector.kind === 'url' || rule.selector.scope !== 'shared') &&
+          !(rule.dimension === 'intent' && rule.value === 'inherit')),
   )
   const audit = new DimensionIndex(enabled.filter((rule) => rule.dimension === 'audit'))
-  const intent = new DimensionIndex(enabled.filter((rule) => rule.dimension === 'intent'))
+  const intentRules = enabled.filter((rule) => rule.dimension === 'intent')
+  // The expectation is decided by the rules that state one; `nofollow`, by every intent rule, since
+  // each says it. They are the same rules unless an exception leaves the expectation to others.
+  const intent = new DimensionIndex(intentRules.filter((rule) => rule.value !== 'inherit'))
+  const nofollow = intentRules.some((rule) => rule.value === 'inherit')
+    ? new DimensionIndex(intentRules)
+    : intent
   const fallback = defaultResolution(semantics)
   return {
     resolve(url) {
@@ -570,18 +597,18 @@ export function compileAuditRules(
       if (!parts) return fallback
       const byAudit = audit.find(parts)
       const byIntent = intent.find(parts)
+      const byNofollow = nofollow === intent ? byIntent : nofollow.find(parts)
+      const accepting = byNofollow && byNofollow.dimension === 'intent' ? byNofollow : null
       return {
         audit: byAudit
           ? { value: byAudit.value === 'exclude' ? 'excluded' : 'audited', rule: byAudit }
           : fallback.audit,
-        intent:
-          byIntent && byIntent.dimension === 'intent'
-            ? {
-                value: byIntent.value,
-                rule: byIntent,
-                acceptNofollow: semantics >= 2 && byIntent.acceptNofollow,
-              }
-            : fallback.intent,
+        intent: {
+          value: statedIntent(byIntent) ?? fallback.intent.value,
+          rule: byIntent,
+          acceptNofollow: semantics >= 2 && accepting !== null && accepting.acceptNofollow,
+          acceptRule: semantics >= 2 ? accepting : null,
+        },
       }
     },
     covering(url) {
@@ -633,7 +660,7 @@ const ruleSchema = z.discriminatedUnion('dimension', [
     ...ruleBase,
     dimension: z.literal('intent'),
     // `none` is what rules said before it was retired.
-    value: z.enum(['none', ...INDEX_INTENTS]),
+    value: z.enum(['none', 'inherit', ...INDEX_INTENTS]),
     acceptNofollow: z.boolean().default(false),
   }),
 ])

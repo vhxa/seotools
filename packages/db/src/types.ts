@@ -458,8 +458,9 @@ export interface AuditRepository {
   /**
    * Sets what is declared for exact URLs, the one model behind the table, the detail and the
    * settings. `inherit` removes the rule about that URL, and with it whatever it said. A dimension
-   * left out is not touched; `acceptNofollow` alone changes only that, and a `reason` left out keeps
-   * the one each exception has (`planUrlConfig`). The URLs must be normalized and internal: the
+   * left out is not touched. The expectation and `nofollow` are independent: accepting `nofollow`
+   * does not state an expectation, so the URL keeps following the rules for it. A `reason` left out
+   * keeps the one each exception has (`planUrlConfig`). The URLs must be normalized and internal: the
    * caller checked. `host` is the domain's, to work out what a new exception has to inherit.
    */
   setUrlConfig(input: {

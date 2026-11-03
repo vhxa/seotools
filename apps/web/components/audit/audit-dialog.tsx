@@ -7,6 +7,7 @@ import {
   type AuditValue,
   type IndexIntent,
 } from '@seotools/core/crawl/audit'
+import { cn } from 'cn'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useState, useTransition, type ReactNode } from 'react'
@@ -25,7 +26,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
-import type { UrlAuditCurrent } from '@/lib/audit-rules'
+import { outcomeAfter, type AuditOutcome, type UrlAuditCurrent } from '@/lib/audit-rules'
 
 /** The three choices of the audit, and of the expected indexing: the rules, or an exception. */
 export type AuditPick = 'rules' | AuditValue
@@ -36,16 +37,20 @@ export interface AuditDialogPreset {
   audit?: AuditPick
 }
 
-function Choice({ value, label, disabled }: { value: string; label: string; disabled?: boolean }) {
+function Choice({ value, label, locked }: { value: string; label: string; locked: boolean }) {
   return (
-    <Label className="flex items-center gap-2 font-normal">
-      <RadioGroupItem value={value} disabled={disabled} />
+    <Label className={cn('flex items-center gap-2 font-normal', locked && 'text-muted-foreground')}>
+      <RadioGroupItem value={value} className="data-disabled:cursor-not-allowed" />
       {label}
     </Label>
   )
 }
 
-/** A group of choices that, for several URLs, is only edited if its box is checked. */
+/**
+ * A group of choices that, for several URLs, is only edited if its box is checked. Whatever is not
+ * being edited is disabled for real, not just dimmed (`disabled` on the controls, so they report
+ * `aria-disabled` and ignore the keyboard too), as the request already leaves it out.
+ */
 function Dimension({
   label,
   changeLabel,
@@ -60,7 +65,7 @@ function Dimension({
   multiple: boolean
   changing: boolean
   onChanging: (value: boolean) => void
-  children: ReactNode
+  children: (locked: boolean) => ReactNode
   note?: ReactNode
 }) {
   return (
@@ -72,11 +77,34 @@ function Dimension({
           {changeLabel}
         </Label>
       )}
-      <div className={multiple && !changing ? 'pointer-events-none opacity-50' : undefined}>
-        {children}
-      </div>
+      <div>{children(multiple && !changing)}</div>
       {note}
     </fieldset>
+  )
+}
+
+/**
+ * Under a group, for one URL: what it is now, and, once the choice differs from what is saved, what
+ * it will be after saving. Both are the effective result with the rule that says so, so choosing
+ * "according to the rules" shows what the rules give and not the exception that is going away.
+ */
+function Notes({
+  kind,
+  now,
+  after,
+  changed,
+}: {
+  kind: 'audit' | 'intent' | 'nofollow'
+  now: AuditOutcome
+  after: AuditOutcome
+  changed: boolean
+}) {
+  if (!changed) return <EffectiveNote kind={kind} outcome={now} />
+  return (
+    <div className="grid gap-0.5" aria-live="polite">
+      <EffectiveNote kind={kind} outcome={now} prefix="now" />
+      <EffectiveNote kind={kind} outcome={after} prefix="afterSave" />
+    </div>
   )
 }
 
@@ -100,8 +128,8 @@ function AuditForm({
   const multiple = current === undefined
 
   // One URL starts from the exceptions it really has; several start from nothing chosen.
-  const initialAudit: AuditPick = current?.audit.explicit ?? 'rules'
-  const initialIntent: IntentPick = current?.intent.explicit ?? 'rules'
+  const initialAudit: AuditPick = current?.explicit.audit ?? 'rules'
+  const initialIntent: IntentPick = current?.explicit.intent ?? 'rules'
   const initialAccept = current?.intent.acceptNofollow ?? false
   const [audit, setAudit] = useState<AuditPick>(preset.audit ?? initialAudit)
   const [intent, setIntent] = useState<IntentPick>(initialIntent)
@@ -113,26 +141,27 @@ function AuditForm({
   const [reasonTouched, setReasonTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Going back to the rules removes the exception, and with it whatever it said about nofollow.
-  const backToRules = intent === 'rules'
+  /** What the URL will be once saved, worked out as saving does. One URL only. */
+  const after = current ? outcomeAfter(current, { audit, intent, accept }) : null
 
   /** What to send: only what the user chose to change, so nothing else can be reset by saving. */
   function request() {
     const body: Record<string, unknown> = { urls }
     const sendAudit = multiple ? changeAudit : audit !== initialAudit
     const sendIntent = multiple ? changeIntent : intent !== initialIntent
-    const sendAccept =
-      backToRules && sendIntent ? false : multiple ? changeAccept : accept !== initialAccept
+    const sendAccept = multiple ? changeAccept : accept !== initialAccept
     // Only a reason that was written is sent; otherwise each exception keeps its own.
     const sendReason = reasonTouched
     // A reason changed with nothing else changed re-saves the exceptions the URL has.
     const keepAudit = !multiple && sendReason && !sendAudit && initialAudit !== 'rules'
-    const keepIntent = !multiple && sendReason && !sendIntent && initialIntent !== 'rules'
+    const keepIntent =
+      !multiple && sendReason && !sendIntent && !sendAccept && current.explicit.hasIntentException
     if (sendAudit) body.audit = audit === 'rules' ? 'inherit' : audit
     else if (keepAudit) body.audit = initialAudit
-    if (sendIntent) body.intent = backToRules ? 'inherit' : intent
-    else if (keepIntent) body.intent = initialIntent
-    if (sendAccept && !(sendIntent && backToRules)) body.acceptNofollow = accept
+    // The expectation and nofollow are independent: going back to the rules for one leaves the other.
+    if (sendIntent) body.intent = intent === 'rules' ? 'inherit' : intent
+    else if (keepIntent && initialIntent !== 'rules') body.intent = initialIntent
+    if (sendAccept || (keepIntent && initialIntent === 'rules')) body.acceptNofollow = accept
     if (sendReason) body.reason = reason
     return { body, any: sendAudit || sendIntent || sendAccept || keepAudit || keepIntent }
   }
@@ -174,14 +203,25 @@ function AuditForm({
           multiple={multiple}
           changing={changeAudit}
           onChanging={setChangeAudit}
-          note={current && <EffectiveNote kind="audit" current={current} />}
+          note={
+            current &&
+            after && (
+              <Notes kind="audit" now={current} after={after} changed={audit !== initialAudit} />
+            )
+          }
         >
-          <RadioGroup value={audit} onValueChange={(value) => setAudit(value as AuditPick)}>
-            <Choice value="rules" label={t('rules')} />
-            {[...AUDIT_VALUES].reverse().map((value) => (
-              <Choice key={value} value={value} label={t(value)} />
-            ))}
-          </RadioGroup>
+          {(locked) => (
+            <RadioGroup
+              value={audit}
+              onValueChange={(value) => setAudit(value as AuditPick)}
+              disabled={locked}
+            >
+              <Choice value="rules" label={t('rules')} locked={locked} />
+              {[...AUDIT_VALUES].reverse().map((value) => (
+                <Choice key={value} value={value} label={t(value)} locked={locked} />
+              ))}
+            </RadioGroup>
+          )}
         </Dimension>
 
         <Dimension
@@ -190,35 +230,68 @@ function AuditForm({
           multiple={multiple}
           changing={changeIntent}
           onChanging={setChangeIntent}
-          note={current && <EffectiveNote kind="intent" current={current} />}
+          note={
+            current &&
+            after && (
+              <Notes kind="intent" now={current} after={after} changed={intent !== initialIntent} />
+            )
+          }
         >
-          <RadioGroup value={intent} onValueChange={(value) => setIntent(value as IntentPick)}>
-            <Choice value="rules" label={t('rules')} />
-            {INDEX_INTENTS.map((value) => (
-              <Choice key={value} value={value} label={t(value)} />
-            ))}
-          </RadioGroup>
+          {(locked) => (
+            <RadioGroup
+              value={intent}
+              onValueChange={(value) => setIntent(value as IntentPick)}
+              disabled={locked}
+            >
+              <Choice value="rules" label={t('rules')} locked={locked} />
+              {INDEX_INTENTS.map((value) => (
+                <Choice key={value} value={value} label={t(value)} locked={locked} />
+              ))}
+            </RadioGroup>
+          )}
         </Dimension>
 
         <Dimension
           label={t('directivesLabel')}
           changeLabel={t('changeNofollow')}
           multiple={multiple}
-          changing={changeAccept && !(multiple && changeIntent && backToRules)}
+          changing={changeAccept}
           onChanging={setChangeAccept}
-          note={current && <EffectiveNote kind="nofollow" current={current} />}
+          note={
+            current &&
+            after && (
+              <Notes
+                kind="nofollow"
+                now={current}
+                after={after}
+                changed={
+                  accept !== initialAccept ||
+                  (after.intent.acceptRule?.exception ?? false) !==
+                    (current.intent.acceptRule?.exception ?? false)
+                }
+              />
+            )
+          }
         >
-          <Label className="flex items-start gap-2 font-normal">
-            <Checkbox
-              checked={accept}
-              onCheckedChange={(value) => setAccept(value === true)}
-              disabled={multiple && changeIntent && backToRules}
-            />
-            <span className="grid gap-0.5">
-              {t('acceptNofollow')}
-              <span className="text-xs text-muted-foreground">{t('acceptNofollowHelp')}</span>
-            </span>
-          </Label>
+          {(locked) => (
+            <Label
+              className={cn(
+                'flex items-start gap-2 font-normal',
+                locked && 'text-muted-foreground',
+              )}
+            >
+              <Checkbox
+                checked={accept}
+                onCheckedChange={(value) => setAccept(value === true)}
+                disabled={locked}
+                className="data-disabled:cursor-not-allowed"
+              />
+              <span className="grid gap-0.5">
+                {t('acceptNofollow')}
+                <span className="text-xs text-muted-foreground">{t('acceptNofollowHelp')}</span>
+              </span>
+            </Label>
+          )}
         </Dimension>
 
         <div className="grid gap-2">
