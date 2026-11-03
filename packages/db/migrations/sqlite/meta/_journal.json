@@ -85,6 +85,13 @@
       "when": 1793621048814,
       "tag": "0011_audit_languages_nofollow_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1793700894497,
+      "tag": "0012_url_verifications",
+      "breakpoints": true
     }
   ]
 }

@@ -496,6 +496,78 @@ export const priorityUrls = mysqlTable(
 )
 
 /**
+ * A recheck of some URLs of a domain, without a crawl: what asked for it, how it is going and what
+ * ran it. It hangs off the domain and never changes a crawl. A domain has one active recheck at most.
+ */
+export const urlVerifications = mysqlTable(
+  'url_verifications',
+  {
+    id: id('id').primaryKey(),
+    domainId: id('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    status: varchar('status', {
+      length: 16,
+      enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
+    })
+      .notNull()
+      .default('pending'),
+    jobId: id('job_id').notNull(),
+    /** The domain id while the recheck is active, `null` after: unique, so one per domain at most. */
+    activeKey: id('active_key').unique(),
+    /** The full crawl the URLs were picked from. Not a reference: it outlives its results. */
+    baseCrawlId: id('base_crawl_id').notNull(),
+    urlsCount: int('urls_count').notNull().default(0),
+    urlsDoneCount: int('urls_done_count').notNull().default(0),
+    error: text('error'),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+    startedAt: ts('started_at'),
+    finishedAt: ts('finished_at'),
+  },
+  (t) => [index('url_verifications_domain_created_idx').on(t.domainId, t.createdAt)],
+)
+
+/**
+ * The URLs of a recheck: the queue of what is left to request, and what each one answered and
+ * concluded. Removed with the recheck.
+ */
+export const urlVerificationUrls = mysqlTable(
+  'url_verification_urls',
+  {
+    verificationId: id('verification_id')
+      .notNull()
+      .references(() => urlVerifications.id, { onDelete: 'cascade' }),
+    urlHash: varchar('url_hash', { length: 32 }).notNull(),
+    url: text('url').notNull(),
+    source: varchar('source', { length: 16 }).notNull(),
+    state: varchar('state', { length: 16, enum: ['queued', 'done'] }).notNull(),
+    kind: varchar('kind', { length: 16, enum: ['page', 'redirect', 'resource', 'unknown'] })
+      .notNull()
+      .default('unknown'),
+    statusCode: int('status_code'),
+    contentType: varchar('content_type', { length: 255 }),
+    redirectTo: text('redirect_to'),
+    title: text('title'),
+    metaRobots: text('meta_robots'),
+    xRobotsTag: text('x_robots_tag'),
+    canonical: text('canonical'),
+    responseTimeMs: int('response_time_ms'),
+    bytes: int('bytes'),
+    error: text('error'),
+    /** The version of the audit configuration `outcome` was concluded under. */
+    auditVersion: int('audit_version'),
+    /** JSON (`VerificationOutcome`): what was concluded about the URL. */
+    outcome: longtext('outcome'),
+    fetchedAt: ts('fetched_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.verificationId, t.urlHash] }),
+    index('url_verification_urls_queue_idx').on(t.verificationId, t.state),
+    index('url_verification_urls_hash_idx').on(t.urlHash),
+  ],
+)
+
+/**
  * What a domain's files for crawlers answered the last time they were requested, by a crawl or a
  * refresh. There is no history: each request replaces the row of its URL.
  */

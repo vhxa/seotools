@@ -29,6 +29,9 @@ import type {
   SettingsStore,
   PagesByWorstIssue,
   PagesWithType,
+  VerificationOutcome,
+  VerificationStatus,
+  VerificationUrlState,
 } from '@seotools/core'
 
 export type Dialect = 'sqlite' | 'pg' | 'mysql'
@@ -58,8 +61,11 @@ export interface JobRepository {
   fail(input: { id: string; workerId: string; error: string; retryAt?: Date }): Promise<void>
   /** Tells the queue the job is still being worked on, so it isn't taken for orphaned. */
   renewLock(input: { id: string; workerId: string; now?: Date }): Promise<void>
-  /** Hands a job back unfinished (worker shutting down): `pending`, not counted as an attempt. */
-  release(input: { id: string; workerId: string }): Promise<void>
+  /**
+   * Hands a job back unfinished (worker shutting down): `pending`, not counted as an attempt. With
+   * `runAt` it is not picked up again before then, for a job that has to wait for something.
+   */
+  release(input: { id: string; workerId: string; runAt?: Date }): Promise<void>
   /** Recovers jobs whose worker died: back to `pending`, or `failed` if out of attempts. */
   requeueStale(input: { lockedBefore: Date }): Promise<number>
 }
@@ -491,6 +497,94 @@ export interface AuditRepository {
   clearRecomputeFailure(input: { domainId: string; version: number }): Promise<void>
 }
 
+/**
+ * A recheck of some URLs of a domain, without a crawl (`url.verify` job). It never touches a crawl:
+ * the last full crawl keeps what it found, and a recheck keeps what it found next to it.
+ */
+export interface Verification {
+  id: string
+  domainId: string
+  status: VerificationStatus
+  jobId: string
+  /**
+   * The full crawl the URLs were picked from, which is the one a recheck is compared with. Not a
+   * reference: results per URL are pruned, the crawl remains.
+   */
+  baseCrawlId: string
+  urlsCount: number
+  urlsDoneCount: number
+  error: string | null
+  createdAt: Date
+  startedAt: Date | null
+  finishedAt: Date | null
+}
+
+/** A URL to recheck. `source` is how the full crawl found it, which a recheck keeps. */
+export interface NewVerificationUrl {
+  url: string
+  urlHash: string
+  source: CrawlUrlSource
+}
+
+/** What a rechecked URL answered: what a crawl keeps of an answer, except what is extracted. */
+export type VerificationAnswer = Omit<CrawlUrlResult, 'data'>
+
+export interface VerifiedUrl extends NewVerificationUrl, VerificationAnswer {
+  verificationId: string
+  state: VerificationUrlState
+  /** The audit configuration the outcome was concluded under. `null` while queued. */
+  auditVersion: number | null
+  outcome: VerificationOutcome | null
+  fetchedAt: Date | null
+}
+
+export interface VerificationRepository {
+  /**
+   * Creates a recheck, its URLs and the job that runs it, together. A domain has one active recheck
+   * at most: returns `null`, creating nothing, if it already has one. Takes between 1 and
+   * `MAX_VERIFICATION_URLS` URLs, once each, and rejects anything else.
+   */
+  start(input: {
+    domainId: string
+    baseCrawlId: string
+    urls: NewVerificationUrl[]
+  }): Promise<Verification | null>
+  get(id: string): Promise<Verification | null>
+  active(domainId: string): Promise<Verification | null>
+  /** Newest first. */
+  list(domainId: string, options?: { limit?: number }): Promise<Verification[]>
+  /** Moves an active recheck to `running`. `null` when it is no longer active (e.g. cancelled). */
+  markRunning(id: string): Promise<Verification | null>
+  /** URLs still to be requested. */
+  queued(verificationId: string, limit: number): Promise<NewVerificationUrl[]>
+  /**
+   * Stores what a URL answered and what was concluded from it, atomically, and counts it as done.
+   * Writing it again replaces it. `false`, writing nothing, if the recheck is no longer active.
+   */
+  recordResult(input: {
+    verificationId: string
+    urlHash: string
+    answer: VerificationAnswer
+    auditVersion: number
+    outcome: VerificationOutcome
+  }): Promise<boolean>
+  /** Every URL of a recheck, queued or done, sorted by URL. */
+  urlsOf(verificationId: string): Promise<VerifiedUrl[]>
+  /** Ends an active recheck. `false` if it had already ended. */
+  finish(id: string, input: { status: 'completed' | 'failed'; error?: string }): Promise<boolean>
+  /** `false` if the recheck had already ended. */
+  cancel(id: string): Promise<boolean>
+  /** Ends active rechecks whose job can no longer run them (out of attempts). Returns how many. */
+  failOrphaned(): Promise<number>
+  /**
+   * For each of these URLs, its most recent finished result in any recheck of the domain. Another
+   * domain's rechecks are never looked at, whatever the hashes.
+   */
+  latestFor(domainId: string, urlHashes: string[]): Promise<VerifiedUrl[]>
+  /** Removes the oldest ended rechecks of a domain beyond the newest `keep`, with their URLs. */
+  prune(input: { domainId: string; keep: number }): Promise<number>
+}
+
 export interface PriorityUrl {
   domainId: string
   urlHash: string
@@ -646,6 +740,7 @@ export interface Database {
   readonly domains: DomainRepository
   readonly crawls: CrawlRepository
   readonly audit: AuditRepository
+  readonly verifications: VerificationRepository
   readonly priorityUrls: PriorityUrlRepository
   readonly crawlSchedules: CrawlScheduleRepository
   readonly favicons: FaviconRepository
