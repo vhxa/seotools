@@ -158,6 +158,146 @@
       "invalidSchedule": "Check the frequency, day and time of the schedule."
     }
   },
+  "Verification": {
+    "starting": "Starting…",
+    "recheckUrl": "Recheck this URL",
+    "bulk": {
+      "recheck": "Recheck without a crawl",
+      "recheckLimit": "Recheck without a crawl (up to {max, number} URLs)"
+    },
+    "errors": {
+      "none": "Choose at least one URL to recheck.",
+      "invalid": "None of those is a URL of {host}.",
+      "tooMany": "A recheck takes up to {max, number} URLs at a time. Choose fewer.",
+      "noCrawl": "There is no full crawl to compare with yet. Run one first.",
+      "notInCrawl": "The last full crawl does not have those URLs, or they are files for crawlers, which are refreshed from Crawl files.",
+      "alreadyRunning": "This domain is already rechecking URLs. Wait for it to finish, or cancel it."
+    },
+    "status": {
+      "pending": "waiting to start",
+      "running": "running",
+      "completed": "done",
+      "failed": "failed",
+      "cancelled": "cancelled"
+    },
+    "banner": {
+      "active": {
+        "title": "Rechecking {count, plural, one {# URL} other {# URLs}}",
+        "progressLabel": "Recheck progress",
+        "waiting": "It starts as soon as no crawl of this domain is running.",
+        "progress": "{done, number} of {total, number} URLs requested again."
+      },
+      "viewResults": "View results",
+      "cancel": "Cancel",
+      "done": {
+        "title": "Rechecked {count, plural, one {# URL} other {# URLs}}",
+        "description": "The last full crawl was not changed. Open the results to see what is fixed and what still needs a full crawl."
+      },
+      "failed": {
+        "title": "The recheck failed",
+        "description": "{error}"
+      }
+    },
+    "detail": {
+      "title": "Recheck",
+      "scope": "A recheck requests this URL again and judges what it answers on its own, without a crawl. The last full crawl is not changed. Findings that depend on other pages or on links (duplicates, links to this page, sitemaps, hreflang, redirect chains) can only be confirmed by a full crawl.",
+      "waiting": "This URL is waiting to be requested again.",
+      "busy": "Another recheck of this domain is under way. A domain rechecks one batch at a time.",
+      "never": "Not rechecked since the last full crawl.",
+      "rechecked": "Rechecked {when}",
+      "rules": {
+        "current": "Under the current rules",
+        "changed": "Rules changed since",
+        "changedNote": "The audit rules changed after this recheck, so exclusions and expected indexing may differ now. Recheck again to apply them."
+      },
+      "fields": {
+        "status": "Status",
+        "error": "Error",
+        "redirectTo": "Redirects to",
+        "responseTime": "Response time",
+        "title": "Title now",
+        "canonical": "Canonical now",
+        "metaRobots": "Meta robots now",
+        "xRobotsTag": "X-Robots-Tag now",
+        "audit": "Audit",
+        "indexability": "Technical state"
+      },
+      "notSet": "Not set",
+      "responseTime": "{value, number} ms",
+      "excluded": "This URL is left out of the audit, so it has no findings of its own. It was still requested again.",
+      "found": {
+        "title": "Found in the recheck",
+        "none": "The recheck found none of the issues it can settle.",
+        "remaining": "Still there",
+        "appeared": "New"
+      },
+      "fixed": {
+        "title": "No longer found",
+        "note": "The crawl of {when} found these at this URL; the recheck does not."
+      },
+      "notComparable": {
+        "rules-changed": "Not compared with the last full crawl: it was analysed under other audit rules, so a finding could appear or go away only because the rules moved.",
+        "not-analysed": "Not compared with the last full crawl: it has not been analysed for issues."
+      },
+      "unchecked": {
+        "title": "Could not be checked from this URL alone"
+      },
+      "pending": {
+        "title": "Waiting for a full crawl",
+        "none": "The last full crawl found nothing at this URL that only a full crawl can settle.",
+        "note": "These depend on other pages or on links. They stay as the crawl of {when} found them: a recheck does not say whether they remain.",
+        "badge": "Needs a full crawl"
+      }
+    },
+    "results": {
+      "metaTitle": "Recheck · {host} · seotools",
+      "back": "Back to jobs",
+      "title": "Recheck of {count, plural, one {# URL} other {# URLs}}",
+      "cancel": "Cancel",
+      "summary": "{done, number} of {total, number} URLs requested again · started {when}",
+      "failed": {
+        "title": "The recheck failed",
+        "description": "{error}"
+      },
+      "waiting": {
+        "title": "Waiting to start",
+        "description": "A recheck waits while a crawl of this domain is running, and starts as soon as it ends."
+      },
+      "totals": {
+        "title": "What the recheck found",
+        "fixed": "No longer found",
+        "remaining": "Still there",
+        "appeared": "New",
+        "pending": "Waiting for a full crawl"
+      },
+      "scope": "Compared with the last full crawl the URLs were picked from, which a recheck does not change. Findings that depend on other pages or on links are counted as waiting: only a full crawl says whether they remain.",
+      "notComparable": "Some URLs were not compared with the crawl: it was analysed under other audit rules, or not analysed.",
+      "stale": "The audit rules changed after some of these were rechecked. Recheck them again to apply the current rules.",
+      "columns": {
+        "url": "URL",
+        "status": "Status",
+        "found": "Found now",
+        "fixed": "No longer found",
+        "remaining": "Still there",
+        "appeared": "New",
+        "pending": "Waiting"
+      },
+      "excluded": "Left out of the audit",
+      "rulesChanged": "Rules changed since",
+      "queued": "Waiting"
+    },
+    "jobs": {
+      "title": "Rechecks",
+      "description": "Requests some URLs again after a fix, without a crawl, and judges what each one answers on its own. Start one from the pages table or the detail of a URL.",
+      "status": "Status",
+      "started": "Started",
+      "urls": "URLs",
+      "urlsDone": "{done, number} of {total, number}",
+      "error": "Error",
+      "empty": "No rechecks yet.",
+      "view": "View"
+    }
+  },
   "Pages": {
     "metaTitle": "Pages · {host} · seotools",
     "title": "Pages",

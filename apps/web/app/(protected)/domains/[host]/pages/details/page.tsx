@@ -9,6 +9,7 @@ import { AuditFilters } from '@/components/pages/audit-filters'
 import { IssueLabel } from '@/components/pages/issue-mark'
 import { IssuesFilter } from '@/components/pages/issues-filter'
 import { PagesTable, type PageRow } from '@/components/pages/pages-table'
+import { RecheckBanner } from '@/components/verification/recheck-banner'
 import { UrlDetail } from '@/components/pages/url-detail'
 import { UrlDrawer } from '@/components/pages/url-drawer'
 import { buttonVariants } from '@/components/ui/button'
@@ -174,6 +175,7 @@ export default async function PagesDetailsPage({
       </div>
 
       <AuditResultsNotice host={domain.host} state={results} />
+      <RecheckBanner host={domain.host} domainId={domain.id} />
 
       {latest && (
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
