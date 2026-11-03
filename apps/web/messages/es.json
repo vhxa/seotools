@@ -475,7 +475,9 @@
       "issues": "Issues",
       "linksIn": "Enlazada desde",
       "linksOut": "Enlaza a",
-      "audit": "Auditoría e indexación"
+      "audit": "Auditoría e indexación",
+      "technical": "Metadatos técnicos",
+      "ruleOrigins": "Bloqueos y origen de las reglas"
     },
     "fields": {
       "contentType": "Tipo de contenido",
@@ -490,7 +492,8 @@
       "canonical": "Canonical",
       "metaRobots": "Meta robots",
       "xRobotsTag": "X-Robots-Tag",
-      "error": "Error"
+      "error": "Error",
+      "http": "Estado HTTP"
     },
     "kinds": {
       "page": "Página",
@@ -517,7 +520,16 @@
       "nofollow": "nofollow en esta página"
     },
     "noFindings": "Sin hallazgos.",
-    "excludedFindings": "Excluida de la auditoría: no tiene hallazgos propios."
+    "excludedFindings": "Excluida de la auditoría: no tiene hallazgos propios.",
+    "httpUnknown": "Sin respuesta HTTP registrada",
+    "findingsSummary": "{count, plural, one {# hallazgo} other {# hallazgos}} · {high, number} de importancia alta — ver hallazgos",
+    "crawlContext": "Rastreo completo: {when} · Configuración de auditoría: {version}",
+    "findingGroups": {
+      "high": "Importancia alta ({count, number})",
+      "medium": "Importancia media ({count, number})",
+      "low": "Importancia baja ({count, number})",
+      "unknown": "Otros hallazgos ({count, number})"
+    }
   },
   "IssueEvidence": {
     "unavailable": "Los ejemplos no están disponibles: este rastreo se analizó antes de guardarlos. Vuelve a rastrear el sitio para verlos.",

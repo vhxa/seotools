@@ -475,7 +475,9 @@
       "issues": "Issues",
       "linksIn": "Linked from",
       "linksOut": "Links to",
-      "audit": "Audit and indexing"
+      "audit": "Audit and indexing",
+      "technical": "Technical metadata",
+      "ruleOrigins": "Blockers and rule origins"
     },
     "fields": {
       "contentType": "Content type",
@@ -490,7 +492,8 @@
       "canonical": "Canonical",
       "metaRobots": "Meta robots",
       "xRobotsTag": "X-Robots-Tag",
-      "error": "Error"
+      "error": "Error",
+      "http": "HTTP status"
     },
     "kinds": {
       "page": "Page",
@@ -517,7 +520,16 @@
       "nofollow": "nofollow on this page"
     },
     "noFindings": "No findings.",
-    "excludedFindings": "Excluded from the audit: it has no findings of its own."
+    "excludedFindings": "Excluded from the audit: it has no findings of its own.",
+    "httpUnknown": "No HTTP response recorded",
+    "findingsSummary": "{count, plural, one {# finding} other {# findings}} · {high, number} high importance — view findings",
+    "crawlContext": "Full crawl: {when} · Audit configuration: {version}",
+    "findingGroups": {
+      "high": "High importance ({count, number})",
+      "medium": "Medium importance ({count, number})",
+      "low": "Low importance ({count, number})",
+      "unknown": "Other findings ({count, number})"
+    }
   },
   "IssueEvidence": {
     "unavailable": "The examples are not available: this crawl was parsed before they were kept. Crawl the site again to see them.",
