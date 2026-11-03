@@ -2,7 +2,7 @@ import { createLogger, retryDelayMs, type Job } from '@seotools/core'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRunner } from './runner'
-import { JobInterruptedError, PermanentJobError, type JobHandler } from './types'
+import { JobDeferredError, JobInterruptedError, PermanentJobError, type JobHandler } from './types'
 import { exampleEcho } from './handlers/example-echo'
 import { mailSend } from './handlers/mail-send'
 
@@ -184,6 +184,38 @@ describe('runner', () => {
       attempts: 0,
       lastError: null,
     })
+  })
+
+  it('puts off a job that has to wait, without spending an attempt, until it is time', async () => {
+    let runs = 0
+    const runner = runnerWith({
+      waits: async () => {
+        runs++
+        if (runs === 1) throw new JobDeferredError(60_000, 'a crawl is running')
+        return 'done'
+      },
+    })
+    const job = await db.jobs.enqueue({ type: 'waits', maxAttempts: 1 })
+
+    await runner.tick()
+    await runner.idle()
+    const waiting = await db.jobs.get(job.id)
+    expect(waiting).toMatchObject({ status: 'pending', attempts: 0, lastError: null })
+    expect(waiting!.runAt.getTime()).toBeGreaterThan(Date.now() + 50_000)
+
+    // Not due yet: another poll leaves it alone.
+    expect(await runner.tick()).toBe(0)
+    expect(runs).toBe(1)
+
+    // Once it is due, it runs, and the one attempt it had is still its own.
+    const due = await db.jobs.claim({
+      workerId: 'test-worker',
+      limit: 1,
+      now: new Date(Date.now() + 61_000),
+      types: ['waits'],
+    })
+    expect(due.map((j) => j.id)).toEqual([job.id])
+    expect(due[0]?.attempts).toBe(1)
   })
 
   it('stop() waits for in-flight jobs', async () => {

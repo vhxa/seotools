@@ -25,3 +25,18 @@ export class JobInterruptedError extends Error {
     super('Interrupted by a worker shutdown')
   }
 }
+
+/**
+ * Throw from a handler that has to wait for something (a crawl of the same domain is running): the
+ * job goes back to the queue without spending an attempt, and is not picked up again before
+ * `delayMs` have passed.
+ */
+export class JobDeferredError extends Error {
+  override name = 'JobDeferredError'
+  constructor(
+    readonly delayMs: number,
+    reason = 'Deferred',
+  ) {
+    super(reason)
+  }
+}

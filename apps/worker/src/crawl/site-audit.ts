@@ -192,7 +192,8 @@ function robotsOf(crawl: Crawl) {
   return parsed
 }
 
-function audit(
+/** What a URL is like to the audit: its answer, what is expected of it, and what stands in its way. */
+export function auditUrl(
   url: CrawlUrl,
   robots: ReadonlyMap<string, ParsedRobots>,
   resolver: AuditResolver,
@@ -315,7 +316,7 @@ export async function loadSite(
     for (let offset = 0; ; offset += BATCH) {
       const batch = await db.crawls.listUrls({ crawlId: crawl.id, view, limit: BATCH, offset })
       for (const row of batch) {
-        const url = audit(row, robots, resolver)
+        const url = auditUrl(row, robots, resolver)
         urls.push(url)
         byHash.set(row.urlHash, url)
       }
