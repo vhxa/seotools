@@ -27,13 +27,21 @@ export const PARTICIPATION_FILTERS = ['audited', 'excluded'] as const
 export type ParticipationFilter = (typeof PARTICIPATION_FILTERS)[number]
 
 const MAX_SEARCH_LENGTH = 200
-/** The shape of a rule id: a UUID. */
+/** The shape of a rule id or a crawl id: a UUID. */
 const RULE_ID = /^[0-9a-f-]{36}$/i
+/** Whether a value has the shape of a crawl id. Whose crawl it is, is for the server to check. */
+export const isCrawlId = (value: string) => RULE_ID.test(value)
 /** The shape of `crawlUrlHash`: 32 hexadecimal characters. */
 const URL_HASH = /^[0-9a-f]{32}$/
 export const isUrlHash = (value: string) => URL_HASH.test(value)
 
 export interface DetailQuery {
+  /**
+   * The crawl being browsed: one of the domain's retained full crawls. `null`: the latest one, which
+   * is also what an address without it means. Only its shape is checked here (`isCrawlId`); the page
+   * checks that it is a crawl of the domain before using it.
+   */
+  crawl: string | null
   view: CrawlUrlView
   page: number
   /** `null`: the default order, shallowest first. */
@@ -64,8 +72,10 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
   const participation = first(params.audit)
   const intent = first(params.intent)
   const rule = first(params.rule)
+  const crawl = first(params.crawl)
   const validIssue = issue && isPageIssueId(issue) ? issue : null
   return {
+    crawl: crawl && isCrawlId(crawl) ? crawl : null,
     // An issue picks its own URLs, in whichever view they are.
     view: validIssue
       ? 'pages'
@@ -90,6 +100,7 @@ export function detailHref(
 ): string {
   const next = { ...query, ...changes }
   const params = new URLSearchParams()
+  if (next.crawl) params.set('crawl', next.crawl)
   if (next.view !== 'pages') params.set('view', next.view)
   if (next.search) params.set('q', next.search)
   if (next.view === 'pages' && next.issue) params.set('issue', next.issue)

@@ -93,7 +93,9 @@
     "instance": "Instancia",
     "system": "Sistema",
     "pagesOverview": "Resumen",
-    "pagesDetails": "Detalle"
+    "pagesDetails": "Detalle",
+    "pagesHistory": "Historial",
+    "pagesCompare": "Comparar"
   },
   "DomainHome": {
     "metaTitle": "{host} · seotools",
@@ -304,8 +306,8 @@
     "openFullScreen": "Abrir en pantalla completa",
     "openUrl": "Abrir en una pestaña nueva",
     "close": "Cerrar",
-    "drawerDescription": "Lo que encontró el último rastreo completo en esta URL.",
-    "notFound": "Esta URL no está en el último rastreo completo.",
+    "drawerDescription": "Lo que encontró en esta URL el rastreo que estás viendo.",
+    "notFound": "Esta URL no está en el rastreo que estás viendo.",
     "sections": {
       "summary": "Resumen",
       "page": "En la página",
@@ -1499,7 +1501,7 @@
         "notAcceptedByException": "El nofollow no se acepta en la excepción para esta URL."
       }
     },
-    "technicalNote": "Es lo que vio el último rastreo, no si un buscador ha indexado la URL, algo que un rastreo no puede saber.",
+    "technicalNote": "Es lo que vio el rastreo, no si un buscador ha indexado la URL, algo que un rastreo no puede saber.",
     "empty": "—"
   },
   "AuditRules": {
@@ -1726,6 +1728,260 @@
     "state": {
       "now": "Ahora: {state}",
       "afterSave": "Al guardar: {state}"
+    }
+  },
+  "CrawlHistory": {
+    "stamp": {
+      "at": "Rastreo del {when}",
+      "retained": "Resultados conservados",
+      "pruned": "Resultados podados",
+      "prunedHint": "Solo quedan los totales de este rastreo: la configuración de retención eliminó sus resultados por URL.",
+      "config": "Configuración de auditoría v{version}",
+      "configNone": "Sin reglas de auditoría",
+      "notAnalysed": "Sin analizar",
+      "catalogOlder": "Catálogo de problemas anterior",
+      "catalogOlderHint": "Sus hallazgos se calcularon con una versión del catálogo de problemas anterior a la actual."
+    },
+    "picker": {
+      "label": "Rastreo",
+      "option": "{when} · {status}{coverage, select, pruned { · resultados podados} other {}}{latest, select, yes { · último} other {}}"
+    },
+    "banner": {
+      "viewing": "Estás viendo el rastreo del {when}, no el último.",
+      "backToLatest": "Volver al último rastreo",
+      "configBehind": "Analizado con: {config}. Vigente ahora: {current}. Un rastreo anterior conserva las reglas con las que se analizó, así que sus resultados no se recalculan."
+    },
+    "details": {
+      "detailsDescription": "Todas las URL del rastreo completo elegido, tal como las vio ese rastreo. Selecciona algunas para actuar sobre ellas a la vez.",
+      "prunedBody": "La configuración de retención eliminó los resultados por URL de este rastreo. Solo quedan sus totales: se encontraron {pages} páginas y {urls} URL. Elige un rastreo que aún conserve sus resultados.",
+      "prunedSettings": "Cambiar cuántos rastreos conservan sus resultados"
+    },
+    "list": {
+      "metaTitle": "Historial de rastreos · {host} · seotools",
+      "title": "Historial de rastreos",
+      "description": "Todos los rastreos completos de este dominio que terminaron con resultados, del más reciente al más antiguo. Cada rastreo conserva la configuración de auditoría con la que se analizó y sus resultados por URL hasta que la retención los elimina.",
+      "empty": "Este dominio aún no tiene ningún rastreo completo terminado. Lanza uno desde el resumen de páginas.",
+      "compare": {
+        "title": "Comparar dos rastreos",
+        "description": "Elige los rastreos para ver qué se descubrió, qué no se volvió a ver y qué cambió entre ellos."
+      },
+      "columns": {
+        "crawled": "Rastreado",
+        "results": "Resultados",
+        "found": "Encontrado",
+        "config": "Configuración de auditoría",
+        "findings": "Páginas con hallazgos"
+      },
+      "trigger": {
+        "manual": "Manual",
+        "schedule": "Programado"
+      },
+      "latest": "Último",
+      "found": "{pages} páginas · {urls} URL",
+      "configDiffers": "Ahora: {current}",
+      "findings": "{issues} problemas · {warnings} avisos · {opportunities} oportunidades",
+      "view": "Ver",
+      "compareWithPrevious": "Comparar con el anterior",
+      "retention": "Cuántos rastreos conservan sus resultados por URL se define en los ajustes de rastreo; los más antiguos solo conservan sus totales.",
+      "settings": "Ajustes de rastreo",
+      "capped": "Se muestran los {count} rastreos más recientes. Los anteriores no aparecen en la lista."
+    },
+    "url": {
+      "title": "Historial de esta URL",
+      "description": "Lo que cada rastreo completo conservado registró de esta URL, del más reciente al más antiguo ({count, plural, one {# rastreo} other {# rastreos}}). Un rastreo sin resultados lo indica; nunca se interpreta como que la URL no existía.",
+      "empty": "Ningún rastreo tiene resultados para esta URL.",
+      "columns": {
+        "crawl": "Rastreo",
+        "answer": "Respuesta",
+        "page": "Página",
+        "findings": "Hallazgos",
+        "changes": "Desde el rastreo anterior"
+      },
+      "pruned": "Resultados podados",
+      "prunedHint": "Solo quedan los totales de este rastreo, así que no puede decir cómo era esta URL.",
+      "prunedRow": "Se podaron los resultados de este rastreo",
+      "viewing": "Estás aquí",
+      "notSeen": "Este rastreo no encontró la URL",
+      "notAnalysed": "Sin analizar",
+      "auditUnknown": "Estado de auditoría no conservado",
+      "appeared": "No estaba en el rastreo anterior",
+      "vanished": "No se volvió a ver",
+      "compareWithPrevious": "Comparar los rastreos",
+      "cells": {
+        "present": "{when}: detectado",
+        "absent": "{when}: no detectado",
+        "unknown": "{when}: no se puede saber ({reason})"
+      },
+      "timeline": {
+        "title": "Hallazgos a lo largo del tiempo",
+        "description": "Cada cuadrado es un rastreo, del más antiguo al más reciente. Un hallazgo solo se llama nuevo, resuelto o reaparecido cuando los rastreos de ambos lados podían haberlo detectado con el mismo catálogo de problemas y las mismas reglas de auditoría.",
+        "legend": "Rojo: detectado. Verde: no detectado por un rastreo que podía haberlo detectado. Discontinuo: el rastreo no puede saberlo (podado, sin analizar, URL no encontrada o no solicitada, excluida de la auditoría, o con otro catálogo o configuración)."
+      }
+    }
+  },
+  "CrawlCompare": {
+    "metaTitle": "Comparar rastreos · {host} · seotools",
+    "title": "Comparar rastreos",
+    "description": "Qué cambió entre dos rastreos completos, según lo que guardaron. No se solicita nada al sitio. Cuando la evidencia no explica por qué cambió algo, la página tampoco lo hace.",
+    "needTwo": "Para comparar hacen falta dos rastreos completos terminados de este dominio. Lanza otro rastreo primero.",
+    "sameCrawl": "Ambos extremos son el mismo rastreo. Elige dos rastreos distintos.",
+    "roles": {
+      "earlier": "Rastreo anterior",
+      "later": "Rastreo posterior"
+    },
+    "picker": {
+      "label": "Rastreos a comparar",
+      "from": "Rastreo anterior",
+      "to": "Rastreo posterior"
+    },
+    "totals": {
+      "title": "Totales",
+      "description": "Los totales sobreviven a la poda, así que siempre se pueden comparar. Una diferencia en los totales tiene las mismas causas posibles que los cambios de abajo: el sitio, el rastreo o las reglas de auditoría.",
+      "measure": "Medida",
+      "difference": "Diferencia",
+      "rows": {
+        "urls": "URL encontradas",
+        "pages": "Páginas",
+        "audited": "Páginas auditadas",
+        "excluded": "Páginas excluidas de la auditoría",
+        "indexable": "Páginas indexables",
+        "withIssues": "Páginas auditadas con problemas",
+        "withWarnings": "Páginas auditadas con avisos",
+        "withOpportunities": "Páginas auditadas con oportunidades"
+      }
+    },
+    "changesLabel": "Tipos de cambio",
+    "viewsLabel": "Vistas",
+    "views": {
+      "pages": "Páginas",
+      "other": "Otras URL"
+    },
+    "changes": {
+      "added": "Descubiertas",
+      "missing": "No vistas",
+      "status": "Respuesta",
+      "title": "Título",
+      "canonical": "Canónica",
+      "robots": "Robots",
+      "gained": "Hallazgos detectados después",
+      "lost": "Hallazgos que ya no se detectan"
+    },
+    "fields": {
+      "status": "Cambió la respuesta",
+      "title": "Cambió el título",
+      "canonical": "Cambió la canónica",
+      "robots": "Cambió robots"
+    },
+    "hints": {
+      "added": "URL que encontró el rastreo posterior y que el anterior nunca encontró. Puede que el sitio las haya ganado, o que el rastreo anterior no llegara hasta ellas.",
+      "addedIncomplete": "El rastreo anterior se detuvo en su límite de URL, así que no llegó a muchas URL. Es posible que algunas de estas existieran desde siempre.",
+      "missing": "URL que encontró el rastreo anterior y el posterior no. Pueden haberse eliminado, haber dejado de enlazarse o de aparecer en un sitemap, o no haberse alcanzado: esto no dice cuál fue el caso.",
+      "missingIncomplete": "El rastreo posterior se detuvo en su límite de URL, así que lo más probable es que sean URL a las que no llegó. Nada de esto indica que se hayan eliminado.",
+      "status": "URL que ambos rastreos solicitaron y que respondieron distinto: otro código de estado, otro tipo de URL u otro destino de redirección.",
+      "title": "URL que ambos rastreos solicitaron y cuyo título cambió. Se compara exactamente, mayúsculas incluidas.",
+      "canonical": "URL que ambos rastreos solicitaron y cuya canónica declarada cambió.",
+      "robots": "URL que ambos rastreos solicitaron y cuyo meta robots o X-Robots-Tag cambió.",
+      "gained": "URL que ambos rastreos solicitaron y en las que el rastreo posterior detecta hallazgos que el anterior no. La etiqueta dice lo que la evidencia respalda: nuevo o reaparecido, o sin atribuir cuando cambiaron las reglas, el catálogo o el propio rastreo.",
+      "lost": "URL que ambos rastreos solicitaron y en las que el rastreo anterior detectaba hallazgos que el posterior ya no. Solo es resuelto cuando únicamente el sitio puede explicarlo; una URL que ya no se audita aparece como excluida por regla, nunca como resuelta."
+    },
+    "search": {
+      "label": "Buscar URL",
+      "placeholder": "Buscar por URL o título",
+      "submit": "Buscar"
+    },
+    "clearIssue": "Mostrar los hallazgos de cualquier problema",
+    "unrequested": "{count, plural, one {# URL se encontró en ambos rastreos pero al menos uno no la solicitó, así que no se compara.} other {# URL se encontraron en ambos rastreos pero al menos uno no las solicitó, así que no se comparan.}}",
+    "total": "{count, plural, one {# URL} other {# URL}}",
+    "table": {
+      "empty": "Ninguna URL cambió de esta manera.",
+      "notSet": "Sin definir",
+      "notRequested": "No solicitada",
+      "metaRobots": "meta robots:",
+      "xRobotsTag": "X-Robots-Tag:",
+      "columns": {
+        "url": "URL",
+        "answer": "Respuesta",
+        "title": "Título",
+        "depth": "Profundidad",
+        "before": "Rastreo anterior",
+        "after": "Rastreo posterior",
+        "findings": "Hallazgos"
+      },
+      "findingsUnavailable": "No se pueden comparar los hallazgos de estos rastreos.",
+      "samePersistent": "{count, plural, one {# hallazgo detectado por ambos} other {# hallazgos detectados por ambos}}"
+    },
+    "findingKinds": {
+      "new": "Nuevo",
+      "newHint": "Detectado por el rastreo posterior y no por el anterior, que podía haberlo detectado con el mismo catálogo y las mismas reglas.",
+      "reappeared": "Reaparecido",
+      "reappearedHint": "Detectado, luego no detectado por un rastreo intermedio que podía haberlo detectado, y detectado de nuevo.",
+      "resolved": "Resuelto",
+      "resolvedHint": "Detectado por el rastreo anterior y no por el posterior, que podía haberlo detectado con el mismo catálogo y las mismas reglas.",
+      "excluded": "Excluida por regla",
+      "excludedHint": "El rastreo posterior ya no audita esta URL, así que sus hallazgos desaparecen por una regla. No significa que se hayan resuelto en el sitio.",
+      "audited": "Ahora auditada",
+      "auditedHint": "El rastreo anterior dejó esta URL fuera de la auditoría, así que este hallazgo no es nuevo: no se estaba buscando.",
+      "unverified": {
+        "base": "Solo antes · sin verificar",
+        "target": "Solo después · sin verificar",
+        "both": "En ambos · sin verificar"
+      },
+      "unverifiedHint": "Los hallazgos difieren, pero no se muestra como nuevo ni resuelto porque: {reasons}.",
+      "persistent": "Sigue detectado",
+      "persistentHint": "Detectado por ambos rastreos."
+    },
+    "reasons": {
+      "pruned": "un rastreo fue podado",
+      "unanalysed": "un rastreo no se analizó",
+      "not-seen": "el rastreo no tiene la URL",
+      "not-requested": "la URL se encontró pero no se solicitó",
+      "excluded": "la URL está excluida de la auditoría",
+      "participation": "el análisis no conservó si la URL se auditó",
+      "incomplete": "un rastreo se detuvo en su límite de URL y este hallazgo depende de otras páginas",
+      "catalog": "los catálogos de problemas difieren",
+      "audit": "la configuración de auditoría o la expectativa de la URL difieren"
+    },
+    "notes": {
+      "pruned": {
+        "title": {
+          "base": "El rastreo anterior ya no tiene sus resultados",
+          "target": "El rastreo posterior ya no tiene sus resultados",
+          "both": "Ninguno de los rastreos conserva sus resultados"
+        },
+        "description": "La retención eliminó los resultados por URL, así que solo se pueden comparar los totales. Elige rastreos que aún conserven sus resultados, o aumenta el número de rastreos que se conservan en los ajustes de rastreo."
+      },
+      "unanalysed": {
+        "title": {
+          "base": "El rastreo anterior no se analizó",
+          "target": "El rastreo posterior no se analizó",
+          "both": "Ninguno de los rastreos se analizó"
+        },
+        "description": "Sin análisis no hay hallazgos que comparar. Las URL y cómo respondieron (estado, título, canónica, robots) sí se siguen comparando."
+      },
+      "legacy": {
+        "title": {
+          "base": "El rastreo anterior se analizó antes de que se conservara el estado de auditoría por URL",
+          "target": "El rastreo posterior se analizó antes de que se conservara el estado de auditoría por URL",
+          "both": "Ambos rastreos se analizaron antes de que se conservara el estado de auditoría por URL"
+        },
+        "description": "No se sabe qué URL quedaron fuera de la auditoría entonces, así que un hallazgo que no está no puede interpretarse como corregido. Esos cambios se muestran sin atribuir."
+      },
+      "catalog": {
+        "title": "Los rastreos se analizaron con catálogos de problemas distintos",
+        "description": "Un hallazgo que aparece o desaparece puede deberse a una comprobación que cambió, no al sitio. Esas diferencias se listan como sin verificar, nunca como nuevas o resueltas."
+      },
+      "audit": {
+        "title": "Los rastreos se analizaron con configuraciones de auditoría distintas",
+        "description": "Entre ellos cambiaron las exclusiones, la indexación esperada o los directorios de idioma. Una URL que dejó de auditarse aparece como excluida por regla, no como resuelta. Los hallazgos que dependen de otras páginas no se llaman nuevos ni resueltos; los que solo dependen de la propia página sí, salvo que haya cambiado la expectativa de esa URL."
+      },
+      "incomplete": {
+        "title": {
+          "base": "El rastreo anterior se detuvo en su límite de URL",
+          "target": "El rastreo posterior se detuvo en su límite de URL",
+          "both": "Ambos rastreos se detuvieron en su límite de URL"
+        },
+        "description": "Las URL a las que no llegó no están ausentes, y los hallazgos que miran otras páginas (duplicados, enlaces entrantes, redirecciones) no se llaman nuevos ni resueltos para él."
+      }
     }
   }
 }

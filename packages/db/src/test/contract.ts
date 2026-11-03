@@ -2726,6 +2726,411 @@ export function describeDatabaseContract(
         expect(await db.crawls.latestResults(domainId, [])).toEqual([])
         expect(await db.crawls.latestResults(domainId, ['missing'])).toEqual([])
       })
+
+      describe('comparing and browsing retained crawls', () => {
+        const site = 'https://acme.com'
+        const urlOf = (path: string) => `${site}${path}`
+        const hashOf = (path: string) => crawlUrlHash(urlOf(path))
+
+        interface Page {
+          kind?: CrawlUrlKind
+          /** Found but never requested, as a crawl that stopped at its limit leaves it. */
+          queued?: boolean
+          result?: Partial<CrawlUrlResult>
+          issues?: string[]
+          excluded?: boolean
+        }
+
+        async function crawlOf(
+          domainId: string,
+          pages: Record<string, Page>,
+          options: { status?: 'completed' | 'incomplete'; catalog?: string; version?: number } = {},
+        ) {
+          const crawl = await startCrawl(domainId)
+          const entries = Object.entries(pages)
+          await db.crawls.addUrls(crawl.id, [
+            ...entries.map(([path]) => newUrl(urlOf(path))),
+            newUrl('https://elsewhere.org/', { scope: 'external' }),
+          ])
+          for (const [path, page] of entries) {
+            if (page.queued) continue
+            await db.crawls.recordResult({
+              crawlId: crawl.id,
+              urlHash: hashOf(path),
+              result: result(page.kind ?? 'page', page.result),
+            })
+          }
+          await db.crawls.recordResult({
+            crawlId: crawl.id,
+            urlHash: crawlUrlHash('https://elsewhere.org/'),
+            result: result('unknown', { statusCode: 200 }),
+          })
+          await db.crawls.finish(crawl.id, { status: options.status ?? 'completed' })
+          await saveIssues({
+            crawlId: crawl.id,
+            issues: entries.flatMap(([path, page]) =>
+              (page.issues ?? []).map((issue) => ({ urlHash: hashOf(path), issue })),
+            ),
+            pages: { issue: 0, warning: 0, opportunity: 0 },
+            withType: { issue: 0, warning: 0, opportunity: 0 },
+            catalog: options.catalog ?? 'v1',
+            audit: {
+              snapshot: { version: options.version ?? 0, rules: [] },
+              urls: entries.map(([path, page]) => ({
+                urlHash: hashOf(path),
+                participation: page.excluded ? ('excluded' as const) : ('audited' as const),
+                participationRule: null,
+                intent: 'indexable' as const,
+                intentRule: null,
+                acceptNofollow: false,
+                indexability: 'indexable' as const,
+                blockers: [],
+              })),
+            },
+          })
+          // Retention and ordering look at creation time, which has millisecond resolution.
+          await new Promise((r) => setTimeout(r, 5))
+          return crawl
+        }
+
+        const base: Record<string, Page> = {
+          '/': { result: { title: 'Home' }, issues: ['title-too-long'] },
+          '/about': { result: { title: 'About' }, issues: ['h1-missing'] },
+          '/old': { result: { title: 'Old' } },
+          '/blog': { result: { title: 'Blog' } },
+          '/news': { result: { title: 'News' } },
+          '/team': { result: { title: 'Team' } },
+          '/case': { result: { title: 'case' } },
+          '/same': { result: { title: 'Same' }, issues: ['noindex'] },
+          '/queued': { queued: true },
+          '/logo.png': { kind: 'resource', result: { contentType: 'image/png' } },
+        }
+        const target: Record<string, Page> = {
+          '/': { result: { title: 'Homepage' } },
+          '/about': { result: { title: 'About' }, issues: ['h1-missing', 'noindex'] },
+          '/new': { result: { title: 'New' } },
+          '/blog': { result: { title: 'Blog', statusCode: 404 } },
+          '/news': { result: { title: 'News', canonical: 'https://acme.com/news/' } },
+          '/team': { result: { title: 'Team', metaRobots: 'noindex' } },
+          '/case': { result: { title: 'Case' } },
+          '/same': { result: { title: 'Same' }, issues: ['noindex'] },
+          '/queued': { result: { title: 'Queued' } },
+          '/logo.png': { kind: 'resource', result: { statusCode: 404 } },
+        }
+
+        async function pair() {
+          const domainId = await domain()
+          const older = await crawlOf(domainId, base)
+          const newer = await crawlOf(domainId, target)
+          return { domainId, baseId: older.id, targetId: newer.id }
+        }
+
+        const paths = (rows: { url: string }[]) => rows.map((row) => row.url.slice(site.length))
+        const list = async (
+          ids: { domainId: string; baseId: string; targetId: string },
+          change: Parameters<Database['crawls']['compareUrls']>[0]['change'],
+          options: Partial<Parameters<Database['crawls']['compareUrls']>[0]> = {},
+        ) =>
+          db.crawls.compareUrls({
+            ...ids,
+            change,
+            view: 'pages',
+            limit: 50,
+            offset: 0,
+            ...options,
+          })
+
+        it('counts what was added, is missing and changed, apart from the external URLs', async () => {
+          const ids = await pair()
+          expect(await db.crawls.compareCounts({ ...ids, view: 'pages' })).toEqual({
+            added: 1,
+            missing: 1,
+            // Found by both, requested only by the later one.
+            unrequested: 1,
+            compared: 7,
+            status: 1,
+            title: 2,
+            canonical: 1,
+            robots: 1,
+            gained: 1,
+            lost: 1,
+          })
+          expect(await db.crawls.compareCounts({ ...ids, view: 'other' })).toEqual({
+            added: 0,
+            missing: 0,
+            unrequested: 1,
+            compared: 1,
+            status: 1,
+            title: 0,
+            canonical: 0,
+            robots: 0,
+            gained: 0,
+            lost: 0,
+          })
+        })
+
+        it('lists URLs added and not seen, each with the side that has them', async () => {
+          const ids = await pair()
+          const added = await list(ids, 'added')
+          expect(paths(added)).toEqual(['/new'])
+          expect(added[0]).toMatchObject({
+            urlHash: hashOf('/new'),
+            base: null,
+            target: { state: 'done', kind: 'page', statusCode: 200, title: 'New' },
+          })
+          const missing = await list(ids, 'missing')
+          expect(paths(missing)).toEqual(['/old'])
+          expect(missing[0]).toMatchObject({ target: null, base: { title: 'Old' } })
+          // The external URL is in both crawls and in neither list.
+          expect(await db.crawls.countCompared({ ...ids, change: 'added', view: 'pages' })).toBe(1)
+        })
+
+        it('lists the changes of an answer, with both sides', async () => {
+          const ids = await pair()
+          const status = await list(ids, 'status')
+          expect(paths(status)).toEqual(['/blog'])
+          expect(status[0]).toMatchObject({
+            base: { statusCode: 200 },
+            target: { statusCode: 404 },
+          })
+          expect(paths(await list(ids, 'canonical'))).toEqual(['/news'])
+          expect((await list(ids, 'canonical'))[0]).toMatchObject({
+            base: { canonical: null },
+            target: { canonical: 'https://acme.com/news/' },
+          })
+          expect(paths(await list(ids, 'robots'))).toEqual(['/team'])
+          expect((await list(ids, 'robots'))[0]).toMatchObject({
+            base: { metaRobots: null },
+            target: { metaRobots: 'noindex' },
+          })
+          expect(paths(await list(ids, 'status', { view: 'other' }))).toEqual(['/logo.png'])
+        })
+
+        it('tells a title that only changes case from the same title, in every dialect', async () => {
+          const ids = await pair()
+          expect(paths(await list(ids, 'title'))).toEqual(['/', '/case'])
+        })
+
+        it('does not compare a URL one crawl found and did not request', async () => {
+          const ids = await pair()
+          for (const change of [
+            'status',
+            'title',
+            'canonical',
+            'robots',
+            'gained',
+            'lost',
+          ] as const) {
+            expect(paths(await list(ids, change))).not.toContain('/queued')
+          }
+          expect(paths(await list(ids, 'added'))).not.toContain('/queued')
+          expect(paths(await list(ids, 'missing'))).not.toContain('/queued')
+        })
+
+        it('lists the findings reported by one crawl only, and narrows them by issue', async () => {
+          const ids = await pair()
+          expect(paths(await list(ids, 'gained'))).toEqual(['/about'])
+          expect(paths(await list(ids, 'lost'))).toEqual(['/'])
+          expect(paths(await list(ids, 'gained', { issue: 'noindex' }))).toEqual(['/about'])
+          expect(await list(ids, 'gained', { issue: 'h1-missing' })).toEqual([])
+          expect(paths(await list(ids, 'lost', { issue: 'title-too-long' }))).toEqual(['/'])
+          expect(await list(ids, 'lost', { issue: 'noindex' })).toEqual([])
+          // The same finding on both sides is not a difference.
+          expect(paths(await list(ids, 'gained'))).not.toContain('/same')
+        })
+
+        it('searches the URL or the title, pages a list and says how long it is', async () => {
+          const ids = await pair()
+          expect(paths(await list(ids, 'title', { search: 'CASE' }))).toEqual(['/case'])
+          expect(paths(await list(ids, 'title', { search: 'homepage' }))).toEqual(['/'])
+          expect(await list(ids, 'title', { search: '100%_' })).toEqual([])
+          const query = { ...ids, change: 'title' as const, view: 'pages' as const }
+          expect(await db.crawls.countCompared(query)).toBe(2)
+          expect(await db.crawls.countCompared({ ...query, search: 'case' })).toBe(1)
+          expect(paths(await list(ids, 'title', { limit: 1, offset: 1 }))).toEqual(['/case'])
+          expect(await list(ids, 'title', { limit: 1, offset: 2 })).toEqual([])
+        })
+
+        it('compares crawls that stopped at their URL limit', async () => {
+          const domainId = await domain()
+          const older = await crawlOf(domainId, base, { status: 'incomplete' })
+          const newer = await crawlOf(domainId, target, { status: 'incomplete' })
+          const counts = await db.crawls.compareCounts({
+            domainId,
+            baseId: older.id,
+            targetId: newer.id,
+            view: 'pages',
+          })
+          expect(counts).toMatchObject({ added: 1, missing: 1 })
+        })
+
+        it('compares nothing that does not belong to the domain, or cannot be compared', async () => {
+          const ids = await pair()
+          const other = await domain('other.com')
+          const query = { ...ids, change: 'added' as const, view: 'pages' as const }
+
+          // Another domain's id, with this domain's crawls.
+          expect(
+            await db.crawls.compareCounts({ ...ids, domainId: other, view: 'pages' }),
+          ).toBeNull()
+          expect(
+            await db.crawls.compareUrls({ ...query, domainId: other, limit: 5, offset: 0 }),
+          ).toEqual([])
+          expect(await db.crawls.countCompared({ ...query, domainId: other })).toBe(0)
+
+          // One of the crawls is another domain's.
+          const foreign = await crawlOf(other, { '/': {} })
+          const mixed = { ...ids, targetId: foreign.id }
+          expect(await db.crawls.compareCounts({ ...mixed, view: 'pages' })).toBeNull()
+          expect(await db.crawls.countCompared({ ...query, ...mixed })).toBe(0)
+          expect(
+            await db.crawls.compareCounts({ ...ids, baseId: 'missing', view: 'pages' }),
+          ).toBeNull()
+
+          // The same crawl twice, or a priority crawl.
+          expect(
+            await db.crawls.compareCounts({ ...ids, targetId: ids.baseId, view: 'pages' }),
+          ).toBeNull()
+          const priority = await startCrawl(ids.domainId, 'priority')
+          await db.crawls.finish(priority.id, { status: 'completed' })
+          expect(
+            await db.crawls.compareCounts({ ...ids, targetId: priority.id, view: 'pages' }),
+          ).toBeNull()
+        })
+
+        it('compares nothing once the results of a crawl were pruned, keeping its totals', async () => {
+          const ids = await pair()
+          const newest = await crawlOf(ids.domainId, target)
+          expect(await db.crawls.prune({ domainId: ids.domainId, type: 'full', keep: 2 })).toBe(1)
+          expect(await db.crawls.get(ids.baseId)).toMatchObject({ pruned: true })
+          expect(await db.crawls.compareCounts({ ...ids, view: 'pages' })).toBeNull()
+          expect(await list(ids, 'added')).toEqual([])
+          expect(await db.crawls.countCompared({ ...ids, change: 'added', view: 'pages' })).toBe(0)
+          expect(
+            await db.crawls.compareCounts({
+              domainId: ids.domainId,
+              baseId: ids.targetId,
+              targetId: newest.id,
+              view: 'pages',
+            }),
+          ).not.toBeNull()
+        })
+
+        it('finds a crawl only in its own domain', async () => {
+          const ids = await pair()
+          const other = await domain('other.com')
+          expect(await db.crawls.getInDomain(ids.domainId, ids.baseId)).toMatchObject({
+            id: ids.baseId,
+            domainId: ids.domainId,
+          })
+          expect(await db.crawls.getInDomain(other, ids.baseId)).toBeNull()
+          expect(await db.crawls.getInDomain(ids.domainId, 'missing')).toBeNull()
+        })
+
+        describe('the history of a URL', () => {
+          it('gives what each retained crawl recorded of it, with its findings and audit state', async () => {
+            const ids = await pair()
+            const third = await crawlOf(ids.domainId, {
+              '/': { result: { title: 'Homepage 3' }, issues: ['h1-missing'], excluded: true },
+            })
+            const crawlIds = [ids.baseId, ids.targetId, third.id]
+            const history = await db.crawls.urlHistory({
+              domainId: ids.domainId,
+              crawlIds,
+              urlHashes: [hashOf('/')],
+            })
+            const byCrawl = new Map(history.map((entry) => [entry.crawlId, entry]))
+            expect(byCrawl.size).toBe(3)
+            expect(byCrawl.get(ids.baseId)).toMatchObject({
+              urlHash: hashOf('/'),
+              url: urlOf('/'),
+              snapshot: { title: 'Home', statusCode: 200, state: 'done', kind: 'page' },
+              issues: [{ urlHash: hashOf('/'), issue: 'title-too-long' }],
+              audit: { participation: 'audited' },
+            })
+            expect(byCrawl.get(ids.targetId)).toMatchObject({
+              snapshot: { title: 'Homepage' },
+              issues: [],
+            })
+            expect(byCrawl.get(third.id)?.audit).toMatchObject({ participation: 'excluded' })
+          })
+
+          it('has no entry for a crawl that does not have the URL', async () => {
+            const ids = await pair()
+            const history = await db.crawls.urlHistory({
+              domainId: ids.domainId,
+              crawlIds: [ids.baseId, ids.targetId],
+              urlHashes: [hashOf('/old'), hashOf('/new')],
+            })
+            expect(
+              history
+                .map(
+                  (entry) =>
+                    `${entry.crawlId === ids.baseId ? 'base' : 'target'}${entry.url.slice(site.length)}`,
+                )
+                .sort(),
+            ).toEqual(['base/old', 'target/new'])
+          })
+
+          it('leaves out external URLs, other domains, other types and pruned crawls', async () => {
+            const ids = await pair()
+            const newest = await crawlOf(ids.domainId, target)
+            const other = await domain('other.com')
+            const foreign = await crawlOf(other, { '/': {} })
+            const priority = await startCrawl(ids.domainId, 'priority')
+            await db.crawls.finish(priority.id, { status: 'completed' })
+            await db.crawls.prune({ domainId: ids.domainId, type: 'full', keep: 2 })
+
+            const hashes = [hashOf('/'), crawlUrlHash('https://elsewhere.org/')]
+            const history = await db.crawls.urlHistory({
+              domainId: ids.domainId,
+              crawlIds: [ids.baseId, ids.targetId, newest.id, foreign.id, priority.id],
+              urlHashes: hashes,
+            })
+            // The oldest was pruned; the foreign and priority crawls are not full crawls of the domain.
+            expect(history.map((entry) => entry.crawlId).sort()).toEqual(
+              [ids.targetId, newest.id].sort(),
+            )
+            expect(history.every((entry) => entry.urlHash === hashOf('/'))).toBe(true)
+            // Asked with another domain, the same crawls give nothing.
+            expect(
+              await db.crawls.urlHistory({
+                domainId: other,
+                crawlIds: [ids.targetId, newest.id],
+                urlHashes: hashes,
+              }),
+            ).toEqual([])
+            expect(
+              await db.crawls.urlHistory({
+                domainId: ids.domainId,
+                crawlIds: [],
+                urlHashes: hashes,
+              }),
+            ).toEqual([])
+            expect(
+              await db.crawls.urlHistory({
+                domainId: ids.domainId,
+                crawlIds: [newest.id],
+                urlHashes: [],
+              }),
+            ).toEqual([])
+          })
+
+          it('answers for more URLs and crawls than one query takes', async () => {
+            const domainId = await domain()
+            const crawl = await crawlOf(domainId, { '/': {} })
+            const hashes = Array.from({ length: 450 }, (_, i) =>
+              crawlUrlHash(urlOf(`/missing-${i}`)),
+            )
+            const history = await db.crawls.urlHistory({
+              domainId,
+              crawlIds: [...Array.from({ length: 250 }, (_, i) => `nope-${i}`), crawl.id],
+              urlHashes: [...hashes, hashOf('/')],
+            })
+            expect(history.map((entry) => entry.urlHash)).toEqual([hashOf('/')])
+          })
+        })
+      })
     })
 
     describe('priority URLs', () => {

@@ -93,7 +93,9 @@
     "instance": "Instance",
     "system": "System",
     "pagesOverview": "Overview",
-    "pagesDetails": "Details"
+    "pagesDetails": "Details",
+    "pagesHistory": "History",
+    "pagesCompare": "Compare"
   },
   "DomainHome": {
     "metaTitle": "{host} · seotools",
@@ -304,8 +306,8 @@
     "openFullScreen": "Open full screen",
     "openUrl": "Open in a new tab",
     "close": "Close",
-    "drawerDescription": "What the last full crawl found at this URL.",
-    "notFound": "This URL is not in the last full crawl.",
+    "drawerDescription": "What the crawl you are viewing found at this URL.",
+    "notFound": "This URL is not in the crawl you are viewing.",
     "sections": {
       "summary": "Summary",
       "page": "On the page",
@@ -1499,7 +1501,7 @@
         "notAcceptedByException": "nofollow is not accepted by the exception for this URL."
       }
     },
-    "technicalNote": "This is what the last crawl saw, not whether a search engine has indexed the URL, which a crawl cannot know.",
+    "technicalNote": "This is what the crawl saw, not whether a search engine has indexed the URL, which a crawl cannot know.",
     "empty": "—"
   },
   "AuditRules": {
@@ -1726,6 +1728,260 @@
     "state": {
       "now": "Now: {state}",
       "afterSave": "After saving: {state}"
+    }
+  },
+  "CrawlHistory": {
+    "stamp": {
+      "at": "Crawl of {when}",
+      "retained": "Results retained",
+      "pruned": "Results pruned",
+      "prunedHint": "Only the totals of this crawl remain: its results per URL were removed by the retention setting.",
+      "config": "Audit configuration v{version}",
+      "configNone": "No audit rules",
+      "notAnalysed": "Not analysed",
+      "catalogOlder": "Earlier issue catalog",
+      "catalogOlderHint": "Its findings were worked out with an earlier version of the issue catalog than the one in use now."
+    },
+    "picker": {
+      "label": "Crawl",
+      "option": "{when} · {status}{coverage, select, pruned { · results pruned} other {}}{latest, select, yes { · latest} other {}}"
+    },
+    "banner": {
+      "viewing": "You are viewing the crawl of {when}, not the latest one.",
+      "backToLatest": "Back to the latest crawl",
+      "configBehind": "Analysed under: {config}. In force now: {current}. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated."
+    },
+    "details": {
+      "detailsDescription": "Every URL of the chosen full crawl, as that crawl saw it. Select some to act on them together.",
+      "prunedBody": "The results per URL of this crawl were removed by the retention setting. Only its totals remain: {pages} pages and {urls} URLs were found. Choose a crawl that still has its results.",
+      "prunedSettings": "Change how many crawls keep their results"
+    },
+    "list": {
+      "metaTitle": "Crawl history · {host} · seotools",
+      "title": "Crawl history",
+      "description": "Every full crawl of this domain that finished with results, newest first. A crawl keeps the audit configuration it was analysed with, and its results per URL until the retention setting removes them.",
+      "empty": "This domain has no finished full crawl yet. Run one from the pages overview.",
+      "compare": {
+        "title": "Compare two crawls",
+        "description": "Choose the crawls to see what was discovered, not seen again and changed between them."
+      },
+      "columns": {
+        "crawled": "Crawled",
+        "results": "Results",
+        "found": "Found",
+        "config": "Audit configuration",
+        "findings": "Pages with findings"
+      },
+      "trigger": {
+        "manual": "Manual",
+        "schedule": "Scheduled"
+      },
+      "latest": "Latest",
+      "found": "{pages} pages · {urls} URLs",
+      "configDiffers": "Now: {current}",
+      "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
+      "view": "View",
+      "compareWithPrevious": "Compare with previous",
+      "retention": "How many crawls keep their results per URL is set in the crawl settings; older ones keep only their totals.",
+      "settings": "Crawl settings",
+      "capped": "Showing the newest {count} crawls. Older ones are not listed."
+    },
+    "url": {
+      "title": "History of this URL",
+      "description": "What each retained full crawl recorded of this URL, newest first ({count, plural, one {# crawl} other {# crawls}}). A crawl without results says so; it is never read as the URL being absent.",
+      "empty": "No crawl has results for this URL.",
+      "columns": {
+        "crawl": "Crawl",
+        "answer": "Response",
+        "page": "Page",
+        "findings": "Findings",
+        "changes": "Since the previous crawl"
+      },
+      "pruned": "Results pruned",
+      "prunedHint": "Only the totals of this crawl remain, so it cannot say what this URL looked like.",
+      "prunedRow": "The results of this crawl were pruned",
+      "viewing": "Viewing",
+      "notSeen": "This crawl did not find the URL",
+      "notAnalysed": "Not analysed",
+      "auditUnknown": "Audit state not kept",
+      "appeared": "Not in the previous crawl",
+      "vanished": "Not seen again",
+      "compareWithPrevious": "Compare the crawls",
+      "cells": {
+        "present": "{when}: reported",
+        "absent": "{when}: not reported",
+        "unknown": "{when}: cannot say ({reason})"
+      },
+      "timeline": {
+        "title": "Findings over time",
+        "description": "Each square is a crawl, oldest first. A finding is called new, resolved or reappeared only when the crawls on both sides could have reported it under the same issue catalog and audit rules.",
+        "legend": "Red: reported. Green: not reported by a crawl that could have reported it. Dashed: the crawl cannot say (pruned, not analysed, URL not found or not requested, excluded from the audit, or a different catalog or configuration)."
+      }
+    }
+  },
+  "CrawlCompare": {
+    "metaTitle": "Compare crawls · {host} · seotools",
+    "title": "Compare crawls",
+    "description": "What changed between two full crawls, read from what they stored. Nothing is requested from the site. Where the evidence does not say why something changed, the page does not either.",
+    "needTwo": "Comparing needs two finished full crawls of this domain. Run another crawl first.",
+    "sameCrawl": "Both ends are the same crawl. Choose two different crawls.",
+    "roles": {
+      "earlier": "Earlier crawl",
+      "later": "Later crawl"
+    },
+    "picker": {
+      "label": "Crawls to compare",
+      "from": "Earlier crawl",
+      "to": "Later crawl"
+    },
+    "totals": {
+      "title": "Totals",
+      "description": "Totals survive pruning, so they can always be compared. A difference in the totals has the same possible causes as the changes below: the site, the crawl, or the audit rules.",
+      "measure": "Measure",
+      "difference": "Difference",
+      "rows": {
+        "urls": "URLs found",
+        "pages": "Pages",
+        "audited": "Audited pages",
+        "excluded": "Pages excluded from the audit",
+        "indexable": "Indexable pages",
+        "withIssues": "Audited pages with issues",
+        "withWarnings": "Audited pages with warnings",
+        "withOpportunities": "Audited pages with opportunities"
+      }
+    },
+    "changesLabel": "Kinds of change",
+    "viewsLabel": "Views",
+    "views": {
+      "pages": "Pages",
+      "other": "Other URLs"
+    },
+    "changes": {
+      "added": "Discovered",
+      "missing": "Not seen",
+      "status": "Response",
+      "title": "Title",
+      "canonical": "Canonical",
+      "robots": "Robots",
+      "gained": "Findings reported later",
+      "lost": "Findings no longer reported"
+    },
+    "fields": {
+      "status": "Response changed",
+      "title": "Title changed",
+      "canonical": "Canonical changed",
+      "robots": "Robots changed"
+    },
+    "hints": {
+      "added": "URLs the later crawl found and the earlier one never did. The site may have gained them, or the earlier crawl may not have reached them.",
+      "addedIncomplete": "The earlier crawl stopped at its URL limit, so it never reached many URLs. Some of these may have existed all along.",
+      "missing": "URLs the earlier crawl found and the later one did not. They may have been deleted, stopped being linked or listed in a sitemap, or not been reached: this does not say which.",
+      "missingIncomplete": "The later crawl stopped at its URL limit, so these are most likely URLs it did not reach. Nothing here says they were removed.",
+      "status": "URLs both crawls requested that answered differently: another status code, another kind of URL or another redirect target.",
+      "title": "URLs both crawls requested whose title changed. Compared exactly, capitals included.",
+      "canonical": "URLs both crawls requested whose declared canonical changed.",
+      "robots": "URLs both crawls requested whose meta robots or X-Robots-Tag changed.",
+      "gained": "URLs both crawls requested where the later crawl reports findings the earlier one did not. The badge says what the evidence supports: new or reappeared, or not attributed when the rules, the catalog or the crawl itself changed.",
+      "lost": "URLs both crawls requested where the earlier crawl reported findings the later one no longer does. Resolved only when nothing but the site can explain it; a URL that is no longer audited is shown as excluded by rule, never as resolved."
+    },
+    "search": {
+      "label": "Search URLs",
+      "placeholder": "Search by URL or title",
+      "submit": "Search"
+    },
+    "clearIssue": "Show findings of every issue",
+    "unrequested": "{count, plural, one {# URL was found by both crawls but not requested by at least one of them, so it is not compared.} other {# URLs were found by both crawls but not requested by at least one of them, so they are not compared.}}",
+    "total": "{count, plural, one {# URL} other {# URLs}}",
+    "table": {
+      "empty": "No URLs changed in this way.",
+      "notSet": "Not set",
+      "notRequested": "Not requested",
+      "metaRobots": "meta robots:",
+      "xRobotsTag": "X-Robots-Tag:",
+      "columns": {
+        "url": "URL",
+        "answer": "Response",
+        "title": "Title",
+        "depth": "Depth",
+        "before": "Earlier crawl",
+        "after": "Later crawl",
+        "findings": "Findings"
+      },
+      "findingsUnavailable": "Findings cannot be compared for these crawls.",
+      "samePersistent": "{count, plural, one {# finding reported by both} other {# findings reported by both}}"
+    },
+    "findingKinds": {
+      "new": "New",
+      "newHint": "Reported by the later crawl and not by the earlier one, which could have reported it under the same catalog and rules.",
+      "reappeared": "Reappeared",
+      "reappearedHint": "Reported, then not reported by a crawl in between that could have reported it, then reported again.",
+      "resolved": "Resolved",
+      "resolvedHint": "Reported by the earlier crawl and not by the later one, which could have reported it under the same catalog and rules.",
+      "excluded": "Excluded by rule",
+      "excludedHint": "The later crawl no longer audits this URL, so its findings are gone by policy. It does not mean they were resolved in the site.",
+      "audited": "Now audited",
+      "auditedHint": "The earlier crawl left this URL out of the audit, so this finding is not new: it was not being looked for.",
+      "unverified": {
+        "base": "Earlier only · unverified",
+        "target": "Later only · unverified",
+        "both": "Both · unverified"
+      },
+      "unverifiedHint": "The findings differ, but this is not shown as new or resolved because: {reasons}.",
+      "persistent": "Still reported",
+      "persistentHint": "Reported by both crawls."
+    },
+    "reasons": {
+      "pruned": "a crawl was pruned",
+      "unanalysed": "a crawl was not analysed",
+      "not-seen": "the crawl does not have the URL",
+      "not-requested": "the URL was found but not requested",
+      "excluded": "the URL is excluded from the audit",
+      "participation": "the analysis did not keep whether the URL was audited",
+      "incomplete": "a crawl stopped at its URL limit and this finding depends on other pages",
+      "catalog": "the issue catalogs differ",
+      "audit": "the audit configuration or the expectation for the URL differs"
+    },
+    "notes": {
+      "pruned": {
+        "title": {
+          "base": "The earlier crawl no longer has its results",
+          "target": "The later crawl no longer has its results",
+          "both": "Neither crawl has its results any more"
+        },
+        "description": "Retention removed the results per URL, so only the totals can be compared. Choose crawls that still have their results, or raise the number of crawls kept in the crawl settings."
+      },
+      "unanalysed": {
+        "title": {
+          "base": "The earlier crawl was not analysed",
+          "target": "The later crawl was not analysed",
+          "both": "Neither crawl was analysed"
+        },
+        "description": "Without an analysis there are no findings to compare. URLs and how they answered (status, title, canonical, robots) are still compared."
+      },
+      "legacy": {
+        "title": {
+          "base": "The earlier crawl was analysed before the audit state per URL was kept",
+          "target": "The later crawl was analysed before the audit state per URL was kept",
+          "both": "Both crawls were analysed before the audit state per URL was kept"
+        },
+        "description": "It is not known which URLs were left out of the audit then, so a finding that is not there cannot be read as fixed. Those changes are shown as not attributed."
+      },
+      "catalog": {
+        "title": "The crawls were analysed with different issue catalogs",
+        "description": "A finding that appears or goes may come from a check that changed, not from the site. Such differences are listed as unverified, never as new or resolved."
+      },
+      "audit": {
+        "title": "The crawls were analysed with different audit configurations",
+        "description": "Exclusions, expected indexing or language directories changed between them. A URL that stopped being audited is shown as excluded by rule, not resolved. Findings that depend on other pages are not called new or resolved; findings that only depend on the page itself still are, unless the expectation for that URL changed."
+      },
+      "incomplete": {
+        "title": {
+          "base": "The earlier crawl stopped at its URL limit",
+          "target": "The later crawl stopped at its URL limit",
+          "both": "Both crawls stopped at their URL limit"
+        },
+        "description": "URLs it did not reach are not missing, and findings that look at other pages (duplicates, inbound links, redirects) are not called new or resolved for it."
+      }
     }
   }
 }

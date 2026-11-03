@@ -5,6 +5,7 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
   ne,
   or,
   sql,
@@ -28,8 +29,10 @@ import {
   type Job,
   type JobStatus,
   type PagesAudit,
+  type FieldChange,
   type PagesByWorstIssue,
   type PagesWithType,
+  type UrlSnapshot,
 } from '@seotools/core'
 import type {
   Company,
@@ -40,9 +43,12 @@ import type {
   CrawlFileCheck,
   CrawlLink,
   CrawlSchedule,
+  CrawlComparisonQuery,
   CrawlUrl,
   CrawlUrlAudit,
+  CrawlUrlComparison,
   CrawlUrlIssue,
+  CrawlUrlTrace,
   CrawlUrlQuery,
   CrawlUrlResult,
   CrawlUrlSort,
@@ -642,3 +648,222 @@ export const crawlFileRow = (domainId: string, file: NewCrawlFile) => ({
   urlHash: crawlUrlHash(file.url),
   ...crawlFileColumns(file),
 })
+
+// --- comparing crawls ---------------------------------------------------------------------------
+
+/** The columns of `crawl_urls` a comparison looks at. One set for each side of the join. */
+export interface CompareColumns {
+  crawlId: AnyColumn
+  urlHash: AnyColumn
+  url: AnyColumn
+  scope: AnyColumn
+  state: AnyColumn
+  kind: AnyColumn
+  statusCode: AnyColumn
+  redirectTo: AnyColumn
+  title: AnyColumn
+  canonical: AnyColumn
+  metaRobots: AnyColumn
+  xRobotsTag: AnyColumn
+  error: AnyColumn
+  depth: AnyColumn
+}
+
+/** Whether two columns hold different values, `null` against a value included. `text`: exactly. */
+export type Differs = (a: AnyColumn, b: AnyColumn, text?: boolean) => SQL
+
+export const sqliteDiffers: Differs = (a, b) => sql`${a} is not ${b}`
+export const pgDiffers: Differs = (a, b) => sql`${a} is distinct from ${b}`
+/** MySQL compares text without regard to case or accents unless told to: here a change is a change. */
+export const mysqlDiffers: Differs = (a, b, text) =>
+  text ? sql`not (binary ${a} <=> binary ${b})` : sql`not (${a} <=> ${b})`
+
+/** What the findings of two crawls differ in, for a dialect to build (they need its own `db`). */
+export interface FindingDifferences {
+  /** The URL has an issue in the later crawl that the earlier one does not report for it. */
+  gained: (issue?: string) => SQL
+  /** The URL has an issue in the earlier crawl that the later one does not report for it. */
+  lost: (issue?: string) => SQL
+}
+
+const anyOf = (conditions: SQL[]): SQL => sql`(${sql.join(conditions, sql` or `)})`
+
+/** The condition for a URL that both crawls requested to have changed the way `change` says. */
+export function changeCondition(
+  change: FieldChange | 'gained' | 'lost',
+  columns: { target: CompareColumns; base: CompareColumns },
+  differs: Differs,
+  findings: FindingDifferences,
+  issue?: string,
+): SQL {
+  const { target: t, base: b } = columns
+  switch (change) {
+    case 'status':
+      return anyOf([
+        differs(t.statusCode, b.statusCode),
+        differs(t.kind, b.kind, true),
+        differs(t.redirectTo, b.redirectTo, true),
+      ])
+    case 'title':
+      return differs(t.title, b.title, true)
+    case 'canonical':
+      return differs(t.canonical, b.canonical, true)
+    case 'robots':
+      return anyOf([
+        differs(t.metaRobots, b.metaRobots, true),
+        differs(t.xRobotsTag, b.xRobotsTag, true),
+      ])
+    case 'gained':
+      return findings.gained(issue)
+    case 'lost':
+      return findings.lost(issue)
+  }
+}
+
+/** URLs that are pages (`pages`) or are not (`other`), by the kind a crawl gave them. */
+export const compareViewOf = (kind: AnyColumn, view: 'pages' | 'other') =>
+  view === 'pages' ? eq(kind, 'page') : ne(kind, 'page')
+
+/** A URL that is a page in either crawl (`pages`), or in neither (`other`). */
+export const compareViewEither = (a: AnyColumn, b: AnyColumn, view: 'pages' | 'other') =>
+  view === 'pages' ? or(eq(a, 'page'), eq(b, 'page')) : and(ne(a, 'page'), ne(b, 'page'))
+
+/** The URL or the title contains the text, whatever its case. */
+export const compareSearch = (url: AnyColumn, title: AnyColumn, search: string | undefined) => {
+  if (!search) return undefined
+  const pattern = containsPattern(search)
+  return sql`(lower(${url}) like ${pattern} escape '!' or lower(${title}) like ${pattern} escape '!')`
+}
+
+/**
+ * How a listing of changes is read: the rows come from `main`, left joined to the same URL in
+ * `otherCrawlId`. `added` and `missing` list the URLs the other crawl does not have; the rest, those
+ * both crawls have and requested, so the join must also find a match.
+ */
+export function comparePlan(query: Pick<CrawlComparisonQuery, 'change' | 'baseId' | 'targetId'>) {
+  if (query.change === 'missing') {
+    return { mainCrawlId: query.baseId, otherCrawlId: query.targetId, matched: false }
+  }
+  return {
+    mainCrawlId: query.targetId,
+    otherCrawlId: query.baseId,
+    matched: query.change !== 'added',
+  }
+}
+
+/** The condition that selects what `comparePlan` lists. `main` is the table the rows come from. */
+export function compareWhere(
+  query: CrawlComparisonQuery,
+  main: CompareColumns,
+  other: CompareColumns,
+  differs: Differs,
+  findings: FindingDifferences,
+): SQL | undefined {
+  const plan = comparePlan(query)
+  const search = compareSearch(main.url, main.title, query.search)
+  if (!plan.matched) {
+    return and(
+      eq(main.crawlId, plan.mainCrawlId),
+      eq(main.scope, 'internal'),
+      compareViewOf(main.kind, query.view),
+      isNull(other.urlHash),
+      search,
+    )
+  }
+  if (query.change === 'added' || query.change === 'missing') return undefined
+  return and(
+    eq(main.crawlId, plan.mainCrawlId),
+    eq(main.scope, 'internal'),
+    eq(other.scope, 'internal'),
+    eq(main.state, 'done'),
+    eq(other.state, 'done'),
+    compareViewEither(main.kind, other.kind, query.view),
+    search,
+    changeCondition(query.change, { target: main, base: other }, differs, findings, query.issue),
+  )
+}
+
+type SnapshotRow = {
+  state: string | null
+  kind: string | null
+  statusCode: number | null
+  redirectTo: string | null
+  title: string | null
+  canonical: string | null
+  metaRobots: string | null
+  xRobotsTag: string | null
+  error: string | null
+  depth: number | null
+}
+
+/** A joined side that has no row (a left join that found nothing) is all `null`: `state` is never. */
+export function toUrlSnapshot(row: SnapshotRow | null | undefined): UrlSnapshot | null {
+  if (!row || row.state === null || row.kind === null || row.depth === null) return null
+  return {
+    state: row.state as UrlSnapshot['state'],
+    kind: row.kind as UrlSnapshot['kind'],
+    statusCode: row.statusCode,
+    redirectTo: row.redirectTo,
+    title: row.title,
+    canonical: row.canonical,
+    metaRobots: row.metaRobots,
+    xRobotsTag: row.xRobotsTag,
+    error: row.error,
+    depth: row.depth,
+  }
+}
+
+/** A listed row, with each side in the position `change` gives it. */
+export function toUrlComparison(
+  change: CrawlComparisonQuery['change'],
+  row: {
+    urlHash: string
+    url: string
+    main: SnapshotRow | null | undefined
+    other: SnapshotRow | null | undefined
+  },
+): CrawlUrlComparison {
+  const main = toUrlSnapshot(row.main)
+  const other = toUrlSnapshot(row.other)
+  const { urlHash, url } = row
+  if (change === 'added') return { urlHash, url, base: null, target: main }
+  if (change === 'missing') return { urlHash, url, base: main, target: null }
+  return { urlHash, url, base: other, target: main }
+}
+
+/** Crawls and URLs per query of a history: each list is a `where … in (…)`. */
+export const HISTORY_BATCH = 200
+
+export const sumOf = (value: unknown) => Number(value ?? 0)
+
+/** The entries of a history: a URL's row, its issues and its audit, per crawl. */
+export function foldTraces(
+  urls: (SnapshotRow & { crawlId: string; urlHash: string; url: string })[],
+  issues: (CrawlUrlIssue & { crawlId: string })[],
+  audits: (CrawlUrlAudit & { crawlId: string })[],
+): CrawlUrlTrace[] {
+  const key = (crawlId: string, urlHash: string) => `${crawlId}:${urlHash}`
+  const issuesBy = new Map<string, CrawlUrlIssue[]>()
+  for (const { crawlId, ...issue } of issues) {
+    const k = key(crawlId, issue.urlHash)
+    issuesBy.set(k, [...(issuesBy.get(k) ?? []), issue])
+  }
+  const auditBy = new Map(
+    audits.map(({ crawlId, ...audit }) => [key(crawlId, audit.urlHash), audit]),
+  )
+  return urls.flatMap(({ crawlId, urlHash, url, ...row }) => {
+    const snapshot = toUrlSnapshot(row)
+    if (!snapshot) return []
+    const k = key(crawlId, urlHash)
+    return [
+      {
+        crawlId,
+        urlHash,
+        url,
+        snapshot,
+        issues: issuesBy.get(k) ?? [],
+        audit: auditBy.get(k) ?? null,
+      },
+    ]
+  })
+}

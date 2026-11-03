@@ -11,7 +11,8 @@
     "./crawl/indexability": "./src/crawl/indexability.ts",
     "./crawl/issues": "./src/crawl/issues.ts",
     "./crawl/schedule": "./src/crawl/schedule.ts",
-    "./crawl/settings": "./src/crawl/settings.ts"
+    "./crawl/settings": "./src/crawl/settings.ts",
+    "./crawl/compare": "./src/crawl/compare.ts"
   },
   "scripts": {
     "lint": "eslint .",

@@ -7,6 +7,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   gte,
   inArray,
   isNotNull,
@@ -14,10 +15,12 @@ import {
   lt,
   lte,
   ne,
+  notExists,
   notInArray,
   or,
   sql,
 } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/sqlite-core'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { sqlitePathFromUrl } from '../dialect'
@@ -25,7 +28,18 @@ import {
   CREDENTIAL_PROVIDER,
   EMPTY_COUNTS,
   byUrl,
+  changeCondition,
   chunk,
+  compareViewEither,
+  compareViewOf,
+  comparePlan,
+  compareWhere,
+  foldTraces,
+  HISTORY_BATCH,
+  sqliteDiffers,
+  sumOf,
+  toUrlComparison,
+  type FindingDifferences,
   crawlJobValues,
   crawlResultColumns,
   crawlRobotsColumn,
@@ -168,6 +182,100 @@ export function createSqliteDatabase(options: {
         .from(crawlUrlAudit)
         .where(crawlAuditWhere(crawlUrlAudit, crawlId, filter)),
   })
+
+  /** The same URL as the other side of a comparison, and the issues of each crawl being compared. */
+  const otherUrls = alias(crawlUrls, 'other_urls')
+  const baseIssues = alias(crawlUrlIssues, 'base_issues')
+  const targetIssues = alias(crawlUrlIssues, 'target_issues')
+
+  /**
+   * Whether a URL of the later crawl has an issue the earlier crawl does not report for it, and the
+   * other way round. The outer row is the URL in `crawl_urls`: callers list the later crawl.
+   */
+  const findingDifferences = (baseId: string, targetId: string): FindingDifferences => ({
+    gained: (issue) =>
+      exists(
+        db
+          .select({ one: sql`1` })
+          .from(targetIssues)
+          .where(
+            and(
+              eq(targetIssues.crawlId, targetId),
+              eq(targetIssues.urlHash, crawlUrls.urlHash),
+              issue ? eq(targetIssues.issue, issue) : undefined,
+              notExists(
+                db
+                  .select({ one: sql`1` })
+                  .from(baseIssues)
+                  .where(
+                    and(
+                      eq(baseIssues.crawlId, baseId),
+                      eq(baseIssues.urlHash, targetIssues.urlHash),
+                      eq(baseIssues.issue, targetIssues.issue),
+                    ),
+                  ),
+              ),
+            ),
+          ),
+      ),
+    lost: (issue) =>
+      exists(
+        db
+          .select({ one: sql`1` })
+          .from(baseIssues)
+          .where(
+            and(
+              eq(baseIssues.crawlId, baseId),
+              eq(baseIssues.urlHash, crawlUrls.urlHash),
+              issue ? eq(baseIssues.issue, issue) : undefined,
+              notExists(
+                db
+                  .select({ one: sql`1` })
+                  .from(targetIssues)
+                  .where(
+                    and(
+                      eq(targetIssues.crawlId, targetId),
+                      eq(targetIssues.urlHash, baseIssues.urlHash),
+                      eq(targetIssues.issue, baseIssues.issue),
+                    ),
+                  ),
+              ),
+            ),
+          ),
+      ),
+  })
+
+  /** What a comparison selects of a URL: its columns in either the crawl or its other side. */
+  const snapshotOf = (t: typeof crawlUrls | typeof otherUrls) => ({
+    state: t.state,
+    kind: t.kind,
+    statusCode: t.statusCode,
+    redirectTo: t.redirectTo,
+    title: t.title,
+    canonical: t.canonical,
+    metaRobots: t.metaRobots,
+    xRobotsTag: t.xRobotsTag,
+    error: t.error,
+    depth: t.depth,
+  })
+
+  /** Two different full crawls of the domain that finished with results and still have them. */
+  const comparablePair = async (domainId: string, baseId: string, targetId: string) => {
+    if (baseId === targetId) return false
+    const rows = db
+      .select({ pruned: crawls.pruned })
+      .from(crawls)
+      .where(
+        and(
+          eq(crawls.domainId, domainId),
+          eq(crawls.type, 'full'),
+          inArray(crawls.status, ['completed', 'incomplete']),
+          inArray(crawls.id, [baseId, targetId]),
+        ),
+      )
+      .all()
+    return rows.length === 2 && rows.every((row) => !row.pruned)
+  }
 
   /** Asks for the latest full crawl to be analysed again, unless there is none or it is already asked. */
   const requestRecompute = (
@@ -619,6 +727,15 @@ export function createSqliteDatabase(options: {
 
       async get(id) {
         const row = db.select().from(crawls).where(eq(crawls.id, id)).get()
+        return row ? toCrawl(row) : null
+      },
+
+      async getInDomain(domainId, id) {
+        const row = db
+          .select()
+          .from(crawls)
+          .where(and(eq(crawls.id, id), eq(crawls.domainId, domainId)))
+          .get()
         return row ? toCrawl(row) : null
       },
 
@@ -1123,6 +1240,209 @@ export function createSqliteDatabase(options: {
           )
           .all()
         return newestPerUrl(rows.map(({ row }) => toCrawlUrl(row)))
+      },
+
+      async compareCounts({ domainId, baseId, targetId, view }) {
+        if (!(await comparablePair(domainId, baseId, targetId))) return null
+        const differences = findingDifferences(baseId, targetId)
+        const count = sql<number>`count(*)`
+        const join = (otherId: string) =>
+          and(eq(otherUrls.crawlId, otherId), eq(otherUrls.urlHash, crawlUrls.urlHash))
+        const only = async (mainId: string, otherId: string) =>
+          db
+            .select({ count })
+            .from(crawlUrls)
+            .leftJoin(otherUrls, join(otherId))
+            .where(
+              and(
+                eq(crawlUrls.crawlId, mainId),
+                eq(crawlUrls.scope, 'internal'),
+                compareViewOf(crawlUrls.kind, view),
+                isNull(otherUrls.urlHash),
+              ),
+            )
+            .get()
+        const inBoth = and(
+          eq(crawlUrls.crawlId, targetId),
+          eq(crawlUrls.scope, 'internal'),
+          eq(otherUrls.scope, 'internal'),
+        )
+        const sides = { target: crawlUrls, base: otherUrls }
+        const changed = (change: Parameters<typeof changeCondition>[0]) =>
+          sql<number>`sum(case when ${changeCondition(change, sides, sqliteDiffers, differences)} then 1 else 0 end)`
+        const [added, missing, unrequested, compared] = await Promise.all([
+          only(targetId, baseId),
+          only(baseId, targetId),
+
+          db
+            .select({ count })
+            .from(crawlUrls)
+            .innerJoin(otherUrls, join(baseId))
+            .where(and(inBoth, or(ne(crawlUrls.state, 'done'), ne(otherUrls.state, 'done'))))
+            .get(),
+
+          db
+            .select({
+              count,
+              status: changed('status'),
+              title: changed('title'),
+              canonical: changed('canonical'),
+              robots: changed('robots'),
+              gained: changed('gained'),
+              lost: changed('lost'),
+            })
+            .from(crawlUrls)
+            .innerJoin(otherUrls, join(baseId))
+            .where(
+              and(
+                inBoth,
+                eq(crawlUrls.state, 'done'),
+                eq(otherUrls.state, 'done'),
+                compareViewEither(crawlUrls.kind, otherUrls.kind, view),
+              ),
+            )
+            .get(),
+        ])
+        return {
+          added: sumOf(added?.count),
+          missing: sumOf(missing?.count),
+          unrequested: sumOf(unrequested?.count),
+          compared: sumOf(compared?.count),
+          status: sumOf(compared?.status),
+          title: sumOf(compared?.title),
+          canonical: sumOf(compared?.canonical),
+          robots: sumOf(compared?.robots),
+          gained: sumOf(compared?.gained),
+          lost: sumOf(compared?.lost),
+        }
+      },
+
+      async compareUrls({ limit, offset, ...query }) {
+        if (!(await comparablePair(query.domainId, query.baseId, query.targetId))) return []
+        const plan = comparePlan(query)
+        const rows = db
+          .select({
+            urlHash: crawlUrls.urlHash,
+            url: crawlUrls.url,
+            main: snapshotOf(crawlUrls),
+            other: snapshotOf(otherUrls),
+          })
+          .from(crawlUrls)
+          .leftJoin(
+            otherUrls,
+            and(eq(otherUrls.crawlId, plan.otherCrawlId), eq(otherUrls.urlHash, crawlUrls.urlHash)),
+          )
+          .where(
+            compareWhere(
+              query,
+              crawlUrls,
+              otherUrls,
+              sqliteDiffers,
+              findingDifferences(query.baseId, query.targetId),
+            ),
+          )
+          .orderBy(asc(crawlUrls.url), asc(crawlUrls.urlHash))
+          .limit(limit)
+          .offset(offset)
+          .all()
+        return rows.map((row) => toUrlComparison(query.change, row))
+      },
+
+      async countCompared(query) {
+        if (!(await comparablePair(query.domainId, query.baseId, query.targetId))) return 0
+        const plan = comparePlan(query)
+        const row = db
+          .select({ count: sql<number>`count(*)` })
+          .from(crawlUrls)
+          .leftJoin(
+            otherUrls,
+            and(eq(otherUrls.crawlId, plan.otherCrawlId), eq(otherUrls.urlHash, crawlUrls.urlHash)),
+          )
+          .where(
+            compareWhere(
+              query,
+              crawlUrls,
+              otherUrls,
+              sqliteDiffers,
+              findingDifferences(query.baseId, query.targetId),
+            ),
+          )
+          .get()
+        return sumOf(row?.count)
+      },
+
+      async urlHistory({ domainId, crawlIds, urlHashes }) {
+        if (crawlIds.length === 0 || urlHashes.length === 0) return []
+        const owned: string[] = []
+        for (const batch of chunk(crawlIds, HISTORY_BATCH)) {
+          const rows = db
+            .select({ id: crawls.id })
+            .from(crawls)
+            .where(
+              and(
+                eq(crawls.domainId, domainId),
+                eq(crawls.type, 'full'),
+                eq(crawls.pruned, false),
+                inArray(crawls.id, batch),
+              ),
+            )
+            .all()
+          owned.push(...rows.map((row) => row.id))
+        }
+        const urls: Parameters<typeof foldTraces>[0] = []
+        const issues: Parameters<typeof foldTraces>[1] = []
+        const audits: Parameters<typeof foldTraces>[2] = []
+        for (const ids of chunk(owned, HISTORY_BATCH)) {
+          for (const hashes of chunk(urlHashes, HISTORY_BATCH)) {
+            urls.push(
+              ...db
+                .select({
+                  crawlId: crawlUrls.crawlId,
+                  urlHash: crawlUrls.urlHash,
+                  url: crawlUrls.url,
+                  ...snapshotOf(crawlUrls),
+                })
+                .from(crawlUrls)
+                .where(
+                  and(
+                    inArray(crawlUrls.crawlId, ids),
+                    eq(crawlUrls.scope, 'internal'),
+                    inArray(crawlUrls.urlHash, hashes),
+                  ),
+                )
+                .all(),
+            )
+            issues.push(
+              ...db
+                .select({
+                  crawlId: crawlUrlIssues.crawlId,
+                  urlHash: crawlUrlIssues.urlHash,
+                  issue: crawlUrlIssues.issue,
+                  details: crawlUrlIssues.details,
+                })
+                .from(crawlUrlIssues)
+                .where(
+                  and(
+                    inArray(crawlUrlIssues.crawlId, ids),
+                    inArray(crawlUrlIssues.urlHash, hashes),
+                  ),
+                )
+                .all()
+                .map((row) => ({ crawlId: row.crawlId, ...toCrawlUrlIssue(row) })),
+            )
+            audits.push(
+              ...db
+                .select()
+                .from(crawlUrlAudit)
+                .where(
+                  and(inArray(crawlUrlAudit.crawlId, ids), inArray(crawlUrlAudit.urlHash, hashes)),
+                )
+                .all()
+                .map((row) => ({ crawlId: row.crawlId, ...toCrawlUrlAudit(row) })),
+            )
+          }
+        }
+        return foldTraces(urls, issues, audits)
       },
     },
 
