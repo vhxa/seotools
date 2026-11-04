@@ -58,7 +58,7 @@ export function acceptedBlockers(url: Declared): ReadonlySet<IndexabilityBlocker
 }
 
 /**
- * The URL is out of the index, and everything that keeps it out is what was declared of it. A URL
+ * The URL is technically not indexable, and every recorded blocker is accepted by its rules. A URL
  * the crawl could not judge (`unknown`), or that something unexpected also stands in the way of, is
  * not: expecting a noindex does not make a robots.txt block expected.
  */
@@ -74,8 +74,8 @@ const INDEXING_BLOCKERS: readonly IndexabilityBlocker[] = ['noindex', 'canonical
 /**
  * The blockers of `destination` that findings of `origin` about it do not report, because they are
  * expected: those its own declarations accept, and all of them (but for how it answers) when the
- * origin is itself expected to be out of the index, since search engines do not read what a URL
- * that is not indexed declares, and the destination's own findings stand on their own.
+ * origin is itself intentionally not indexable. This is an app policy for reducing redundant
+ * findings; it does not establish whether a search engine indexed or read either URL.
  * Always empty under a configuration older than `RELATIONS_SEMANTICS`.
  */
 export function excusedBlockers(
@@ -91,7 +91,7 @@ export function excusedBlockers(
 
 /**
  * Whether the destination of an alternate not linking back is no news: either end is expected to be
- * out of the index, so search engines do not read the annotations of that end anyway.
+ * not to be indexable. The app treats the missing return as redundant under that policy.
  */
 export function excusesMissingReturn(
   origin: AuditedUrl,

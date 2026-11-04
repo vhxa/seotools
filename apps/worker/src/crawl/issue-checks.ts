@@ -388,8 +388,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'hreflang-redirect': hreflang(
     hreflangTargets((target) => target.url.state === 'done' && target.url.kind === 'redirect'),
   ),
-  // Not reported where either end is expected to be out of the index: search engines do not read
-  // the annotations of a URL that is not indexed, so there is no return to wait for.
+  // App policy: omit a missing return where either end is intentionally not indexable.
+  // This does not establish whether a search engine indexed or read either URL.
   'hreflang-no-return': hreflang(
     hreflangTargets(
       (target, page, site) =>

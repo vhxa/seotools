@@ -1,7 +1,7 @@
 import { crawlUrlHash } from '@seotools/core'
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { answerLinksRequest, parseLinksRequest } from './link-request'
 
 const A_HOME = 'https://acme.com/'
@@ -58,6 +58,7 @@ beforeEach(async () => {
   db = await createTestDatabase()
 })
 afterEach(async () => {
+  vi.useRealTimers()
   await db.close()
 })
 
@@ -104,7 +105,10 @@ describe('answerLinksRequest', () => {
   })
 
   it('says so when the results of the crawl were pruned, rather than listing nothing', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
     const first = await finishedCrawl('acme.com', A_HOME, A_ABOUT)
+    vi.setSystemTime(new Date('2026-01-02T00:00:00Z'))
     // A newer full crawl in the same domain; keeping one prunes the older.
     const second = await db.crawls.start({
       domainId: first.domainId,
