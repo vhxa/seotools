@@ -3,13 +3,33 @@ import { loadEnvConfig } from '@next/env'
 import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
 import pkg from '../../package.json' with { type: 'json' }
+import { webEnvSchema } from '../../packages/core/src/env'
 
 // Next only reads .env from apps/web; load the monorepo-root .env too (dev only, no-op in prod).
 const rootDir = fileURLToPath(new URL('../..', import.meta.url))
 // `forceReload`: Next already loaded apps/web/.env once and caches that result.
-loadEnvConfig(rootDir, process.env.NODE_ENV !== 'production', undefined, true)
+const { combinedEnv } = loadEnvConfig(
+  rootDir,
+  process.env.NODE_ENV !== 'production',
+  undefined,
+  true,
+)
+const origins = webEnvSchema
+  .pick({ BETTER_AUTH_URL: true, TRUSTED_ORIGINS: true })
+  .parse(combinedEnv)
+const allowedDevOrigins = [origins.BETTER_AUTH_URL, ...origins.TRUSTED_ORIGINS].flatMap(
+  (origin) => {
+    try {
+      return [new URL(origin).hostname]
+    } catch {
+      return []
+    }
+  },
+)
 
 const config: NextConfig = {
+  // Let the same trusted hosts load development assets when accessing the app through a tunnel.
+  allowedDevOrigins,
   // Self-contained server (.next/standalone) for the Docker image.
   output: 'standalone',
   // Trace dependencies from the monorepo root so workspace packages are included.
