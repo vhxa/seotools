@@ -490,14 +490,11 @@ function Search({ host, query }: { host: string; query: DetailQuery }) {
 export function PagesTable({
   host,
   rows,
-  total,
   query,
   analysed,
 }: {
   host: string
   rows: PageRow[]
-  /** Rows matching the query, over every page. */
-  total: number
   query: DetailQuery
   /** Whether the crawl was checked for issues: a URL with none is then clean, not unchecked. */
   analysed: boolean
@@ -647,9 +644,6 @@ export function PagesTable({
           </div>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-3">
-          <span className="text-sm whitespace-nowrap text-muted-foreground tabular-nums">
-            {t('total', { total })}
-          </span>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
               <Columns3Icon />

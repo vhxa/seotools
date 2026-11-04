@@ -2,7 +2,11 @@
   "Common": {
     "cancel": "Cancel",
     "signOut": "Sign out",
-    "close": "Close"
+    "close": "Close",
+    "status": {
+      "failed": "The request failed",
+      "noResponse": "No response"
+    }
   },
   "NotFound": {
     "title": "Page not found",
@@ -383,13 +387,19 @@
     "viewsLabel": "Views",
     "views": {
       "pages": "Pages",
-      "other": "Other URLs",
-      "external": "External"
+      "resources": "Resources",
+      "redirects": "Redirects",
+      "external": "External",
+      "all": "All",
+      "other": "Other URLs"
     },
     "viewHints": {
       "pages": "URLs of this site that answered with HTML, whatever their status. These are the ones counted as pages.",
-      "other": "Redirects, images, stylesheets, scripts, PDFs, robots.txt, sitemaps and URLs that did not answer.",
-      "external": "URLs on other sites linked from this one. Those of '<a>' links are requested once to find out whether they work; none counts as a page."
+      "resources": "URLs of this site that answered with something other than a page or a redirect: images, stylesheets, scripts, PDFs, robots.txt, sitemaps…",
+      "redirects": "URLs of this site that answered with a redirect (3xx).",
+      "external": "URLs on other sites linked from this one. Those of '<a>' links are requested once to find out whether they work; none counts as a page.",
+      "all": "Every URL the crawl recorded: pages, resources, redirects, external URLs, and URLs of this site that were not requested or never answered, which no other view lists. Filter by type to find those.",
+      "other": "Redirects, images, stylesheets, scripts, PDFs, robots.txt, sitemaps and URLs that did not answer."
     },
     "search": {
       "label": "Search URLs",
@@ -429,7 +439,6 @@
     },
     "openUrl": "Open {url} in a new tab",
     "empty": "No URLs match.",
-    "total": "{total, plural, one {# URL} other {# URLs}}",
     "responseTime": "{value, number} ms",
     "issueList": {
       "all": "All pages"
@@ -454,12 +463,68 @@
       },
       "rule": "Only the URLs decided by one rule.",
       "clearRule": "Show all URLs",
-      "backToRules": "Back to the rules"
+      "backToRules": "Back to the rules",
+      "status": {
+        "label": "HTTP status",
+        "all": "Any status",
+        "2xx": "2xx success",
+        "3xx": "3xx redirect",
+        "4xx": "4xx client error",
+        "5xx": "5xx server error",
+        "none": "No response"
+      },
+      "type": {
+        "label": "URL type",
+        "all": "Any type",
+        "page": "Page",
+        "redirect": "Redirect",
+        "resource": "Resource",
+        "unknown": "Unknown (no answer)"
+      },
+      "indexability": {
+        "label": "Technical state",
+        "all": "Any technical state"
+      },
+      "unavailable": {
+        "external": "External URLs are not audited and have no type, so this filter does not apply to them.",
+        "view": "This view has a single type, so there is nothing to pick.",
+        "no-audit-data": "This crawl has no audit data yet, so this filter cannot apply."
+      }
     },
     "findings": {
       "none": "No findings",
       "excluded": "Excluded",
       "notAnalysed": "Not analysed"
+    },
+    "issueScope": "Issues are looked for in every URL of the crawl, so this list is not limited to one view.",
+    "results": {
+      "unfiltered": "{total, plural, one {# URL} other {# URLs}} {scope}",
+      "filtered": "{matching, plural, one {# URL matches} other {# URLs match}} the filters, out of {total, plural, one {# URL} other {# URLs}} {scope}",
+      "crawl": "{total, plural, one {# URL} other {# URLs}} in the whole crawl",
+      "scopes": {
+        "pages": "in pages",
+        "resources": "in resources",
+        "redirects": "in redirects",
+        "external": "in external URLs",
+        "all": "in the whole crawl",
+        "other": "in the other URLs of the site"
+      }
+    },
+    "activeFilters": {
+      "label": "Active filters",
+      "clearAll": "Clear filters",
+      "remove": "Remove the filter: {filter}",
+      "notApplied": "not applied",
+      "chip": {
+        "search": "Search: {value}",
+        "issue": "Issue: {value}",
+        "status": "Status: {value}",
+        "type": "Type: {value}",
+        "indexability": "Technical state: {value}",
+        "participation": "Audit: {value}",
+        "intent": "{value}",
+        "rule": "Decided by one rule"
+      }
     }
   },
   "UrlDetail": {

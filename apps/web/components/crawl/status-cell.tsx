@@ -11,8 +11,16 @@ export function StatusCell({
   automaticCheck?: boolean
 }) {
   const t = useTranslations('HttpStatus')
+  const tStatus = useTranslations('Common.status')
   if (!row) return <span className="text-muted-foreground">—</span>
-  if (row.statusCode === null) return <Badge variant="destructive">{row.error ? '!' : '—'}</Badge>
+  if (row.statusCode === null) {
+    const label = row.error ? tStatus('failed') : tStatus('noResponse')
+    return (
+      <Badge variant={row.error ? 'destructive' : 'outline'} title={row.error ?? undefined}>
+        {label}
+      </Badge>
+    )
+  }
   const missing = automaticCheck && (row.statusCode === 404 || row.statusCode === 410)
   return (
     <Badge

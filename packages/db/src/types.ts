@@ -5,6 +5,7 @@ import type {
   UrlSnapshot,
   AuditSnapshot,
   AuditValue,
+  IndexabilityState,
   IndexIntent,
   LanguageConfig,
   NewAuditRule,
@@ -26,11 +27,13 @@ import type {
   CrawlUrlScope,
   CrawlUrlSource,
   CrawlUrlState,
+  CrawlUrlView,
   EnqueueInput,
   IssueEvidence,
   Job,
   JobStatus,
   SettingsStore,
+  StatusFilter,
   PagesByWorstIssue,
   PagesWithType,
   VerificationOutcome,
@@ -225,8 +228,12 @@ export interface CrawlLink {
   kind: CrawlLinkKind
 }
 
-/** `pages`: URLs of the site that are pages. `other`: the rest of the site. `external`: elsewhere. */
-export type CrawlUrlView = 'pages' | 'other' | 'external'
+/**
+ * Which URLs of a crawl a list starts from (`URL_VIEWS` in @seotools/core says what each one is):
+ * `pages`, `resources`, `redirects`, `external` and `all`, plus `other`, the URLs of the site that
+ * are not pages.
+ */
+export type { CrawlUrlView }
 
 /** What a list of URLs can be ordered by. Without one, shallowest first, then by URL. */
 export type CrawlUrlSort = 'url' | 'title' | 'status' | 'depth' | 'responseTime' | 'bytes'
@@ -239,9 +246,27 @@ export interface CrawlUrlQuery {
   search?: string
   /**
    * Only URLs that have this issue (an id from `PAGE_ISSUES`), whichever `view` they are in: issues
-   * are not only for pages, and a broken link is not even on this site.
+   * are not only for pages, and a broken link is not even on this site. The `view` is ignored, which
+   * is the same as listing `all`.
    */
   issue?: string
+  /**
+   * Only URLs whose last request got a status of this class, or `none`: no status at all, because
+   * the URL was never requested or the request failed. Within the `view`.
+   */
+  status?: StatusFilter
+  /**
+   * Only URLs of the site that turned out to be this: external URLs are recorded, never typed, so
+   * they are left out. `unknown` is a URL of the site that was not requested or never answered.
+   * Within the `view`: a type the view cannot hold lists nothing, so pages only offer the choice
+   * where the view has more than one (`viewHasTypes`).
+   */
+  type?: CrawlUrlKind
+  /**
+   * Only URLs with this technical indexability, as the analysis saw it. Only URLs of the site have
+   * one: external URLs and crawls analysed before it was kept list nothing. Within the `view`.
+   */
+  indexability?: IndexabilityState
   /** Only URLs the analysis audited, or only those it left out. Within the `view`. */
   participation?: 'audited' | 'excluded'
   /** Only URLs the analysis found this expectation for. Within the `view`. */
@@ -249,6 +274,9 @@ export interface CrawlUrlQuery {
   /** Only URLs the analysis applied this rule to, for either dimension. Within the `view`. */
   rule?: string
 }
+
+/** The URLs of a crawl in each view. `all` is the sum of `internal` and `external`. */
+export type CrawlViewCounts = Record<CrawlUrlView, number>
 
 /** An issue found on a URL of a crawl. */
 export interface CrawlUrlIssue {
@@ -356,6 +384,8 @@ export interface CrawlRepository {
   ): Promise<CrawlUrl[]>
   /** How many URLs `listUrls` would list for the same query, ignoring the page. */
   countListed(query: CrawlUrlQuery): Promise<number>
+  /** How many URLs each view starts from, with no other filter: what the crawl recorded. */
+  viewCounts(crawlId: string): Promise<CrawlViewCounts>
   /** One URL of a crawl, or `null` if the crawl does not have it. */
   getUrl(crawlId: string, urlHash: string): Promise<CrawlUrl | null>
   /** The URLs of a crawl that link to `targetHash`, sorted by URL. A home page has thousands. */

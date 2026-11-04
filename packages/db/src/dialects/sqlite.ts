@@ -62,6 +62,7 @@ import {
   expiredVerifications,
   faviconRow,
   foldCrawlCounts,
+  foldViewCounts,
   groupDomains,
   newCrawlLinkRow,
   newCrawlUrlRow,
@@ -981,6 +982,20 @@ export function createSqliteDatabase(options: {
           .groupBy(crawlUrls.scope, crawlUrls.kind, crawlUrls.state)
           .all()
         return foldCrawlCounts(rows)
+      },
+
+      async viewCounts(crawlId) {
+        const rows = db
+          .select({
+            scope: crawlUrls.scope,
+            kind: crawlUrls.kind,
+            count: sql<number>`count(*)`,
+          })
+          .from(crawlUrls)
+          .where(eq(crawlUrls.crawlId, crawlId))
+          .groupBy(crawlUrls.scope, crawlUrls.kind)
+          .all()
+        return foldViewCounts(rows)
       },
 
       async listUrls({ limit, offset, sort, direction, ...query }) {

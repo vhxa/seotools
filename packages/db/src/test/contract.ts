@@ -908,6 +908,330 @@ export function describeDatabaseContract(
         })
       })
 
+      describe('views and filters of a list of URLs', () => {
+        const site = 'https://acme.com'
+        const outside = 'https://elsewhere.org'
+        const hashOf = (path: string) => crawlUrlHash(`${site}${path}`)
+        const audit = (
+          path: string,
+          overrides: Partial<{
+            participation: 'audited' | 'excluded'
+            indexability: 'indexable' | 'not-indexable' | 'unknown'
+            blockers: string[]
+          }> = {},
+        ) => ({
+          urlHash: hashOf(path),
+          participation: 'audited' as const,
+          participationRule: null,
+          intent: 'indexable' as const,
+          intentRule: null,
+          acceptNofollow: false,
+          indexability: 'unknown' as const,
+          blockers: [],
+          ...overrides,
+        })
+
+        /**
+         * A site of every sort: pages that answer, fail and are left out, a redirect, an image, a
+         * URL that failed before answering, one nobody requested, and external links, one of
+         * them never checked.
+         */
+        async function crawlOfEverything(analysed = true) {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          await db.crawls.addUrls(id, [
+            newUrl(`${site}/`, { depth: 0 }),
+            newUrl(`${site}/gone`),
+            newUrl(`${site}/boom`),
+            newUrl(`${site}/hidden`),
+            newUrl(`${site}/old`),
+            newUrl(`${site}/logo.png`),
+            newUrl(`${site}/broken`),
+            newUrl(`${site}/never`),
+            newUrl(`${outside}/ok`, { scope: 'external' }),
+            newUrl(`${outside}/missing`, { scope: 'external' }),
+            newUrl(`${outside}/unchecked`, { scope: 'external' }),
+          ])
+          const answers: [string, CrawlUrlKind, Partial<CrawlUrlResult>][] = [
+            ['/', 'page', { title: 'Home' }],
+            ['/gone', 'page', { statusCode: 404 }],
+            ['/boom', 'page', { statusCode: 500 }],
+            ['/hidden', 'page', { metaRobots: 'noindex' }],
+            ['/old', 'redirect', { statusCode: 301, redirectTo: `${site}/` }],
+            ['/logo.png', 'resource', { contentType: 'image/png' }],
+            ['/broken', 'unknown', { statusCode: null, error: 'ECONNRESET' }],
+          ]
+          for (const [path, kind, overrides] of answers) {
+            await db.crawls.recordResult({
+              crawlId: id,
+              urlHash: hashOf(path),
+              result: result(kind, overrides),
+            })
+          }
+          for (const [path, statusCode] of [
+            ['/ok', 200],
+            ['/missing', 404],
+          ] as const) {
+            await db.crawls.recordResult({
+              crawlId: id,
+              urlHash: crawlUrlHash(`${outside}${path}`),
+              result: result('unknown', { statusCode, contentType: null, bytes: null }),
+            })
+          }
+          const none = { issue: 0, warning: 0, opportunity: 0 }
+          await saveIssues({
+            crawlId: id,
+            issues: [
+              { urlHash: hashOf('/gone'), issue: 'client-error' },
+              { urlHash: hashOf('/old'), issue: 'client-error' },
+              { urlHash: crawlUrlHash(`${outside}/missing`), issue: 'client-error' },
+              { urlHash: hashOf('/broken'), issue: 'client-error' },
+            ],
+            pages: none,
+            withType: none,
+            catalog: 'v1',
+            ...(analysed
+              ? {
+                  audit: {
+                    snapshot: EMPTY_AUDIT_SNAPSHOT,
+                    pages: {
+                      audited: 3,
+                      excluded: 1,
+                      indexable: 1,
+                      notIndexable: 3,
+                      unknownIndexability: 0,
+                    },
+                    urls: [
+                      audit('/', { indexability: 'indexable' }),
+                      audit('/gone', { indexability: 'not-indexable', blockers: ['http-error'] }),
+                      audit('/boom', { indexability: 'not-indexable', blockers: ['http-error'] }),
+                      audit('/hidden', {
+                        participation: 'excluded',
+                        indexability: 'not-indexable',
+                        blockers: ['noindex'],
+                      }),
+                      audit('/old', { indexability: 'not-indexable', blockers: ['redirect'] }),
+                      audit('/logo.png'),
+                      audit('/broken'),
+                      audit('/never'),
+                    ],
+                  },
+                }
+              : {}),
+          })
+          return id
+        }
+
+        const list = async (
+          crawlId: string,
+          query: Partial<Parameters<typeof db.crawls.listUrls>[0]> = {},
+        ) => {
+          const filter = { crawlId, view: 'all' as const, ...query }
+          const urls = (
+            await db.crawls.listUrls({ limit: 100, offset: 0, sort: 'url', ...filter })
+          ).map((row) => row.url.replace(site, '').replace(outside, 'ext'))
+          // What a page shows as the total is what the list holds, whatever the filters.
+          expect(await db.crawls.countListed(filter)).toBe(urls.length)
+          return urls
+        }
+
+        it('has a view for pages, resources, redirects, external URLs and everything', async () => {
+          const crawlId = await crawlOfEverything()
+          expect(await list(crawlId, { view: 'pages' })).toEqual(['/', '/boom', '/gone', '/hidden'])
+          expect(await list(crawlId, { view: 'resources' })).toEqual(['/logo.png'])
+          expect(await list(crawlId, { view: 'redirects' })).toEqual(['/old'])
+          expect(await list(crawlId, { view: 'external' })).toEqual([
+            'ext/missing',
+            'ext/ok',
+            'ext/unchecked',
+          ])
+          // `other` keeps meaning the site's URLs that are not pages, for the links that exist.
+          expect(await list(crawlId, { view: 'other' })).toEqual([
+            '/broken',
+            '/logo.png',
+            '/never',
+            '/old',
+          ])
+          // `all` is the only view with the URLs of the site that never answered, and the external ones.
+          expect(await list(crawlId, { view: 'all' })).toEqual([
+            '/',
+            '/boom',
+            '/broken',
+            '/gone',
+            '/hidden',
+            '/logo.png',
+            '/never',
+            '/old',
+            'ext/missing',
+            'ext/ok',
+            'ext/unchecked',
+          ])
+        })
+
+        it('counts what each view starts from, to compare with what a filter leaves', async () => {
+          const crawlId = await crawlOfEverything()
+          expect(await db.crawls.viewCounts(crawlId)).toEqual({
+            pages: 4,
+            resources: 1,
+            redirects: 1,
+            other: 4,
+            external: 3,
+            all: 11,
+          })
+          expect(await db.crawls.viewCounts('missing')).toEqual({
+            pages: 0,
+            resources: 0,
+            redirects: 0,
+            other: 0,
+            external: 0,
+            all: 0,
+          })
+          // The views and their counts are one thing: the count of each is the size of its list.
+          for (const view of [
+            'pages',
+            'resources',
+            'redirects',
+            'other',
+            'external',
+            'all',
+          ] as const) {
+            expect(await db.crawls.countListed({ crawlId, view })).toBe(
+              (await db.crawls.viewCounts(crawlId))[view],
+            )
+          }
+        })
+
+        it('filters by the class of the HTTP status, or by having none', async () => {
+          const crawlId = await crawlOfEverything()
+          expect(await list(crawlId, { status: '2xx' })).toEqual([
+            '/',
+            '/hidden',
+            '/logo.png',
+            'ext/ok',
+          ])
+          expect(await list(crawlId, { status: '3xx' })).toEqual(['/old'])
+          expect(await list(crawlId, { status: '4xx' })).toEqual(['/gone', 'ext/missing'])
+          expect(await list(crawlId, { status: '5xx' })).toEqual(['/boom'])
+          // No status is neither a success nor an error: the URLs that failed or were not requested.
+          expect(await list(crawlId, { status: 'none' })).toEqual([
+            '/broken',
+            '/never',
+            'ext/unchecked',
+          ])
+          // Within a view.
+          expect(await list(crawlId, { view: 'pages', status: '2xx' })).toEqual(['/', '/hidden'])
+          expect(await list(crawlId, { view: 'external', status: '4xx' })).toEqual(['ext/missing'])
+          expect(await list(crawlId, { view: 'pages', status: 'none' })).toEqual([])
+        })
+
+        it('filters by what a URL of the site turned out to be, leaving external ones out', async () => {
+          const crawlId = await crawlOfEverything()
+          expect(await list(crawlId, { type: 'page' })).toEqual(['/', '/boom', '/gone', '/hidden'])
+          expect(await list(crawlId, { type: 'resource' })).toEqual(['/logo.png'])
+          expect(await list(crawlId, { type: 'redirect' })).toEqual(['/old'])
+          // External URLs are stored as `unknown` but are not URLs of the site that failed.
+          expect(await list(crawlId, { type: 'unknown' })).toEqual(['/broken', '/never'])
+          expect(await list(crawlId, { view: 'other', type: 'unknown' })).toEqual([
+            '/broken',
+            '/never',
+          ])
+          expect(await list(crawlId, { view: 'external', type: 'unknown' })).toEqual([])
+          // A type the view cannot hold lists nothing.
+          expect(await list(crawlId, { view: 'pages', type: 'resource' })).toEqual([])
+        })
+
+        it('filters by technical indexability, which only URLs of the site have', async () => {
+          const crawlId = await crawlOfEverything()
+          expect(await list(crawlId, { indexability: 'indexable' })).toEqual(['/'])
+          expect(await list(crawlId, { indexability: 'not-indexable' })).toEqual([
+            '/boom',
+            '/gone',
+            '/hidden',
+            '/old',
+          ])
+          // Unknown is its own state: what the crawl could not tell, not "not indexable".
+          expect(await list(crawlId, { indexability: 'unknown' })).toEqual([
+            '/broken',
+            '/logo.png',
+            '/never',
+          ])
+          expect(await list(crawlId, { view: 'pages', indexability: 'unknown' })).toEqual([])
+          expect(await list(crawlId, { view: 'external', indexability: 'indexable' })).toEqual([])
+          expect(await list(crawlId, { view: 'external', indexability: 'unknown' })).toEqual([])
+          expect(await list(crawlId, { view: 'external', participation: 'audited' })).toEqual([])
+        })
+
+        it('has nothing to filter by indexability in a crawl analysed without it', async () => {
+          const crawlId = await crawlOfEverything(false)
+          expect(await list(crawlId, { indexability: 'unknown' })).toEqual([])
+          expect(await list(crawlId, { indexability: 'indexable' })).toEqual([])
+          // The rest of what the crawl stored does not depend on the analysis.
+          expect(await list(crawlId, { view: 'pages', status: '4xx' })).toEqual(['/gone'])
+        })
+
+        it('adds filters up, with the search and the audit ones', async () => {
+          const crawlId = await crawlOfEverything()
+          expect(await list(crawlId, { status: '4xx', indexability: 'not-indexable' })).toEqual([
+            '/gone',
+          ])
+          expect(await list(crawlId, { type: 'page', participation: 'excluded' })).toEqual([
+            '/hidden',
+          ])
+          expect(await list(crawlId, { status: '2xx', type: 'page', search: 'home' })).toEqual([
+            '/',
+          ])
+          expect(
+            await list(crawlId, { view: 'pages', status: '2xx', indexability: 'not-indexable' }),
+          ).toEqual(['/hidden'])
+          expect(await list(crawlId, { status: '5xx', type: 'resource' })).toEqual([])
+        })
+
+        it('narrows an issue, which lists its URLs in every view, with the other filters', async () => {
+          const crawlId = await crawlOfEverything()
+          // The view is ignored, like listing everything.
+          expect(await list(crawlId, { view: 'resources', issue: 'client-error' })).toEqual([
+            '/broken',
+            '/gone',
+            '/old',
+            'ext/missing',
+          ])
+          expect(
+            await list(crawlId, { view: 'pages', issue: 'client-error', status: 'none' }),
+          ).toEqual(['/broken'])
+          expect(
+            await list(crawlId, { view: 'pages', issue: 'client-error', type: 'redirect' }),
+          ).toEqual(['/old'])
+          expect(
+            await list(crawlId, { view: 'pages', issue: 'client-error', indexability: 'unknown' }),
+          ).toEqual(['/broken'])
+        })
+
+        it('orders and pages every view the same way, the URLs without a value last', async () => {
+          const crawlId = await crawlOfEverything()
+          const page = async (offset: number, direction: 'asc' | 'desc') =>
+            (
+              await db.crawls.listUrls({
+                crawlId,
+                view: 'all',
+                sort: 'status',
+                direction,
+                limit: 4,
+                offset,
+              })
+            ).map((row) => row.statusCode)
+          expect([
+            ...(await page(0, 'asc')),
+            ...(await page(4, 'asc')),
+            ...(await page(8, 'asc')),
+          ]).toEqual([200, 200, 200, 200, 301, 404, 404, 500, null, null, null])
+          expect([
+            ...(await page(0, 'desc')),
+            ...(await page(4, 'desc')),
+            ...(await page(8, 'desc')),
+          ]).toEqual([500, 404, 404, 301, 200, 200, 200, 200, null, null, null])
+        })
+      })
+
       describe('what checking for issues reads', () => {
         const page = 'https://acme.com/'
         const other = 'https://acme.com/other'

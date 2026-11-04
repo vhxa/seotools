@@ -109,7 +109,7 @@ export async function IssuesFilter({
                           <li key={issue} className="flex items-center gap-1">
                             <Link
                               href={detailHref(host, query, {
-                                view: 'pages',
+                                view: 'all',
                                 issue,
                                 page: 1,
                                 url: null,

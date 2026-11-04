@@ -59,6 +59,7 @@ import {
   expiredVerifications,
   faviconRow,
   foldCrawlCounts,
+  foldViewCounts,
   groupDomains,
   newCrawlLinkRow,
   newCrawlUrlRow,
@@ -973,6 +974,19 @@ export function createMysqlDatabase(options: {
           .where(eq(crawlUrls.crawlId, crawlId))
           .groupBy(crawlUrls.scope, crawlUrls.kind, crawlUrls.state)
         return foldCrawlCounts(rows)
+      },
+
+      async viewCounts(crawlId) {
+        const rows = await db
+          .select({
+            scope: crawlUrls.scope,
+            kind: crawlUrls.kind,
+            count: sql<number>`count(*)`,
+          })
+          .from(crawlUrls)
+          .where(eq(crawlUrls.crawlId, crawlId))
+          .groupBy(crawlUrls.scope, crawlUrls.kind)
+        return foldViewCounts(rows)
       },
 
       async listUrls({ limit, offset, sort, direction, ...query }) {

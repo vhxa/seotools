@@ -2,7 +2,11 @@
   "Common": {
     "cancel": "Cancelar",
     "signOut": "Cerrar sesión",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "status": {
+      "failed": "La petición falló",
+      "noResponse": "Sin respuesta"
+    }
   },
   "NotFound": {
     "title": "Página no encontrada",
@@ -383,13 +387,19 @@
     "viewsLabel": "Vistas",
     "views": {
       "pages": "Páginas",
-      "other": "Otras URLs",
-      "external": "Externas"
+      "resources": "Recursos",
+      "redirects": "Redirecciones",
+      "external": "Externas",
+      "all": "Todas",
+      "other": "Otras URLs"
     },
     "viewHints": {
       "pages": "URLs de esta web que respondieron con HTML, sea cual sea su estado. Son las que cuentan como páginas.",
-      "other": "Redirecciones, imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps y URLs que no respondieron.",
-      "external": "URLs de otros sitios enlazadas desde esta web. Las de los enlaces '<a>' se piden una vez para saber si funcionan; ninguna cuenta como página."
+      "resources": "URLs de esta web que respondieron con algo que no es una página ni una redirección: imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps…",
+      "redirects": "URLs de esta web que respondieron con una redirección (3xx).",
+      "external": "URLs de otros sitios enlazadas desde esta web. Las de los enlaces '<a>' se piden una vez para saber si funcionan; ninguna cuenta como página.",
+      "all": "Todas las URLs que registró el rastreo: páginas, recursos, redirecciones, URLs externas y URLs de esta web que no se pidieron o nunca respondieron, que ninguna otra vista lista. Filtra por tipo para encontrarlas.",
+      "other": "Redirecciones, imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps y URLs que no respondieron."
     },
     "search": {
       "label": "Buscar URLs",
@@ -429,7 +439,6 @@
     },
     "openUrl": "Abrir {url} en una pestaña nueva",
     "empty": "Ninguna URL coincide.",
-    "total": "{total, plural, one {# URL} other {# URLs}}",
     "responseTime": "{value, number} ms",
     "issueList": {
       "all": "Todas las páginas"
@@ -454,12 +463,68 @@
       },
       "rule": "Solo las URLs que decide una regla.",
       "clearRule": "Mostrar todas las URLs",
-      "backToRules": "Volver a las reglas"
+      "backToRules": "Volver a las reglas",
+      "status": {
+        "label": "Estado HTTP",
+        "all": "Cualquier estado HTTP",
+        "2xx": "2xx correcto",
+        "3xx": "3xx redirección",
+        "4xx": "4xx error del cliente",
+        "5xx": "5xx error del servidor",
+        "none": "Sin respuesta"
+      },
+      "type": {
+        "label": "Tipo de URL",
+        "all": "Cualquier tipo",
+        "page": "Página",
+        "redirect": "Redirección",
+        "resource": "Recurso",
+        "unknown": "Desconocido (sin respuesta)"
+      },
+      "indexability": {
+        "label": "Estado técnico",
+        "all": "Cualquier estado técnico"
+      },
+      "unavailable": {
+        "external": "Las URLs externas no se auditan y no tienen tipo, así que este filtro no se les aplica.",
+        "view": "Esta vista tiene un único tipo, así que no hay nada que elegir.",
+        "no-audit-data": "Este rastreo todavía no tiene datos de auditoría, así que este filtro no puede aplicarse."
+      }
     },
     "findings": {
       "none": "Sin hallazgos",
       "excluded": "Excluida",
       "notAnalysed": "No analizada"
+    },
+    "issueScope": "Los issues se buscan en todas las URLs del rastreo, así que este listado no se limita a una vista.",
+    "results": {
+      "unfiltered": "{total, plural, one {# URL} other {# URLs}} {scope}",
+      "filtered": "{matching, plural, one {# URL coincide} other {# URLs coinciden}} con los filtros, de {total, plural, one {# URL} other {# URLs}} {scope}",
+      "crawl": "{total, plural, one {# URL} other {# URLs}} en todo el rastreo",
+      "scopes": {
+        "pages": "en páginas",
+        "resources": "en recursos",
+        "redirects": "en redirecciones",
+        "external": "externas",
+        "all": "en todo el rastreo",
+        "other": "en las otras URLs de la web"
+      }
+    },
+    "activeFilters": {
+      "label": "Filtros activos",
+      "clearAll": "Quitar filtros",
+      "remove": "Quitar el filtro: {filter}",
+      "notApplied": "no se aplica",
+      "chip": {
+        "search": "Búsqueda: {value}",
+        "issue": "Issue: {value}",
+        "status": "Estado: {value}",
+        "type": "Tipo: {value}",
+        "indexability": "Estado técnico: {value}",
+        "participation": "Auditoría: {value}",
+        "intent": "{value}",
+        "rule": "Decididas por una regla"
+      }
     }
   },
   "UrlDetail": {

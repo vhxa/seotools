@@ -11,7 +11,9 @@ import { Pagination } from '@/components/pagination'
 import { AuditFilters } from '@/components/pages/audit-filters'
 import { IssueLabel } from '@/components/pages/issue-mark'
 import { IssuesFilter } from '@/components/pages/issues-filter'
+import { ListStatus } from '@/components/pages/list-status'
 import { PagesTable, type PageRow } from '@/components/pages/pages-table'
+import { UrlFilters } from '@/components/pages/url-filters'
 import { RecheckBanner } from '@/components/verification/recheck-banner'
 import { UrlDetail } from '@/components/pages/url-detail'
 import { UrlDrawer } from '@/components/pages/url-drawer'
@@ -26,8 +28,10 @@ import {
   DETAIL_VIEWS,
   PAGES_PAGE_SIZE,
   detailHref,
+  filterAvailability,
+  listingOf,
   parseDetailQuery,
-  type DetailQuery,
+  unappliedFilters,
 } from '@/lib/pages-query'
 import { loadUrlDetail } from '@/lib/url-detail'
 import { requireDomain } from '@/lib/workspace'
@@ -106,33 +110,23 @@ export default async function PagesDetailsPage({
   const results = historical ? ({ kind: 'current' } as const) : auditResultsState(selected, config)
   const ruleOfList = query.rule ? config.rules.find((rule) => rule.id === query.rule) : undefined
 
-  // An issue lists URLs from every view, so none of them is the one being shown.
-  const isCurrent = (view: DetailQuery['view']) => !query.issue && view === query.view
-
-  const viewCount = (view: DetailQuery['view']) => {
-    if (!selected) return 0
-    if (view === 'pages') return selected.pagesCount
-    if (view === 'external') return selected.externalCount
-    return selected.urlsCount - selected.pagesCount
-  }
+  // The audit has no state for a crawl analysed before it was kept: a filter on it would only list
+  // nothing, which is not the same as there being no such URLs.
+  const context = { auditData: browsable?.pagesAudit != null }
+  const unapplied = unappliedFilters(query, context)
+  const available = filterAvailability(query.view, context)
 
   let rows: PageRow[] = []
   let issueCounts: { issue: string; pages: number }[] = []
+  let viewCounts: Awaited<ReturnType<typeof db.crawls.viewCounts>> | null = null
   let total = 0
   let page = 1
   let pageCount = 1
   if (browsable) {
-    const listing = {
-      crawlId: browsable.id,
-      view: query.view,
-      ...(query.search ? { search: query.search } : {}),
-      ...(query.issue ? { issue: query.issue } : {}),
-      ...(query.participation ? { participation: query.participation } : {}),
-      ...(query.intent ? { intent: query.intent } : {}),
-      ...(query.rule ? { rule: query.rule } : {}),
-    }
+    const listing = { crawlId: browsable.id, ...listingOf(query, unapplied) }
     if (browsable.pagesByWorstIssue !== null)
       issueCounts = await db.crawls.issueCounts(browsable.id)
+    viewCounts = await db.crawls.viewCounts(browsable.id)
     total = await db.crawls.countListed(listing)
     pageCount = Math.max(1, Math.ceil(total / PAGES_PAGE_SIZE))
     page = Math.min(query.page, pageCount)
@@ -244,28 +238,25 @@ export default async function PagesDetailsPage({
           <Card>
             <CardHeader className="gap-3">
               <nav aria-label={t('viewsLabel')} className="flex flex-wrap gap-1">
-                {DETAIL_VIEWS.map((view) => (
-                  <Link
-                    key={view}
-                    href={detailHref(host, query, {
-                      view,
-                      page: 1,
-                      issue: null,
-                      sort: null,
-                      url: null,
-                    })}
-                    aria-current={isCurrent(view) ? 'page' : undefined}
-                    className={buttonVariants({
-                      variant: isCurrent(view) ? 'secondary' : 'ghost',
-                      size: 'sm',
-                    })}
-                  >
-                    {t(`views.${view}`)}
-                    <span className="text-muted-foreground tabular-nums">
-                      {format.number(viewCount(view))}
-                    </span>
-                  </Link>
-                ))}
+                {/* Addresses made when "other" was a view of its own still open it, and it shows. */}
+                {[...DETAIL_VIEWS, ...(query.view === 'other' ? (['other'] as const) : [])].map(
+                  (view) => (
+                    <Link
+                      key={view}
+                      href={detailHref(host, query, { view, page: 1, url: null })}
+                      aria-current={view === query.view ? 'page' : undefined}
+                      className={buttonVariants({
+                        variant: view === query.view ? 'secondary' : 'ghost',
+                        size: 'sm',
+                      })}
+                    >
+                      {t(`views.${view}`)}
+                      <span className="text-muted-foreground tabular-nums">
+                        {format.number(viewCounts?.[view] ?? 0)}
+                      </span>
+                    </Link>
+                  ),
+                )}
               </nav>
               <CardDescription>
                 {query.issue && isPageIssueId(query.issue) ? (
@@ -273,18 +264,34 @@ export default async function PagesDetailsPage({
                     <span className="font-medium text-foreground">
                       <IssueLabel issue={query.issue} />.
                     </span>{' '}
-                    {tIssues(`${query.issue}.description`)}
+                    {tIssues(`${query.issue}.description`)} {t('issueScope')}
                   </>
                 ) : (
                   t(`viewHints.${query.view}`)
                 )}
               </CardDescription>
-              <AuditFilters
+              <div className="flex flex-wrap items-center gap-2">
+                <UrlFilters
+                  host={domain.host}
+                  query={{ ...query, page: 1 }}
+                  typeUnavailable={available.type ?? undefined}
+                />
+                <AuditFilters
+                  host={domain.host}
+                  query={{ ...query, page: 1 }}
+                  unavailable={available.audit ?? undefined}
+                  {...(ruleOfList
+                    ? { rulesHref: auditTabHref(domain.host, tabOfDimension(ruleOfList.dimension)) }
+                    : {})}
+                />
+              </div>
+              <ListStatus
                 host={domain.host}
                 query={{ ...query, page: 1 }}
-                {...(ruleOfList
-                  ? { rulesHref: auditTabHref(domain.host, tabOfDimension(ruleOfList.dimension)) }
-                  : {})}
+                unapplied={unapplied}
+                matching={total}
+                inView={viewCounts?.[query.view] ?? 0}
+                inCrawl={viewCounts?.all ?? 0}
               />
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -311,13 +318,15 @@ export default async function PagesDetailsPage({
                     query.direction,
                     query.search,
                     query.issue,
+                    query.status,
+                    query.type,
+                    query.indexability,
                     query.participation,
                     query.intent,
                     query.rule,
                   ].join('|')}
                   host={domain.host}
                   rows={rows}
-                  total={total}
                   query={{ ...query, page }}
                   analysed={browsable.pagesByWorstIssue !== null}
                 />

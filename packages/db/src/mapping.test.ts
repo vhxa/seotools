@@ -2,6 +2,7 @@ import type { IssueEvidence } from '@seotools/core'
 import { describe, expect, it } from 'vitest'
 import {
   crawlIssueRows,
+  foldViewCounts,
   parseIssueDetails,
   serializeIssueDetails,
   toCrawlUrlIssue,
@@ -61,5 +62,30 @@ describe('what an issue row keeps in its details column', () => {
     ])
     expect(rows).toHaveLength(1)
     expect(parseIssueDetails(rows[0]!.details)).toEqual({ evidence })
+  })
+})
+
+describe('how many URLs each view starts from', () => {
+  it('splits the URLs of the site by what they turned out to be, and keeps external ones apart', () => {
+    expect(
+      foldViewCounts([
+        { scope: 'internal', kind: 'page', count: 5 },
+        { scope: 'internal', kind: 'resource', count: '3' },
+        { scope: 'internal', kind: 'redirect', count: 2 },
+        { scope: 'internal', kind: 'unknown', count: 1 },
+        { scope: 'external', kind: 'unknown', count: 4 },
+      ]),
+    ).toEqual({ pages: 5, resources: 3, redirects: 2, other: 6, external: 4, all: 15 })
+  })
+
+  it('is zero for a crawl with no URLs', () => {
+    expect(foldViewCounts([])).toEqual({
+      pages: 0,
+      resources: 0,
+      redirects: 0,
+      other: 0,
+      external: 0,
+      all: 0,
+    })
   })
 })

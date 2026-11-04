@@ -10,6 +10,7 @@
     "./crawl/files": "./src/crawl/files.ts",
     "./crawl/indexability": "./src/crawl/indexability.ts",
     "./crawl/issues": "./src/crawl/issues.ts",
+    "./crawl/listing": "./src/crawl/listing.ts",
     "./crawl/schedule": "./src/crawl/schedule.ts",
     "./crawl/settings": "./src/crawl/settings.ts",
     "./crawl/compare": "./src/crawl/compare.ts",

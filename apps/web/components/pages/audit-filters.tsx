@@ -1,109 +1,80 @@
 'use client'
 
 import { INDEX_INTENTS } from '@seotools/core/crawl/audit'
-import { XIcon } from 'lucide-react'
+import { INDEXABILITY_STATES } from '@seotools/core/crawl/indexability'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { FilterSelect } from '@/components/pages/filter-select'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   PARTICIPATION_FILTERS,
   detailHref,
   type DetailQuery,
-  type ParticipationFilter,
+  type NotApplied,
 } from '@/lib/pages-query'
 
-const ALL = 'all'
-
 /**
- * Filters on whether URLs were audited and on what is expected of them. They live in the address
- * like the rest of the table's state, and the server applies them. The row has a fixed size, so
- * nothing below it moves when a filter changes.
+ * Filters on what the crawl saw of whether URLs can be indexed, on whether they were audited and on
+ * what is expected of them. They live in the address like the rest of the table's state, and the
+ * server applies them. Each one stays in its place whatever the view, so nothing moves when they
+ * stop applying (external URLs have no audit state): they are disabled and say why.
  */
 export function AuditFilters({
   host,
   query,
+  unavailable,
   rulesHref,
 }: {
   host: string
   query: DetailQuery
+  /** Why none of these can apply to the list, if that is so: external URLs, or a crawl without audit data. */
+  unavailable?: NotApplied | undefined
   /** Where the rules are, when the list is of the URLs one rule decided: the tab it is in. */
   rulesHref?: string
 }) {
   const t = useTranslations('PagesDetails.filters')
+  const tState = useTranslations('AuditState')
   const router = useRouter()
 
   const go = (changes: Partial<DetailQuery>) =>
     router.push(detailHref(host, query, { ...changes, page: 1, url: null }), { scroll: false })
-
-  const participations = [
-    { value: ALL, label: t('audit.all') },
-    ...PARTICIPATION_FILTERS.map((value) => ({ value, label: t(`audit.${value}`) })),
-  ]
-  const intents = [
-    { value: ALL, label: t('intent.all') },
-    ...INDEX_INTENTS.map((value) => ({ value, label: t(`intent.${value}`) })),
-  ]
+  const reason = unavailable ? t(`unavailable.${unavailable}`) : undefined
 
   return (
     <div role="group" aria-label={t('label')} className="flex flex-wrap items-center gap-2">
-      <Select
-        items={participations}
-        value={query.participation ?? ALL}
-        onValueChange={(value) =>
-          go({ participation: value === ALL ? null : (value as ParticipationFilter) })
-        }
-      >
-        <SelectTrigger size="sm" className="w-44" aria-label={t('audit.label')}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent alignItemWithTrigger={false}>
-          {participations.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select
-        items={intents}
-        value={query.intent ?? ALL}
-        onValueChange={(value) =>
-          go({ intent: value === ALL ? null : (value as (typeof INDEX_INTENTS)[number]) })
-        }
-      >
-        <SelectTrigger size="sm" className="w-52" aria-label={t('intent.label')}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent alignItemWithTrigger={false}>
-          {intents.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <FilterSelect
+        label={t('indexability.label')}
+        anyLabel={t('indexability.all')}
+        value={query.indexability}
+        options={INDEXABILITY_STATES.map((value) => ({
+          value,
+          label: tState(`indexability.${value}`),
+        }))}
+        onChange={(indexability) => go({ indexability })}
+        unavailable={reason}
+        className="w-52"
+      />
+      <FilterSelect
+        label={t('audit.label')}
+        anyLabel={t('audit.all')}
+        value={query.participation}
+        options={PARTICIPATION_FILTERS.map((value) => ({ value, label: t(`audit.${value}`) }))}
+        onChange={(participation) => go({ participation })}
+        unavailable={reason}
+      />
+      <FilterSelect
+        label={t('intent.label')}
+        anyLabel={t('intent.all')}
+        value={query.intent}
+        options={INDEX_INTENTS.map((value) => ({ value, label: t(`intent.${value}`) }))}
+        onChange={(intent) => go({ intent })}
+        unavailable={reason}
+        className="w-52"
+      />
       {query.rule && rulesHref && (
         <Button variant="ghost" size="sm" render={<Link href={rulesHref} />}>
           {t('backToRules')}
-        </Button>
-      )}
-      {query.rule && (
-        <Button
-          variant="secondary"
-          size="sm"
-          render={<Link href={detailHref(host, query, { rule: null, page: 1, url: null })} />}
-        >
-          {t('rule')}
-          <XIcon />
-          <span className="sr-only">{t('clearRule')}</span>
         </Button>
       )}
     </div>

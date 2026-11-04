@@ -4,8 +4,10 @@ import {
   asc,
   desc,
   eq,
+  gte,
   inArray,
   isNull,
+  lt,
   ne,
   or,
   sql,
@@ -21,6 +23,7 @@ import {
   parseAuditSnapshot,
   parseIssueEvidence,
   serializeAuditSnapshot,
+  statusRange,
   type AuditSnapshot,
   type CrawlFileData,
   type CrawlPageData,
@@ -56,6 +59,7 @@ import type {
   CrawlUrlResult,
   CrawlUrlSort,
   CrawlUrlView,
+  CrawlViewCounts,
   Domain,
   DomainFavicon,
   FaviconImage,
@@ -329,8 +333,30 @@ export function foldCrawlCounts(
   return counts
 }
 
-export const crawlViewScope = (view: CrawlUrlView) =>
-  view === 'external' ? ('external' as const) : ('internal' as const)
+/** Folds `count(*) group by scope, kind` into how many URLs each view starts from. */
+export function foldViewCounts(rows: { scope: string; kind: string; count: unknown }[]) {
+  const counts: CrawlViewCounts = {
+    pages: 0,
+    resources: 0,
+    redirects: 0,
+    other: 0,
+    external: 0,
+    all: 0,
+  }
+  for (const row of rows) {
+    const count = Number(row.count)
+    counts.all += count
+    if (row.scope === 'external') {
+      counts.external += count
+      continue
+    }
+    if (row.kind === 'page') counts.pages += count
+    else counts.other += count
+    if (row.kind === 'resource') counts.resources += count
+    if (row.kind === 'redirect') counts.redirects += count
+  }
+  return counts
+}
 
 /** The columns of `crawl_urls` that listing, filtering and ordering URLs look at. */
 export interface CrawlUrlColumns extends Record<CrawlUrlSort, AnyColumn> {
@@ -351,14 +377,15 @@ export interface CrawlAuditColumns {
   urlHash: AnyColumn
   participation: AnyColumn
   intent: AnyColumn
+  indexability: AnyColumn
   participationRule: AnyColumn
   intentRule: AnyColumn
 }
 
-type AuditFilter = Pick<CrawlUrlQuery, 'participation' | 'intent' | 'rule'>
+type AuditFilter = Pick<CrawlUrlQuery, 'participation' | 'intent' | 'rule' | 'indexability'>
 
 export const hasAuditFilter = (query: AuditFilter) =>
-  Boolean(query.participation || query.intent || query.rule)
+  Boolean(query.participation || query.intent || query.rule || query.indexability)
 
 /** Selects the rows of `crawl_url_audit` that a filter keeps. */
 export function crawlAuditWhere(
@@ -370,10 +397,39 @@ export function crawlAuditWhere(
     eq(columns.crawlId, crawlId),
     filter.participation ? eq(columns.participation, filter.participation) : undefined,
     filter.intent ? eq(columns.intent, filter.intent) : undefined,
+    filter.indexability ? eq(columns.indexability, filter.indexability) : undefined,
     filter.rule
       ? or(eq(columns.participationRule, filter.rule), eq(columns.intentRule, filter.rule))
       : undefined,
   )
+}
+
+/** What a view starts from: URLs of the site or external ones, and what they turned out to be. */
+export function crawlViewWhere(columns: CrawlUrlColumns, view: CrawlUrlView): SQL | undefined {
+  switch (view) {
+    case 'pages':
+      return and(eq(columns.scope, 'internal'), eq(columns.kind, 'page'))
+    case 'resources':
+      return and(eq(columns.scope, 'internal'), eq(columns.kind, 'resource'))
+    case 'redirects':
+      return and(eq(columns.scope, 'internal'), eq(columns.kind, 'redirect'))
+    case 'other':
+      return and(eq(columns.scope, 'internal'), ne(columns.kind, 'page'))
+    case 'external':
+      return eq(columns.scope, 'external')
+    case 'all':
+      return undefined
+  }
+}
+
+/** The URLs whose status is of a class, or that have none. */
+export function crawlStatusWhere(
+  columns: CrawlUrlColumns,
+  status: NonNullable<CrawlUrlQuery['status']>,
+): SQL | undefined {
+  if (status === 'none') return isNull(columns.status)
+  const { min, max } = statusRange(status)
+  return and(gte(columns.status, min), lt(columns.status, max))
 }
 
 /**
@@ -392,9 +448,10 @@ export function crawlUrlWhere(
   return and(
     eq(columns.crawlId, query.crawlId),
     // An issue picks its URLs wherever they are: a redirect or a broken link is not a page.
-    query.issue ? undefined : eq(columns.scope, crawlViewScope(query.view)),
-    !query.issue && query.view === 'pages' ? eq(columns.kind, 'page') : undefined,
-    !query.issue && query.view === 'other' ? ne(columns.kind, 'page') : undefined,
+    query.issue ? undefined : crawlViewWhere(columns, query.view),
+    query.status ? crawlStatusWhere(columns, query.status) : undefined,
+    // A type is a fact about the URLs of the site: external ones are recorded, never typed.
+    query.type ? and(eq(columns.scope, 'internal'), eq(columns.kind, query.type)) : undefined,
     pattern
       ? sql`(lower(${columns.url}) like ${pattern} escape '!' or lower(${columns.title}) like ${pattern} escape '!')`
       : undefined,
