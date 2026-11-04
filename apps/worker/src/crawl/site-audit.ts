@@ -152,8 +152,17 @@ export interface AuditedUrl {
   followedAnchorsIn: number
   /** Anchors in that come from pages a search engine would index. */
   anchorsFromIndexable: number
-  /** Sitemaps that list it. */
+  /**
+   * Sitemaps that list it: a `<loc>`, or a line of a text sitemap. An alternate or an image named by
+   * an entry does not list it.
+   */
   sitemaps: number
+  /**
+   * Sitemaps that name it in a way the crawl did not record: it comes from a crawl that stored every
+   * URL of a sitemap alike, and the URL is one of the alternates a sitemap declared, so it may be
+   * listed or may only be an alternate. Never counted as listed, never as absent.
+   */
+  sitemapsAmbiguous: number
   /** Anchors to other URLs of the site. */
   internalAnchorsOut: number
   nofollowAnchorsOut: number
@@ -305,6 +314,7 @@ export function auditUrl(
     followedAnchorsIn: 0,
     anchorsFromIndexable: 0,
     sitemaps: 0,
+    sitemapsAmbiguous: 0,
     internalAnchorsOut: 0,
     nofollowAnchorsOut: 0,
     linksTo: [],
@@ -328,6 +338,16 @@ function measureClickDepth(urls: readonly AuditedUrl[], byHash: ReadonlyMap<stri
     }
     frontier = next
   }
+}
+
+/**
+ * A sitemap whose links were stored before the crawl recorded what each one was: every URL it found
+ * is a link of the `sitemap` type, listed or only mentioned. Crawls since then say how many URLs the
+ * file mentions without listing (`references`, even when none), which is what tells them apart.
+ */
+const storedAlike = (file: AuditedUrl) => {
+  const size = file.url.data?.sitemapSize
+  return size !== undefined && size.references === undefined
 }
 
 const byAddress = (a: AuditedUrl, b: AuditedUrl) =>
@@ -385,9 +405,14 @@ export async function loadSite(
   }
 
   const internal = urls.filter((url) => url.internal)
+  // Links of the `sitemap` type from a sitemap parsed before the crawl told a listing from a mention,
+  // by the URL they point at, and the URLs a sitemap declared as an alternate: only the ones in both
+  // cannot be told apart, and they are settled once every alternate is known.
+  const unattributed = new Map<AuditedUrl, number>()
+  const alternates = new Set<string>()
   for (let start = 0; start < internal.length; start += BATCH) {
     const hashes = internal.slice(start, start + BATCH).map((url) => url.url.urlHash)
-    const [links, alternates] = await Promise.all([
+    const [links, declared] = await Promise.all([
       db.crawls.linksFrom(crawl.id, hashes),
       db.crawls.sitemapHreflangOf(crawl.id, hashes),
     ])
@@ -396,7 +421,10 @@ export async function loadSite(
       const source = byHash.get(sourceHash)
       const target = byHash.get(targetHash)
       if (!source || !target?.internal) continue
-      if (kind === 'sitemap') target.sitemaps++
+      if (kind === 'sitemap') {
+        if (storedAlike(source)) unattributed.set(target, (unattributed.get(target) ?? 0) + 1)
+        else target.sitemaps++
+      }
       if (kind !== 'redirect') target.linksIn++
       if (kind !== 'anchor' && kind !== 'anchor-nofollow') continue
       target.anchorsIn++
@@ -406,9 +434,19 @@ export async function loadSite(
       if (kind === 'anchor-nofollow') source.nofollowAnchorsOut++
       source.linksTo.push(target)
     }
-    for (const { pageHash, lang, url } of alternates) {
+    for (const { pageHash, lang, url } of declared) {
       byHash.get(pageHash)?.hreflang.push({ lang, url, source: 'sitemap' })
+      alternates.add(crawlUrlHash(url))
     }
+  }
+  for (const [target, count] of unattributed) {
+    // What a sitemap parsed before the origin was recorded says is all it can say: that it named the
+    // URL. The crawl kept which URLs sitemaps declared as alternates (`crawl_sitemap_hreflang`), so
+    // one of those cannot be told from a listing, and is not claimed either way. Anything else keeps
+    // counting as listed, as it always did: the crawl never kept which images and videos a sitemap
+    // named, and they are rarely pages (only a page can be judged for its listing).
+    if (alternates.has(target.url.urlHash)) target.sitemapsAmbiguous += count
+    else target.sitemaps += count
   }
   measureClickDepth(internal, byHash)
 

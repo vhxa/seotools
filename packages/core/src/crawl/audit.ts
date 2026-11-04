@@ -70,8 +70,28 @@ export type AuditValue = (typeof AUDIT_VALUES)[number]
  *   `nofollow` is the `nofollow` condition set to `allowed` (an intent rule's `acceptNofollow` and
  *   the `inherit` intent value are retired, and ignored when read). A condition no rule states
  *   behaves as it always did.
+ * - 4: what a URL declares of its own indexation also reaches the findings of the URLs that point at
+ *   it, and of the URLs it points at (`relationsOf` in the worker): a canonical or an hreflang to a
+ *   URL whose `noindex` (or robots.txt block) a rule requires or allows, or whose expectation is
+ *   `not-indexable` for a noindex or a canonical elsewhere, is not reported for it, and neither are
+ *   the alternates of a URL that is deliberately out of the index. Before, a rule only replaced the
+ *   generic finding of the URL itself and never what other pages said of it. Rules do not change;
+ *   what they accept does, so an analysis of an older meaning is read as it was.
  */
-export const AUDIT_SEMANTICS = 3
+export const AUDIT_SEMANTICS = 4
+
+/** The first meaning (`AUDIT_SEMANTICS`) in which the declared state of a URL reaches the URLs that point at it. */
+export const RELATIONS_SEMANTICS = 4
+
+/**
+ * Whether a rule is read differently from semantics 4 on (see `AUDIT_SEMANTICS`): the ones that
+ * accept a state of a URL for the findings of the URLs that point at it. A configuration without any
+ * is read the same by 3 and 4.
+ */
+export const reachesRelations = (rule: { dimension: string; value: string }) =>
+  (rule.dimension === 'intent' && rule.value === 'not-indexable') ||
+  ((rule.dimension === 'noindex' || rule.dimension === 'robots') &&
+    (rule.value === 'required' || rule.value === 'allowed'))
 
 /** What a URL can be expected to be, which is what a rule or an exception can say. */
 export const INDEX_INTENTS = ['indexable', 'not-indexable'] as const

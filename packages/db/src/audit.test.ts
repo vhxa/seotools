@@ -142,3 +142,51 @@ describe('moving the rules from accepting nofollow to conditions', () => {
     expect(written(after).plan.changes).toEqual([])
   })
 })
+
+describe('moving the rules to the meaning that reads relations', () => {
+  const rows = (dimension: AuditRuleRow['dimension'], value: string, over = {}) =>
+    row(prefix('/es'), { dimension, value, ...over })
+
+  it.each([
+    ['intent', 'not-indexable'],
+    ['noindex', 'required'],
+    ['noindex', 'allowed'],
+    ['robots', 'required'],
+    ['robots', 'allowed'],
+  ] as const)(
+    'moves the version for a %s rule that is %s, and writes nothing',
+    (dimension, value) => {
+      const plan = written([rows(dimension, value)], 3)
+      expect(plan.plan.changes).toEqual([])
+      expect(plan.plan.bump).toBe(true)
+    },
+  )
+
+  it.each([
+    ['intent', 'indexable'],
+    ['audit', 'exclude'],
+    ['noindex', 'forbidden'],
+    ['robots', 'forbidden'],
+    ['nofollow', 'allowed'],
+    ['sitemap', 'required'],
+  ] as const)(
+    'does not move it for a %s rule that is %s: it is read the same',
+    (dimension, value) => {
+      expect(written([rows(dimension, value)], 3).plan.bump).toBe(false)
+    },
+  )
+
+  it('does not count a rule that is switched off', () => {
+    expect(written([rows('noindex', 'allowed', { enabled: false })], 3).plan.bump).toBe(false)
+  })
+
+  it('moves a domain with no rules only from the first meaning', () => {
+    expect(written([], 3).plan.bump).toBe(false)
+    expect(written([], 2).plan.bump).toBe(false)
+    expect(written([], 1).plan.bump).toBe(true)
+  })
+
+  it('finds nothing to change once it is at the current meaning', () => {
+    expect(written([rows('noindex', 'allowed')], 4).plan.bump).toBe(false)
+  })
+})

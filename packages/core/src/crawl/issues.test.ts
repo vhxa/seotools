@@ -57,6 +57,7 @@ describe('the catalog', () => {
     expect(PAGE_ISSUES['title-missing'].detail).toBeUndefined()
     expect(PAGE_ISSUES['expected-indexable-blocked'].detail).toBe('indexability-blocker')
     expect(PAGE_ISSUES['canonical-not-indexable'].detail).toBe('indexability-blocker')
+    expect(PAGE_ISSUES['sitemap-not-indexable'].detail).toBe('indexability-blocker')
   })
 
   it('has issues for what is declared against what the crawl saw', () => {

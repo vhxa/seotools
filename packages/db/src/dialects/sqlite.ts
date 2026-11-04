@@ -97,6 +97,7 @@ import {
 } from '@seotools/core'
 import {
   AUDIT_SEMANTICS_SETTING,
+  UPGRADED_DIMENSIONS,
   inApplyOrder,
   languageColumns,
   languagesOf,
@@ -398,7 +399,7 @@ export function createSqliteDatabase(options: {
     const withRules = db
       .selectDistinct({ id: auditRules.domainId })
       .from(auditRules)
-      .where(from < 2 ? undefined : eq(auditRules.dimension, 'intent'))
+      .where(from < 2 ? undefined : inArray(auditRules.dimension, UPGRADED_DIMENSIONS))
       .all()
     // From the first meaning every domain with a crawl moves too: its latest crawl is analysed again.
     const withCrawls =

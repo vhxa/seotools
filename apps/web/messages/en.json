@@ -801,7 +801,7 @@
     },
     "canonical-not-indexable": {
       "name": "Points at a non-indexable URL",
-      "description": "The canonical leads to a URL that redirects, fails or has noindex."
+      "description": "The canonical leads to a URL that redirects, fails, has noindex, is blocked by robots.txt or canonicalises elsewhere, as the blockers shown say. Not reported when you declared every one of them as expected for that URL, or when this page is itself expected to be out of the index; a redirect or an error always is."
     },
     "canonical-fragment": {
       "name": "Contains a fragment",
@@ -829,7 +829,7 @@
     },
     "sitemap-not-indexable": {
       "name": "Non-indexable URL in the sitemap",
-      "description": "The sitemap lists a URL that redirects, fails, has noindex or canonicalises to another. Only indexable ones belong there."
+      "description": "A sitemap lists this URL (its '<loc>') and something keeps it from being indexed, as the blockers shown say. An alternate (hreflang), image or video that an entry only names is not a listing. A crawl from before that was recorded cannot tell, and does not count a URL that a sitemap declared as an alternate."
     },
     "indexed-not-in-sitemap": {
       "name": "Indexed URL not in a sitemap",
@@ -849,7 +849,7 @@
     },
     "hreflang-no-return": {
       "name": "Missing return link",
-      "description": "The page the hreflang points at does not link back. Without a return link, search engines ignore the annotation."
+      "description": "The page the hreflang points at does not link back. Without a return link, search engines ignore the annotation. Not reported when either page is expected to be out of the index: its annotations are not read."
     },
     "hreflang-invalid-code": {
       "name": "Invalid language or region code",
@@ -861,11 +861,11 @@
     },
     "hreflang-non-canonical": {
       "name": "Return to a non-canonical URL",
-      "description": "A hreflang points at a URL whose canonical leads to another."
+      "description": "A hreflang points at a URL whose canonical leads to another. Not reported when that URL is expected not to be indexable, or when this page is expected to be out of the index."
     },
     "hreflang-noindex": {
       "name": "Return to a noindex URL",
-      "description": "A hreflang points at a URL with noindex."
+      "description": "A hreflang points at a URL with noindex. Not reported when you require or allow that noindex (or expect the URL not to be indexable), or when this page is itself expected to be out of the index."
     },
     "hreflang-same-language": {
       "name": "Several entries for the same language",
@@ -1009,11 +1009,11 @@
     },
     "only-nofollow-inlinks": {
       "name": "Only receives nofollow links",
-      "description": "Every link reaching this page is nofollow."
+      "description": "Every link reaching this page is nofollow. Not reported for a page that is expected to be out of the index."
     },
     "only-noindex-inlinks": {
       "name": "Only linked from non-indexable pages",
-      "description": "Every link reaching this page comes from pages that will not be indexed."
+      "description": "Every link reaching this page comes from pages that will not be indexed. Not reported for a page that is expected to be out of the index."
     },
     "orphan-in-sitemap": {
       "name": "Orphan URL (only in the sitemap)",
@@ -1828,7 +1828,7 @@
         "met": "The crawl saw what the rule asks.",
         "unmet": "The crawl saw the opposite of what the rule asks.",
         "allowed": "The rule accepts it either way.",
-        "unknown": "The crawl could not tell: the page was not read whole, or a file it depends on did not answer."
+        "unknown": "The crawl could not tell: the page was not read whole, a file it depends on did not answer, or a sitemap from before the crawl recorded what it listed only names the URL."
       }
     }
   },
@@ -2291,8 +2291,8 @@
         "label": "Noindex",
         "default": "By default, a page that declares noindex gets a finding.",
         "help": {
-          "required": "A finding is raised when the page does not declare noindex.",
-          "allowed": "The page may declare noindex or not: no finding for the noindex either way.",
+          "required": "A finding is raised when the page does not declare noindex. Pages that point at it (canonical, hreflang) are not told about that noindex.",
+          "allowed": "The page may declare noindex or not: no finding for the noindex either way, and pages that point at it (canonical, hreflang) are not told about it.",
           "forbidden": "A finding is raised when the page declares noindex."
         }
       },
@@ -2309,8 +2309,8 @@
         "label": "Blocked by robots.txt",
         "default": "By default, a URL blocked by robots.txt gets a finding.",
         "help": {
-          "required": "A finding is raised when robots.txt does not block the URL. A block only keeps crawlers from reading it: it does not take the URL out of a search engine’s index.",
-          "allowed": "The URL may be blocked by robots.txt or not: no finding for the block either way.",
+          "required": "A finding is raised when robots.txt does not block the URL. A block only keeps crawlers from reading it: it does not take the URL out of a search engine’s index. Canonicals that lead to it are not told about the block.",
+          "allowed": "The URL may be blocked by robots.txt or not: no finding for the block either way, and canonicals that lead to it are not told about it.",
           "forbidden": "A finding is raised when robots.txt blocks the URL."
         }
       },
@@ -2318,7 +2318,7 @@
         "label": "Listed in a sitemap",
         "default": "By default, an indexable page that no sitemap lists gets a low-priority warning.",
         "help": {
-          "required": "A finding is raised when no sitemap lists the URL. It needs a complete crawl: a recheck of some URLs cannot tell.",
+          "required": "A finding is raised when no sitemap lists the URL (an alternate or an image that an entry only names is not a listing). It needs a complete crawl: a recheck of some URLs cannot tell.",
           "allowed": "The URL may be listed in a sitemap or not: no finding for its absence. A listed URL that cannot be indexed is still reported.",
           "forbidden": "A finding is raised when a sitemap lists the URL."
         }
@@ -2335,7 +2335,7 @@
       "help": {
         "default": "Unless a rule says otherwise, every page is expected to be indexable.",
         "indexable": "The crawl is checked for what stands in the way of indexing the URL.",
-        "not-indexable": "A noindex is fine; being indexable is not. It is not the same as requiring a noindex."
+        "not-indexable": "A noindex is fine; being indexable is not. It is not the same as requiring a noindex. Pages that point at it are not told about its noindex or a canonical elsewhere; a robots.txt block is still reported."
       }
     }
   }

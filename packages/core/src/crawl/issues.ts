@@ -86,7 +86,7 @@ const ISSUE_CATALOG = {
   },
   sitemaps: {
     'sitemap-too-big': ['issue', 'high'],
-    'sitemap-not-indexable': ['issue', 'medium'],
+    'sitemap-not-indexable': ['issue', 'medium', 'indexability-blocker'],
     'indexed-not-in-sitemap': ['warning', 'high'],
     'indexable-not-in-sitemap': ['warning', 'low'],
   },
@@ -226,8 +226,12 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
 /**
  * Bump when a check in the worker changes what it finds without the catalog changing (the catalog
  * changing is noticed by itself).
+ * - 6: a sitemap lists what its `<loc>` says and not the alternates, images and videos an entry
+ *   names (`sitemap-not-indexable` and the sitemap conditions), and `sitemap-not-indexable` says
+ *   what keeps the URL from being indexed. Analysing a crawl again does not repair one that stored
+ *   every URL of a sitemap alike: it stops claiming a listing it cannot prove.
  */
-const CHECKS_REVISION = 5
+const CHECKS_REVISION = 6
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.

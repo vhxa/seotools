@@ -19,7 +19,8 @@ export const judgeable = (url: AuditedUrl, site: Site) => url.contentPage && !is
  * - `noindex` / `nofollow`: a page that was parsed whole (its answer, headers and all of its HTML).
  * - `robots`: a robots.txt of the URL's origin that answered, or was not there (a 4xx).
  * - `sitemap`: every sitemap of the site was read, in a crawl that requested every URL it found
- *   (`Site.sitemapCoverage`).
+ *   (`Site.sitemapCoverage`). Listing is a `<loc>`: an alternate or an image an entry names is not
+ *   listed, and a crawl that did not record which a sitemap did cannot say (`sitemapsAmbiguous`).
  * Anything that is not judgeable is `unknown`. Reading the sitemaps in a recheck throws
  * `SiteContextError`: a recheck does not read them.
  */
@@ -38,6 +39,8 @@ export function presenceOf(
       return url.robotsBlocked ? 'present' : url.robotsKnown ? 'absent' : 'unknown'
     case 'sitemap':
       if (url.sitemaps > 0) return 'present'
+      // Named by a sitemap that does not say whether it listed the URL: neither present nor absent.
+      if (url.sitemapsAmbiguous > 0) return 'unknown'
       return site.sitemapCoverage === 'complete' ? 'absent' : 'unknown'
   }
 }

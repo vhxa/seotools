@@ -210,6 +210,79 @@ describe('auditScopeKey', () => {
     expect(auditScopeKey(accepting)).not.toBe(auditScopeKey(after))
   })
 
+  describe('the meaning that reads relations (semantics 4)', () => {
+    const allowing = (dimension: 'noindex' | 'robots' = 'noindex'): AuditRule =>
+      rule({ dimension, value: 'allowed' } as Partial<AuditRule>)
+    const third = (rules: AuditRule[]) => ({ ...auditSnapshotOf(3, rules), semantics: 3 })
+
+    it('reads a configuration of semantics 3 the same unless a rule accepts what others point at', () => {
+      for (const rules of [
+        [],
+        [rule()],
+        [rule({ dimension: 'sitemap', value: 'required' } as Partial<AuditRule>)],
+        [rule({ dimension: 'nofollow', value: 'allowed' } as Partial<AuditRule>)],
+        [rule({ dimension: 'noindex', value: 'forbidden' } as Partial<AuditRule>)],
+        [rule({ dimension: 'intent', value: 'indexable', acceptNofollow: false } as never)],
+      ]) {
+        expect(auditScopeKey(third(rules))).toBe(auditScopeKey(auditSnapshotOf(3, rules)))
+      }
+    })
+
+    it.each([
+      ['an allowed noindex', allowing()],
+      [
+        'a required noindex',
+        rule({ dimension: 'noindex', value: 'required' } as Partial<AuditRule>),
+      ],
+      ['an allowed robots block', allowing('robots')],
+      [
+        'an expectation of not being indexable',
+        rule({ dimension: 'intent', value: 'not-indexable', acceptNofollow: false } as never),
+      ],
+    ])('does not read %s the same under 3 and 4', (_, accepting) => {
+      expect(auditScopeKey(third([accepting]))).not.toBe(
+        auditScopeKey(auditSnapshotOf(3, [accepting])),
+      )
+    })
+
+    it('does not make an older analysis comparable with a newer one that reads the same rules differently', () => {
+      const before = crawl({ auditSnapshot: third([allowing()]) })
+      const after = crawl({ auditSnapshot: auditSnapshotOf(4, [allowing()]) })
+      expect(assessPair(before, after).notes.map((note) => note.code)).toContain('audit')
+      // Nothing to note when nothing in the rules is read another way.
+      const plain = crawl({ auditSnapshot: third([rule()]) })
+      const plainNow = crawl({ auditSnapshot: auditSnapshotOf(4, [rule()]) })
+      expect(assessPair(plain, plainNow).notes.map((note) => note.code)).not.toContain('audit')
+    })
+
+    it('does not call a relation finding resolved when the other end was declared in the meantime', () => {
+      const without = facts({ scope: auditScopeKey(auditSnapshotOf(2, [])) })
+      const declared = facts({ scope: auditScopeKey(auditSnapshotOf(3, [allowing()])) })
+      for (const issue of [
+        'hreflang-noindex',
+        'canonical-not-indexable',
+        'hreflang-no-return',
+        'hreflang-non-canonical',
+        'only-noindex-inlinks',
+      ]) {
+        expect(isPageLocalIssue(issue)).toBe(false)
+        // The page itself is the same in both crawls: its own rules did not change, the target's did.
+        expect(
+          classifyFinding(issue, {
+            base: seen([issue], {}, without),
+            target: seen([], {}, declared),
+          }),
+        ).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+        expect(
+          classifyFinding(issue, {
+            base: seen([], {}, without),
+            target: seen([issue], {}, declared),
+          }),
+        ).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+      }
+    })
+  })
+
   it('is unknown for a crawl that was not analysed, or whose snapshot is gone', () => {
     expect(crawlAuditScope(crawl({ pagesByWorstIssue: null }))).toBeNull()
     expect(crawlAuditScope(crawl({ auditSnapshot: null, auditVersion: 4 }))).toBeNull()

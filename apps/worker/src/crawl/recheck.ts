@@ -29,6 +29,7 @@ const SITE_FIELDS = [
   'followedAnchorsIn',
   'anchorsFromIndexable',
   'sitemaps',
+  'sitemapsAmbiguous',
   'linksTo',
   'clickDepth',
 ] as const

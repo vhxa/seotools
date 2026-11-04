@@ -4,8 +4,10 @@ import {
   AUDIT_LIMITS,
   JOB_TYPES,
   NO_LANGUAGES,
+  RELATIONS_SEMANTICS,
   canonicalLanguages,
   crawlUrlHash,
+  reachesRelations,
   sameLanguages,
   selectorKey,
   type AuditCondition,
@@ -480,10 +482,15 @@ function couldWinOver(a: AuditSelector, r: AuditSelector): boolean {
  *   (which is what a URL without a rule has, written down only where it is needed). The intent rules
  *   keep their expectation: an old `not-indexable` is never read as a required `noindex`. An
  *   exception that only accepted `nofollow` (`inherit`) leaves nothing but the condition.
+ * - From 1, 2 or 3: nothing is written for what a URL declares of its own indexation reaching the
+ *   findings of the URLs that point at it (a required or allowed `noindex` or robots.txt block, an
+ *   expectation of `not-indexable`). The rules are the same; what they accept is more, so a domain
+ *   that has one is analysed again, and one that has none reads the same under both.
  * Audit rules and the expectation of every other intent rule stay as they are. Running it again
  * finds nothing to change. The version moves for every domain from 1, whether or not a rule goes:
- * what a configuration means changed for all of them; from 2 it moves only where rules changed,
- * since everything else reads the same under both.
+ * what a configuration means changed for all of them; from 2 it moves only where rules changed, or
+ * rules that the newer meaning reads another way exist, since everything else reads the same under
+ * both.
  */
 export function planUpgradeSemantics(
   rows: readonly AuditRuleRow[],
@@ -539,7 +546,10 @@ export function planUpgradeSemantics(
       })
     }
   }
-  return { ok: true, changes, bump: from < 2 || changes.length > 0 }
+  const reached =
+    from < RELATIONS_SEMANTICS &&
+    rows.some((row) => row.enabled && !gone.has(row.id) && reachesRelations(row))
+  return { ok: true, changes, bump: from < 2 || changes.length > 0 || reached }
 }
 
 /**
@@ -547,6 +557,12 @@ export function planUpgradeSemantics(
  * configuration (`AUDIT_SEMANTICS`), so that it happens once.
  */
 export const AUDIT_SEMANTICS_SETTING = 'audit.semantics'
+
+/**
+ * The rules that an older meaning could read differently from today's: the ones a domain has to
+ * have for its rules to be looked at again when the meaning moves from 2 or later.
+ */
+export const UPGRADED_DIMENSIONS: AuditDimension[] = ['intent', 'noindex', 'robots']
 
 /** The payload of the job that analyses a domain's latest crawl again. Equal for equal domains. */
 export const recomputePayload = (domainId: string) => JSON.stringify({ domainId })

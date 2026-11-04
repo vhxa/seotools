@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AUDIT_LIMITS,
   AUDIT_SEMANTICS,
+  RELATIONS_SEMANTICS,
   EMPTY_AUDIT_SNAPSHOT,
   AUDIT_CONDITIONS,
   LANGUAGE_LIMITS,
@@ -21,6 +22,7 @@ import {
   parseAuditSelector,
   parseAuditSnapshot,
   parseLanguagePrefixes,
+  reachesRelations,
   readUrlAuditState,
   sameLanguages,
   selectorKey,
@@ -1272,6 +1274,40 @@ describe('what a configuration meant', () => {
     expect(snapshot).toMatchObject({ semantics: AUDIT_SEMANTICS, version: 2 })
     expect(snapshot.languages).toEqual(LANGUAGES)
     expect(semanticsOf(snapshot)).toBe(AUDIT_SEMANTICS)
+  })
+
+  it('reads a configuration of semantics 3 with the same rules as 4, and what the rules accept differs', () => {
+    expect(AUDIT_SEMANTICS).toBe(RELATIONS_SEMANTICS)
+    const rules = [intent(prefix('/blog'), 'not-indexable'), audit(prefix('/old'))]
+    for (const semantics of [3, 4]) {
+      // Resolving does not change: what changes is what the findings of other URLs make of it.
+      const resolved = compileAuditRules(rules, HOST, { semantics }).resolve(
+        'https://example.com/blog/a',
+      )
+      expect(resolved.intent.value).toBe('not-indexable')
+    }
+  })
+
+  it('says which rules a newer meaning reads another way', () => {
+    const reads = (dimension: string, value: string) => reachesRelations({ dimension, value })
+    expect(reads('intent', 'not-indexable')).toBe(true)
+    for (const dimension of ['noindex', 'robots']) {
+      expect(reads(dimension, 'required')).toBe(true)
+      expect(reads(dimension, 'allowed')).toBe(true)
+      expect(reads(dimension, 'forbidden')).toBe(false)
+    }
+    for (const [dimension, value] of [
+      ['intent', 'indexable'],
+      ['intent', 'none'],
+      ['intent', 'inherit'],
+      ['audit', 'exclude'],
+      ['nofollow', 'allowed'],
+      ['nofollow', 'required'],
+      ['sitemap', 'allowed'],
+      ['sitemap', 'required'],
+    ]) {
+      expect(reads(dimension!, value!), `${dimension} ${value}`).toBe(false)
+    }
   })
 
   it('is the first one for a snapshot that says nothing', () => {

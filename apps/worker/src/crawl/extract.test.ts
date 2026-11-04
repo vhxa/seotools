@@ -229,28 +229,60 @@ describe('parseLinkHeader', () => {
 describe('parseSitemap', () => {
   const base = 'https://example.com/sitemap.xml'
 
-  it('reads a urlset, with images, videos and alternates', () => {
+  it('lists the <loc> of each <url> and only references its alternates, images and videos', () => {
     const parsed = parseSitemap(
       `<?xml version="1.0"?><urlset xmlns:image="i" xmlns:video="v" xmlns:xhtml="x">
         <url><loc> https://example.com/a </loc>
           <xhtml:link rel="alternate" hreflang="es" href="https://example.com/es/a"/>
           <image:image><image:loc>https://example.com/a.png</image:loc></image:image>
-          <video:video><video:content_loc>https://example.com/a.mp4</video:content_loc></video:video>
+          <video:video><video:content_loc>https://example.com/a.mp4</video:content_loc>
+            <video:player_loc>https://example.com/player/a</video:player_loc></video:video>
         </url>
         <url><loc>https://example.com/b?x=1&amp;y=2</loc></url>
       </urlset>`,
       base,
     )
     expect(parsed.sitemaps).toEqual([])
-    expect(parsed.urls.sort()).toEqual(
-      [
-        'https://example.com/a',
-        'https://example.com/es/a',
-        'https://example.com/a.png',
-        'https://example.com/a.mp4',
-        'https://example.com/b?x=1&y=2',
-      ].sort(),
+    expect(parsed.urls).toEqual(['https://example.com/a', 'https://example.com/b?x=1&y=2'])
+    expect(parsed.references).toEqual([
+      { url: 'https://example.com/es/a', kind: 'hreflang' },
+      { url: 'https://example.com/a.png', kind: 'image' },
+      { url: 'https://example.com/a.mp4', kind: 'media' },
+      { url: 'https://example.com/player/a', kind: 'media' },
+    ])
+    // The relation the alternate declares is kept apart from where the URL appears.
+    expect(parsed.hreflang).toEqual([
+      { page: 'https://example.com/a', lang: 'es', url: 'https://example.com/es/a' },
+    ])
+  })
+
+  it('does not list an alternate that has no <url> of its own, and does when it has one', () => {
+    const parsed = parseSitemap(
+      `<urlset xmlns:xhtml="x">
+        <url><loc>https://example.com/en/a</loc>
+          <xhtml:link rel="alternate" hreflang="en" href="https://example.com/en/a"/>
+          <xhtml:link rel="alternate" hreflang="es" href="https://example.com/es/a"/></url>
+        <url><loc>https://example.com/es/a</loc>
+          <xhtml:link rel="alternate" hreflang="en" href="https://example.com/en/a"/>
+          <xhtml:link rel="alternate" hreflang="fr" href="https://example.com/fr/a"/></url>
+      </urlset>`,
+      base,
     )
+    expect(parsed.urls).toEqual(['https://example.com/en/a', 'https://example.com/es/a'])
+    expect(parsed.urls).not.toContain('https://example.com/fr/a')
+    expect(parsed.references.map(({ url }) => url)).toContain('https://example.com/fr/a')
+    expect(parsed.hreflang).toHaveLength(4)
+  })
+
+  it('keeps an alternate that declares no language as a reference too', () => {
+    const parsed = parseSitemap(
+      `<urlset xmlns:xhtml="x"><url><loc>https://example.com/a</loc>
+        <xhtml:link rel="alternate" media="only screen" href="https://m.example.com/a"/></url></urlset>`,
+      base,
+    )
+    expect(parsed.urls).toEqual(['https://example.com/a'])
+    expect(parsed.references).toEqual([{ url: 'https://m.example.com/a', kind: 'other' }])
+    expect(parsed.hreflang).toEqual([])
   })
 
   it('reads a sitemap index', () => {
@@ -260,6 +292,7 @@ describe('parseSitemap', () => {
       base,
     )
     expect(parsed.urls).toEqual([])
+    expect(parsed.references).toEqual([])
     expect(parsed.sitemaps).toEqual([
       'https://example.com/one.xml',
       'https://example.com/two.xml.gz',
@@ -275,6 +308,7 @@ describe('parseSitemap', () => {
   it('finds nothing in other XML', () => {
     expect(parseSitemap('<rss><channel><link>https://a.co</link></channel></rss>', base)).toEqual({
       urls: [],
+      references: [],
       sitemaps: [],
       format: null,
       entries: 0,

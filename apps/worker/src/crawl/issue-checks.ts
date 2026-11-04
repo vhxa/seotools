@@ -20,6 +20,7 @@ import {
 import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
 import { isValidHreflang } from './language-codes'
+import { excusedBlockers, excusesInlinks, excusesMissingReturn } from './relations'
 import {
   comparable,
   followRedirects,
@@ -158,13 +159,16 @@ const hreflang =
     return sourcesOf(test(url, url.hreflang, site))
   }
 
-/** The entries pointing at a URL of the site that `test` says is wrong. */
+/**
+ * The entries pointing at a URL of the site that `test` says is wrong. What the page and the URL it
+ * points at declare of their own indexation is for `test` to weigh (see `relations.ts`).
+ */
 const hreflangTargets =
-  (test: (target: AuditedUrl, page: AuditedUrl) => boolean) =>
+  (test: (target: AuditedUrl, page: AuditedUrl, site: Site) => boolean) =>
   (page: AuditedUrl, entries: HreflangEntry[], site: Site) =>
     entries.filter((entry) => {
       const target = site.get(entry.url)
-      return target !== undefined && target !== page && target.internal && test(target, page)
+      return target !== undefined && target !== page && target.internal && test(target, page, site)
     })
 
 /** A URL can have thousands of them, and looking for repeats is quadratic. */
@@ -308,6 +312,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
       ? declarations(facts, () => true)
       : false,
   ),
+  // The canonical leads to a URL that cannot be indexed. Not news where every blocker is what was
+  // declared of one end or the other (`excusedBlockers`); the blockers listed are all of them.
   'canonical-not-indexable': onPage((url, _, site) => {
     const target = url.url.canonical ? site.get(url.url.canonical) : undefined
     if (
@@ -317,6 +323,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
       target.indexability.state !== 'not-indexable'
     )
       return false
+    const excused = excusedBlockers(url, target, site)
+    if (target.indexability.blockers.every((blocker) => excused.has(blocker))) return false
     const address = boundedUrl(target.url.url)
     return {
       ...backedBy({ kind: 'related-urls', total: 1, urls: address ? [address] : [] }),
@@ -352,15 +360,23 @@ export const CHECKS: Record<PageIssueId, Check> = {
       (size.entries > SITEMAP_MAX_ENTRIES || size.bytes > SITEMAP_MAX_BYTES)
     )
   },
+  // Listed is a `<loc>` (`AuditedUrl.sitemaps`): an alternate or an image that an entry names does not
+  // list it, and a URL that only a sitemap of unrecorded origin names (`sitemapsAmbiguous`) is not
+  // claimed to be listed. What keeps it from being indexable is what the crawl stored of it.
   'sitemap-not-indexable': (url) => {
     if (!url.internal || url.sitemaps === 0 || url.url.state !== 'done') return false
-    // Sitemaps list images and the like too, and those are not meant to be indexed as pages.
-    if (url.url.kind === 'resource') return statusIn(url, 400, 599)
-    return !url.indexable
+    // Sitemaps list files that are not pages too, and those are not meant to be indexed as pages.
+    const flagged = url.url.kind === 'resource' ? statusIn(url, 400, 599) : !url.indexable
+    if (!flagged) return false
+    // Why, when the crawl knows: a URL that never answered has no blocker of its own to name.
+    const { blockers } = url.indexability
+    return blockers.length > 0 ? blockers : true
   },
-  'indexed-not-in-sitemap': (url) => url.indexed === true && url.sitemaps === 0,
+  'indexed-not-in-sitemap': (url) =>
+    url.indexed === true && url.sitemaps === 0 && url.sitemapsAmbiguous === 0,
   // Indexable is not indexed: only what confirms it is, and nothing does yet.
-  'indexable-not-in-sitemap': (url) => url.indexable && url.indexed !== true && url.sitemaps === 0,
+  'indexable-not-in-sitemap': (url) =>
+    url.indexable && url.indexed !== true && url.sitemaps === 0 && url.sitemapsAmbiguous === 0,
 
   // --- hreflang ------------------------------------------------------------
   'hreflang-unreachable': hreflang(
@@ -372,10 +388,14 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'hreflang-redirect': hreflang(
     hreflangTargets((target) => target.url.state === 'done' && target.url.kind === 'redirect'),
   ),
+  // Not reported where either end is expected to be out of the index: search engines do not read
+  // the annotations of a URL that is not indexed, so there is no return to wait for.
   'hreflang-no-return': hreflang(
     hreflangTargets(
-      (target, page) =>
-        target.contentPage && !target.hreflang.some((entry) => entry.url === page.url.url),
+      (target, page, site) =>
+        target.contentPage &&
+        !target.hreflang.some((entry) => entry.url === page.url.url) &&
+        !excusesMissingReturn(page, target, site),
     ),
   ),
   'hreflang-invalid-code': hreflang((_, entries) =>
@@ -383,9 +403,19 @@ export const CHECKS: Record<PageIssueId, Check> = {
   ),
   'hreflang-outside-head': hreflang((_, entries) => entries.filter((entry) => entry.outsideHead)),
   'hreflang-non-canonical': hreflang(
-    hreflangTargets((target) => target.contentPage && target.canonicalised),
+    hreflangTargets(
+      (target, page, site) =>
+        target.contentPage &&
+        target.canonicalised &&
+        !excusedBlockers(page, target, site).has('canonical'),
+    ),
   ),
-  'hreflang-noindex': hreflang(hreflangTargets((target) => target.contentPage && target.noindex)),
+  'hreflang-noindex': hreflang(
+    hreflangTargets(
+      (target, page, site) =>
+        target.contentPage && target.noindex && !excusedBlockers(page, target, site).has('noindex'),
+    ),
+  ),
   'hreflang-same-language': hreflang((_, entries) => {
     const urls = new Map<string, Set<string>>()
     for (const { lang, url } of entries) {
@@ -479,8 +509,15 @@ export const CHECKS: Record<PageIssueId, Check> = {
   // --- links ---------------------------------------------------------------
   'link-to-localhost': linkProblem('localhost', (facts) => facts.localhostLinks),
   'uncrawlable-links': linkProblem('uncrawlable', (facts) => facts.uncrawlableLinks),
-  'only-nofollow-inlinks': onPage((url) => url.anchorsIn > 0 && url.followedAnchorsIn === 0),
-  'only-noindex-inlinks': onPage((url) => url.anchorsIn > 0 && url.anchorsFromIndexable === 0),
+  // What links to a URL expected to be out of the index does not matter to it (`excusesInlinks`).
+  'only-nofollow-inlinks': onPage(
+    (url, _, site) =>
+      url.anchorsIn > 0 && url.followedAnchorsIn === 0 && !excusesInlinks(url, site),
+  ),
+  'only-noindex-inlinks': onPage(
+    (url, _, site) =>
+      url.anchorsIn > 0 && url.anchorsFromIndexable === 0 && !excusesInlinks(url, site),
+  ),
   // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
   'orphan-in-sitemap': (url) =>
     url.contentPage && url.sitemaps > 0 && url.anchorsIn === 0 && url.url.source !== 'seed',

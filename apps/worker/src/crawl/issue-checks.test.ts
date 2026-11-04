@@ -672,7 +672,10 @@ describe('each issue', () => {
 describe('a URL a search engine has indexed', () => {
   // Nothing tells the crawl which URLs are indexed yet, so this is the check on its own.
   const check = (indexed: boolean | null, sitemaps: number) =>
-    CHECKS['indexed-not-in-sitemap']({ indexed, sitemaps } as AuditedUrl, {} as Site)
+    CHECKS['indexed-not-in-sitemap'](
+      { indexed, sitemaps, sitemapsAmbiguous: 0 } as AuditedUrl,
+      {} as Site,
+    )
 
   it('is reported when no sitemap lists it', () => {
     expect(check(true, 0)).toBe(true)
@@ -743,25 +746,20 @@ describe('what is not an issue', () => {
     }
   })
 
-  it('keeps canonical relation evidence even when both pages are expected not indexable', async () => {
+  it('leaves the noindex nobody expected to the page that has it, not to the one that points at it', async () => {
     const crawlId = await crawl(
       websiteOf({
         at: '/x',
         pages: {
-          '/x': page('/x', {
-            canonical: `${SITE}/y`,
-            head: '<meta name="robots" content="noindex">',
-          }),
+          '/x': page('/x', { canonical: `${SITE}/y` }),
           '/y': page('/y', { head: '<meta name="robots" content="noindex">' }),
         },
       }),
-      [expecting('/x', 'not-indexable'), expecting('/y', 'not-indexable')],
+      [expecting('/x', 'not-indexable')],
     )
-    const finding = (await issuesAt(crawlId, '/x')).find(
-      ({ issue }) => issue === 'canonical-not-indexable',
-    )
-    expect(finding?.details).toEqual(['noindex'])
-    expect(finding?.evidence).toEqual({ kind: 'related-urls', total: 1, urls: [`${SITE}/y`] })
+    // /x is expected to be out of the index, so what its canonical leads to is no news for it.
+    expect(await has(crawlId, '/x', 'canonical-not-indexable')).toBe(false)
+    expect(await has(crawlId, '/y', 'noindex')).toBe(true)
   })
 
   it('does not take a long page that mentions it for a soft 404', async () => {

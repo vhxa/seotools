@@ -16,6 +16,7 @@ import {
   EMPTY_AUDIT_SNAPSHOT,
   NO_LANGUAGES,
   canonicalLanguages,
+  reachesRelations,
   selectorKey,
   semanticsOf,
   type AuditParticipation,
@@ -140,18 +141,25 @@ export function auditScopeKey(snapshot: AuditSnapshot): string {
 }
 
 /**
- * What a configuration means, for telling whether two are the same one. Semantics 3 reads a
- * configuration of semantics 2 as it was, as long as the latter has no rule that only 3 reads another
- * way (accepting `nofollow` hung off the expectation then), so the upgrade does not make every crawl
- * before it incomparable with the ones after.
+ * What a configuration means, for telling whether two are the same one. Each newer meaning reads a
+ * configuration of the one before as it was, as long as it has no rule that the newer one reads
+ * another way, so that an upgrade does not make every crawl before it incomparable with the ones
+ * after:
+ * - 3 reads 2 the same unless a rule accepts `nofollow` through the expectation;
+ * - 4 reads 3 the same unless a rule accepts a state that other URLs point at (`reachesRelations`).
  */
 function meaningOf(snapshot: AuditSnapshot): number {
-  const semantics = semanticsOf(snapshot)
-  if (semantics !== 2) return semantics
-  const legacy = snapshot.rules.some(
-    (rule) => rule.dimension === 'intent' && (rule.acceptNofollow || rule.value === 'inherit'),
-  )
-  return legacy ? 2 : 3
+  let meaning = semanticsOf(snapshot)
+  if (
+    meaning === 2 &&
+    !snapshot.rules.some(
+      (rule) => rule.dimension === 'intent' && (rule.acceptNofollow || rule.value === 'inherit'),
+    )
+  ) {
+    meaning = 3
+  }
+  if (meaning === 3 && !snapshot.rules.some(reachesRelations)) meaning = 4
+  return meaning
 }
 
 /**

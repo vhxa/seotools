@@ -261,8 +261,13 @@ export interface CrawlPageData {
   truncated?: boolean
   /** Only pages parsed since these checks exist have them. */
   facts?: CrawlPageFacts
-  /** On a sitemap: what it holds, to compare with the limits of the protocol. */
-  sitemapSize?: { entries: number; bytes: number }
+  /**
+   * On a sitemap: what it holds, to compare with the limits of the protocol. `references` counts the
+   * alternates, images and videos it names without listing them, and is only there when the crawl
+   * kept the origin of each URL it found in the file: the links of a sitemap parsed before that are
+   * all of the `sitemap` type, whether the URL was listed or only referenced.
+   */
+  sitemapSize?: { entries: number; bytes: number; references?: number }
 }
 
 /** robots.txt as served to the crawler, per origin. It is audit data: nothing is skipped for it. */

@@ -138,9 +138,17 @@ export function analyseResponse(input: {
         const text = decodeSitemapBody(body)
         sitemap = parseSitemap(text, item.url)
         if (sitemap.format !== null) {
-          data.sitemapSize = { entries: sitemap.entries, bytes: Buffer.byteLength(text) }
+          // `references` also says that the links below tell a listing from a mention.
+          data.sitemapSize = {
+            entries: sitemap.entries,
+            bytes: Buffer.byteLength(text),
+            references: sitemap.references.length,
+          }
         }
+        // Listed: the only links of the `sitemap` type that put a URL in a sitemap. The rest is still
+        // requested (it is part of the site), under the type that says what the sitemap did with it.
         for (const url of sitemap.urls) fromHere(url, 'sitemap', 'sitemap')
+        for (const { url, kind } of sitemap.references) fromHere(url, kind, 'sitemap')
         for (const url of sitemap.sitemaps) fromHere(url, 'sitemap', 'sitemap-file')
       } catch (error) {
         log.warn({ url: item.url, err: error }, 'could not read sitemap')

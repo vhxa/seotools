@@ -302,11 +302,19 @@ describe('conditions inherited one at a time', () => {
 })
 
 describe('what an allowed condition leaves alone', () => {
-  it('does not hide a conflict of directives, or the other pages that point at a noindex', async () => {
+  it('does not hide a conflict of directives', async () => {
+    await addRules([asking(exactPath('/a'), 'noindex', 'allowed')])
+    const id = await crawl(website({ '/a': page('/a', { head: meta('noindex, index') }) }))
+    const own = await findings(id, '/a')
+    expect(own).not.toContain('noindex')
+    expect(own).toContain('directives-conflict')
+  })
+
+  it('does not tell the pages that point at it about the noindex it allows', async () => {
     await addRules([asking(exactPath('/a'), 'noindex', 'allowed')])
     const id = await crawl(
       website({
-        '/a': page('/a', { head: meta('noindex, index') }),
+        '/a': page('/a', { head: meta('noindex') }),
         '/b': page('/b', {
           links: `<a href="/">Back</a><a href="/a">A</a>`,
           head: `<link rel="alternate" hreflang="es" href="${SITE}/a"><link rel="alternate" hreflang="en" href="${SITE}/b">`,
@@ -314,13 +322,12 @@ describe('what an allowed condition leaves alone', () => {
         '/c': page('/c', { canonical: `${SITE}/a` }),
       }),
     )
-    const own = await findings(id, '/a')
-    expect(own).not.toContain('noindex')
-    expect(own).toContain('directives-conflict')
-    // What other pages say about it is theirs: a canonical to a page that cannot be indexed, an
-    // hreflang pointing at a noindex.
-    expect(await findings(id, '/c')).toContain('canonical-not-indexable')
-    expect(await findings(id, '/b')).toContain('hreflang-noindex')
+    // A canonical or an hreflang to a page whose noindex was accepted is not a finding of its own.
+    expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
+    expect(await findings(id, '/b')).not.toContain('hreflang-noindex')
+    // The noindex is as expected, but the relations are still the pages' own: /c is canonicalised.
+    expect(await findings(id, '/c')).toContain('canonicalised')
+    expect(await stateOf(id, '/a')).toMatchObject({ blockers: ['noindex'] })
   })
 
   it('does not hide a robots.txt block that is allowed from what the page says', async () => {

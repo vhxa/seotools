@@ -801,7 +801,7 @@
     },
     "canonical-not-indexable": {
       "name": "Apunta a URL no indexable",
-      "description": "El canonical lleva a una URL que redirige, da error o tiene noindex."
+      "description": "El canonical lleva a una URL que redirige, da error, tiene noindex, está bloqueada por robots.txt o canonicaliza a otra, según los bloqueos indicados. No se señala cuando has declarado como esperado cada uno de ellos para esa URL, ni cuando esta página se espera fuera del índice; una redirección o un error siempre se señalan."
     },
     "canonical-fragment": {
       "name": "Contiene fragmento",
@@ -829,7 +829,7 @@
     },
     "sitemap-not-indexable": {
       "name": "URL no indexable en el sitemap",
-      "description": "El sitemap lista una URL que redirige, da error, tiene noindex o canonicaliza a otra. Solo deberían estar las indexables."
+      "description": "Un sitemap lista esta URL (su '<loc>') y algo impide indexarla, según los bloqueos indicados. Una alternativa (hreflang), imagen o vídeo que una entrada solo nombra no cuenta como listado. Un crawl anterior a que se registrara esto no puede saberlo, y no cuenta como listada una URL que un sitemap declaró como alternativa."
     },
     "indexed-not-in-sitemap": {
       "name": "URL indexada fuera del sitemap",
@@ -849,7 +849,7 @@
     },
     "hreflang-no-return": {
       "name": "Falta enlace de retorno",
-      "description": "La página a la que apunta el hreflang no la enlaza de vuelta. Sin retorno, los buscadores ignoran la anotación."
+      "description": "La página a la que apunta el hreflang no la enlaza de vuelta. Sin retorno, los buscadores ignoran la anotación. No se señala cuando alguna de las dos páginas se espera fuera del índice: sus anotaciones no se leen."
     },
     "hreflang-invalid-code": {
       "name": "Código de idioma o región inválido",
@@ -861,11 +861,11 @@
     },
     "hreflang-non-canonical": {
       "name": "Retorno a URL no canónica",
-      "description": "Un hreflang apunta a una URL cuyo canonical lleva a otra."
+      "description": "Un hreflang apunta a una URL cuyo canonical lleva a otra. No se señala cuando se espera que esa URL no sea indexable, ni cuando esta página se espera fuera del índice."
     },
     "hreflang-noindex": {
       "name": "Retorno a URL con noindex",
-      "description": "Un hreflang apunta a una URL con noindex."
+      "description": "Un hreflang apunta a una URL con noindex. No se señala cuando exiges o permites ese noindex (o esperas que la URL no sea indexable), ni cuando esta página se espera fuera del índice."
     },
     "hreflang-same-language": {
       "name": "Varias entradas para el mismo idioma",
@@ -1009,11 +1009,11 @@
     },
     "only-nofollow-inlinks": {
       "name": "Solo recibe enlaces nofollow",
-      "description": "Todos los enlaces que llegan a esta página son nofollow."
+      "description": "Todos los enlaces que llegan a esta página son nofollow. No se señala en una página que se espera fuera del índice."
     },
     "only-noindex-inlinks": {
       "name": "Solo enlazada desde páginas no indexables",
-      "description": "Todos los enlaces que llegan a esta página salen de páginas que no se indexarán."
+      "description": "Todos los enlaces que llegan a esta página salen de páginas que no se indexarán. No se señala en una página que se espera fuera del índice."
     },
     "orphan-in-sitemap": {
       "name": "URL huérfana (solo está en el sitemap)",
@@ -1828,7 +1828,7 @@
         "met": "El crawl vio lo que pide la regla.",
         "unmet": "El crawl vio lo contrario de lo que pide la regla.",
         "allowed": "La regla lo acepta en ambos casos.",
-        "unknown": "El crawl no pudo saberlo: la página no se leyó entera, o un archivo del que depende no respondió."
+        "unknown": "El crawl no pudo saberlo: la página no se leyó entera, un archivo del que depende no respondió, o un sitemap anterior a que el crawl registrara qué listaba solo nombra la URL."
       }
     }
   },
@@ -2291,8 +2291,8 @@
         "label": "Noindex",
         "default": "Por defecto, una página que declara noindex genera un hallazgo.",
         "help": {
-          "required": "Se genera un hallazgo cuando la página no declara noindex.",
-          "allowed": "La página puede declarar noindex o no: no hay hallazgo por el noindex en ningún caso.",
+          "required": "Se genera un hallazgo cuando la página no declara noindex. Las páginas que apuntan a ella (canonical, hreflang) no reciben aviso por ese noindex.",
+          "allowed": "La página puede declarar noindex o no: no hay hallazgo por el noindex en ningún caso, y las páginas que apuntan a ella (canonical, hreflang) no reciben aviso por él.",
           "forbidden": "Se genera un hallazgo cuando la página declara noindex."
         }
       },
@@ -2309,8 +2309,8 @@
         "label": "Bloqueada por robots.txt",
         "default": "Por defecto, una URL bloqueada por robots.txt genera un hallazgo.",
         "help": {
-          "required": "Se genera un hallazgo cuando robots.txt no bloquea la URL. Un bloqueo solo impide que los rastreadores la lean: no la saca del índice de un buscador.",
-          "allowed": "La URL puede estar bloqueada por robots.txt o no: no hay hallazgo por el bloqueo en ningún caso.",
+          "required": "Se genera un hallazgo cuando robots.txt no bloquea la URL. Un bloqueo solo impide que los rastreadores la lean: no la saca del índice de un buscador. Los canonical que llevan a ella no reciben aviso por el bloqueo.",
+          "allowed": "La URL puede estar bloqueada por robots.txt o no: no hay hallazgo por el bloqueo en ningún caso, y los canonical que llevan a ella no reciben aviso por él.",
           "forbidden": "Se genera un hallazgo cuando robots.txt bloquea la URL."
         }
       },
@@ -2318,7 +2318,7 @@
         "label": "Incluida en un sitemap",
         "default": "Por defecto, una página indexable que ningún sitemap incluye genera un aviso de baja prioridad.",
         "help": {
-          "required": "Se genera un hallazgo cuando ningún sitemap incluye la URL. Necesita un crawl completo: una nueva comprobación de algunas URLs no puede saberlo.",
+          "required": "Se genera un hallazgo cuando ningún sitemap incluye la URL (una alternativa o imagen que una entrada solo nombra no cuenta como listado). Necesita un crawl completo: una nueva comprobación de algunas URLs no puede saberlo.",
           "allowed": "La URL puede estar en un sitemap o no: no hay hallazgo por su ausencia. Una URL incluida que no puede indexarse se sigue señalando.",
           "forbidden": "Se genera un hallazgo cuando un sitemap incluye la URL."
         }
@@ -2335,7 +2335,7 @@
       "help": {
         "default": "Salvo que una regla diga otra cosa, se espera que toda página sea indexable.",
         "indexable": "Se comprueba en el crawl qué impide indexar la URL.",
-        "not-indexable": "Un noindex está bien; ser indexable no. No es lo mismo que exigir un noindex."
+        "not-indexable": "Un noindex está bien; ser indexable no. No es lo mismo que exigir un noindex. Las páginas que apuntan a ella no reciben aviso por su noindex ni por un canonical a otra URL; un bloqueo de robots.txt se sigue señalando."
       }
     }
   }

@@ -1,5 +1,6 @@
 import {
   AUDIT_LIMITS,
+  AUDIT_SEMANTICS,
   DEFAULT_CRAWL_SETTINGS,
   EMPTY_AUDIT_SNAPSHOT,
   JOB_TYPES,
@@ -3072,7 +3073,7 @@ export function describeDatabaseContract(
             expect(config.rules.map((r) => r.dimension).sort()).toEqual(['audit', 'intent'])
             expect(config.version).toBe(before + 1)
             expect(await recomputeJobs()).toHaveLength(1)
-            expect(await db.settings.get(SETTING)).toMatchObject({ value: '3' })
+            expect(await db.settings.get(SETTING)).toMatchObject({ value: String(AUDIT_SEMANTICS) })
           })
 
           it('moves the version of a domain with a crawl and no rules, and leaves the others alone', async () => {
@@ -3174,7 +3175,7 @@ export function describeDatabaseContract(
             expect(config.rules.filter((r) => r.dimension === 'audit')).toHaveLength(1)
             expect(config.version).toBe(before + 1)
             expect(await recomputeJobs()).toHaveLength(1)
-            expect(await db.settings.get(SETTING)).toMatchObject({ value: '3' })
+            expect(await db.settings.get(SETTING)).toMatchObject({ value: String(AUDIT_SEMANTICS) })
           })
 
           it('reads the same for the URLs that were covered, whichever rule decided them', async () => {
@@ -3217,7 +3218,8 @@ export function describeDatabaseContract(
           it('leaves a domain without an accepted nofollow, and its crawl, as they are', async () => {
             const domainId = await domain()
             await finishedCrawl(domainId)
-            await db.audit.saveRule({ domainId, rule: rule('intent', 'not-indexable', '/cart') })
+            // Nothing here is read another way by the meaning after this one either.
+            await db.audit.saveRule({ domainId, rule: rule('intent', 'indexable', '/cart') })
             await db.audit.saveRule({ domainId, rule: rule('audit', 'exclude', '/old') })
             const before = await db.audit.config(domainId)
             await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
@@ -3229,7 +3231,7 @@ export function describeDatabaseContract(
               before.rules.map((r) => r.id).sort(),
             )
             expect(await recomputeJobs()).toHaveLength(0)
-            expect(await db.settings.get(SETTING)).toMatchObject({ value: '3' })
+            expect(await db.settings.get(SETTING)).toMatchObject({ value: String(AUDIT_SEMANTICS) })
           })
 
           it('leaves a domain with a crawl and no rules alone', async () => {
@@ -3327,6 +3329,147 @@ export function describeDatabaseContract(
             expect(await nofollowRules(domainId)).toEqual([
               { path: '/cart', value: 'allowed', enabled: true, reason: null },
             ])
+          })
+        })
+
+        describe('moving from the third semantics', () => {
+          const SETTING = 'audit.semantics'
+          const asThird = () => db.settings.set(SETTING, '3', false)
+          const idsOf = async (domainId: string) =>
+            (await db.audit.config(domainId)).rules.map((r) => r.id).sort()
+
+          it.each([
+            ['a required noindex', () => rule('noindex', 'required', '/es')],
+            ['an allowed noindex', () => rule('noindex', 'allowed', '/es')],
+            ['a required robots block', () => rule('robots', 'required', '/es')],
+            ['an allowed robots block', () => rule('robots', 'allowed', '/es')],
+            ['an expectation of not being indexable', () => rule('intent', 'not-indexable', '/es')],
+          ])('analyses a domain with %s again, and writes no rule', async (_, makeRule) => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            await db.audit.saveRule({ domainId, rule: makeRule() as never })
+            const before = await db.audit.config(domainId)
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+
+            await asThird()
+            await db.migrate()
+
+            const after = await db.audit.config(domainId)
+            // The rules are the ones the user wrote; what they accept is what changed.
+            expect(await idsOf(domainId)).toEqual(before.rules.map((r) => r.id).sort())
+            expect(after.rules).toEqual(before.rules)
+            expect(after.version).toBe(before.version + 1)
+            expect(await recomputeJobs()).toHaveLength(1)
+            expect(await db.settings.get(SETTING)).toMatchObject({
+              value: String(AUDIT_SEMANTICS),
+            })
+          })
+
+          it('leaves a domain whose rules read the same alone, with its crawl', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            for (const statement of [
+              rule('audit', 'exclude', '/old'),
+              rule('intent', 'indexable', '/blog'),
+              rule('noindex', 'forbidden', '/blog'),
+              rule('nofollow', 'allowed', '/blog'),
+              rule('robots', 'forbidden', '/blog'),
+              rule('sitemap', 'required', '/blog'),
+            ]) {
+              await db.audit.saveRule({ domainId, rule: statement as never })
+            }
+            const before = await db.audit.config(domainId)
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+
+            await asThird()
+            await db.migrate()
+
+            expect((await db.audit.config(domainId)).version).toBe(before.version)
+            expect(await recomputeJobs()).toHaveLength(0)
+            expect(await db.settings.get(SETTING)).toMatchObject({ value: String(AUDIT_SEMANTICS) })
+          })
+
+          it('leaves a domain with a crawl and no rules alone', async () => {
+            const withCrawl = await domain('acme.com')
+            await finishedCrawl(withCrawl)
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+            await asThird()
+            await db.migrate()
+            expect((await db.audit.config(withCrawl)).version).toBe(0)
+            expect(await recomputeJobs()).toHaveLength(0)
+          })
+
+          it('does not count a rule that is switched off: it accepts nothing', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            await db.audit.saveRule({
+              domainId,
+              rule: rule('noindex', 'allowed', '/es', { enabled: false }) as never,
+            })
+            const before = (await db.audit.config(domainId)).version
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+            await asThird()
+            await db.migrate()
+            expect((await db.audit.config(domainId)).version).toBe(before)
+            expect(await recomputeJobs()).toHaveLength(0)
+          })
+
+          it('happens once: the marker keeps later migrations from moving the version again', async () => {
+            const domainId = await domain()
+            await db.audit.saveRule({ domainId, rule: rule('noindex', 'allowed', '/es') as never })
+            await asThird()
+            await db.migrate()
+            const version = (await db.audit.config(domainId)).version
+            await db.migrate()
+            await db.migrate()
+            expect((await db.audit.config(domainId)).version).toBe(version)
+          })
+
+          it('moves the version once when the second upgrade and this one both apply', async () => {
+            const domainId = await domain()
+            const accepting = await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'not-indexable', '/cart'),
+            })
+            await db.audit.saveRule({ domainId, rule: rule('noindex', 'allowed', '/es') as never })
+            await legacy.acceptNofollow(accepting.ok ? accepting.rule!.id : '', true)
+            const before = (await db.audit.config(domainId)).version
+            await db.settings.set(SETTING, '2', false)
+            await db.migrate()
+            expect((await db.audit.config(domainId)).version).toBe(before + 1)
+          })
+
+          it('does not rewrite what an analysis made before it concluded or used', async () => {
+            const domainId = await domain()
+            const crawl = await finishedCrawl(domainId)
+            const allowing = (await db.audit.saveRule({
+              domainId,
+              rule: rule('noindex', 'allowed', '/es') as never,
+            })) as { ok: true; rule?: { id: string } }
+            await saveIssues({
+              crawlId: crawl.id,
+              issues: [],
+              pages: { issue: 0, warning: 0, opportunity: 0 },
+              withType: { issue: 0, warning: 0, opportunity: 0 },
+              catalog: 'v1',
+              audit: {
+                snapshot: {
+                  version: 1,
+                  semantics: 3,
+                  rules: [
+                    (await db.audit.config(domainId)).rules.find(
+                      (r) => r.id === allowing.rule?.id,
+                    )!,
+                  ],
+                },
+              },
+            })
+            await asThird()
+            await db.migrate()
+            // The analysis keeps the meaning it was made with: today's rules do not reach it.
+            const stored = (await db.crawls.get(crawl.id))!
+            expect(stored.auditSnapshot?.semantics).toBe(3)
+            expect(stored.auditVersion).toBe(1)
           })
         })
 

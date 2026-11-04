@@ -357,9 +357,25 @@ export function parseLinkHeader(value: string, base: string): ParsedLinkHeader {
   return parsed
 }
 
+/**
+ * A URL a sitemap names without listing it: the alternate of an entry (`xhtml:link`), or an image or
+ * a video attached to it. Listing is what a `<loc>` does; these only hang off an entry.
+ */
+export interface SitemapReference {
+  url: string
+  /** `hreflang` for an alternate declaring a language, `image`, `media` for a video, else `other`. */
+  kind: 'hreflang' | 'image' | 'media' | 'other'
+}
+
 export interface ParsedSitemap {
-  /** URLs of the site listed in the sitemap, including images, videos and hreflang alternates. */
+  /**
+   * The URLs the sitemap lists: the `<loc>` of each `<url>`, or each line of a plain-text sitemap.
+   * Nothing else is a listing. A URL that is only an alternate or an attachment of another entry is
+   * in `references`, not here.
+   */
   urls: string[]
+  /** What entries point at without listing it. Still requested by the crawler, never "in the sitemap". */
+  references: SitemapReference[]
   /** Further sitemaps, from a sitemap index. */
   sitemaps: string[]
   /** `null`: this is not a sitemap, whatever else it may be. */
@@ -379,12 +395,18 @@ function newestDate(current: string | null, candidate: string): string | null {
   return current !== null && Date.parse(current) >= time ? current : new Date(time).toISOString()
 }
 
-const SITEMAP_ENTRY_LOCS = new Set(['image:loc', 'video:content_loc', 'video:player_loc'])
+/** The elements that attach a URL to an entry of a sitemap, and what each one attaches. */
+const SITEMAP_ATTACHMENTS = new Map<string, SitemapReference['kind']>([
+  ['image:loc', 'image'],
+  ['video:content_loc', 'media'],
+  ['video:player_loc', 'media'],
+])
 
 /** Parses an XML sitemap or sitemap index, or a plain-text sitemap (one URL per line). */
 export function parseSitemap(content: string, base: string): ParsedSitemap {
   const parsed: ParsedSitemap = {
     urls: [],
+    references: [],
     sitemaps: [],
     format: null,
     entries: 0,
@@ -421,9 +443,12 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
         stack.push(name)
         text = ''
         if (name === 'xhtml:link' && attributes.href) {
-          push(parsed.urls, attributes.href)
           const url = normalizeCrawlUrl(attributes.href, base)
-          if (url && attributes.hreflang) alternates.push({ lang: attributes.hreflang, url })
+          if (url) {
+            // An alternate is declared by an entry; it is not an entry. Listing it takes its own `<url>`.
+            parsed.references.push({ url, kind: attributes.hreflang ? 'hreflang' : 'other' })
+            if (attributes.hreflang) alternates.push({ lang: attributes.hreflang, url })
+          }
         }
       },
       ontext(chunk) {
@@ -443,8 +468,10 @@ export function parseSitemap(content: string, base: string): ParsedSitemap {
         }
         if (name === 'loc' && parent === 'sitemap') push(parsed.sitemaps, text)
         else if (name === 'loc' && parent === 'url') push(parsed.urls, text)
-        else if (SITEMAP_ENTRY_LOCS.has(name)) push(parsed.urls, text)
-        else if (name === 'lastmod' && (parent === 'url' || parent === 'sitemap')) {
+        else if (SITEMAP_ATTACHMENTS.has(name)) {
+          const url = normalizeCrawlUrl(text, base)
+          if (url) parsed.references.push({ url, kind: SITEMAP_ATTACHMENTS.get(name)! })
+        } else if (name === 'lastmod' && (parent === 'url' || parent === 'sitemap')) {
           parsed.lastModified = newestDate(parsed.lastModified, text)
         } else if (
           (name === 'url' && parent === 'urlset') ||
