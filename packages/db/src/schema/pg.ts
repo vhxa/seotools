@@ -382,8 +382,14 @@ export const auditRules = pgTable(
     domainId: text('domain_id')
       .notNull()
       .references(() => domains.id, { onDelete: 'cascade' }),
-    dimension: text('dimension', { enum: ['audit', 'intent'] }).notNull(),
-    /** `exclude` or `include` for `audit`; `none`, `indexable` or `not-indexable` for `intent`. */
+    dimension: text('dimension', {
+      enum: ['audit', 'intent', 'noindex', 'nofollow', 'robots', 'sitemap'],
+    }).notNull(),
+    /**
+     * `exclude` or `include` for `audit`; `indexable` or `not-indexable` for `intent` (`none` and
+     * `inherit` only in rules from before semantics 3); `required`, `allowed` or `forbidden` for a
+     * condition (`noindex`, `nofollow`, `robots`, `sitemap`).
+     */
     value: text('value').notNull(),
     selectorKind: text('selector_kind', { enum: ['url', 'path', 'prefix'] }).notNull(),
     /** The normalized URL, or the path. */
@@ -395,7 +401,7 @@ export const auditRules = pgTable(
     scope: text('scope', { enum: ['literal', 'shared'] })
       .notNull()
       .default('literal'),
-    /** Intent rules only: the page's own `nofollow` is accepted as intended. */
+    /** Retired with semantics 3 (a `nofollow` condition rule is `allowed`): always `false` in new rules. */
     acceptNofollow: boolean('accept_nofollow').notNull().default(false),
     /** Hash of `selectorKey`: two selectors with the same one are the same selector. */
     selectorHash: text('selector_hash').notNull(),
@@ -429,8 +435,27 @@ export const crawlUrlAudit = pgTable(
     participationRule: text('participation_rule'),
     intent: text('intent', { enum: ['none', 'indexable', 'not-indexable'] }).notNull(),
     intentRule: text('intent_rule'),
-    /** The page's own `nofollow` was accepted, by the rule that decided the intent. */
+    /** Retired with semantics 3 (the `nofollow` condition is `allowed`): only analyses of semantics 2 have it. */
     acceptNofollow: boolean('accept_nofollow').notNull().default(false),
+    /**
+     * What rules asked of each condition of the URL (`AUDIT_CONDITIONS` in @seotools/core), the rule that
+     * did, and what the crawl saw. Only the conditions a rule stated have a value: `null` is the default.
+     * An analysis before conditions has none; its accepted `nofollow` is `accept_nofollow` above.
+     */
+    noindexRequirement: text('noindex_requirement', { enum: ['required', 'allowed', 'forbidden'] }),
+    noindexRule: text('noindex_rule'),
+    noindexObserved: text('noindex_observed', { enum: ['present', 'absent', 'unknown'] }),
+    nofollowRequirement: text('nofollow_requirement', {
+      enum: ['required', 'allowed', 'forbidden'],
+    }),
+    nofollowRule: text('nofollow_rule'),
+    nofollowObserved: text('nofollow_observed', { enum: ['present', 'absent', 'unknown'] }),
+    robotsRequirement: text('robots_requirement', { enum: ['required', 'allowed', 'forbidden'] }),
+    robotsRule: text('robots_rule'),
+    robotsObserved: text('robots_observed', { enum: ['present', 'absent', 'unknown'] }),
+    sitemapRequirement: text('sitemap_requirement', { enum: ['required', 'allowed', 'forbidden'] }),
+    sitemapRule: text('sitemap_rule'),
+    sitemapObserved: text('sitemap_observed', { enum: ['present', 'absent', 'unknown'] }),
     /** What the crawl saw, whatever was expected and whether or not it was audited. */
     indexability: text('indexability', {
       enum: ['indexable', 'not-indexable', 'unknown'],

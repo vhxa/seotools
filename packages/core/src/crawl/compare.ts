@@ -133,10 +133,25 @@ export function auditScopeKey(snapshot: AuditSnapshot): string {
     )
     .sort()
   return JSON.stringify({
-    semantics: semanticsOf(snapshot),
+    semantics: meaningOf(snapshot),
     languages: canonicalLanguages(snapshot.languages ?? NO_LANGUAGES),
     rules,
   })
+}
+
+/**
+ * What a configuration means, for telling whether two are the same one. Semantics 3 reads a
+ * configuration of semantics 2 as it was, as long as the latter has no rule that only 3 reads another
+ * way (accepting `nofollow` hung off the expectation then), so the upgrade does not make every crawl
+ * before it incomparable with the ones after.
+ */
+function meaningOf(snapshot: AuditSnapshot): number {
+  const semantics = semanticsOf(snapshot)
+  if (semantics !== 2) return semantics
+  const legacy = snapshot.rules.some(
+    (rule) => rule.dimension === 'intent' && (rule.acceptNofollow || rule.value === 'inherit'),
+  )
+  return legacy ? 2 : 3
 }
 
 /**
@@ -292,6 +307,9 @@ const PAGE_LOCAL_LIST = [
   'directives-conflict-snippets',
   'noindex',
   'nofollow',
+  // Required directives: the page's own answer, and the conditions its rules state (compared too).
+  'noindex-required-missing',
+  'nofollow-required-missing',
   'nosnippet',
   'max-snippet-limited',
   'noimageindex',
@@ -376,7 +394,8 @@ export interface UrlEvidence {
   /** `null`: the analysis did not keep it. */
   participation: AuditParticipation | null
   intent: RecordedIntent | null
-  acceptNofollow: boolean
+  /** The conditions rules stated for it (`conditionsKey`), which decide findings of their own. */
+  conditions: string
   /** Ids of the issues reported for it. */
   issues: ReadonlySet<string>
 }
@@ -391,7 +410,7 @@ export interface Evidence {
 interface Basis {
   catalog: string | null
   intent: string
-  acceptNofollow: boolean
+  conditions: string
   scope: string | null
 }
 
@@ -420,7 +439,7 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
     basis: {
       catalog: crawl.catalog,
       intent: url.intent ?? 'unknown',
-      acceptNofollow: url.acceptNofollow,
+      conditions: url.conditions,
       scope: crawl.scope,
     },
   }
@@ -429,9 +448,9 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
 /** Why two observations cannot be set against each other, or `null` when they can. */
 function incomparable(issue: string, a: Basis, b: Basis): UnknownReason | null {
   if (a.catalog === null || b.catalog === null || a.catalog !== b.catalog) return 'catalog'
-  // What the URL is expected to be, and whether its own `nofollow` is accepted, change which findings
-  // it keeps (`applyAuditPolicy`).
-  if (a.intent !== b.intent || a.acceptNofollow !== b.acceptNofollow) return 'audit'
+  // What the URL is expected to be, and what rules ask of its conditions, change which findings it
+  // keeps and which it raises (`applyAuditPolicy`).
+  if (a.intent !== b.intent || a.conditions !== b.conditions) return 'audit'
   if (!isPageLocalIssue(issue) && (a.scope === null || a.scope !== b.scope)) return 'audit'
   return null
 }

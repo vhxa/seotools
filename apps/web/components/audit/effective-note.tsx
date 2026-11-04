@@ -1,3 +1,4 @@
+import type { AuditCondition } from '@seotools/core/crawl/audit'
 import { useTranslations } from 'next-intl'
 import { useSelectorText } from '@/components/audit/selector-label'
 import type { AuditOutcome, RuleSummary } from '@/lib/audit-rules'
@@ -5,20 +6,21 @@ import type { AuditOutcome, RuleSummary } from '@/lib/audit-rules'
 /**
  * What a URL is, as a sentence, and which rule (or exception) says so. Always the effective result,
  * never a guess from a choice: choosing "according to the rules" shows what the rules give, not a
- * copy of what the URL has. `nofollow` names its own origin, since an exception can say only that.
+ * copy of what the URL has. A condition names its own origin, since each is decided on its own.
  */
 export function EffectiveNote({
   kind,
   outcome,
   prefix,
 }: {
-  kind: 'audit' | 'intent' | 'nofollow'
+  kind: 'audit' | 'intent' | AuditCondition
   outcome: AuditOutcome
   /** Introduces the sentence: when it is what the URL is now, or what it will be after saving. */
   prefix?: 'now' | 'afterSave'
 }) {
   const t = useTranslations('AuditState.effective')
   const tDialog = useTranslations('AuditDialog.state')
+  const tRequirement = useTranslations('AuditStatements.requirement')
   const text = useSelectorText()
   const named = (rule: RuleSummary | null) => (rule && !rule.exception ? text(rule.selector) : '')
   let message: string
@@ -39,14 +41,13 @@ export function EffectiveNote({
         ? t(`intent.${key}ByException`)
         : t(`intent.${key}ByRule`, { rule: named(rule) })
   } else {
-    const { acceptRule: rule, acceptNofollow: accepted } = outcome.intent
-    message = !rule
-      ? t('nofollow.default')
-      : rule.exception
-        ? t(accepted ? 'nofollow.acceptedByException' : 'nofollow.notAcceptedByException')
-        : t(accepted ? 'nofollow.acceptedByRule' : 'nofollow.notAcceptedByRule', {
-            rule: named(rule),
-          })
+    const { rule, requirement } = outcome.conditions[kind]
+    message =
+      !rule || !requirement
+        ? t(`condition.default.${kind}`)
+        : rule.exception
+          ? t('condition.byException', { requirement: tRequirement(requirement) })
+          : t('condition.byRule', { requirement: tRequirement(requirement), rule: named(rule) })
   }
   return (
     <p className="text-xs text-muted-foreground">

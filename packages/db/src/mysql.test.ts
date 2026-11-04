@@ -12,6 +12,20 @@ describeDatabaseContract(
     const conn = await mysql.createConnection(url!)
     return {
       db,
+      legacy: {
+        urlAcceptedNofollow: async (crawlId: string, urlHash: string) => {
+          await conn.query(
+            'update crawl_url_audit set accept_nofollow = 1 where crawl_id = ? and url_hash = ?',
+            [crawlId, urlHash],
+          )
+        },
+        acceptNofollow: async (ruleId: string, accept: boolean) => {
+          await conn.query('update audit_rules set accept_nofollow = ? where id = ?', [
+            accept ? 1 : 0,
+            ruleId,
+          ])
+        },
+      },
       reset: async () => {
         for (const table of [
           'jobs',

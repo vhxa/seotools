@@ -17,7 +17,7 @@ describe('the catalog', () => {
     // An id repeated across categories would be lost in `PAGE_ISSUES`.
     expect(new Set(listed).size).toBe(listed.length)
     expect([...listed].sort()).toEqual([...PAGE_ISSUE_IDS].sort())
-    expect(listed).toHaveLength(104)
+    expect(listed).toHaveLength(109)
   })
 
   it('knows the category of each issue', () => {
@@ -63,6 +63,11 @@ describe('the catalog', () => {
     expect(issuesOfCategory('indexing-intent')).toEqual([
       'expected-indexable-blocked',
       'expected-not-indexable-but-indexable',
+      'noindex-required-missing',
+      'nofollow-required-missing',
+      'robots-block-required-missing',
+      'sitemap-required-missing',
+      'sitemap-forbidden-present',
     ])
     for (const id of issuesOfCategory('indexing-intent')) {
       expect(PAGE_ISSUES[id]).toMatchObject({ type: 'issue', importance: 'high' })

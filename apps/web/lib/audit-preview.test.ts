@@ -5,7 +5,7 @@ import {
   type LanguageConfig,
   type NewAuditRule,
 } from '@seotools/core'
-import { createCompany } from '@seotools/db'
+import { createCompany, type RuleStatements } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { previewRule } from './audit-preview'
@@ -76,25 +76,57 @@ async function crawlOf(urls: string[]) {
   return (await db.crawls.get(crawl.id))!
 }
 
-const preview = async (
-  candidate: NewAuditRule,
+/** What a rule of one statement says, as the editor sends it. */
+const statementsOf = (rule: NewAuditRule): RuleStatements => {
+  if (rule.dimension === 'audit') return { audit: rule.value }
+  if (rule.dimension === 'intent') return { intent: rule.value as 'indexable' | 'not-indexable' }
+  return { conditions: { [rule.dimension]: rule.value } }
+}
+
+const previewSet = async (
+  candidate: {
+    selector: NewAuditRule['selector']
+    statements: RuleStatements
+    reason?: string | null
+    enabled?: boolean
+  },
   options: {
     crawl?: Awaited<ReturnType<typeof crawlOf>> | null
+    /** The id of a row of the rule being edited. */
     replacing?: string | null
     languages?: LanguageConfig
   } = {},
 ) => {
   const config = await db.audit.config(domainId)
+  const editing = options.replacing
+    ? (config.rules.find((row) => row.id === options.replacing)?.selector ?? null)
+    : null
   return previewRule({
     db,
     host: 'acme.com',
     crawl: options.crawl === undefined ? null : options.crawl,
     rules: config.rules,
     languages: options.languages ?? config.languages,
-    replacing: options.replacing ?? null,
-    candidate,
+    editing,
+    candidate: {
+      selector: candidate.selector,
+      statements: candidate.statements,
+      reason: candidate.reason ?? null,
+      enabled: candidate.enabled ?? true,
+    },
   })
 }
+
+const preview = (candidate: NewAuditRule, options: Parameters<typeof previewSet>[1] = {}) =>
+  previewSet(
+    {
+      selector: candidate.selector,
+      statements: statementsOf(candidate),
+      reason: candidate.reason,
+      enabled: candidate.enabled,
+    },
+    options,
+  )
 
 describe('previewing a rule', () => {
   it('says it cannot be worked out when no crawl has results, without refusing the rule', async () => {
@@ -311,14 +343,23 @@ describe('previewing a rule shared between languages', () => {
 
   it('says how many results would really change, not only how many it decides', async () => {
     const crawl = await crawled()
-    const intent = (
-      value: 'indexable' | 'not-indexable',
-      acceptNofollow = false,
-    ): NewAuditRule => ({
+    const selector = {
+      kind: 'prefix',
+      path: '/cart',
+      query: { mode: 'any' },
+      scope: 'shared',
+    } as const
+    const intent = (value: 'indexable' | 'not-indexable'): NewAuditRule => ({
       dimension: 'intent',
       value,
-      selector: { kind: 'prefix', path: '/cart', query: { mode: 'any' }, scope: 'shared' },
-      acceptNofollow,
+      selector,
+      reason: null,
+      enabled: true,
+    })
+    const nofollow = (value: 'required' | 'allowed' | 'forbidden'): NewAuditRule => ({
+      dimension: 'nofollow',
+      value,
+      selector,
       reason: null,
       enabled: true,
     })
@@ -328,8 +369,17 @@ describe('previewing a rule shared between languages', () => {
       decides: 4,
       changes: 0,
     })
-    // …unless it also accepts nofollow, which is a different result.
-    expect(await preview(intent('indexable', true), { crawl, languages: LANGS })).toMatchObject({
+    // …unless it also allows nofollow, which is a different result.
+    expect(
+      await previewSet(
+        {
+          selector,
+          statements: { intent: 'indexable', conditions: { nofollow: 'allowed' } },
+        },
+        { crawl, languages: LANGS },
+      ),
+    ).toMatchObject({ decides: 4, changes: 4 })
+    expect(await preview(nofollow('allowed'), { crawl, languages: LANGS })).toMatchObject({
       decides: 4,
       changes: 4,
     })
@@ -359,5 +409,119 @@ describe('previewing a rule shared between languages', () => {
     )
     expect(excluded.sort()).toEqual([...found.matchSamples].sort())
     expect(excluded).toHaveLength(found.decides)
+  })
+})
+
+describe('previewing a rule that says several things', () => {
+  const cart = { kind: 'prefix', path: '/cart', query: { mode: 'any' }, scope: 'literal' } as const
+
+  it('decides a URL where it wins any of its statements, and is overridden where it wins none', async () => {
+    const crawl = await crawlOf([`${SITE}/cart`, `${SITE}/cart/help`, `${SITE}/cart/help/faq`])
+    // A more specific rule for one of the two things the candidate says.
+    const specific = await db.audit.saveRule({
+      domainId,
+      rule: {
+        dimension: 'noindex',
+        value: 'allowed',
+        selector: { kind: 'prefix', path: '/cart/help', query: { mode: 'any' }, scope: 'literal' },
+        reason: null,
+        enabled: true,
+      },
+    })
+    if (!specific.ok) throw new Error('rule not saved')
+    const found = await previewSet(
+      { selector: cart, statements: { audit: 'exclude', conditions: { noindex: 'required' } } },
+      { crawl },
+    )
+    // Every URL takes the exclusion, so the rule decides all three; the noindex is the other rule's
+    // under /cart/help.
+    expect(found).toMatchObject({ status: 'ok', matches: 3, decides: 3, overriddenCount: 0 })
+    // Said only about the noindex, the rule is overridden under /cart/help.
+    const only = await previewSet(
+      { selector: cart, statements: { conditions: { noindex: 'required' } } },
+      { crawl },
+    )
+    expect(only).toMatchObject({ matches: 3, decides: 1, overriddenCount: 2 })
+    if (only.status !== 'ok') throw new Error('unreachable')
+    expect(only.overridden[0]!.by).toMatchObject({ dimension: 'noindex', value: 'allowed' })
+  })
+
+  it('counts a change in any of the statements', async () => {
+    const crawl = await crawlOf([`${SITE}/cart`, `${SITE}/shop`])
+    expect(
+      await previewSet(
+        { selector: cart, statements: { conditions: { sitemap: 'required' } } },
+        { crawl },
+      ),
+    ).toMatchObject({ matches: 1, decides: 1, changes: 1 })
+    // Asking nothing new of a condition nobody states and the default already is: still a change,
+    // because a requirement is not the default behaviour.
+    expect(
+      await previewSet(
+        { selector: cart, statements: { conditions: { robots: 'forbidden' } } },
+        { crawl },
+      ),
+    ).toMatchObject({ changes: 1 })
+  })
+
+  it('refuses a statement that clashes with an enabled rule of another rule, whichever it is', async () => {
+    const crawl = await crawlOf([`${SITE}/cart`])
+    const saved = await db.audit.saveRule({
+      domainId,
+      rule: {
+        dimension: 'robots',
+        value: 'required',
+        selector: cart,
+        reason: null,
+        enabled: true,
+      },
+    })
+    expect(
+      await previewSet(
+        { selector: cart, statements: { audit: 'exclude', conditions: { robots: 'allowed' } } },
+        { crawl },
+      ),
+    ).toMatchObject({
+      status: 'conflict',
+      with: { id: saved.ok ? saved.rule!.id : '', dimension: 'robots' },
+    })
+    // The same rows being edited are not another rule.
+    expect(
+      await previewSet(
+        { selector: cart, statements: { conditions: { robots: 'allowed' } } },
+        { crawl, replacing: saved.ok ? saved.rule!.id : '' },
+      ),
+    ).toMatchObject({ status: 'ok' })
+    // A statement of another kind for the same selector is no clash.
+    expect(
+      await previewSet({ selector: cart, statements: { audit: 'exclude' } }, { crawl }),
+    ).toMatchObject({ status: 'ok' })
+  })
+
+  it('previews an edit that drops a statement as releasing what it decided', async () => {
+    const crawl = await crawlOf([`${SITE}/cart`])
+    const saved = await db.audit.saveRuleSet({
+      domainId,
+      selector: cart,
+      statements: { audit: 'exclude', conditions: { sitemap: 'required' } },
+      reason: null,
+      enabled: true,
+    })
+    expect(saved.ok).toBe(true)
+    const [row] = (await db.audit.config(domainId)).rules
+    // The rule keeps the exclusion and no longer asks for the sitemap: one result changes.
+    expect(
+      await previewSet(
+        { selector: cart, statements: { audit: 'exclude' } },
+        { crawl, replacing: row!.id },
+      ),
+    ).toMatchObject({ matches: 1, decides: 1, changes: 1 })
+    // Saying exactly what it says changes nothing.
+    expect(
+      await previewSet(
+        { selector: cart, statements: { audit: 'exclude', conditions: { sitemap: 'required' } } },
+        { crawl, replacing: row!.id },
+      ),
+    ).toMatchObject({ changes: 0 })
   })
 })

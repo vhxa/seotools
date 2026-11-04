@@ -7,6 +7,30 @@ describeDatabaseContract('sqlite', async () => {
   const db = await createTestDatabase()
   return {
     db,
+    legacy: {
+      urlAcceptedNofollow: async (crawlId: string, urlHash: string) => {
+        const raw = (
+          db.orm.db as {
+            $client: { prepare: (sql: string) => { run: (...args: unknown[]) => unknown } }
+          }
+        ).$client
+        raw
+          .prepare(
+            'update crawl_url_audit set accept_nofollow = 1 where crawl_id = ? and url_hash = ?',
+          )
+          .run(crawlId, urlHash)
+      },
+      acceptNofollow: async (ruleId: string, accept: boolean) => {
+        const raw = (
+          db.orm.db as {
+            $client: { prepare: (sql: string) => { run: (...args: unknown[]) => unknown } }
+          }
+        ).$client
+        raw
+          .prepare('update audit_rules set accept_nofollow = ? where id = ?')
+          .run(accept ? 1 : 0, ruleId)
+      },
+    },
     reset: async () => {
       const raw = (db.orm.db as { $client: { exec: (sql: string) => void } }).$client
       raw.exec(

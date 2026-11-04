@@ -100,10 +100,13 @@ import {
   mutationResult,
   planChanges,
   planDeleteRule,
+  planDeleteMany,
   planLanguages,
   planUpgradeSemantics,
   planSaveRule,
+  planSaveRuleSet,
   planSetEnabled,
+  planSetEnabledMany,
   planUrlConfig,
   readAuditConfig,
   recomputeJobValues,
@@ -390,19 +393,28 @@ export function createPgDatabase(options: {
       await db.select().from(settings).where(eq(settings.key, AUDIT_SEMANTICS_SETTING))
     )[0]
     if (done?.value === String(AUDIT_SEMANTICS)) return
-    const withRules = await db.selectDistinct({ id: auditRules.domainId }).from(auditRules)
-    const withCrawls = await db
-      .selectDistinct({ id: crawls.domainId })
-      .from(crawls)
-      .where(
-        and(
-          eq(crawls.type, 'full'),
-          inArray(crawls.status, ['completed', 'incomplete']),
-          eq(crawls.pruned, false),
-        ),
-      )
+    // What the rules mean now. Nothing recorded: they predate the setting, which is the first meaning.
+    const from = Number(done?.value) || 1
+    const withRules = await db
+      .selectDistinct({ id: auditRules.domainId })
+      .from(auditRules)
+      .where(from < 2 ? undefined : eq(auditRules.dimension, 'intent'))
+    // From the first meaning every domain with a crawl moves too: its latest crawl is analysed again.
+    const withCrawls =
+      from < 2
+        ? await db
+            .selectDistinct({ id: crawls.domainId })
+            .from(crawls)
+            .where(
+              and(
+                eq(crawls.type, 'full'),
+                inArray(crawls.status, ['completed', 'incomplete']),
+                eq(crawls.pruned, false),
+              ),
+            )
+        : []
     for (const domainId of new Set([...withRules, ...withCrawls].map((row) => row.id))) {
-      await changeRules(domainId, (rows) => planUpgradeSemantics(rows))
+      await changeRules(domainId, (rows, context) => planUpgradeSemantics(rows, context, from))
     }
     const value = String(AUDIT_SEMANTICS)
     const updatedAt = new Date()
@@ -1247,7 +1259,14 @@ export function createPgDatabase(options: {
       async auditRuleCounts(crawlId) {
         const count = sql<number>`count(*)`
         const byDimension = await Promise.all(
-          [crawlUrlAudit.participationRule, crawlUrlAudit.intentRule].map((column) =>
+          [
+            crawlUrlAudit.participationRule,
+            crawlUrlAudit.intentRule,
+            crawlUrlAudit.noindexRule,
+            crawlUrlAudit.nofollowRule,
+            crawlUrlAudit.robotsRule,
+            crawlUrlAudit.sitemapRule,
+          ].map((column) =>
             db
               .select({ rule: column, count })
               .from(crawlUrlAudit)
@@ -1538,6 +1557,22 @@ export function createPgDatabase(options: {
         return changeRules(domainId, (rows, context) =>
           planUrlConfig(rows, { domainId, ...input }, context),
         )
+      },
+
+      async saveRuleSet({ domainId, ...input }) {
+        return changeRules(domainId, (rows, context) =>
+          planSaveRuleSet(rows, { domainId, ...input }, context),
+        )
+      },
+
+      async setRulesEnabled({ domainId, ids, enabled }) {
+        return changeRules(domainId, (rows, context) =>
+          planSetEnabledMany(rows, { ids, enabled }, context),
+        )
+      },
+
+      async deleteRules({ domainId, ids }) {
+        return changeRules(domainId, (rows) => planDeleteMany(rows, { ids }))
       },
 
       async setLanguages({ domainId, languages }) {

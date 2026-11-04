@@ -1,10 +1,12 @@
 import {
+  AUDIT_CONDITIONS,
   HREFLANG_SOURCES,
   MAX_EVIDENCE_ITEMS,
   PAGE_ISSUE_IDS,
   boundedText,
   boundedUrl,
   parseIssueEvidence,
+  type AuditCondition,
   type CanonicalEvidence,
   type CrawlPageFacts,
   type DeclaredCanonical,
@@ -15,6 +17,7 @@ import {
   type LinkProblem,
   type PageIssueId,
 } from '@seotools/core'
+import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
 import { isValidHreflang } from './language-codes'
 import {
@@ -59,12 +62,6 @@ const SITEMAP_MAX_BYTES = 50 * 1024 * 1024
 /** Servers often refuse bots with these while the page works fine for people. */
 const REFUSES_BOTS = new Set([401, 403, 405, 406, 429, 451])
 
-/**
- * A URL whose expectation can be judged: a page that answered successfully and that the crawler did
- * not only try on its own. Resources, redirects, failures and guesses have no expectation to meet.
- */
-const judgeable = (url: AuditedUrl, site: Site) => url.contentPage && !isGuess(url, site)
-
 /** The issue applies to pages that answered and were parsed, not to redirects or failures. */
 const onPage =
   (test: (url: AuditedUrl, facts: CrawlPageFacts, site: Site) => Verdict): Check =>
@@ -76,6 +73,14 @@ const answer =
   (test: (url: AuditedUrl, site: Site) => boolean): Check =>
   (url, site) =>
     url.internal && url.url.state === 'done' && !isGuess(url, site) && test(url, site)
+
+/** The URL has to have the condition, and the crawl read enough to say it does not. */
+const requiredMissing =
+  (condition: AuditCondition): Check =>
+  (url, site) =>
+    url.conditions[condition].requirement === 'required' &&
+    judgeable(url, site) &&
+    presenceOf(condition, url, site) === 'absent'
 
 const statusIn = (url: AuditedUrl, min: number, max: number) =>
   url.url.statusCode !== null && url.url.statusCode >= min && url.url.statusCode <= max
@@ -221,6 +226,20 @@ export const CHECKS: Record<PageIssueId, Check> = {
     url.intent === 'not-indexable' &&
     judgeable(url, site) &&
     url.indexability.state === 'indexable',
+
+  // --- what rules require or forbid of one directive or file ----------------------------------
+  // Only for what a rule states, only for pages that answered, and only when the crawl could tell:
+  // what was not read whole, or not at all, is not missing. The finding for a forbidden directive
+  // or block is the generic one (`noindex`, `nofollow`, `robots-blocked`), which `applyAuditPolicy`
+  // keeps where a rule forbids it.
+  'noindex-required-missing': requiredMissing('noindex'),
+  'nofollow-required-missing': requiredMissing('nofollow'),
+  'robots-block-required-missing': requiredMissing('robots'),
+  'sitemap-required-missing': requiredMissing('sitemap'),
+  'sitemap-forbidden-present': (url, site) =>
+    url.conditions.sitemap.requirement === 'forbidden' &&
+    judgeable(url, site) &&
+    presenceOf('sitemap', url, site) === 'present',
 
   // --- response codes ------------------------------------------------------
   'no-response': answer((url) => url.url.error !== null),
@@ -533,33 +552,72 @@ const INDEXING_FINDING_OF = {
 } as const satisfies Partial<Record<IndexabilityBlocker, PageIssueId>>
 
 /**
+ * The generic finding each condition has for itself, which a rule that states the condition
+ * replaces: `required` and `allowed` say that having it is fine, so the finding for having it is not
+ * raised, and `required` raises one of its own for lacking it. `forbidden` keeps it: that is the
+ * finding. Nothing else is here on purpose: a conflict of directives, a relation to other pages, an
+ * inbound canonical or hreflang that points at a URL with the condition are other findings, and
+ * stating the condition for the URL says nothing about them.
+ */
+const GENERIC_OF: Record<AuditCondition, readonly PageIssueId[]> = {
+  noindex: ['noindex'],
+  nofollow: ['nofollow'],
+  robots: ['robots-blocked'],
+  // Being absent from a sitemap. Being listed while not indexable (`sitemap-not-indexable`) is a
+  // conflict between the sitemap and the page, and stays.
+  sitemap: ['indexable-not-in-sitemap', 'indexed-not-in-sitemap'],
+}
+
+/**
  * What is not a finding for a URL expected not to be indexable, because it is the expectation
- * itself: a `noindex`, a canonical elsewhere, and being indexable but absent from the sitemap. A
+ * itself: a `noindex`, a canonical elsewhere, and being indexable but absent from the sitemap, each
+ * mapped to the condition that decides it when a rule states one (`undefined`: none does). A
  * `robots.txt` block is not here on purpose: it keeps crawlers from reading the page, and its
  * `noindex`, but not from listing the URL, so it says nothing about whether it stays out of the
  * index. Everything else keeps applying, directive conflicts and relations to other pages included.
  */
-const EXPECTED_WHEN_NOT_INDEXABLE: ReadonlySet<PageIssueId> = new Set([
-  'noindex',
-  'canonicalised',
-  'indexable-not-in-sitemap',
+const EXPECTED_WHEN_NOT_INDEXABLE: ReadonlyMap<PageIssueId, AuditCondition | undefined> = new Map([
+  ['noindex', 'noindex'],
+  ['canonicalised', undefined],
+  ['indexable-not-in-sitemap', 'sitemap'],
 ])
 
 /**
  * The one place that decides which findings a URL keeps once its checks ran, so that no check
- * needs to know about exclusions or expectations:
+ * needs to know about exclusions, expectations or conditions:
  * - a URL left out of the audit has none of its own;
- * - when the rule that decides its expectation accepts `nofollow`, the generic finding for its own
- *   `nofollow` is not raised. Nothing else is: not a conflict of directives, not a link marked
- *   `rel="nofollow"`, not what other pages say of it, and `noindex` is a different directive;
- * - what is declared of a URL's indexation replaces the generic findings that would only repeat it.
+ * - a condition a rule states as `required` or `allowed` replaces its generic finding (see
+ *   `GENERIC_OF`), and as `forbidden` keeps it, even where the expectation would have dropped it.
+ *   Each condition is decided apart: `nofollow` allowed says nothing about `noindex`, a forbidden
+ *   `sitemap` nothing about `robots`. An allowed condition never hides a conflict of directives,
+ *   a link marked `rel="nofollow"` or what other pages say of the URL;
+ * - what is expected of a URL's indexation drops the generic findings that are the expectation
+ *   itself, for the conditions no rule states, and an explicit expectation of being indexable
+ *   replaces the generic findings that would only repeat what it names.
  * The checks of other URLs have already looked at this one as it really is, whatever happens here.
  */
 export function applyAuditPolicy(url: AuditedUrl, found: Finding[]): Finding[] {
   if (url.excluded) return []
-  let kept = url.acceptNofollow ? found.filter(({ issue }) => issue !== 'nofollow') : found
+  const stated = (condition: AuditCondition) => url.conditions[condition].requirement
+  const replaced = new Set<PageIssueId>()
+  for (const condition of AUDIT_CONDITIONS) {
+    const requirement = stated(condition)
+    // A sitemap that must not list the URL has nothing to say of the URL being out of it.
+    if (
+      requirement === 'allowed' ||
+      requirement === 'required' ||
+      (condition === 'sitemap' && requirement === 'forbidden')
+    ) {
+      for (const issue of GENERIC_OF[condition]) replaced.add(issue)
+    }
+  }
+  let kept = found.filter(({ issue }) => !replaced.has(issue))
   if (url.intent === 'not-indexable') {
-    kept = kept.filter(({ issue }) => !EXPECTED_WHEN_NOT_INDEXABLE.has(issue))
+    kept = kept.filter(({ issue }) => {
+      if (!EXPECTED_WHEN_NOT_INDEXABLE.has(issue)) return true
+      const condition = EXPECTED_WHEN_NOT_INDEXABLE.get(issue)
+      return condition !== undefined && stated(condition) !== null
+    })
   } else if (url.intent === 'indexable') {
     const blocked = kept.find(({ issue }) => issue === 'expected-indexable-blocked')
     if (blocked) {

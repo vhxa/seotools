@@ -22,9 +22,12 @@ import {
   enabledExtraFiles,
   parseAuditSnapshot,
   parseIssueEvidence,
+  readUrlAuditState,
   serializeAuditSnapshot,
   statusRange,
+  type AuditCondition,
   type AuditSnapshot,
+  type ConditionObservation,
   type CrawlFileData,
   type CrawlPageData,
   type CrawlRobotsFiles,
@@ -37,6 +40,7 @@ import {
   type FieldChange,
   type PagesByWorstIssue,
   type PagesWithType,
+  type Requirement,
   type UrlSnapshot,
   type CrawlUrlSource,
   type VerificationOutcome,
@@ -383,9 +387,22 @@ export interface CrawlAuditColumns {
   indexability: AnyColumn
   participationRule: AnyColumn
   intentRule: AnyColumn
+  noindexRule: AnyColumn
+  nofollowRule: AnyColumn
+  robotsRule: AnyColumn
+  sitemapRule: AnyColumn
 }
 
 type AuditFilter = Pick<CrawlUrlQuery, 'participation' | 'intent' | 'rule' | 'indexability'>
+/** Every column that names the rule that decided something about a URL. */
+export const auditRuleColumns = (columns: CrawlAuditColumns): AnyColumn[] => [
+  columns.participationRule,
+  columns.intentRule,
+  columns.noindexRule,
+  columns.nofollowRule,
+  columns.robotsRule,
+  columns.sitemapRule,
+]
 
 export const hasAuditFilter = (query: AuditFilter) =>
   Boolean(query.participation || query.intent || query.rule || query.indexability)
@@ -402,7 +419,7 @@ export function crawlAuditWhere(
     filter.intent ? eq(columns.intent, filter.intent) : undefined,
     filter.indexability ? eq(columns.indexability, filter.indexability) : undefined,
     filter.rule
-      ? or(eq(columns.participationRule, filter.rule), eq(columns.intentRule, filter.rule))
+      ? or(...auditRuleColumns(columns).map((column) => eq(column, filter.rule!)))
       : undefined,
   )
 }
@@ -610,31 +627,105 @@ export function crawlAuditRows(crawlId: string, urls: CrawlUrlAudit[]) {
     participationRule: url.participationRule,
     intent: url.intent,
     intentRule: url.intentRule,
-    acceptNofollow: url.acceptNofollow,
+    // Retired with semantics 3: it is the `nofollow` condition being `allowed` now.
+    acceptNofollow: false,
+    ...conditionColumns(url.conditions),
     indexability: url.indexability,
     blockers: url.blockers.length > 0 ? JSON.stringify(url.blockers) : null,
   }))
 }
 
-export const toCrawlUrlAudit = (row: {
-  urlHash: string
-  participation: string
-  participationRule: string | null
-  intent: string
-  intentRule: string | null
-  acceptNofollow: boolean
-  indexability: string
-  blockers: string | null
-}): CrawlUrlAudit => ({
-  urlHash: row.urlHash,
-  participation: row.participation as CrawlUrlAudit['participation'],
-  participationRule: row.participationRule,
-  intent: row.intent as CrawlUrlAudit['intent'],
-  intentRule: row.intentRule,
-  acceptNofollow: row.acceptNofollow,
-  indexability: row.indexability as CrawlUrlAudit['indexability'],
-  blockers: row.blockers === null ? [] : (parseJson(row.blockers) as string[]),
-})
+/** The conditions a rule stated for a URL, as columns: `null` for the ones nothing states. */
+function conditionColumns(conditions: CrawlUrlAudit['conditions']) {
+  const column = (condition: AuditCondition) => {
+    const state = conditions[condition]
+    return {
+      requirement: state?.requirement ?? null,
+      rule: state?.rule ?? null,
+      observed: state?.observed ?? null,
+    }
+  }
+  const {
+    requirement: noindexRequirement,
+    rule: noindexRule,
+    observed: noindexObserved,
+  } = column('noindex')
+  const {
+    requirement: nofollowRequirement,
+    rule: nofollowRule,
+    observed: nofollowObserved,
+  } = column('nofollow')
+  const {
+    requirement: robotsRequirement,
+    rule: robotsRule,
+    observed: robotsObserved,
+  } = column('robots')
+  const {
+    requirement: sitemapRequirement,
+    rule: sitemapRule,
+    observed: sitemapObserved,
+  } = column('sitemap')
+  return {
+    noindexRequirement,
+    noindexRule,
+    noindexObserved,
+    nofollowRequirement,
+    nofollowRule,
+    nofollowObserved,
+    robotsRequirement,
+    robotsRule,
+    robotsObserved,
+    sitemapRequirement,
+    sitemapRule,
+    sitemapObserved,
+  }
+}
+
+type ConditionColumns = ReturnType<typeof conditionColumns>
+
+export const toCrawlUrlAudit = (
+  row: {
+    urlHash: string
+    participation: string
+    participationRule: string | null
+    intent: string
+    intentRule: string | null
+    acceptNofollow: boolean
+    indexability: string
+    blockers: string | null
+  } & ConditionColumns,
+): CrawlUrlAudit => {
+  const conditions: CrawlUrlAudit['conditions'] = {}
+  const read = (
+    condition: AuditCondition,
+    requirement: string | null,
+    rule: string | null,
+    observed: string | null,
+  ) => {
+    if (requirement === null) return
+    conditions[condition] = {
+      requirement: requirement as Requirement,
+      rule,
+      observed: observed as ConditionObservation | null,
+    }
+  }
+  read('noindex', row.noindexRequirement, row.noindexRule, row.noindexObserved)
+  read('nofollow', row.nofollowRequirement, row.nofollowRule, row.nofollowObserved)
+  read('robots', row.robotsRequirement, row.robotsRule, row.robotsObserved)
+  read('sitemap', row.sitemapRequirement, row.sitemapRule, row.sitemapObserved)
+  // What an analysis of semantics 2 kept as an accepted `nofollow` is the condition being allowed.
+  return readUrlAuditState({
+    urlHash: row.urlHash,
+    participation: row.participation as CrawlUrlAudit['participation'],
+    participationRule: row.participationRule,
+    intent: row.intent as CrawlUrlAudit['intent'],
+    intentRule: row.intentRule,
+    acceptNofollow: row.acceptNofollow,
+    conditions,
+    indexability: row.indexability as CrawlUrlAudit['indexability'],
+    blockers: row.blockers === null ? [] : (parseJson(row.blockers) as string[]),
+  })
+}
 
 /** Folds the rows of a count by rule, for either dimension, into one count per rule. */
 export function foldRuleCounts(
@@ -1050,10 +1141,18 @@ type VerifiedUrlRow = Omit<VerifiedUrl, 'outcome' | 'source'> & {
   outcome: string | null
 }
 
+/** What a recheck stored, read like a newer one: rechecks from before conditions have none. */
+function readOutcome(stored: string): VerificationOutcome {
+  const outcome = parseJson(stored) as Omit<VerificationOutcome, 'audit'> & {
+    audit: Parameters<typeof readUrlAuditState>[0]
+  }
+  return { ...outcome, audit: readUrlAuditState(outcome.audit) }
+}
+
 export const toVerifiedUrl = ({ outcome, source, ...row }: VerifiedUrlRow): VerifiedUrl => ({
   ...row,
   source: source as CrawlUrlSource,
-  outcome: outcome === null ? null : (parseJson(outcome) as VerificationOutcome),
+  outcome: outcome === null ? null : readOutcome(outcome),
 })
 
 /** Keeps the most recent result of each URL. */

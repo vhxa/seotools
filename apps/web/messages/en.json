@@ -434,8 +434,7 @@
     "bulk": {
       "mark": "Mark as priority",
       "unmark": "Remove from priority",
-      "excludeFromAudit": "Exclude from audit…",
-      "configureAudit": "Audit and expected indexing…"
+      "configureAudit": "Configure audit…"
     },
     "openUrl": "Open {url} in a new tab",
     "empty": "No URLs match.",
@@ -580,8 +579,8 @@
       "excludedNote": "This URL is crawled and keeps all its data, but it is left out of the audit: it has no findings of its own. That does not mean it has nothing to fix.",
       "pendingNote": "The audit configuration changed after this crawl was analysed. What is shown here may not reflect it yet.",
       "notAnalysed": "This crawl was analysed before audit rules existed, or has not been analysed: the audit state of this URL is not known.",
-      "configure": "Audit and indexing…",
-      "nofollow": "nofollow on this page"
+      "configure": "Configure audit…",
+      "conditions": "Conditions"
     },
     "noFindings": "No findings.",
     "excludedFindings": "Excluded from the audit: it has no findings of its own.",
@@ -1123,6 +1122,26 @@
     "expected-not-indexable-but-indexable": {
       "name": "Expected not indexable but indexable",
       "description": "You declared this URL should not be indexable, but the crawl found nothing that stops it from being indexed: add a noindex, or point its canonical elsewhere."
+    },
+    "noindex-required-missing": {
+      "name": "Required noindex is missing",
+      "description": "A rule requires this page to declare noindex, but the crawl read the page whole and found none. A page the crawl could not read whole, or did not request, is not reported."
+    },
+    "nofollow-required-missing": {
+      "name": "Required nofollow is missing",
+      "description": "A rule requires this page to declare nofollow for itself, but the crawl read the page whole and found none. A page the crawl could not read whole, or did not request, is not reported."
+    },
+    "robots-block-required-missing": {
+      "name": "Required robots.txt block is missing",
+      "description": "A rule requires robots.txt to block this URL, but the robots.txt that answered does not. A block only keeps crawlers from reading the URL: it does not take it out of a search engine’s index. A robots.txt that did not answer proves nothing, and is not reported."
+    },
+    "sitemap-required-missing": {
+      "name": "Required sitemap listing is missing",
+      "description": "A rule requires this URL to be in a sitemap, and none of the sitemaps lists it. It is only reported when every sitemap of the site was read in a crawl that finished; a recheck of some URLs cannot tell."
+    },
+    "sitemap-forbidden-present": {
+      "name": "Listed in a sitemap where a rule forbids it",
+      "description": "A rule forbids this URL to be in a sitemap, and a sitemap lists it."
     }
   },
   "LinkKinds": {
@@ -1696,7 +1715,7 @@
       "urls": "URLs",
       "security": "Security",
       "html": "HTML",
-      "indexing-intent": "Indexing intent"
+      "indexing-intent": "Declared expectations"
     },
     "types": {
       "issue": "Issue",
@@ -1743,10 +1762,6 @@
       "unknown": "Not analysed",
       "notApplicable": "Does not apply: not a page"
     },
-    "nofollow": {
-      "accepted": "nofollow accepted",
-      "notAccepted": "nofollow not accepted"
-    },
     "indexability": {
       "indexable": "Technically indexable",
       "not-indexable": "Not indexable",
@@ -1788,67 +1803,56 @@
         "notIndexableByRule": "Expected not indexable by the rule “{rule}”.",
         "notIndexableByException": "Expected not indexable by an exception for this URL."
       },
-      "nofollow": {
-        "default": "nofollow is not accepted by default.",
-        "acceptedByRule": "nofollow is accepted by the rule “{rule}”.",
-        "acceptedByException": "nofollow is accepted by an exception for this URL.",
-        "notAcceptedByRule": "nofollow is not accepted: the rule “{rule}” does not accept it.",
-        "notAcceptedByException": "nofollow is not accepted by the exception for this URL."
+      "condition": {
+        "default": {
+          "noindex": "No rule applies: a noindex gets a finding.",
+          "nofollow": "No rule applies: a nofollow of the page itself gets a warning.",
+          "robots": "No rule applies: a robots.txt block gets a finding.",
+          "sitemap": "No rule applies: an indexable page that no sitemap lists gets a low-priority warning."
+        },
+        "byRule": "{requirement} by the rule “{rule}”.",
+        "byException": "{requirement} by an exception for this URL."
       }
     },
     "technicalNote": "This is what the crawl saw, not whether a search engine has indexed the URL, which a crawl cannot know.",
-    "empty": "—"
+    "empty": "—",
+    "conditions": {
+      "names": {
+        "noindex": "Noindex",
+        "nofollow": "Nofollow",
+        "robots": "robots.txt block",
+        "sitemap": "Sitemap"
+      },
+      "badge": "{condition}: {requirement}",
+      "outcome": {
+        "met": "The crawl saw what the rule asks.",
+        "unmet": "The crawl saw the opposite of what the rule asks.",
+        "allowed": "The rule accepts it either way.",
+        "unknown": "The crawl could not tell: the page was not read whole, or a file it depends on did not answer."
+      }
+    }
   },
   "AuditRules": {
     "metaTitle": "Audit settings · {host} · seotools",
     "tabs": {
       "label": "Audit settings",
-      "exclusions": "Audit exclusions",
-      "intent": "Indexing and directives",
+      "rules": "Rules",
       "languages": "Language directories"
     },
     "create": "Create rule",
     "sections": {
-      "audit": {
-        "title": "Audit exclusions",
-        "description": "URLs that are still crawled and keep all their data, but are left out of the audit: they get no issues, warnings or opportunities of their own, and do not count as audited pages. Other pages are still checked against them: a canonical or hreflang that leads to a broken excluded URL is still a problem of the page that points to it.",
-        "default": "By default, every URL is audited.",
-        "emptyTitle": "No exclusions",
-        "empty": "Every URL is audited. Create a rule to leave out URLs that are still crawled, such as a shop's cart."
-      },
-      "intent": {
-        "title": "Indexing and directives",
-        "description": "What you expect of the indexation of a URL. It states an intent: it never says whether a search engine has indexed it. A noindex is not a problem on a URL expected not to be indexable, and one that turns out to be indexable is. A rule can also accept the page's own nofollow, which does not stop it from being indexed. A URL excluded from the audit gets no findings for failing its expectation, but the expectation stays visible.",
-        "default": "By default, every page is expected to be indexable.",
+      "rules": {
+        "title": "Audit rules",
+        "description": "What a rule says about the URLs it covers: whether they take part in the audit (excluded URLs are still crawled and keep their data, but get no findings of their own), what is required, allowed or forbidden of a noindex, a nofollow, a robots.txt block and a sitemap listing, and, as an advanced concept, whether they are expected to be indexable. A rule is a statement of intent: it never says whether a search engine has indexed a URL.",
+        "default": "By default, every URL is audited, nothing is asked of its conditions and every page is expected to be indexable.",
         "emptyTitle": "No rules",
-        "empty": "Every page is expected to be indexable. Create a rule to expect that some pages are not, or to accept their nofollow."
-      }
-    },
-    "values": {
-      "audit": {
-        "exclude": "Exclude from audit",
-        "include": "Include in audit"
-      },
-      "intent": {
-        "indexable": "Expected indexable",
-        "not-indexable": "Expected not indexable",
-        "inherit": "According to the rules"
-      }
-    },
-    "valueHelp": {
-      "audit": {
-        "exclude": "Crawled and kept, but with no findings of its own.",
-        "include": "Audited, even if a broader exclusion covers it."
-      },
-      "intent": {
-        "indexable": "The crawl is checked for what stands in the way.",
-        "not-indexable": "A noindex is fine; being indexable is not."
+        "empty": "Every URL is audited and no condition is required. Create a rule to exclude URLs that are still crawled, such as a shop’s cart, or to require, allow or forbid a noindex, a nofollow, a robots.txt block or a sitemap listing."
       }
     },
     "kinds": {
-      "url": "Exact URL",
-      "path": "Exact path",
-      "prefix": "Path prefix"
+      "url": "This exact URL",
+      "path": "This exact path",
+      "prefix": "This path and everything below it"
     },
     "kindHelp": {
       "url": "One URL, with its scheme, host, path and query. It takes precedence over any other rule: it is an exception for that URL.",
@@ -1859,11 +1863,9 @@
       "label": "Where the path is read",
       "literal": "Literal path",
       "shared": "Shared between languages",
-      "url": "Literal",
       "literalHelp": "The path is compared with the path of the URL as it is.",
       "sharedHelp": "The same path inside each declared language directory and, if enabled, without one: /cart covers /cart, /es/cart, /en/cart… It does not translate slugs: /es/carrito and /en/cart need different rules.",
-      "noLanguages": "Declare the language directories first, in the “Language directories” tab. Until then a shared rule covers nothing.",
-      "badge": "Shared"
+      "noLanguages": "Declare the language directories first, in the “Language directories” tab. Until then a shared rule covers nothing."
     },
     "query": {
       "label": "Query string",
@@ -1876,18 +1878,11 @@
       "only": "query ?{query}",
       "none": "no query"
     },
-    "nofollow": {
-      "label": "Accept nofollow on this page",
-      "help": "nofollow does not stop a page from being indexed: it affects whether its links are followed. Accepting it stops the finding for the page's own nofollow, with either expectation. It does not need a nofollow to be there, does not hide conflicts of directives, does not touch links marked rel=\"nofollow\", and does not count as expecting the page not to be indexable.",
-      "accepted": "Accepted",
-      "notAccepted": "—"
-    },
     "form": {
       "kind": "Applies to",
       "selector": "Address",
       "urlPlaceholder": "https://{host}/cart",
       "pathPlaceholder": "/cart",
-      "value": "Rule",
       "reason": "Reason",
       "reasonPlaceholder": "Why? It is shown wherever this rule is what decides.",
       "enabled": "Enabled",
@@ -1900,17 +1895,17 @@
       "cancel": "Cancel",
       "saved": "Saved. The last crawl is being analysed again.",
       "preview": "Preview matches",
-      "previewing": "Looking…"
+      "previewing": "Looking…",
+      "appliesTo": "This rule applies to",
+      "says": "And it says",
+      "advancedSelector": "Advanced: query string and languages"
     },
     "list": {
       "empty": "No rules yet.",
       "columns": {
         "selector": "URLs",
-        "scope": "Scope",
-        "rule": "Rule",
-        "nofollow": "nofollow",
+        "says": "Says",
         "enabled": "Enabled",
-        "affects": "Affects",
         "reason": "Reason"
       },
       "exception": "Exception for one URL",
@@ -1972,8 +1967,7 @@
       "noCrawl": "Rules apply to the next full crawl: there is no full crawl with results to analyse yet."
     },
     "errors": {
-      "dimension": "That kind of rule does not exist.",
-      "value": "Choose what the rule does.",
+      "value": "Choose a value that exists for each thing the rule says.",
       "kind": "Choose what the rule applies to.",
       "scope": "Choose where the path is read.",
       "url": "That is not a URL.",
@@ -1991,27 +1985,15 @@
         "external": "Only URLs of this domain can be configured.",
         "choice": "Choose what to change.",
         "reason": "The reason is too long."
-      }
+      },
+      "statements": "Choose at least one thing for the rule to say: whether the URLs take part in the audit, a condition or the expected indexing."
     }
   },
   "AuditDialog": {
-    "title": "Audit and expected indexing",
+    "title": "Configure audit",
     "description": "{count, plural, one {# URL selected.} other {# URLs selected.}} It is saved as an exception for each URL, and the last full crawl is analysed again in the background, with no requests to the site.",
     "descriptionOne": "It is saved as an exception for this URL, and the last full crawl is analysed again in the background, with no requests to the site.",
-    "auditLabel": "Audit",
-    "intentLabel": "Expected indexing",
-    "rules": "According to the rules",
-    "include": "Include in audit",
-    "exclude": "Exclude from audit",
-    "indexable": "Expected indexable",
-    "not-indexable": "Expected not indexable",
-    "rulesHelp": "Removes the exception of this URL, if it has one.",
-    "acceptNofollow": "Accept nofollow on this page",
-    "acceptNofollowHelp": "nofollow does not stop a page from being indexed: it affects whether its links are followed. Accepting it only stops the finding for the page's own nofollow. It does not count as expecting the page not to be indexable.",
-    "changeAudit": "Change audit",
-    "changeIntent": "Change expected indexing",
-    "changeNofollow": "Change whether nofollow is accepted",
-    "multipleHint": "Nothing is changed unless you choose it. What you leave unchecked keeps its values, exceptions and reasons.",
+    "multipleHint": "Nothing is changed unless you choose it. “No change” leaves each URL as it is; “According to the rules” removes the exception of the URLs, so they take what the rules say.",
     "reason": "Reason (optional)",
     "reasonPlaceholder": "Why? It is shown wherever this decides.",
     "reasonKept": "Left empty, each exception keeps its own reason.",
@@ -2019,7 +2001,6 @@
     "applying": "Applying…",
     "cancel": "Cancel",
     "nothing": "Choose what to change.",
-    "directivesLabel": "Directives",
     "state": {
       "now": "Now: {state}",
       "afterSave": "After saving: {state}"
@@ -2282,5 +2263,80 @@
   "HttpStatus": {
     "automaticCheck": "Automatic check",
     "notFound": "Not found"
+  },
+  "AuditStatements": {
+    "keep": "No change",
+    "rules": "According to the rules",
+    "notSet": "Not set by this rule",
+    "audit": {
+      "label": "Audit participation",
+      "help": "Whether these URLs take part in the audit. Excluded URLs are still crawled and keep their data, but get no findings of their own.",
+      "include": "Include in audit",
+      "exclude": "Exclude from audit"
+    },
+    "requirement": {
+      "required": "Required",
+      "allowed": "Allowed",
+      "forbidden": "Forbidden"
+    },
+    "conditions": {
+      "title": "Conditions",
+      "add": "Add condition",
+      "remove": "Remove {condition}",
+      "noneUrl": "No condition is set. Add one to require, allow or forbid a noindex, a nofollow, a robots.txt block or a sitemap listing.",
+      "noneRule": "This rule sets no condition. Add one to require, allow or forbid a noindex, a nofollow, a robots.txt block or a sitemap listing.",
+      "unknown": "If the crawl could not tell (a page it could not read whole, a robots.txt or a sitemap that did not answer), no finding is raised and the condition is not counted as met.",
+      "statement": "{condition}: {requirement}",
+      "noindex": {
+        "label": "Noindex",
+        "default": "By default, a page that declares noindex gets a finding.",
+        "help": {
+          "required": "A finding is raised when the page does not declare noindex.",
+          "allowed": "The page may declare noindex or not: no finding for the noindex either way.",
+          "forbidden": "A finding is raised when the page declares noindex."
+        }
+      },
+      "nofollow": {
+        "label": "Nofollow",
+        "default": "By default, a page that declares nofollow for itself gets a warning.",
+        "help": {
+          "required": "A finding is raised when the page does not declare nofollow.",
+          "allowed": "The page may declare nofollow or not: no finding for it either way. Links marked rel=\"nofollow\" are not affected.",
+          "forbidden": "A finding is raised when the page declares nofollow."
+        }
+      },
+      "robots": {
+        "label": "Blocked by robots.txt",
+        "default": "By default, a URL blocked by robots.txt gets a finding.",
+        "help": {
+          "required": "A finding is raised when robots.txt does not block the URL. A block only keeps crawlers from reading it: it does not take the URL out of a search engine’s index.",
+          "allowed": "The URL may be blocked by robots.txt or not: no finding for the block either way.",
+          "forbidden": "A finding is raised when robots.txt blocks the URL."
+        }
+      },
+      "sitemap": {
+        "label": "Listed in a sitemap",
+        "default": "By default, an indexable page that no sitemap lists gets a low-priority warning.",
+        "help": {
+          "required": "A finding is raised when no sitemap lists the URL. It needs a complete crawl: a recheck of some URLs cannot tell.",
+          "allowed": "The URL may be listed in a sitemap or not: no finding for its absence. A listed URL that cannot be indexed is still reported.",
+          "forbidden": "A finding is raised when a sitemap lists the URL."
+        }
+      }
+    },
+    "advanced": {
+      "title": "Advanced: expected indexing",
+      "help": "The expectation is about the URL as a whole: a noindex, a canonical to another URL, a redirect, an error or a robots.txt block can each keep it from being indexed. The conditions above are about one directive or file each, and never about whether the URL is in a search engine’s index."
+    },
+    "intent": {
+      "label": "Expected indexing",
+      "indexable": "Expected indexable",
+      "not-indexable": "Expected not indexable",
+      "help": {
+        "default": "Unless a rule says otherwise, every page is expected to be indexable.",
+        "indexable": "The crawl is checked for what stands in the way of indexing the URL.",
+        "not-indexable": "A noindex is fine; being indexable is not. It is not the same as requiring a noindex."
+      }
+    }
   }
 }

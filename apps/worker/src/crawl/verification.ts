@@ -68,7 +68,7 @@ const NOTHING_CHECKED = (): VerificationOutcome['audit'] => ({
   participationRule: null,
   intent: 'none',
   intentRule: null,
-  acceptNofollow: false,
+  conditions: {},
   indexability: 'unknown',
   blockers: [],
 })
@@ -164,7 +164,7 @@ export async function runVerification(
     }
 
     // robots.txt as it is now, once per origin: the crawl's copy would be stale site context.
-    const robotsTexts = new Map<string, string | null>()
+    const robotsTexts = new Map<string, { status: number | null; text: string | null }>()
     for (const origin of new Set(requestable.map((item) => new URL(item.url).origin))) {
       if (stopSignal.aborted) break
       try {
@@ -172,15 +172,16 @@ export async function runVerification(
           `${origin}/robots.txt`,
           crawlFileFetchOptions('robots'),
         )
-        robotsTexts.set(
-          origin,
-          !(response instanceof FetchError) && response.statusCode === 200 && response.body
-            ? decodeText(
-                response.body.subarray(0, MAX_ROBOTS_BYTES),
-                response.headers['content-type'],
-              )
-            : null,
-        )
+        robotsTexts.set(origin, {
+          status: response instanceof FetchError ? null : response.statusCode,
+          text:
+            !(response instanceof FetchError) && response.statusCode === 200 && response.body
+              ? decodeText(
+                  response.body.subarray(0, MAX_ROBOTS_BYTES),
+                  response.headers['content-type'],
+                )
+              : null,
+        })
       } catch (error) {
         // Stopped while waiting for its turn: shutting down, cancelled or a crawl started. Which
         // of them is decided below; nothing was concluded from a robots.txt that was not read.

@@ -1,6 +1,6 @@
-import type { AuditDimension } from '@seotools/core/crawl/audit'
+import { AUDIT_CONDITIONS } from '@seotools/core/crawl/audit'
 import type { AuditRuleRecord } from '@seotools/db'
-import { CheckIcon, ListChecksIcon } from 'lucide-react'
+import { ListChecksIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { CreateRuleButton } from '@/components/audit/create-rule-button'
@@ -16,28 +16,27 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { groupRules } from '@/lib/audit-rules'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 
 /**
- * The rules of one dimension — exclusions from the audit, or expected indexing and directives — as
- * a management panel: a short header with what happens by default and the button to create a rule,
- * and the table of what is there. Creating and editing happen in a dialog. Both tabs are this
- * component: the selectors, the preview, the precedence and the rules themselves are the same, and
- * so are the exceptions set on one URL from the table or its detail, which are listed here too.
+ * The rules of the domain, as one list: where each applies and everything it says there (whether the
+ * URLs take part in the audit, what it requires, allows or forbids of each condition, and, as an
+ * advanced concept, the expectation of indexing as a whole). A rule is the rows that share a
+ * selector, so creating, editing, switching and deleting act on all of what it says. The exceptions
+ * set on one URL from the table or its detail are rules too, and are listed here.
  */
 export async function RulesTab({
   host,
-  dimension,
   rules,
   affected,
   languagesDeclared,
 }: {
   host: string
-  dimension: AuditDimension
-  /** Every rule of the domain; the tab shows those of its dimension. */
+  /** Every rule of the domain. */
   rules: AuditRuleRecord[]
   /**
-   * How many URLs of the analysed crawl each rule decided. A rule the analysis did not know yet has
+   * How many URLs of the analysed crawl each row decided. A rule the analysis did not know yet has
    * no entry, which is not the same as deciding none.
    */
   affected: ReadonlyMap<string, number | null>
@@ -45,83 +44,82 @@ export async function RulesTab({
   languagesDeclared: boolean
 }) {
   const t = await getTranslations('AuditRules')
-  const mine = rules.filter((rule) => rule.dimension === dimension)
+  const tStatements = await getTranslations('AuditStatements')
+  const tRequirement = await getTranslations('AuditStatements.requirement')
+  const groups = groupRules(rules)
   const base = parseDetailQuery({})
-  const showsNofollow = dimension === 'intent'
 
   return (
     <Card>
       <CardHeader className="gap-3 sm:grid-cols-[1fr_auto]">
         <div className="grid gap-1.5">
-          <CardTitle>{t(`sections.${dimension}.title`)}</CardTitle>
-          <CardDescription>{t(`sections.${dimension}.description`)}</CardDescription>
-          <p className="text-sm font-medium">{t(`sections.${dimension}.default`)}</p>
+          <CardTitle>{t('sections.rules.title')}</CardTitle>
+          <CardDescription>{t('sections.rules.description')}</CardDescription>
+          <p className="text-sm font-medium">{t('sections.rules.default')}</p>
         </div>
-        {mine.length > 0 && (
-          <CreateRuleButton
-            host={host}
-            dimension={dimension}
-            languagesDeclared={languagesDeclared}
-          />
+        {groups.length > 0 && (
+          <CreateRuleButton host={host} languagesDeclared={languagesDeclared} />
         )}
       </CardHeader>
       <CardContent>
-        {mine.length === 0 ? (
+        {groups.length === 0 ? (
           <div className="grid justify-items-center gap-3 rounded-lg border border-dashed px-4 py-10 text-center">
             <ListChecksIcon aria-hidden className="size-6 text-muted-foreground" />
             <div className="grid gap-1">
-              <p className="font-medium">{t(`sections.${dimension}.emptyTitle`)}</p>
-              <p className="max-w-md text-sm text-muted-foreground">
-                {t(`sections.${dimension}.empty`)}
-              </p>
+              <p className="font-medium">{t('sections.rules.emptyTitle')}</p>
+              <p className="max-w-md text-sm text-muted-foreground">{t('sections.rules.empty')}</p>
             </div>
-            <CreateRuleButton
-              host={host}
-              dimension={dimension}
-              languagesDeclared={languagesDeclared}
-            />
+            <CreateRuleButton host={host} languagesDeclared={languagesDeclared} />
           </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t('list.columns.selector')}</TableHead>
-                <TableHead>{t('list.columns.scope')}</TableHead>
-                <TableHead>{t('list.columns.rule')}</TableHead>
-                {showsNofollow && <TableHead>{t('list.columns.nofollow')}</TableHead>}
+                <TableHead>{t('list.columns.says')}</TableHead>
                 <TableHead>{t('list.columns.enabled')}</TableHead>
-                <TableHead>{t('list.columns.affects')}</TableHead>
                 <TableHead>{t('list.columns.reason')}</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mine.map((rule) => {
-                const count = affected.get(rule.id) ?? null
-                const shared = rule.selector.kind !== 'url' && rule.selector.scope === 'shared'
+              {groups.map((group) => {
+                const shared = group.selector.kind !== 'url' && group.selector.scope === 'shared'
+                const statements = [
+                  ...(['audit', 'intent', ...AUDIT_CONDITIONS] as const).flatMap((key) => {
+                    const rule = group.statements[key]
+                    if (!rule) return []
+                    const label =
+                      rule.dimension === 'audit'
+                        ? tStatements(`audit.${rule.value}`)
+                        : rule.dimension === 'intent'
+                          ? tStatements(
+                              `intent.${rule.value === 'not-indexable' ? 'not-indexable' : 'indexable'}`,
+                            )
+                          : tStatements('conditions.statement', {
+                              condition: tStatements(`conditions.${rule.dimension}.label`),
+                              requirement: tRequirement(rule.value),
+                            })
+                    return [{ id: rule.id, label, count: affected.get(rule.id) ?? null }]
+                  }),
+                ]
                 return (
-                  <TableRow key={rule.id} className={rule.enabled ? undefined : 'opacity-60'}>
+                  <TableRow key={group.key} className={group.enabled ? undefined : 'opacity-60'}>
                     <TableCell className="max-w-xs whitespace-normal">
                       <div className="grid gap-1">
-                        <SelectorLabel selector={rule.selector} />
-                        {rule.selector.kind === 'url' && (
-                          <span className="text-xs text-muted-foreground">
-                            {t('list.exception')}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="whitespace-normal">
-                      <div className="grid gap-1">
-                        <Badge variant={shared ? 'secondary' : 'outline'} className="font-normal">
-                          {t(
-                            rule.selector.kind === 'url'
-                              ? 'scope.url'
-                              : shared
-                                ? 'scope.shared'
-                                : 'scope.literal',
+                        <SelectorLabel selector={group.selector} />
+                        <div className="flex flex-wrap items-center gap-1">
+                          {group.selector.kind === 'url' && (
+                            <span className="text-xs text-muted-foreground">
+                              {t('list.exception')}
+                            </span>
                           )}
-                        </Badge>
+                          {shared && (
+                            <Badge variant="secondary" className="font-normal">
+                              {t('scope.shared')}
+                            </Badge>
+                          )}
+                        </div>
                         {shared && !languagesDeclared && (
                           <span className="text-xs text-muted-foreground">
                             {t('list.sharedWithoutLanguages')}
@@ -129,54 +127,51 @@ export async function RulesTab({
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-normal">
-                        {rule.dimension === 'audit'
-                          ? t(`values.audit.${rule.value}`)
-                          : t(`values.intent.${rule.value === 'none' ? 'indexable' : rule.value}`)}
-                      </Badge>
-                    </TableCell>
-                    {showsNofollow && (
-                      <TableCell>
-                        {rule.dimension === 'intent' && rule.acceptNofollow ? (
-                          <span className="inline-flex items-center gap-1 text-sm">
-                            <CheckIcon aria-hidden className="size-3.5" />
-                            {t('nofollow.accepted')}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">{t('nofollow.notAccepted')}</span>
-                        )}
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <RuleToggle host={host} rule={rule} />
-                    </TableCell>
                     <TableCell className="whitespace-normal">
-                      {count === null ? (
-                        <span className="text-xs text-muted-foreground">
-                          {t('list.affectsUnknown')}
-                        </span>
-                      ) : (
-                        <div className="grid gap-0.5">
-                          <span className="tabular-nums">{t('list.affects', { count })}</span>
-                          {count > 0 && (
-                            <Link
-                              href={detailHref(host, base, { rule: rule.id })}
-                              className="text-xs underline"
-                            >
-                              {t('list.viewAffected')}
-                            </Link>
-                          )}
-                        </div>
-                      )}
+                      <ul className="grid gap-1.5">
+                        {statements.map(({ id, label, count }) => (
+                          <li key={id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <Badge variant="outline" className="font-normal">
+                              {label}
+                            </Badge>
+                            {count === null ? (
+                              <span className="text-xs text-muted-foreground">
+                                {t('list.affectsUnknown')}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-x-2 text-xs whitespace-nowrap">
+                                <span className="text-muted-foreground tabular-nums">
+                                  {t('list.affects', { count })}
+                                </span>
+                                {count > 0 && (
+                                  <Link
+                                    href={detailHref(host, base, { rule: id })}
+                                    className="underline"
+                                  >
+                                    {t('list.viewAffected')}
+                                  </Link>
+                                )}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </TableCell>
+                    <TableCell>
+                      <RuleToggle
+                        host={host}
+                        ids={group.ids}
+                        enabled={group.enabled}
+                        selector={group.selector}
+                      />
                     </TableCell>
                     <TableCell className="max-w-56 whitespace-normal text-muted-foreground">
-                      {rule.reason ?? '—'}
+                      {group.reason ?? '—'}
                     </TableCell>
                     <TableCell>
                       <RuleRowActions
                         host={host}
-                        rule={rule}
+                        rule={group}
                         languagesDeclared={languagesDeclared}
                       />
                     </TableCell>

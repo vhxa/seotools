@@ -20,7 +20,7 @@ import { UrlDrawer } from '@/components/pages/url-drawer'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import { ruleRefsOf } from '@/lib/audit-rules'
-import { auditTabHref, tabOfDimension } from '@/lib/audit-tabs'
+import { auditTabHref } from '@/lib/audit-tabs'
 import { browsableCrawls, selectCrawl } from '@/lib/crawl-history'
 import { automaticFileChecks } from '@/lib/automatic-checks'
 import { getDb } from '@/lib/db'
@@ -72,7 +72,7 @@ const toRow = (
   participationRule: refOf(audit?.participationRule ?? null),
   intent: audit?.intent ?? null,
   intentRule: refOf(audit?.intentRule ?? null),
-  acceptNofollow: audit?.acceptNofollow ?? false,
+  conditions: audit?.conditions ?? {},
   indexability: audit?.indexability ?? null,
   blockers: audit?.blockers ?? [],
 })
@@ -279,9 +279,7 @@ export default async function PagesDetailsPage({
                   host={domain.host}
                   query={{ ...query, page: 1 }}
                   unavailable={available.audit ?? undefined}
-                  {...(ruleOfList
-                    ? { rulesHref: auditTabHref(domain.host, tabOfDimension(ruleOfList.dimension)) }
-                    : {})}
+                  {...(ruleOfList ? { rulesHref: auditTabHref(domain.host, 'rules') } : {})}
                 />
               </div>
               <ListStatus

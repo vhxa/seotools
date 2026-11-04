@@ -51,10 +51,16 @@ const ISSUE_CATALOG = {
     'redirect-3xx': ['warning', 'low'],
     'broken-external-link': ['warning', 'low'],
   },
-  // What the user declared a URL should be, against what the crawl saw. See `crawl/audit`.
+  // What the user declared of a URL, against what the crawl saw. See `crawl/audit`: the expectation
+  // about indexing as a whole, and what a rule requires or forbids of one directive or file.
   'indexing-intent': {
     'expected-indexable-blocked': ['issue', 'high', 'indexability-blocker'],
     'expected-not-indexable-but-indexable': ['issue', 'high'],
+    'noindex-required-missing': ['issue', 'high'],
+    'nofollow-required-missing': ['issue', 'high'],
+    'robots-block-required-missing': ['issue', 'high'],
+    'sitemap-required-missing': ['issue', 'high'],
+    'sitemap-forbidden-present': ['issue', 'high'],
   },
   directives: {
     'directive-outside-head': ['warning', 'low'],

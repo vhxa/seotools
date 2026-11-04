@@ -5,6 +5,7 @@ import {
   type FindingChange,
   type UrlEvidence,
 } from '@seotools/core/crawl/compare'
+import { conditionsKey } from '@seotools/core/crawl/audit'
 import type { Crawl, CrawlUrlTrace } from '@seotools/db'
 
 /** What a trace says about a URL, in the terms findings are judged by. */
@@ -13,7 +14,7 @@ export function urlEvidenceOf(trace: CrawlUrlTrace): UrlEvidence {
     requested: trace.snapshot.state === 'done',
     participation: trace.audit?.participation ?? null,
     intent: trace.audit?.intent ?? null,
-    acceptNofollow: trace.audit?.acceptNofollow ?? false,
+    conditions: conditionsKey(trace.audit?.conditions ?? {}),
     issues: new Set(trace.issues.map(({ issue }) => issue)),
   }
 }

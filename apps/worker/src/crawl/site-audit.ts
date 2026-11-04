@@ -2,7 +2,9 @@ import {
   assessIndexability,
   compileAuditSnapshot,
   crawlFileKindOf,
+  defaultResolution,
   crawlUrlHash,
+  isInternalUrl,
   isRobotsAllowed,
   parseRobots,
   type AuditParticipation,
@@ -14,8 +16,10 @@ import {
   type RecordedIntent,
   type Indexability,
   type ParsedRobots,
+  type ResolvedConditions,
 } from '@seotools/core'
 import type { Crawl, CrawlUrl, CrawlUrlView, Database } from '@seotools/db'
+import { parseRobotsSitemaps } from './extract'
 import { findNearDuplicates } from './fingerprint'
 
 const BATCH = 1000
@@ -122,8 +126,18 @@ export interface AuditedUrl {
   intent: RecordedIntent
   /** The rule that decided it. `null`: the expectation is the default. */
   intentRule: AuditRule | null
-  /** Its own `nofollow` is accepted as intended, by the rule that decided the intent. */
-  acceptNofollow: boolean
+  /**
+   * What rules ask of each condition (`noindex`, `nofollow`, `robots`, `sitemap`), each decided on its
+   * own. `null`: no rule does, and the generic findings apply as they always did.
+   */
+  conditions: ResolvedConditions
+  /**
+   * The page was read whole (its answer, headers and HTML), so a directive it does not declare is
+   * proven absent. Without it, a missing directive is unknown.
+   */
+  directivesKnown: boolean
+  /** The robots.txt of its origin answered, or is not there: a block, or its absence, is proven. */
+  robotsKnown: boolean
   /**
    * Whether a search engine has it in its index. The crawl cannot say: it takes a source that does,
    * such as Search Console. `null`: unknown, which is what every URL is until there is one.
@@ -159,6 +173,12 @@ export interface Site {
   /** Whether any URL of the site answered as a page, unlike a site that is down. */
   answered: boolean
   /**
+   * Whether the sitemaps were all read, so that a URL none of them lists is proven to be out of
+   * them. `unknown`: one could not be read, the crawl stopped at its URL limit, or a robots.txt did
+   * not answer; presence in a sitemap is still proven by what was read.
+   */
+  sitemapCoverage: SitemapCoverage
+  /**
    * The indexable pages that share each value, in URL order, which is what makes one a duplicate:
    * only values that several pages share are here. Pages left out of the audit are not in them: they
    * would make audited pages look like copies, and be listed as the copy.
@@ -186,18 +206,39 @@ export function isGuess(url: AuditedUrl, site: Site): boolean {
   return tried && url.linksIn === 0 && site.answered
 }
 
-function robotsOf(crawl: Crawl) {
-  const parsed = new Map<string, ParsedRobots>()
+export type SitemapCoverage = 'complete' | 'unknown'
+
+/** A `robots.txt` as it answered: what it says, and the status that tells whether it can be relied on. */
+export interface RobotsFile {
+  /** `null`: it had no text (not there, empty, or a request that failed). */
+  parsed: ParsedRobots | null
+  status: number | null
+}
+
+/**
+ * Whether a `robots.txt` answer settles what it allows: it answered, or it is not there (a 4xx, which
+ * means no restrictions). A server error, a timeout, a refusal to answer fast enough (429) or no
+ * answer at all settle nothing: a block, or its absence, is not proven.
+ */
+export const robotsConclusive = (status: number | null) =>
+  status !== null &&
+  ((status >= 200 && status < 300) || (status >= 400 && status < 500 && status !== 429))
+
+export function robotsOf(crawl: Pick<Crawl, 'robots'>): Map<string, RobotsFile> {
+  const files = new Map<string, RobotsFile>()
   for (const [origin, file] of Object.entries(crawl.robots ?? {})) {
-    if (file.body !== null) parsed.set(origin, parseRobots(file.body))
+    files.set(origin, {
+      parsed: file.body !== null ? parseRobots(file.body) : null,
+      status: file.status,
+    })
   }
-  return parsed
+  return files
 }
 
 /** What a URL is like to the audit: its answer, what is expected of it, and what stands in its way. */
 export function auditUrl(
   url: CrawlUrl,
-  robots: ReadonlyMap<string, ParsedRobots>,
+  robots: ReadonlyMap<string, RobotsFile>,
   resolver: AuditResolver,
 ): AuditedUrl {
   const parsed = new URL(url.url)
@@ -218,12 +259,14 @@ export function auditUrl(
   const nofollow = directives.has('nofollow') || directives.has('none')
   const canonicalised = url.canonical !== null && url.canonical !== url.url
   const fileOfTheCrawl = crawlFileKindOf(url.source) !== null
-  const parsedRobots = robots.get(parsed.origin)
+  const robotsFile = robots.get(parsed.origin)
+  const parsedRobots = robotsFile?.parsed ?? undefined
   const robotsBlocked =
     internal &&
     !fileOfTheCrawl &&
     parsedRobots !== undefined &&
     !isRobotsAllowed(parsedRobots, SEARCH_BOT, parsed.pathname + parsed.search)
+  const robotsKnown = internal && !fileOfTheCrawl && robotsConclusive(robotsFile?.status ?? null)
   const indexability = assessIndexability({
     state: url.state,
     kind: url.kind,
@@ -252,7 +295,9 @@ export function auditUrl(
     participationRule: resolved?.audit.rule ?? null,
     intent: resolved?.intent.value ?? 'none',
     intentRule: resolved?.intent.rule ?? null,
-    acceptNofollow: resolved?.intent.acceptNofollow ?? false,
+    conditions: resolved?.conditions ?? defaultResolution().conditions,
+    directivesKnown: contentPage && facts !== null && url.data?.truncated !== true,
+    robotsKnown,
     indexed: null,
     hreflang: url.data?.hreflang ? [...url.data.hreflang] : [],
     linksIn: 0,
@@ -381,6 +426,7 @@ export async function loadSite(
     urls,
     get: (url) => byHash.get(crawlUrlHash(url)),
     answered: urls.some((url) => url.contentPage),
+    sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
     titles: sharedValues(indexable, (url) => comparable(url.url.title)),
     descriptions: sharedValues(indexable, (url) => comparable(url.url.data?.description)),
     h1s: sharedValues(indexable, (url) => comparable(url.url.data?.h1?.[0])),
@@ -392,6 +438,51 @@ export async function loadSite(
       ]),
     ),
   }
+}
+
+/**
+ * Whether every sitemap of the site was read, so that being in none of them can be told from not
+ * knowing. It is not when:
+ * - the crawl stopped at its URL limit: the links to the URLs it dropped were not kept;
+ * - a robots.txt did not answer, so the sitemaps it declares are not known;
+ * - robots.txt declares a sitemap off the site, which the crawl does not read;
+ * - a sitemap file was not read whole: it was not requested, failed, is not a sitemap, or was cut.
+ *   The usual names the crawler tries on every site (`/sitemap.xml`) say nothing when they are
+ *   simply not there, or are not sitemaps.
+ * A site with no sitemap at all, and robots.txt that said so, has none to list a URL: complete.
+ */
+export function sitemapCoverageOf(
+  crawl: Pick<Crawl, 'status' | 'robots'>,
+  host: string,
+  urls: readonly AuditedUrl[],
+): SitemapCoverage {
+  if (crawl.status !== 'completed') return 'unknown'
+  for (const [origin, file] of Object.entries(crawl.robots ?? {})) {
+    // A redirect leads to the robots.txt of another origin, which has its own entry.
+    const redirected = file.status !== null && file.status >= 300 && file.status < 400
+    if (!redirected && !robotsConclusive(file.status)) return 'unknown'
+    if (file.body === null) continue
+    for (const sitemap of parseRobotsSitemaps(file.body, `${origin}/robots.txt`)) {
+      if (!isInternalUrl(sitemap, host)) return 'unknown'
+    }
+  }
+  for (const file of urls) {
+    if (!file.internal || crawlFileKindOf(file.url.source) !== 'sitemap') continue
+    const { state, statusCode, data, kind } = file.url
+    if (state !== 'done') return 'unknown'
+    if (data?.truncated) return 'unknown'
+    if (data?.sitemapSize !== undefined) continue
+    // A sitemap that moved is read where it landed.
+    if (kind === 'redirect') continue
+    // Only tried, because it is a usual name: nothing declared it, and it is simply not there (or not
+    // a sitemap). One that robots.txt or another sitemap declared has to be a sitemap.
+    const settled =
+      statusCode !== null &&
+      (statusCode === 404 || statusCode === 410 || (statusCode >= 200 && statusCode < 300))
+    if (file.linksIn === 0 && settled) continue
+    return 'unknown'
+  }
+  return 'complete'
 }
 
 /** How many hops following a redirect takes, and whether it never gets anywhere. */

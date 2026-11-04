@@ -1,12 +1,12 @@
 'use client'
 
-import type { AuditRule } from '@seotools/core/crawl/audit'
+import type { AuditSelector } from '@seotools/core/crawl/audit'
 import { PencilIcon, Trash2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useOptimistic, useState, useTransition } from 'react'
 import {
-  deleteAuditRuleAction,
-  setAuditRuleEnabledAction,
+  deleteAuditRulesAction,
+  setAuditRulesEnabledAction,
 } from '@/app/(protected)/domains/[host]/audit-actions'
 import { RuleForm } from '@/components/audit/rule-form'
 import { useSelectorText } from '@/components/audit/selector-label'
@@ -29,24 +29,39 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
+import type { RuleGroup } from '@/lib/audit-rules'
 
-/** Turns a rule on or off. A rule that is off is kept, and decides nothing. */
-export function RuleToggle({ host, rule }: { host: string; rule: AuditRule }) {
+/**
+ * Turns a rule on or off, every statement it makes together. A rule that is off is kept, and decides
+ * nothing.
+ */
+export function RuleToggle({
+  host,
+  ids,
+  enabled: saved,
+  selector,
+}: {
+  host: string
+  /** Every row of the rule. */
+  ids: string[]
+  enabled: boolean
+  selector: AuditSelector
+}) {
   const t = useTranslations('AuditRules')
   const text = useSelectorText()
   const [, startTransition] = useTransition()
-  const [enabled, setEnabled] = useOptimistic(rule.enabled)
+  const [enabled, setEnabled] = useOptimistic(saved)
   const [error, setError] = useState<string | null>(null)
   return (
     <>
       <Switch
         size="sm"
         checked={enabled}
-        aria-label={t('list.toggle', { rule: text(rule.selector) })}
+        aria-label={t('list.toggle', { rule: text(selector) })}
         onCheckedChange={(next) =>
           startTransition(async () => {
             setEnabled(next)
-            const result = await setAuditRuleEnabledAction(host, rule.id, next)
+            const result = await setAuditRulesEnabledAction(host, ids, next)
             setError(result.error ?? null)
           })
         }
@@ -67,7 +82,7 @@ export function RuleRowActions({
   languagesDeclared,
 }: {
   host: string
-  rule: AuditRule
+  rule: RuleGroup
   languagesDeclared: boolean
 }) {
   const t = useTranslations('AuditRules')
@@ -77,23 +92,18 @@ export function RuleRowActions({
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const label = text(rule.selector)
-  // An exception that only says about nofollow is edited from the dialog of its URL: the form here
-  // always states an expectation, and would stop it following the rules.
-  const editable = !(rule.dimension === 'intent' && rule.value === 'inherit')
 
   return (
     <div className="flex items-center justify-end gap-1">
-      {editable && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`${t('list.edit')}: ${label}`}
-          title={t('list.edit')}
-          onClick={() => setEditing(true)}
-        >
-          <PencilIcon />
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`${t('list.edit')}: ${label}`}
+        title={t('list.edit')}
+        onClick={() => setEditing(true)}
+      >
+        <PencilIcon />
+      </Button>
       <Button
         variant="ghost"
         size="icon-sm"
@@ -117,7 +127,6 @@ export function RuleRowActions({
           </DialogHeader>
           <RuleForm
             host={host}
-            dimension={rule.dimension}
             languagesDeclared={languagesDeclared}
             rule={rule}
             onSaved={() => setEditing(false)}
@@ -141,7 +150,7 @@ export function RuleRowActions({
               variant="destructive"
               onClick={() =>
                 startTransition(async () => {
-                  const result = await deleteAuditRuleAction(host, rule.id)
+                  const result = await deleteAuditRulesAction(host, rule.ids)
                   setError(result.error ?? null)
                 })
               }

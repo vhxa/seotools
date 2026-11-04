@@ -6,6 +6,11 @@
  * - `intent`: what the user expects of its indexation. It is a statement of intent, never evidence
  *   that a search engine indexed (or did not index) anything.
  *
+ * - `conditions`: four facts about a URL (a `noindex`, a `nofollow`, a block in robots.txt, being in a
+ *   sitemap), each resolved on its own as `required`, `allowed` or `forbidden`. They are about one
+ *   directive or file each: never about whether the URL as a whole can be indexed, which is the
+ *   `intent`, and a block in robots.txt is never read as the URL being out of the index.
+ *
  * Everything here is pure and has no Node imports: the worker (analysis), the server actions
  * (validation, previews) and the client components (labels) share this one resolution, so what the
  * settings page says is what the worker applies. Reach it from client components through
@@ -18,8 +23,34 @@
 import { z } from 'zod'
 import { isInternalUrl, normalizeCrawlUrl } from './normalize'
 
-export const AUDIT_DIMENSIONS = ['audit', 'intent'] as const
+/**
+ * The facts a rule can ask for or rule out on a URL. Each is one directive or file, kept apart from
+ * the indexability of the URL as a whole (`intent`):
+ * - `noindex`: the page declares `noindex` (robots meta tag or `X-Robots-Tag`).
+ * - `nofollow`: the page declares `nofollow` for itself. Links marked `rel="nofollow"` are other issues.
+ * - `robots`: robots.txt blocks the URL for the bot the audit follows. That is a crawling rule: it says
+ *   nothing about whether the URL is, or stays, out of a search engine's index.
+ * - `sitemap`: a sitemap lists the URL.
+ */
+export const AUDIT_CONDITIONS = ['noindex', 'nofollow', 'robots', 'sitemap'] as const
+export type AuditCondition = (typeof AUDIT_CONDITIONS)[number]
+
+/**
+ * What a rule asks of a condition.
+ * - `required`: the URL has to have it; a finding is raised when it provably does not.
+ * - `allowed`: either way is fine; the generic finding for the condition is not raised.
+ * - `forbidden`: the URL must not have it; a finding is raised when it provably does.
+ * What cannot be told (not requested, a request that failed, a file that could not be read) is
+ * neither: no finding is raised, and it is never read as the requirement being met.
+ */
+export const REQUIREMENTS = ['required', 'allowed', 'forbidden'] as const
+export type Requirement = (typeof REQUIREMENTS)[number]
+
+export const AUDIT_DIMENSIONS = ['audit', 'intent', ...AUDIT_CONDITIONS] as const
 export type AuditDimension = (typeof AUDIT_DIMENSIONS)[number]
+
+export const isAuditCondition = (value: unknown): value is AuditCondition =>
+  (AUDIT_CONDITIONS as readonly unknown[]).includes(value)
 
 /** What a rule says about the audit: leave the URLs out, or bring back those a broader rule left out. */
 export const AUDIT_VALUES = ['exclude', 'include'] as const
@@ -34,8 +65,13 @@ export type AuditValue = (typeof AUDIT_VALUES)[number]
  *   `not-indexable`, can accept the page's own `nofollow` (an exception can do only that, leaving the
  *   expectation to the other rules), and a path rule can be shared between the language
  *   directories of the domain.
+ * - 3: nothing about a URL's own directives hangs off the expectation any more. The four conditions
+ *   (`AUDIT_CONDITIONS`) are rules of their own, each inherited on its own; accepting the page's
+ *   `nofollow` is the `nofollow` condition set to `allowed` (an intent rule's `acceptNofollow` and
+ *   the `inherit` intent value are retired, and ignored when read). A condition no rule states
+ *   behaves as it always did.
  */
-export const AUDIT_SEMANTICS = 2
+export const AUDIT_SEMANTICS = 3
 
 /** What a URL can be expected to be, which is what a rule or an exception can say. */
 export const INDEX_INTENTS = ['indexable', 'not-indexable'] as const
@@ -48,10 +84,9 @@ export type IndexIntent = (typeof INDEX_INTENTS)[number]
 export type RecordedIntent = IndexIntent | 'none'
 
 /**
- * What an intent rule says about the expectation. An exception on one URL can also say `inherit`:
- * the expectation is left to the other rules, and the exception only says whether the page's own
- * `nofollow` is accepted. That way accepting `nofollow` never pins the expectation the URL had when
- * it was done.
+ * What an intent rule says about the expectation. `inherit` only exists in rules and snapshots from
+ * semantics 2, where an exception on one URL could leave the expectation to the other rules and only
+ * accept the page's own `nofollow`. Semantics 3 does not read it: that is the `nofollow` condition.
  */
 export type IntentRuleValue = RecordedIntent | 'inherit'
 
@@ -112,18 +147,22 @@ export type AuditRule =
       dimension: 'intent'
       value: IntentRuleValue
       /**
-       * The page's own `nofollow` is accepted as intended: its generic finding is not raised. It says
-       * nothing about `noindex`, and does not need a `nofollow` to be there. Every intent rule says
-       * it, so the rule that wins decides it; only a rule with the value `inherit` leaves the
-       * expectation to another one, and decides this alone.
+       * Retired with semantics 3, where accepting a `nofollow` is the `nofollow` condition. It is read
+       * only from rules and snapshots of semantics 2: the page's own `nofollow` was accepted as
+       * intended by the rule that decided its expectation. New rules always say `false`.
        */
       acceptNofollow: boolean
     })
+  | (RuleBase & { dimension: AuditCondition; value: Requirement })
+
+export type ConditionRule = Extract<AuditRule, { dimension: AuditCondition }>
+export const isConditionRule = (rule: AuditRule): rule is ConditionRule =>
+  isAuditCondition(rule.dimension)
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
 /** What it takes to create a rule: the rest is given when it is stored. */
-export type NewAuditRule = DistributiveOmit<AuditRule, 'id'>
+export type NewAuditRule = DistributiveOmit<AuditRule, 'id' | 'acceptNofollow'>
 
 // --- language directories ------------------------------------------------------------------------
 
@@ -420,29 +459,38 @@ export interface Resolved<V> {
   rule: AuditRule | null
 }
 
+/** What a rule asks of one condition of a URL. `null`: no rule does, and the generic findings apply. */
+export interface ResolvedCondition {
+  requirement: Requirement | null
+  /** The rule that decided it. `null` when nothing did. */
+  rule: AuditRule | null
+}
+
+export type ResolvedConditions = Record<AuditCondition, ResolvedCondition>
+
 export interface AuditResolution {
   audit: Resolved<AuditParticipation>
-  intent: Resolved<RecordedIntent> & {
-    /** The page's own `nofollow` is accepted. */
-    acceptNofollow: boolean
-    /**
-     * The rule that decided it: the one that decides the intent, unless an exception that leaves the
-     * intent to others says about `nofollow`. `null` when nothing did.
-     */
-    acceptRule: AuditRule | null
-  }
+  intent: Resolved<RecordedIntent>
+  /**
+   * Each condition on its own: the most specific rule for that condition decides it, whatever the
+   * rules for the others or for the expectation say.
+   */
+  conditions: ResolvedConditions
 }
+
+const noConditions = (): ResolvedConditions => ({
+  noindex: { requirement: null, rule: null },
+  nofollow: { requirement: null, rule: null },
+  robots: { requirement: null, rule: null },
+  sitemap: { requirement: null, rule: null },
+})
 
 /** What a URL is when no rule covers it, which is what semantics say. */
 export function defaultResolution(semantics: number = AUDIT_SEMANTICS): AuditResolution {
   return {
     audit: { value: 'audited', rule: null },
-    intent: {
-      value: semantics >= 2 ? 'indexable' : 'none',
-      rule: null,
-      acceptNofollow: false,
-      acceptRule: null,
-    },
+    intent: { value: semantics >= 2 ? 'indexable' : 'none', rule: null },
+    conditions: noConditions(),
   }
 }
 
@@ -469,6 +517,10 @@ const newBucket = (): Bucket => ({ any: null, exact: new Map() })
 /** The expectation a rule states, if it states one. */
 const statedIntent = (rule: AuditRule | null): RecordedIntent | null =>
   rule && rule.dimension === 'intent' && rule.value !== 'inherit' ? rule.value : null
+
+/** What a rule asks of a condition, if it is a rule about one. */
+const statedRequirement = (rule: AuditRule | null): Requirement | null =>
+  rule && isConditionRule(rule) ? rule.value : null
 
 /** The rules of one dimension, indexed so that a URL is resolved in a few lookups. */
 class DimensionIndex {
@@ -564,8 +616,13 @@ export interface CompileOptions {
  * (a literal one wins a tie), and finally the default. A rule that asks for the URL's query beats one
  * that ignores it.
  *
- * `semantics` is what the configuration meant when it was made. Under 2, nothing was expected by
- * default, a rule could say `none`, and neither shared selectors nor accepting `nofollow` existed.
+ * Every condition is resolved like that on its own, so a rule about one never decides another one,
+ * and a URL can take `noindex` from a broad rule and `sitemap` from an exception.
+ *
+ * `semantics` is what the configuration meant when it was made. Under 2 there are no condition
+ * rules, and accepting the page's `nofollow` hangs off the intent rule that wins (read here as the
+ * `nofollow` condition being `allowed`); under 1, nothing was expected by default, a rule could say
+ * `none`, and neither shared selectors nor accepting `nofollow` existed.
  */
 export function compileAuditRules(
   rules: readonly AuditRule[],
@@ -574,22 +631,32 @@ export function compileAuditRules(
 ): AuditResolver {
   const semantics = options.semantics ?? AUDIT_SEMANTICS
   const languages = canonicalLanguages(options.languages ?? NO_LANGUAGES)
-  const enabled = rules.filter(
-    (rule) =>
-      rule.enabled &&
-      (semantics >= 2
-        ? !(rule.dimension === 'intent' && rule.value === 'none')
-        : (rule.selector.kind === 'url' || rule.selector.scope !== 'shared') &&
-          !(rule.dimension === 'intent' && rule.value === 'inherit')),
-  )
+  const usable = (rule: AuditRule) => {
+    if (isConditionRule(rule)) return semantics >= 3
+    if (rule.dimension === 'intent') {
+      if (rule.value === 'none') return semantics < 2
+      if (rule.value === 'inherit') return semantics === 2
+    }
+    return semantics >= 2 || rule.selector.kind === 'url' || rule.selector.scope !== 'shared'
+  }
+  const enabled = rules.filter((rule) => rule.enabled && usable(rule))
   const audit = new DimensionIndex(enabled.filter((rule) => rule.dimension === 'audit'))
   const intentRules = enabled.filter((rule) => rule.dimension === 'intent')
-  // The expectation is decided by the rules that state one; `nofollow`, by every intent rule, since
-  // each says it. They are the same rules unless an exception leaves the expectation to others.
   const intent = new DimensionIndex(intentRules.filter((rule) => rule.value !== 'inherit'))
-  const nofollow = intentRules.some((rule) => rule.value === 'inherit')
-    ? new DimensionIndex(intentRules)
-    : intent
+  // Semantics 2: every intent rule said whether it accepts `nofollow`, so the most specific one decides
+  // it, and one that only accepts it (`inherit`) decides it alone.
+  const legacyAccepting =
+    semantics === 2
+      ? intentRules.some((rule) => rule.value === 'inherit')
+        ? new DimensionIndex(intentRules)
+        : intent
+      : null
+  const byCondition = new Map(
+    AUDIT_CONDITIONS.map((condition) => [
+      condition,
+      new DimensionIndex(enabled.filter((rule) => rule.dimension === condition)),
+    ]),
+  )
   const fallback = defaultResolution(semantics)
   return {
     resolve(url) {
@@ -597,18 +664,23 @@ export function compileAuditRules(
       if (!parts) return fallback
       const byAudit = audit.find(parts)
       const byIntent = intent.find(parts)
-      const byNofollow = nofollow === intent ? byIntent : nofollow.find(parts)
-      const accepting = byNofollow && byNofollow.dimension === 'intent' ? byNofollow : null
+      const conditions = noConditions()
+      for (const condition of AUDIT_CONDITIONS) {
+        const rule = byCondition.get(condition)?.find(parts) ?? null
+        if (rule) conditions[condition] = { requirement: statedRequirement(rule), rule }
+      }
+      if (legacyAccepting) {
+        const decided = legacyAccepting === intent ? byIntent : legacyAccepting.find(parts)
+        if (decided && decided.dimension === 'intent' && decided.acceptNofollow) {
+          conditions.nofollow = { requirement: 'allowed', rule: decided }
+        }
+      }
       return {
         audit: byAudit
           ? { value: byAudit.value === 'exclude' ? 'excluded' : 'audited', rule: byAudit }
           : fallback.audit,
-        intent: {
-          value: statedIntent(byIntent) ?? fallback.intent.value,
-          rule: byIntent,
-          acceptNofollow: semantics >= 2 && accepting !== null && accepting.acceptNofollow,
-          acceptRule: semantics >= 2 ? accepting : null,
-        },
+        intent: { value: statedIntent(byIntent) ?? fallback.intent.value, rule: byIntent },
+        conditions,
       }
     },
     covering(url) {
@@ -663,6 +735,7 @@ const ruleSchema = z.discriminatedUnion('dimension', [
     value: z.enum(['none', 'inherit', ...INDEX_INTENTS]),
     acceptNofollow: z.boolean().default(false),
   }),
+  z.object({ ...ruleBase, dimension: z.enum(AUDIT_CONDITIONS), value: z.enum(REQUIREMENTS) }),
 ])
 
 /**
@@ -801,6 +874,27 @@ export interface PagesAudit {
   unknownIndexability: number
 }
 
+/**
+ * What the crawl saw of a condition on a URL.
+ * - `present` / `absent`: the crawl could tell. Absence is only claimed when the input was complete
+ *   (a page parsed whole, a robots.txt that answered, every sitemap read).
+ * - `unknown`: it could not (not requested, a request that failed, a file that could not be read, not
+ *   a page). Never read as the requirement being met or missed.
+ */
+export type ConditionObservation = 'present' | 'absent' | 'unknown'
+
+/** A condition a rule stated for a URL, with what the crawl saw. */
+export interface ConditionState {
+  requirement: Requirement
+  /** The rule that decided it. `null` only for what an analysis of semantics 2 kept without one. */
+  rule: string | null
+  /** `null`: not looked at by this analysis (a recheck cannot read the sitemaps). */
+  observed: ConditionObservation | null
+}
+
+/** The conditions that a rule stated for a URL. A condition no rule states is not here. */
+export type ConditionStates = Partial<Record<AuditCondition, ConditionState>>
+
 /** What an analysis concluded about one URL of the site. */
 export interface UrlAuditState {
   participation: AuditParticipation
@@ -810,9 +904,55 @@ export interface UrlAuditState {
   intent: RecordedIntent
   /** The rule that decided it. `null`: the default. */
   intentRule: string | null
-  /** The page's own `nofollow` was accepted, by the rule that decided the intent. */
-  acceptNofollow: boolean
+  /** The conditions a rule stated, each with the rule that did and what the crawl saw. */
+  conditions: ConditionStates
   indexability: 'indexable' | 'not-indexable' | 'unknown'
   /** What stands in the way when it is not indexable. */
   blockers: string[]
+}
+
+/**
+ * A state as an older analysis stored it: before conditions, the page's own `nofollow` was accepted
+ * by the rule that decided the expectation (`acceptNofollow`). That is the `nofollow` condition being
+ * `allowed`. Use it for anything that was stored (rows, the outcome of a recheck), never for a new
+ * analysis.
+ */
+export function readUrlAuditState<
+  T extends Omit<UrlAuditState, 'conditions'> & {
+    conditions?: ConditionStates | null
+    acceptNofollow?: boolean
+  },
+>(stored: T): Omit<T, 'acceptNofollow' | 'conditions'> & { conditions: ConditionStates } {
+  const { acceptNofollow, conditions, ...rest } = stored
+  const read: ConditionStates = { ...conditions }
+  if (acceptNofollow && !read.nofollow) {
+    read.nofollow = { requirement: 'allowed', rule: stored.intentRule, observed: null }
+  }
+  return { ...rest, conditions: read }
+}
+
+/**
+ * Whether what a rule asked of a condition came true.
+ * - `unknown` when the crawl could not tell, or did not look.
+ * - `allowed` when the rule asks for nothing either way.
+ * - `met` / `unmet` against `required` and `forbidden`.
+ */
+export type ConditionOutcome = 'met' | 'unmet' | 'allowed' | 'unknown'
+
+export function conditionOutcome(
+  requirement: Requirement,
+  observed: ConditionObservation | null,
+): ConditionOutcome {
+  if (requirement === 'allowed') return 'allowed'
+  if (observed === null || observed === 'unknown') return 'unknown'
+  const wanted = requirement === 'required' ? 'present' : 'absent'
+  return observed === wanted ? 'met' : 'unmet'
+}
+
+/** The conditions of a URL as one stable string: what has to match for two analyses to be comparable. */
+export function conditionsKey(conditions: ConditionStates): string {
+  return AUDIT_CONDITIONS.flatMap((condition) => {
+    const state = conditions[condition]
+    return state ? [`${condition}=${state.requirement}`] : []
+  }).join(',')
 }

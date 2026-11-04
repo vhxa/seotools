@@ -29,17 +29,26 @@ const minutes = (n: number) => n * 60_000
  * Behaviour every dialect must provide. `reset` must leave all tables empty.
  * SQLite runs it always; Postgres/MySQL run it when TEST_POSTGRES_URL / TEST_MYSQL_URL are set.
  */
+/** What only an older version of the code wrote, put into the database as it was. */
+export interface LegacyWrites {
+  /** Sets the flag that accepted the page's own `nofollow` on a rule, retired with semantics 3. */
+  acceptNofollow(ruleId: string, accept: boolean): Promise<void>
+  /** Marks a URL of an analysis as it was stored when it had accepted the page's own `nofollow`. */
+  urlAcceptedNofollow(crawlId: string, urlHash: string): Promise<void>
+}
+
 export function describeDatabaseContract(
   name: string,
-  setup: () => Promise<{ db: Database; reset: () => Promise<void> }>,
+  setup: () => Promise<{ db: Database; reset: () => Promise<void>; legacy: LegacyWrites }>,
   options: { skip?: boolean } = {},
 ) {
   describe.skipIf(options.skip)(`database contract: ${name}`, () => {
     let db: Database
     let reset: () => Promise<void>
+    let legacy: LegacyWrites
 
     beforeAll(async () => {
-      ;({ db, reset } = await setup())
+      ;({ db, reset, legacy } = await setup())
     })
     afterAll(async () => {
       await db?.close()
@@ -1812,11 +1821,7 @@ export function describeDatabaseContract(
           reason: extra.reason ?? null,
           enabled: extra.enabled ?? true,
         })
-        const intentRule = (
-          path: string,
-          value: 'indexable' | 'not-indexable',
-          extra: { acceptNofollow?: boolean } = {},
-        ) => ({
+        const intentRule = (path: string, value: 'indexable' | 'not-indexable') => ({
           dimension: 'intent' as const,
           value,
           selector: {
@@ -1825,7 +1830,6 @@ export function describeDatabaseContract(
             query: { mode: 'exact' as const, value: '' },
             scope: 'literal' as const,
           },
-          acceptNofollow: extra.acceptNofollow ?? false,
           reason: null,
           enabled: true,
         })
@@ -2367,7 +2371,7 @@ export function describeDatabaseContract(
                   participationRule: null,
                   intent: 'indexable',
                   intentRule: null,
-                  acceptNofollow: false,
+                  conditions: {},
                   indexability: 'indexable',
                   blockers: [],
                 },
@@ -2411,13 +2415,12 @@ export function describeDatabaseContract(
             (job) => job.type === JOB_TYPES.auditRecompute,
           )
         const rule = (
-          dimension: 'audit' | 'intent',
+          dimension: string,
           value: string,
           path: string,
           options: {
             kind?: 'path' | 'prefix'
             scope?: 'literal' | 'shared'
-            acceptNofollow?: boolean
             enabled?: boolean
           } = {},
         ) =>
@@ -2430,7 +2433,6 @@ export function describeDatabaseContract(
               query: { mode: 'any' },
               scope: options.scope ?? 'literal',
             },
-            ...(dimension === 'intent' ? { acceptNofollow: options.acceptNofollow ?? false } : {}),
             reason: null,
             enabled: options.enabled ?? true,
           }) as Parameters<Database['audit']['saveRule']>[0]['rule']
@@ -2472,133 +2474,170 @@ export function describeDatabaseContract(
           ).toEqual(['literal', 'shared'])
         })
 
-        it('keeps the acceptance of nofollow on intent rules, and only there', async () => {
+        it('stores a rule for each condition, apart from the others that share its selector', async () => {
           const domainId = await domain()
-          const intent = await db.audit.saveRule({
-            domainId,
-            rule: rule('intent', 'not-indexable', '/a', { acceptNofollow: true }),
-          })
-          const audit = await db.audit.saveRule({ domainId, rule: rule('audit', 'exclude', '/b') })
+          const values = {
+            audit: 'exclude',
+            intent: 'not-indexable',
+            noindex: 'required',
+            nofollow: 'allowed',
+            robots: 'forbidden',
+            sitemap: 'required',
+          }
+          for (const [dimension, value] of Object.entries(values)) {
+            expect(
+              await db.audit.saveRule({ domainId, rule: rule(dimension, value, '/a') }),
+            ).toMatchObject({ ok: true, changed: true })
+          }
           const stored = (await db.audit.config(domainId)).rules
-          expect(stored.find((r) => r.id === (intent.ok ? intent.rule!.id : ''))).toMatchObject({
-            acceptNofollow: true,
+          expect(stored.map((r) => `${r.dimension}=${r.value}`).sort()).toEqual([
+            'audit=exclude',
+            'intent=not-indexable',
+            'nofollow=allowed',
+            'noindex=required',
+            'robots=forbidden',
+            'sitemap=required',
+          ])
+          // A condition says nothing about the retired flag of the expectation, which is always off.
+          expect(stored.find((r) => r.dimension === 'noindex')).not.toHaveProperty('acceptNofollow')
+          expect(stored.find((r) => r.dimension === 'intent')).toMatchObject({
+            acceptNofollow: false,
           })
-          expect(stored.find((r) => r.id === (audit.ok ? audit.rule!.id : ''))).not.toHaveProperty(
-            'acceptNofollow',
-          )
-          // Changing only it is a change.
-          const id = intent.ok ? intent.rule!.id : ''
+          // The same condition for the same selector is the same rule, enabled; a disabled one is not.
+          expect(
+            await db.audit.saveRule({ domainId, rule: rule('noindex', 'forbidden', '/a') }),
+          ).toEqual({ ok: false, error: 'conflict' })
           expect(
             await db.audit.saveRule({
               domainId,
-              id,
-              rule: rule('intent', 'not-indexable', '/a', { acceptNofollow: false }),
+              rule: rule('noindex', 'forbidden', '/a', { enabled: false }),
             }),
-          ).toMatchObject({ ok: true, changed: true, rule: { acceptNofollow: false } })
+          ).toMatchObject({ ok: true })
         })
 
         describe('what the table and the detail set for exact URLs', () => {
-          it('removes the audit exception when it is set back to the rules, with what it carried', async () => {
-            const domainId = await domain()
-            await db.audit.setUrlConfig({
+          const exceptions = async (domainId: string) =>
+            (await db.audit.config(domainId)).rules
+              .filter((r) => r.selector.kind === 'url')
+              .map((r) => `${r.dimension}=${r.value}`)
+              .sort()
+          const set = (domainId: string, change: Record<string, unknown>) =>
+            db.audit.setUrlConfig({
               host: 'acme.com',
               domainId,
               urls: [URL_A],
-              audit: 'exclude',
-              intent: 'not-indexable',
-              acceptNofollow: true,
+              ...change,
+            } as Parameters<Database['audit']['setUrlConfig']>[0])
+
+          it('states each statement as a row of its own, and removes only the one set back to the rules', async () => {
+            const domainId = await domain()
+            expect(
+              await set(domainId, {
+                audit: 'exclude',
+                intent: 'not-indexable',
+                conditions: { noindex: 'required', nofollow: 'allowed', sitemap: 'forbidden' },
+                reason: 'Cart',
+              }),
+            ).toMatchObject({ ok: true, changed: true })
+            expect(await exceptions(domainId)).toEqual([
+              'audit=exclude',
+              'intent=not-indexable',
+              'nofollow=allowed',
+              'noindex=required',
+              'sitemap=forbidden',
+            ])
+            await set(domainId, { conditions: { noindex: 'inherit' } })
+            expect(await exceptionOf(domainId, 'noindex', URL_A)).toBeUndefined()
+            expect(await exceptionOf(domainId, 'nofollow', URL_A)).toMatchObject({
+              value: 'allowed',
               reason: 'Cart',
             })
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              audit: 'inherit',
-            })
+            await set(domainId, { audit: 'inherit' })
             expect(await exceptionOf(domainId, 'audit', URL_A)).toBeUndefined()
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'not-indexable',
-              acceptNofollow: true,
-              reason: 'Cart',
+            expect(await exceptions(domainId)).toEqual([
+              'intent=not-indexable',
+              'nofollow=allowed',
+              'sitemap=forbidden',
+            ])
+            await set(domainId, {
+              intent: 'inherit',
+              conditions: { nofollow: 'inherit', sitemap: 'inherit' },
             })
+            expect(await exceptions(domainId)).toEqual([])
           })
 
-          it('leaves the expectation to the rules and keeps only the nofollow that differs from them', async () => {
+          it('never states, resets or copies a statement it was not given', async () => {
             const domainId = await domain()
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              intent: 'not-indexable',
-              acceptNofollow: true,
-              reason: 'Cart',
-            })
-            // Back to the rules for the expectation: accepting nofollow differs from them, so it stays.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              intent: 'inherit',
-            })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'inherit',
-              acceptNofollow: true,
-              reason: 'Cart',
-            })
-            // Accepting it no more is what the rules say: nothing is left to keep.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              acceptNofollow: false,
-            })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toBeUndefined()
-            // Both at once.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              intent: 'indexable',
-              acceptNofollow: true,
-            })
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              intent: 'inherit',
-              acceptNofollow: false,
-            })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toBeUndefined()
-          })
-
-          it('does not pin the expectation when only nofollow is accepted, so later rules still reach the URL', async () => {
-            const domainId = await domain()
-            const broad = await db.audit.saveRule({
-              domainId,
-              rule: rule('intent', 'not-indexable', '/es'),
-            })
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              acceptNofollow: true,
-            })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'inherit',
-              acceptNofollow: true,
-            })
-            // The general rule changes later: the exception follows it for the expectation.
+            // The URL is covered by rules for the expectation and for the nofollow.
+            await db.audit.setLanguages({ domainId, languages: LANGS })
+            await db.audit.saveRule({ domainId, rule: rule('intent', 'not-indexable', '/es') })
+            await db.audit.saveRule({ domainId, rule: rule('nofollow', 'allowed', '/es') })
+            await set(domainId, { conditions: { nofollow: 'forbidden' } })
+            // One row, for one condition: the expectation is not pinned, nor the other conditions.
+            expect(await exceptions(domainId)).toEqual(['nofollow=forbidden'])
+            const config = await db.audit.config(domainId)
+            const found = compileAuditRules(config.rules, 'acme.com', {
+              languages: config.languages,
+            }).resolve(URL_A)
+            expect(found.conditions.nofollow.requirement).toBe('forbidden')
+            expect(found.intent).toMatchObject({ value: 'not-indexable' })
+            // Later changes to the rules still reach what the exception does not state.
+            const broad = config.rules.find((r) => r.dimension === 'intent')!
             await db.audit.saveRule({
               domainId,
-              id: broad.ok ? broad.rule!.id : '',
+              id: broad.id,
               rule: rule('intent', 'indexable', '/es'),
             })
-            const config = await db.audit.config(domainId)
-            const resolved = compileAuditRules(config.rules, 'acme.com', {
-              languages: config.languages,
-            }).resolve(URL_A).intent
-            expect(resolved.value).toBe('indexable')
-            expect(resolved.acceptNofollow).toBe(true)
+            const later = await db.audit.config(domainId)
+            expect(
+              compileAuditRules(later.rules, 'acme.com', { languages: later.languages }).resolve(
+                URL_A,
+              ).intent.value,
+            ).toBe('indexable')
+          })
+
+          it('does not touch what the change does not name', async () => {
+            const domainId = await domain()
+            await set(domainId, {
+              audit: 'exclude',
+              intent: 'not-indexable',
+              conditions: { robots: 'required' },
+              reason: 'Because',
+            })
+            const before = await exceptionOf(domainId, 'audit', URL_A)
+            await set(domainId, { intent: 'indexable' })
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toEqual(before)
+            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
+              value: 'indexable',
+              reason: 'Because',
+            })
+            expect(await exceptionOf(domainId, 'robots', URL_A)).toMatchObject({
+              value: 'required',
+              reason: 'Because',
+            })
+            // A reason is only replaced when one is given.
+            await set(domainId, { audit: 'include' })
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({
+              value: 'include',
+              reason: 'Because',
+            })
+            await set(domainId, { audit: 'include', reason: null })
+            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({ reason: null })
+          })
+
+          it('changes nothing, and moves nothing, when it asks for what is already there', async () => {
+            const domainId = await domain()
+            await set(domainId, { conditions: { sitemap: 'required' }, reason: 'x' })
+            const version = (await db.audit.config(domainId)).version
+            expect(await set(domainId, { conditions: { sitemap: 'required' } })).toMatchObject({
+              ok: true,
+              changed: false,
+              version,
+            })
+            // An exception that is not there cannot be removed.
+            expect(await set(domainId, { conditions: { noindex: 'inherit' } })).toMatchObject({
+              changed: false,
+            })
           })
 
           it('does not use a disabled exception, and replaces or removes it when asked', async () => {
@@ -2607,146 +2646,76 @@ export function describeDatabaseContract(
             const disabled = await exceptionOf(domainId, 'audit', URL_A)
             expect(disabled).toMatchObject({ enabled: false })
             // Choosing a value turns the same exception on, instead of adding a second one.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              audit: 'exclude',
-            })
+            await set(domainId, { audit: 'exclude' })
             expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({
               id: disabled!.id,
               enabled: true,
             })
             // With an enabled one next to a disabled one, a change goes to the one that acts.
             await db.audit.saveRule({ domainId, rule: urlException('include', false) })
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              audit: 'include',
-            })
+            await set(domainId, { audit: 'include' })
             const audit = (await db.audit.config(domainId)).rules.filter(
               (r) => r.dimension === 'audit' && r.selector.kind === 'url',
             )
             expect(audit.filter((r) => r.enabled).map((r) => r.value)).toEqual(['include'])
             // Back to the rules removes every exception of the URL, disabled ones too.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              audit: 'inherit',
-            })
+            await set(domainId, { audit: 'inherit' })
             expect(
               (await db.audit.config(domainId)).rules.filter((r) => r.dimension === 'audit'),
             ).toEqual([])
           })
 
-          it('does not touch what the change does not name', async () => {
-            const domainId = await domain()
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              audit: 'exclude',
-              intent: 'not-indexable',
-              acceptNofollow: true,
-              reason: 'Because',
-            })
-            const before = await exceptionOf(domainId, 'audit', URL_A)
-            // Only the expectation: the audit exception, its reason and the acceptance stay.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              intent: 'indexable',
-            })
-            expect(await exceptionOf(domainId, 'audit', URL_A)).toEqual(before)
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'indexable',
-              acceptNofollow: true,
-              reason: 'Because',
-            })
-            // Only the acceptance: the expectation stays.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              acceptNofollow: false,
-            })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'indexable',
-              acceptNofollow: false,
-              reason: 'Because',
-            })
-            // A reason is only replaced when one is given.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              audit: 'include',
-            })
-            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({
-              value: 'include',
-              reason: 'Because',
-            })
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              audit: 'include',
-              reason: null,
-            })
-            expect(await exceptionOf(domainId, 'audit', URL_A)).toMatchObject({ reason: null })
-          })
-
-          it('takes from a new exception what it was not given from what the URL is now', async () => {
+          it('treats each condition apart when one of them has a disabled exception', async () => {
             const domainId = await domain()
             await db.audit.saveRule({
               domainId,
-              rule: rule('intent', 'not-indexable', '/es', { acceptNofollow: true }),
+              rule: {
+                dimension: 'noindex',
+                value: 'required',
+                selector: { kind: 'url', url: URL_A },
+                reason: null,
+                enabled: false,
+              },
             })
-            // An expectation of its own, keeping the nofollow the rule accepted.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              intent: 'indexable',
-            })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'indexable',
-              acceptNofollow: true,
-            })
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              intent: 'inherit',
-            })
-            // Only the acceptance: the expectation stays the rule's, and is not copied.
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              acceptNofollow: false,
-            })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'inherit',
-              acceptNofollow: false,
-            })
+            await set(domainId, { conditions: { sitemap: 'allowed' } })
+            expect(await exceptionOf(domainId, 'noindex', URL_A)).toMatchObject({ enabled: false })
+            expect(await exceptionOf(domainId, 'sitemap', URL_A)).toMatchObject({ enabled: true })
           })
 
-          it('leaves the default expectation to the rules for a URL no rule covers', async () => {
+          it('takes one version and one recalculation for many statements and URLs', async () => {
             const domainId = await domain()
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
-              domainId,
-              urls: [URL_A],
-              acceptNofollow: true,
-            })
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'inherit',
-              acceptNofollow: true,
-            })
+            await finishedCrawl(domainId)
+            const before = (await db.audit.config(domainId)).version
+            const urls = ['https://acme.com/a', 'https://acme.com/b', 'https://acme.com/c']
+            expect(
+              await db.audit.setUrlConfig({
+                host: 'acme.com',
+                domainId,
+                urls,
+                audit: 'exclude',
+                conditions: { noindex: 'required', robots: 'allowed' },
+              }),
+            ).toMatchObject({ ok: true, changed: true, version: before + 1 })
+            expect((await db.audit.config(domainId)).rules).toHaveLength(9)
+            expect(await recomputeJobs()).toHaveLength(1)
+          })
+
+          it('writes nothing when the change would go over the limit', async () => {
+            const domainId = await domain()
+            const urls = Array.from({ length: 60 }, (_, i) => `https://acme.com/p${i}`)
+            // 60 URLs x 4 statements is more than a domain can have.
+            expect(
+              await db.audit.setUrlConfig({
+                host: 'acme.com',
+                domainId,
+                urls,
+                audit: 'exclude',
+                intent: 'not-indexable',
+                conditions: { noindex: 'required', sitemap: 'required' },
+              }),
+            ).toEqual({ ok: false, error: 'limit' })
+            expect((await db.audit.config(domainId)).rules).toEqual([])
+            expect((await db.audit.config(domainId)).version).toBe(0)
           })
 
           it('reads the effective result through the language directories of the domain', async () => {
@@ -2754,22 +2723,234 @@ export function describeDatabaseContract(
             await db.audit.setLanguages({ domainId, languages: LANGS })
             await db.audit.saveRule({
               domainId,
-              rule: rule('intent', 'not-indexable', '/cart', {
-                scope: 'shared',
-                acceptNofollow: true,
-              }),
+              rule: rule('nofollow', 'allowed', '/cart', { scope: 'shared' }),
             })
-            await db.audit.setUrlConfig({
-              host: 'acme.com',
+            await set(domainId, { conditions: { nofollow: 'forbidden' } })
+            const config = await db.audit.config(domainId)
+            const resolver = compileAuditRules(config.rules, 'acme.com', {
+              languages: config.languages,
+            })
+            // /es/cart is under the shared rule, and the exception beats it for this URL only.
+            expect(resolver.resolve(URL_A).conditions.nofollow.requirement).toBe('forbidden')
+            expect(
+              resolver.resolve('https://acme.com/ca/cart').conditions.nofollow.requirement,
+            ).toBe('allowed')
+          })
+        })
+
+        describe('saving a rule as the editor shows it', () => {
+          const selector = (path: string, kind: 'path' | 'prefix' = 'prefix') => ({
+            kind,
+            path,
+            query: { mode: 'any' as const },
+            scope: 'literal' as const,
+          })
+          const save = (domainId: string, input: Record<string, unknown>) =>
+            db.audit.saveRuleSet({
               domainId,
-              urls: [URL_A],
-              acceptNofollow: false,
+              selector: selector('/shop'),
+              statements: { audit: 'exclude' },
+              reason: null,
+              enabled: true,
+              ...input,
+            } as Parameters<Database['audit']['saveRuleSet']>[0])
+          const at = async (domainId: string, path: string) =>
+            (await db.audit.config(domainId)).rules
+              .filter((r) => r.selector.kind !== 'url' && r.selector.path === path)
+              .map((r) => `${r.dimension}=${r.value}`)
+              .sort()
+
+          it('creates the statements of a rule together, in one change', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            const result = await save(domainId, {
+              statements: {
+                audit: 'include',
+                intent: 'indexable',
+                conditions: { noindex: 'forbidden', sitemap: 'required' },
+              },
+              reason: 'The shop',
             })
-            // /es/cart is under the shared rule: it does not accept nofollow only here, and the
-            // expectation is still the rule's.
-            expect(await exceptionOf(domainId, 'intent', URL_A)).toMatchObject({
-              value: 'inherit',
-              acceptNofollow: false,
+            expect(result).toMatchObject({ ok: true, changed: true, version: 1 })
+            expect(await at(domainId, '/shop')).toEqual([
+              'audit=include',
+              'intent=indexable',
+              'noindex=forbidden',
+              'sitemap=required',
+            ])
+            const rules = (await db.audit.config(domainId)).rules
+            expect(new Set(rules.map((r) => r.reason))).toEqual(new Set(['The shop']))
+            expect(await recomputeJobs()).toHaveLength(1)
+          })
+
+          it('writes nothing when one of its statements clashes with an enabled rule', async () => {
+            const domainId = await domain()
+            await db.audit.saveRule({ domainId, rule: rule('sitemap', 'required', '/shop') })
+            const before = (await db.audit.config(domainId)).version
+            expect(
+              await save(domainId, {
+                statements: { audit: 'exclude', conditions: { sitemap: 'forbidden' } },
+              }),
+            ).toEqual({ ok: false, error: 'conflict' })
+            // The statement that was fine was not written either.
+            expect(await at(domainId, '/shop')).toEqual(['sitemap=required'])
+            expect((await db.audit.config(domainId)).version).toBe(before)
+            // Created switched off, it can share the selector.
+            expect(
+              await save(domainId, {
+                statements: { conditions: { sitemap: 'forbidden' } },
+                enabled: false,
+              }),
+            ).toMatchObject({ ok: true })
+          })
+
+          it('replaces the statements of the rule being edited, keeping the rows that stay', async () => {
+            const domainId = await domain()
+            await save(domainId, {
+              statements: {
+                audit: 'exclude',
+                conditions: { noindex: 'required', robots: 'allowed' },
+              },
+            })
+            const before = (await db.audit.config(domainId)).rules
+            const noindex = before.find((r) => r.dimension === 'noindex')!
+            await save(domainId, {
+              editing: selector('/shop'),
+              statements: { conditions: { noindex: 'allowed', nofollow: 'forbidden' } },
+            })
+            const after = await db.audit.config(domainId)
+            // The audit and robots statements were left out: they are gone. The noindex row stays.
+            expect(await at(domainId, '/shop')).toEqual(['nofollow=forbidden', 'noindex=allowed'])
+            expect(after.rules.find((r) => r.dimension === 'noindex')).toMatchObject({
+              id: noindex.id,
+              value: 'allowed',
+            })
+          })
+
+          it('moves the whole rule to another selector, and refuses to land on another rule', async () => {
+            const domainId = await domain()
+            await save(domainId, {
+              statements: { audit: 'exclude', conditions: { sitemap: 'required' } },
+            })
+            const ids = (await db.audit.config(domainId)).rules.map((r) => r.id).sort()
+            await save(domainId, {
+              editing: selector('/shop'),
+              selector: selector('/store'),
+              statements: { audit: 'exclude', conditions: { sitemap: 'required' } },
+            })
+            expect(await at(domainId, '/shop')).toEqual([])
+            expect(await at(domainId, '/store')).toEqual(['audit=exclude', 'sitemap=required'])
+            expect((await db.audit.config(domainId)).rules.map((r) => r.id).sort()).toEqual(ids)
+            // Another rule already says the same thing at the selector it moves to.
+            await save(domainId, {
+              selector: selector('/blog'),
+              statements: { conditions: { sitemap: 'allowed' } },
+            })
+            expect(
+              await save(domainId, {
+                editing: selector('/store'),
+                selector: selector('/blog'),
+                statements: { conditions: { sitemap: 'required' } },
+              }),
+            ).toEqual({ ok: false, error: 'conflict' })
+            expect(await at(domainId, '/store')).toEqual(['audit=exclude', 'sitemap=required'])
+          })
+
+          it('does not edit a rule that is not there, and does not count a change that changes nothing', async () => {
+            const domainId = await domain()
+            expect(
+              await save(domainId, {
+                editing: selector('/nowhere'),
+                statements: { audit: 'exclude' },
+              }),
+            ).toEqual({ ok: false, error: 'not-found' })
+            await save(domainId, { statements: { audit: 'exclude' } })
+            const version = (await db.audit.config(domainId)).version
+            expect(
+              await save(domainId, {
+                editing: selector('/shop'),
+                statements: { audit: 'exclude' },
+              }),
+            ).toMatchObject({ ok: true, changed: false, version })
+          })
+
+          it('turns the rows of one rule on and off together, or none of them', async () => {
+            const domainId = await domain()
+            await save(domainId, {
+              statements: { audit: 'exclude', conditions: { noindex: 'required' } },
+            })
+            const ids = (await db.audit.config(domainId)).rules.map((r) => r.id)
+            expect(await db.audit.setRulesEnabled({ domainId, ids, enabled: false })).toMatchObject(
+              {
+                ok: true,
+                changed: true,
+              },
+            )
+            expect((await db.audit.config(domainId)).rules.every((r) => !r.enabled)).toBe(true)
+            // One row is missing: nothing is changed.
+            expect(
+              await db.audit.setRulesEnabled({ domainId, ids: [...ids, 'nope'], enabled: true }),
+            ).toEqual({ ok: false, error: 'not-found' })
+            expect((await db.audit.config(domainId)).rules.every((r) => !r.enabled)).toBe(true)
+            // Another enabled rule has the place of one of them: none is enabled.
+            await save(domainId, {
+              selector: selector('/shop'),
+              statements: { conditions: { noindex: 'forbidden' } },
+            })
+            expect(await db.audit.setRulesEnabled({ domainId, ids, enabled: true })).toEqual({
+              ok: false,
+              error: 'conflict',
+            })
+            expect(
+              (await db.audit.config(domainId)).rules.filter((r) => r.enabled).map((r) => r.value),
+            ).toEqual(['forbidden'])
+          })
+
+          it('removes the rows of one rule together, or none of them', async () => {
+            const domainId = await domain()
+            await save(domainId, {
+              statements: { audit: 'exclude', conditions: { noindex: 'required' } },
+            })
+            const ids = (await db.audit.config(domainId)).rules.map((r) => r.id)
+            expect(await db.audit.deleteRules({ domainId, ids: [...ids, 'nope'] })).toEqual({
+              ok: false,
+              error: 'not-found',
+            })
+            expect((await db.audit.config(domainId)).rules).toHaveLength(2)
+            expect(await db.audit.deleteRules({ domainId, ids })).toMatchObject({
+              ok: true,
+              changed: true,
+            })
+            expect((await db.audit.config(domainId)).rules).toEqual([])
+          })
+
+          it('keeps the rules of one domain from being reached with the ids of another', async () => {
+            const mine = await domain('acme.com')
+            const other = await domain('other.com')
+            await save(other, { statements: { audit: 'exclude' } })
+            const ids = (await db.audit.config(other)).rules.map((r) => r.id)
+            expect(await db.audit.deleteRules({ domainId: mine, ids })).toEqual({
+              ok: false,
+              error: 'not-found',
+            })
+            expect(await db.audit.setRulesEnabled({ domainId: mine, ids, enabled: false })).toEqual(
+              { ok: false, error: 'not-found' },
+            )
+            expect((await db.audit.config(other)).rules.every((r) => r.enabled)).toBe(true)
+          })
+
+          it('limits the rows of a domain', async () => {
+            const domainId = await domain()
+            for (let i = 0; i < AUDIT_LIMITS.rulesPerDomain; i++) {
+              const saved = await db.audit.saveRule({
+                domainId,
+                rule: rule('audit', 'exclude', `/p${i}`),
+              })
+              if (!saved.ok) throw new Error('setup failed')
+            }
+            expect(await save(domainId, { selector: selector('/over') })).toEqual({
+              ok: false,
+              error: 'limit',
             })
           })
         })
@@ -2867,7 +3048,7 @@ export function describeDatabaseContract(
           })
         })
 
-        describe('moving to the second semantics', () => {
+        describe('moving from the first semantics', () => {
           const SETTING = 'audit.semantics'
 
           it('drops the rules of the retired intent and keeps everything else, then moves the version', async () => {
@@ -2891,7 +3072,7 @@ export function describeDatabaseContract(
             expect(config.rules.map((r) => r.dimension).sort()).toEqual(['audit', 'intent'])
             expect(config.version).toBe(before + 1)
             expect(await recomputeJobs()).toHaveLength(1)
-            expect(await db.settings.get(SETTING)).toMatchObject({ value: '2' })
+            expect(await db.settings.get(SETTING)).toMatchObject({ value: '3' })
           })
 
           it('moves the version of a domain with a crawl and no rules, and leaves the others alone', async () => {
@@ -2941,6 +3122,214 @@ export function describeDatabaseContract(
           })
         })
 
+        describe('moving from the second semantics', () => {
+          const SETTING = 'audit.semantics'
+          const asSecond = () => db.settings.set(SETTING, '2', false)
+          const nofollowRules = async (domainId: string) =>
+            (await db.audit.config(domainId)).rules
+              .filter((r) => r.dimension === 'nofollow')
+              .map((r) => ({
+                path: r.selector.kind === 'url' ? r.selector.url : r.selector.path,
+                value: r.value,
+                enabled: r.enabled,
+                reason: r.reason,
+              }))
+              .sort((a, b) => (a.path < b.path ? -1 : 1))
+
+          it('turns an accepted nofollow into the condition and keeps every expectation as it was', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            const accepting = await db.audit.saveRule({
+              domainId,
+              rule: { ...rule('intent', 'not-indexable', '/cart'), reason: 'Cart' },
+            })
+            await db.audit.saveRule({ domainId, rule: rule('intent', 'indexable', '/cart/help') })
+            await db.audit.saveRule({ domainId, rule: rule('intent', 'indexable', '/blog') })
+            await db.audit.saveRule({ domainId, rule: rule('audit', 'exclude', '/old') })
+            await legacy.acceptNofollow(accepting.ok ? accepting.rule!.id : '', true)
+            const before = (await db.audit.config(domainId)).version
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+
+            await asSecond()
+            await db.migrate()
+
+            const config = await db.audit.config(domainId)
+            // Accepted where it was, written down as refused only where a rule under it would have
+            // decided otherwise, and nowhere else.
+            expect(await nofollowRules(domainId)).toEqual([
+              { path: '/cart', value: 'allowed', enabled: true, reason: 'Cart' },
+              { path: '/cart/help', value: 'forbidden', enabled: true, reason: null },
+            ])
+            // The expectations are what they were: an old `not-indexable` is not a required `noindex`.
+            expect(
+              config.rules
+                .filter((r) => r.dimension === 'intent')
+                .map((r) => `${r.selector.kind === 'url' ? '' : r.selector.path}=${r.value}`)
+                .sort(),
+            ).toEqual(['/blog=indexable', '/cart/help=indexable', '/cart=not-indexable'])
+            expect(config.rules.some((r) => r.dimension === 'noindex')).toBe(false)
+            expect(config.rules.every((r) => r.dimension !== 'intent' || !r.acceptNofollow)).toBe(
+              true,
+            )
+            expect(config.rules.filter((r) => r.dimension === 'audit')).toHaveLength(1)
+            expect(config.version).toBe(before + 1)
+            expect(await recomputeJobs()).toHaveLength(1)
+            expect(await db.settings.get(SETTING)).toMatchObject({ value: '3' })
+          })
+
+          it('reads the same for the URLs that were covered, whichever rule decided them', async () => {
+            const domainId = await domain()
+            const general = await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'not-indexable', '/cart'),
+            })
+            await db.audit.saveRule({
+              domainId,
+              rule: {
+                ...rule('intent', 'indexable', '/cart/help'),
+                selector: { kind: 'url', url: 'https://acme.com/cart/help' },
+              },
+            })
+            await legacy.acceptNofollow(general.ok ? general.rule!.id : '', true)
+            const old = compileAuditRules((await db.audit.config(domainId)).rules, 'acme.com', {
+              semantics: 2,
+            })
+            const accepted = (url: string) =>
+              old.resolve(url).conditions.nofollow.requirement === 'allowed'
+            const expected = {
+              'https://acme.com/cart': true,
+              'https://acme.com/cart/x': true,
+              'https://acme.com/cart/help': false,
+              'https://acme.com/blog': false,
+            }
+
+            await asSecond()
+            await db.migrate()
+            const now = compileAuditRules((await db.audit.config(domainId)).rules, 'acme.com')
+            for (const [url, wanted] of Object.entries(expected)) {
+              expect(accepted(url)).toBe(wanted)
+              expect(now.resolve(url).conditions.nofollow.requirement === 'allowed').toBe(wanted)
+              // Under the old meaning the rule beyond acceptance was the expectation's own.
+              expect(now.resolve(url).intent.value).toBe(old.resolve(url).intent.value)
+            }
+          })
+
+          it('leaves a domain without an accepted nofollow, and its crawl, as they are', async () => {
+            const domainId = await domain()
+            await finishedCrawl(domainId)
+            await db.audit.saveRule({ domainId, rule: rule('intent', 'not-indexable', '/cart') })
+            await db.audit.saveRule({ domainId, rule: rule('audit', 'exclude', '/old') })
+            const before = await db.audit.config(domainId)
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+            await asSecond()
+            await db.migrate()
+            const after = await db.audit.config(domainId)
+            expect(after.version).toBe(before.version)
+            expect(after.rules.map((r) => r.id).sort()).toEqual(
+              before.rules.map((r) => r.id).sort(),
+            )
+            expect(await recomputeJobs()).toHaveLength(0)
+            expect(await db.settings.get(SETTING)).toMatchObject({ value: '3' })
+          })
+
+          it('leaves a domain with a crawl and no rules alone', async () => {
+            const withCrawl = await domain('acme.com')
+            await finishedCrawl(withCrawl)
+            await db.jobs.claim({ workerId: 'w1', limit: 10, types: [JOB_TYPES.auditRecompute] })
+            await asSecond()
+            await db.migrate()
+            expect((await db.audit.config(withCrawl)).version).toBe(0)
+            expect(await recomputeJobs()).toHaveLength(0)
+          })
+
+          it('keeps only the condition of an exception that was only accepting the nofollow', async () => {
+            const domainId = await domain()
+            const general = await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'not-indexable', '/cart'),
+            })
+            const only = await db.audit.saveRule({
+              domainId,
+              rule: {
+                dimension: 'intent',
+                value: 'inherit',
+                selector: { kind: 'url', url: 'https://acme.com/cart/pay' },
+                reason: 'Pay',
+                enabled: true,
+              } as never,
+            })
+            await legacy.acceptNofollow(only.ok ? only.rule!.id : '', true)
+            await asSecond()
+            await db.migrate()
+            const config = await db.audit.config(domainId)
+            expect(
+              config.rules.find((r) => r.id === (only.ok ? only.rule!.id : '')),
+            ).toBeUndefined()
+            expect(
+              config.rules.find((r) => r.id === (general.ok ? general.rule!.id : '')),
+            ).toMatchObject({
+              value: 'not-indexable',
+            })
+            expect(await nofollowRules(domainId)).toEqual([
+              { path: 'https://acme.com/cart/pay', value: 'allowed', enabled: true, reason: 'Pay' },
+            ])
+          })
+
+          it('keeps a rule that is switched off switched off', async () => {
+            const domainId = await domain()
+            const off = await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'indexable', '/cart', { enabled: false }),
+            })
+            await legacy.acceptNofollow(off.ok ? off.rule!.id : '', true)
+            await asSecond()
+            await db.migrate()
+            expect(await nofollowRules(domainId)).toEqual([
+              { path: '/cart', value: 'allowed', enabled: false, reason: null },
+            ])
+          })
+
+          it('happens once: running the upgrade again finds nothing to change', async () => {
+            const domainId = await domain()
+            const accepting = await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'indexable', '/cart'),
+            })
+            await legacy.acceptNofollow(accepting.ok ? accepting.rule!.id : '', true)
+            await asSecond()
+            await db.migrate()
+            const first = await db.audit.config(domainId)
+            await db.audit.upgradeSemantics()
+            await db.migrate()
+            // Not even with the marker gone: nothing carries the retired flag any more.
+            await asSecond()
+            await db.audit.upgradeSemantics()
+            const again = await db.audit.config(domainId)
+            expect(again.version).toBe(first.version)
+            expect(again.rules.map((r) => r.id).sort()).toEqual(first.rules.map((r) => r.id).sort())
+          })
+
+          it('does what the first upgrade and this one do, in one step, from the first semantics', async () => {
+            const domainId = await domain()
+            const none = await db.audit.saveRule({
+              domainId,
+              rule: { ...rule('intent', 'indexable', '/blog'), value: 'none' } as never,
+            })
+            const accepting = await db.audit.saveRule({
+              domainId,
+              rule: rule('intent', 'indexable', '/cart'),
+            })
+            await legacy.acceptNofollow(accepting.ok ? accepting.rule!.id : '', true)
+            await db.settings.delete(SETTING)
+            await db.migrate()
+            const config = await db.audit.config(domainId)
+            expect(config.rules.some((r) => r.id === (none.ok ? none.rule!.id : ''))).toBe(false)
+            expect(await nofollowRules(domainId)).toEqual([
+              { path: '/cart', value: 'allowed', enabled: true, reason: null },
+            ])
+          })
+        })
+
         it('keeps what an analysis used: the semantics and the languages of its snapshot', async () => {
           const domainId = await domain()
           const crawl = await finishedCrawl(domainId)
@@ -2973,7 +3362,7 @@ export function describeDatabaseContract(
           participationRule: null,
           intent: 'indexable',
           intentRule: null,
-          acceptNofollow: false,
+          conditions: {},
           indexability: 'indexable',
           blockers: [],
           ...overrides,
@@ -3028,7 +3417,15 @@ export function describeDatabaseContract(
                   participationRule: 'rule-cart',
                   intent: 'not-indexable',
                   intentRule: 'rule-intent',
-                  acceptNofollow: true,
+                  conditions: {
+                    nofollow: {
+                      requirement: 'allowed',
+                      rule: 'rule-nofollow',
+                      observed: 'present',
+                    },
+                    sitemap: { requirement: 'required', rule: 'rule-sitemap', observed: 'unknown' },
+                    robots: { requirement: 'forbidden', rule: 'rule-robots', observed: null },
+                  },
                   indexability: 'not-indexable',
                   blockers: ['noindex', 'robots'],
                 }),
@@ -3070,12 +3467,42 @@ export function describeDatabaseContract(
               participationRule: 'rule-cart',
               intent: 'not-indexable',
               intentRule: 'rule-intent',
-              acceptNofollow: true,
+              conditions: {
+                nofollow: { requirement: 'allowed', rule: 'rule-nofollow', observed: 'present' },
+                sitemap: { requirement: 'required', rule: 'rule-sitemap', observed: 'unknown' },
+                robots: { requirement: 'forbidden', rule: 'rule-robots', observed: null },
+              },
               indexability: 'not-indexable',
               blockers: ['noindex', 'robots'],
             },
           ])
           expect(await db.crawls.auditOf(crawl.crawlId, [])).toEqual([])
+        })
+
+        it('reads an analysis of semantics 2 with its accepted nofollow as the condition being allowed', async () => {
+          const crawl = await analysedCrawl(1)
+          await save(crawl)
+          await legacy.urlAcceptedNofollow(crawl.crawlId, hashOf('/blog'))
+          const [blog] = await db.crawls.auditOf(crawl.crawlId, [hashOf('/blog')])
+          // The rule that decided the expectation is the one that accepted it, as it was recorded.
+          expect(blog).toMatchObject({
+            intentRule: 'rule-blog',
+            conditions: { nofollow: { requirement: 'allowed', rule: 'rule-blog', observed: null } },
+          })
+          // The same for the history of a URL, which reads the same rows.
+          const [trace] = await db.crawls.urlHistory({
+            domainId: crawl.domainId,
+            crawlIds: [crawl.crawlId],
+            urlHashes: [hashOf('/blog')],
+          })
+          expect(trace?.audit?.conditions.nofollow).toMatchObject({ requirement: 'allowed' })
+          // A condition stored by a newer analysis wins over the flag.
+          const [cart] = await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart')])
+          expect(cart?.conditions.nofollow).toEqual({
+            requirement: 'allowed',
+            rule: 'rule-nofollow',
+            observed: 'present',
+          })
         })
 
         it('filters URLs by participation, intent and the rule that decided them', async () => {
@@ -3099,6 +3526,10 @@ export function describeDatabaseContract(
           expect(await paths({ intent: 'not-indexable' })).toEqual(['/cart'])
           expect(await paths({ rule: 'rule-cart' })).toEqual(['/cart', '/cart/items'])
           expect(await paths({ rule: 'rule-intent' })).toEqual(['/cart'])
+          // A rule about a condition is a rule too.
+          expect(await paths({ rule: 'rule-nofollow' })).toEqual(['/cart'])
+          expect(await paths({ rule: 'rule-sitemap' })).toEqual(['/cart'])
+          expect(await paths({ rule: 'rule-robots' })).toEqual(['/cart'])
           expect(await paths({ rule: 'nobody' })).toEqual([])
           // Filters add up, and they work along with the search.
           expect(await paths({ participation: 'excluded', intent: 'indexable' })).toEqual([
@@ -3140,6 +3571,9 @@ export function describeDatabaseContract(
             'rule-cart': 2,
             'rule-intent': 1,
             'rule-blog': 1,
+            'rule-nofollow': 1,
+            'rule-sitemap': 1,
+            'rule-robots': 1,
           })
           expect((await db.crawls.auditRuleCounts('missing')).size).toBe(0)
         })
@@ -3392,7 +3826,7 @@ export function describeDatabaseContract(
                 participationRule: null,
                 intent: 'indexable' as const,
                 intentRule: null,
-                acceptNofollow: false,
+                conditions: {},
                 indexability: 'indexable' as const,
                 blockers: [],
               })),
@@ -3770,7 +4204,7 @@ export function describeDatabaseContract(
           participationRule: null,
           intent: 'indexable' as const,
           intentRule: null,
-          acceptNofollow: false,
+          conditions: {},
           indexability: 'indexable' as const,
           blockers: [],
         },
@@ -3954,6 +4388,30 @@ export function describeDatabaseContract(
           outcome: outcome(['title-too-short'], { unchecked: ['noindex'] }),
         })
         expect(stored?.fetchedAt).toBeInstanceOf(Date)
+      })
+
+      it('reads the outcome of a recheck from before conditions, with its accepted nofollow', async () => {
+        const domainId = await domainOf()
+        const a = verificationUrl('https://acme.com/a')
+        const verification = await startVerification(domainId, [a])
+        await db.verifications.markRunning(verification.id)
+        // As an older recheck stored it: the flag, and no conditions at all.
+        const { conditions: _conditions, ...audit } = outcome().audit
+        await db.verifications.recordResult({
+          verificationId: verification.id,
+          urlHash: a.urlHash,
+          answer: answer({ statusCode: 200 }),
+          auditVersion: 2,
+          outcome: {
+            ...outcome(),
+            audit: { ...audit, intentRule: 'r1', acceptNofollow: true },
+          } as never,
+        })
+        const [stored] = await db.verifications.urlsOf(verification.id)
+        expect(stored?.outcome?.audit.conditions).toEqual({
+          nofollow: { requirement: 'allowed', rule: 'r1', observed: null },
+        })
+        expect(stored?.outcome?.audit).not.toHaveProperty('acceptNofollow')
       })
 
       it('stores a failed request as an answer of its own', async () => {

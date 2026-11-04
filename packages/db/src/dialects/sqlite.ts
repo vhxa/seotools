@@ -103,10 +103,13 @@ import {
   mutationResult,
   planChanges,
   planDeleteRule,
+  planDeleteMany,
   planLanguages,
   planUpgradeSemantics,
   planSaveRule,
+  planSaveRuleSet,
   planSetEnabled,
+  planSetEnabledMany,
   planUrlConfig,
   readAuditConfig,
   recomputeJobValues,
@@ -390,20 +393,30 @@ export function createSqliteDatabase(options: {
   const upgradeAuditSemantics = async () => {
     const done = db.select().from(settings).where(eq(settings.key, AUDIT_SEMANTICS_SETTING)).get()
     if (done?.value === String(AUDIT_SEMANTICS)) return
-    const withRules = db.selectDistinct({ id: auditRules.domainId }).from(auditRules).all()
-    const withCrawls = db
-      .selectDistinct({ id: crawls.domainId })
-      .from(crawls)
-      .where(
-        and(
-          eq(crawls.type, 'full'),
-          inArray(crawls.status, ['completed', 'incomplete']),
-          eq(crawls.pruned, false),
-        ),
-      )
+    // What the rules mean now. Nothing recorded: they predate the setting, which is the first meaning.
+    const from = Number(done?.value) || 1
+    const withRules = db
+      .selectDistinct({ id: auditRules.domainId })
+      .from(auditRules)
+      .where(from < 2 ? undefined : eq(auditRules.dimension, 'intent'))
       .all()
+    // From the first meaning every domain with a crawl moves too: its latest crawl is analysed again.
+    const withCrawls =
+      from < 2
+        ? db
+            .selectDistinct({ id: crawls.domainId })
+            .from(crawls)
+            .where(
+              and(
+                eq(crawls.type, 'full'),
+                inArray(crawls.status, ['completed', 'incomplete']),
+                eq(crawls.pruned, false),
+              ),
+            )
+            .all()
+        : []
     for (const domainId of new Set([...withRules, ...withCrawls].map((row) => row.id))) {
-      await changeRules(domainId, (rows) => planUpgradeSemantics(rows))
+      await changeRules(domainId, (rows, context) => planUpgradeSemantics(rows, context, from))
     }
     const value = String(AUDIT_SEMANTICS)
     const updatedAt = new Date()
@@ -1274,14 +1287,20 @@ export function createSqliteDatabase(options: {
 
       async auditRuleCounts(crawlId) {
         const count = sql<number>`count(*)`
-        const byDimension = [crawlUrlAudit.participationRule, crawlUrlAudit.intentRule].map(
-          (column) =>
-            db
-              .select({ rule: column, count })
-              .from(crawlUrlAudit)
-              .where(and(eq(crawlUrlAudit.crawlId, crawlId), isNotNull(column)))
-              .groupBy(column)
-              .all(),
+        const byDimension = [
+          crawlUrlAudit.participationRule,
+          crawlUrlAudit.intentRule,
+          crawlUrlAudit.noindexRule,
+          crawlUrlAudit.nofollowRule,
+          crawlUrlAudit.robotsRule,
+          crawlUrlAudit.sitemapRule,
+        ].map((column) =>
+          db
+            .select({ rule: column, count })
+            .from(crawlUrlAudit)
+            .where(and(eq(crawlUrlAudit.crawlId, crawlId), isNotNull(column)))
+            .groupBy(column)
+            .all(),
         )
         return foldRuleCounts(byDimension.flat())
       },
@@ -1563,6 +1582,22 @@ export function createSqliteDatabase(options: {
         return changeRules(domainId, (rows, context) =>
           planUrlConfig(rows, { domainId, ...input }, context),
         )
+      },
+
+      async saveRuleSet({ domainId, ...input }) {
+        return changeRules(domainId, (rows, context) =>
+          planSaveRuleSet(rows, { domainId, ...input }, context),
+        )
+      },
+
+      async setRulesEnabled({ domainId, ids, enabled }) {
+        return changeRules(domainId, (rows, context) =>
+          planSetEnabledMany(rows, { ids, enabled }, context),
+        )
+      },
+
+      async deleteRules({ domainId, ids }) {
+        return changeRules(domainId, (rows) => planDeleteMany(rows, { ids }))
       },
 
       async setLanguages({ domainId, languages }) {

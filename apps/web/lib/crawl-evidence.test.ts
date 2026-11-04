@@ -57,7 +57,7 @@ const trace = (
     participationRule: null,
     intent: 'indexable',
     intentRule: null,
-    acceptNofollow: false,
+    conditions: {},
     indexability: 'indexable',
     blockers: [],
   },
@@ -70,9 +70,31 @@ describe('urlEvidenceOf', () => {
       requested: true,
       participation: 'audited',
       intent: 'indexable',
-      acceptNofollow: false,
+      conditions: '',
       issues: new Set(['noindex']),
     })
+  })
+
+  it('reads what rules asked of the conditions of the URL, whatever the crawl saw', () => {
+    const conditions = {
+      sitemap: { requirement: 'required' as const, rule: 'r2', observed: 'absent' as const },
+      noindex: { requirement: 'allowed' as const, rule: 'r1', observed: null },
+    }
+    const base = trace('a', [])
+    const withConditions = urlEvidenceOf({
+      ...base,
+      audit: { ...base.audit!, conditions },
+    })
+    expect(withConditions.conditions).toBe('noindex=allowed,sitemap=required')
+    // What was observed is not what was asked: the same requirements are the same basis.
+    const observedOtherwise = urlEvidenceOf({
+      ...base,
+      audit: {
+        ...base.audit!,
+        conditions: { ...conditions, sitemap: { ...conditions.sitemap, observed: 'present' } },
+      },
+    })
+    expect(observedOtherwise.conditions).toBe(withConditions.conditions)
   })
 
   it('does not make up an audit state the analysis did not keep', () => {

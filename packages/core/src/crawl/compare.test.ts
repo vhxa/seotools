@@ -52,7 +52,7 @@ const url = (issues: string[] = [], overrides: Partial<UrlEvidence> = {}): UrlEv
   requested: true,
   participation: 'audited',
   intent: 'indexable',
-  acceptNofollow: false,
+  conditions: '',
   issues: new Set(issues),
   ...overrides,
 })
@@ -170,6 +170,44 @@ describe('auditScopeKey', () => {
 
   it('tells a snapshot from before semantics 2 apart from one with no rules now', () => {
     expect(auditScopeKey(EMPTY_AUDIT_SNAPSHOT)).not.toBe(auditScopeKey(auditSnapshotOf(0, [])))
+  })
+
+  it('differs when a condition is asked for, and by what it asks', () => {
+    const condition = (value: 'required' | 'allowed') =>
+      rule({ dimension: 'noindex', value } as Partial<AuditRule>)
+    const required = auditScopeKey(auditSnapshotOf(3, [condition('required')]))
+    expect(required).not.toBe(auditScopeKey(auditSnapshotOf(3, [])))
+    expect(required).not.toBe(auditScopeKey(auditSnapshotOf(3, [condition('allowed')])))
+    expect(required).not.toBe(
+      auditScopeKey(
+        auditSnapshotOf(3, [
+          rule({ dimension: 'nofollow', value: 'required' } as Partial<AuditRule>),
+        ]),
+      ),
+    )
+  })
+
+  it('does not tell semantics 2 from 3 when the older one has nothing that 3 reads another way', () => {
+    const before = { ...auditSnapshotOf(3, [rule()]), semantics: 2 }
+    const after = auditSnapshotOf(4, [rule()])
+    expect(auditScopeKey(before)).toBe(auditScopeKey(after))
+    // But an accepted nofollow was the expectation's, and a snapshot with one means something else.
+    const accepting = {
+      ...before,
+      rules: [
+        ...before.rules,
+        {
+          id: 'i',
+          dimension: 'intent',
+          value: 'indexable',
+          acceptNofollow: true,
+          selector: { kind: 'prefix', path: '/', query: { mode: 'any' }, scope: 'literal' },
+          reason: null,
+          enabled: true,
+        } as AuditRule,
+      ],
+    }
+    expect(auditScopeKey(accepting)).not.toBe(auditScopeKey(after))
   })
 
   it('is unknown for a crawl that was not analysed, or whose snapshot is gone', () => {
@@ -393,15 +431,22 @@ describe('classifyFinding', () => {
       )
     })
 
-    it('does not call an issue resolved when the URL expectation or nofollow acceptance changed', () => {
+    it('does not call an issue resolved when the URL expectation or what its rules ask of it changed', () => {
       expect(classify(seen([issue]), seen([], { intent: 'not-indexable' }))).toMatchObject({
         kind: 'unverified',
         reasons: ['audit'],
       })
-      expect(classify(seen([], { acceptNofollow: true }), seen([issue]))).toMatchObject({
+      expect(classify(seen([], { conditions: 'nofollow=allowed' }), seen([issue]))).toMatchObject({
         kind: 'unverified',
         reasons: ['audit'],
       })
+      // Each condition counts: a requirement that changed from one to another is a change too.
+      expect(
+        classify(
+          seen([], { conditions: 'noindex=required' }),
+          seen([issue], { conditions: 'noindex=forbidden' }),
+        ),
+      ).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
     })
 
     it('does not call a finding that looks at other pages resolved when the audit rules changed', () => {

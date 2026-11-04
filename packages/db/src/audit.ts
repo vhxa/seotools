@@ -1,26 +1,31 @@
 import {
+  AUDIT_CONDITIONS,
+  AUDIT_DIMENSIONS,
   AUDIT_LIMITS,
   JOB_TYPES,
   NO_LANGUAGES,
   canonicalLanguages,
-  compileAuditRules,
   crawlUrlHash,
   sameLanguages,
   selectorKey,
+  type AuditCondition,
+  type AuditDimension,
   type AuditSelector,
   type AuditValue,
-  type IndexIntent,
+  type IntentRuleValue,
   type LanguageConfig,
   type NewAuditRule,
-  type IntentRuleValue,
   type QuerySelector,
+  type Requirement,
   type SelectorScope,
 } from '@seotools/core'
 import type {
   AuditConfig,
   AuditMutation,
   AuditRuleRecord,
+  RuleStatements,
   UrlAuditChoice,
+  UrlConditionChoices,
   UrlIntentChoice,
 } from './types'
 
@@ -34,7 +39,7 @@ import type {
 export interface AuditRuleRow {
   id: string
   domainId: string
-  dimension: 'audit' | 'intent'
+  dimension: AuditDimension
   value: string
   selectorKind: 'url' | 'path' | 'prefix'
   selector: string
@@ -66,7 +71,7 @@ export function toAuditRule(row: AuditRuleRow): AuditRuleRecord {
     id: row.id,
     domainId: row.domainId,
     dimension: row.dimension,
-    value: row.value as AuditValue & IntentRuleValue,
+    value: row.value as AuditValue & IntentRuleValue & Requirement,
     selector,
     reason: row.reason,
     enabled: row.enabled,
@@ -92,7 +97,8 @@ function ruleColumns(rule: NewAuditRule) {
     queryValue:
       selector.kind !== 'url' && selector.query.mode === 'exact' ? selector.query.value : null,
     scope: selector.kind === 'url' ? ('literal' as const) : selector.scope,
-    acceptNofollow: rule.dimension === 'intent' && rule.acceptNofollow === true,
+    // Retired with semantics 3: accepting `nofollow` is a condition rule now.
+    acceptNofollow: false,
     selectorHash: hash,
     activeKey: rule.enabled ? hash : null,
     reason: rule.reason,
@@ -212,17 +218,75 @@ export function planDeleteRule(rows: readonly AuditRuleRow[], input: { id: strin
   return { ok: true, changes: [{ op: 'delete', id: input.id }] }
 }
 
+/** Every statement a rule can make, by its dimension. */
+const STATEMENT_DIMENSIONS: readonly AuditDimension[] = AUDIT_DIMENSIONS
+
 /**
- * What the table and the detail of a URL set: for each URL, the rule that is about that exact URL
- * in each dimension, created, changed or removed. `inherit` removes it, and with it the URL goes
- * back to what the broader rules say. A dimension left out is not touched, and neither is anything
- * of an exception that the change does not name:
- * - the expectation and whether `nofollow` is accepted are independent. An exception that only
- *   accepts `nofollow` leaves the expectation to the other rules (`inherit`), so that changing what
- *   they say later still reaches the URL; it is made when the page has to differ from the rules, and
- *   removed when it no longer does;
- * - an exception that states an expectation also states `nofollow`, as the URL has it now unless
- *   told otherwise, so making one never changes what it was not asked to change;
+ * Writes rules into the plan. A rule is a row of `audit_rules`; what the editors show as one rule or
+ * one exception is every row that has its selector, one per statement.
+ */
+function ruleWriter(
+  rows: readonly AuditRuleRow[],
+  input: { domainId: string },
+  context: PlanContext,
+) {
+  const changes: RuleChange[] = []
+  const deleted = new Set<string>()
+  let created = 0
+  return {
+    changes,
+    get net() {
+      return rows.length + created - deleted.size
+    },
+    remove(row: AuditRuleRow) {
+      if (deleted.has(row.id)) return
+      deleted.add(row.id)
+      changes.push({ op: 'delete', id: row.id })
+    },
+    /** Writes `rule` over `current`, or as a new row when there is none. */
+    write(current: AuditRuleRow | undefined, rule: NewAuditRule) {
+      const columns = ruleColumns(rule)
+      if (current) {
+        if (!sameColumns(current, columns)) {
+          changes.push({
+            op: 'update',
+            id: current.id,
+            patch: { ...columns, updatedAt: context.now },
+          })
+        }
+        return
+      }
+      created++
+      changes.push({
+        op: 'insert',
+        row: {
+          id: context.newId(),
+          domainId: input.domainId,
+          ...columns,
+          createdAt: context.now,
+          updatedAt: context.now,
+        },
+      })
+    },
+  }
+}
+
+/** The value to give a statement of a dimension, from what a request says. */
+const ruleOf = (
+  dimension: AuditDimension,
+  value: string,
+  selector: AuditSelector,
+  reason: string | null,
+  enabled: boolean,
+): NewAuditRule => ({ dimension, value, selector, reason, enabled }) as NewAuditRule
+
+/**
+ * What the table and the detail of a URL set: for each URL, the rules that are about that exact URL
+ * (its exception, one row per statement), created, changed or removed. `inherit` removes the row, and
+ * with it the URL goes back to what the broader rules say for that statement. A statement left out
+ * is not touched, and neither is anything of an exception that the change does not name:
+ * - the participation, the expectation of indexing and each of the four conditions are independent
+ *   statements: setting one never states, resets or copies another;
  * - a `reason` left out keeps the one the exception has.
  * Disabled exceptions do not act: a change reuses one only when no enabled one exists, and `inherit`
  * removes them all.
@@ -235,116 +299,146 @@ export function planUrlConfig(
     urls: readonly string[]
     audit?: UrlAuditChoice
     intent?: UrlIntentChoice
-    acceptNofollow?: boolean
+    conditions?: UrlConditionChoices
     reason?: string | null
   },
   context: PlanContext,
 ): AuditPlan {
-  const changes: RuleChange[] = []
-  let created = 0
-  const urls = new Set(input.urls)
-  const isException = (row: AuditRuleRow, dimension: 'audit' | 'intent', url: string) =>
-    row.dimension === dimension && row.selectorKind === 'url' && row.selector === url
-  const resolver = compileAuditRules(rows.map(toAuditRule), input.host, {
-    languages: context.languages,
-  })
-  // What the rules say once these URLs' own exceptions are set aside: where an exception only
-  // changes something if the URL differs from it.
-  const underRules = compileAuditRules(
-    rows
-      .filter(
-        (row) =>
-          !(row.dimension === 'intent' && row.selectorKind === 'url' && urls.has(row.selector)),
+  const writer = ruleWriter(rows, input, context)
+  const choices: [AuditDimension, string | undefined][] = [
+    ['audit', input.audit],
+    ['intent', input.intent],
+    ...AUDIT_CONDITIONS.map((condition): [AuditDimension, string | undefined] => [
+      condition,
+      input.conditions?.[condition],
+    ]),
+  ]
+  for (const url of new Set(input.urls)) {
+    const selector: AuditSelector = { kind: 'url', url }
+    for (const [dimension, choice] of choices) {
+      if (choice === undefined) continue
+      const all = rows.filter(
+        (row) => row.dimension === dimension && row.selectorKind === 'url' && row.selector === url,
       )
-      .map(toAuditRule),
-    input.host,
-    { languages: context.languages },
-  )
-
-  const write = (current: AuditRuleRow | undefined, rule: NewAuditRule) => {
-    const columns = ruleColumns(rule)
-    if (current) {
-      if (!sameColumns(current, columns)) {
-        changes.push({
-          op: 'update',
-          id: current.id,
-          patch: { ...columns, updatedAt: context.now },
-        })
+      const acting = all.find((row) => row.enabled) ?? all[0]
+      if (choice === 'inherit') {
+        for (const row of all) writer.remove(row)
+        continue
       }
-      return
+      writer.write(
+        acting,
+        ruleOf(
+          dimension,
+          choice,
+          selector,
+          input.reason !== undefined ? input.reason : (acting?.reason ?? null),
+          true,
+        ),
+      )
     }
-    created++
+  }
+  if (writer.net > AUDIT_LIMITS.rulesPerDomain) return { ok: false, error: 'limit' }
+  return { ok: true, changes: writer.changes }
+}
+
+/**
+ * Saves a rule as the editor shows it: one selector and the statements made about it, each of which
+ * is a row of its own. With `editing`, the rows that have that selector are the rule being edited:
+ * the statements given replace them (a statement left out is removed, one given is written over its
+ * row, so its id stays) and the selector may move. Without it, a new rule is created, and it clashes
+ * with an enabled rule of the same selector that states the same thing.
+ */
+export function planSaveRuleSet(
+  rows: readonly AuditRuleRow[],
+  input: {
+    domainId: string
+    selector: AuditSelector
+    statements: RuleStatements
+    reason: string | null
+    enabled: boolean
+    editing?: AuditSelector
+  },
+  context: PlanContext,
+): AuditPlan {
+  const writer = ruleWriter(rows, input, context)
+  const sourceHash = input.editing ? selectorHashOf(input.editing) : null
+  if (input.editing && !rows.some((row) => row.selectorHash === sourceHash)) {
+    return { ok: false, error: 'not-found' }
+  }
+  const targetHash = selectorHashOf(input.selector)
+  for (const dimension of STATEMENT_DIMENSIONS) {
+    const value = statementOf(input.statements, dimension)
+    const source =
+      sourceHash === null
+        ? []
+        : rows.filter((row) => row.dimension === dimension && row.selectorHash === sourceHash)
+    if (value === undefined) {
+      for (const row of source) writer.remove(row)
+      continue
+    }
+    // Only an enabled rule has a place of its own: the unique index is on the active key.
+    const clash = rows.some(
+      (row) => row.dimension === dimension && row.activeKey === targetHash && !source.includes(row),
+    )
+    if (input.enabled && clash) return { ok: false, error: 'conflict' }
+    const acting = source.find((row) => row.enabled) ?? source[0]
+    writer.write(acting, ruleOf(dimension, value, input.selector, input.reason, input.enabled))
+    for (const row of source) if (row !== acting) writer.remove(row)
+  }
+  if (writer.net > AUDIT_LIMITS.rulesPerDomain) return { ok: false, error: 'limit' }
+  return { ok: true, changes: writer.changes }
+}
+
+/** The value a set of statements gives a dimension. `undefined`: it states nothing about it. */
+function statementOf(statements: RuleStatements, dimension: AuditDimension): string | undefined {
+  if (dimension === 'audit') return statements.audit
+  if (dimension === 'intent') return statements.intent
+  return statements.conditions?.[dimension as AuditCondition]
+}
+
+/** Turns some rules on or off together, all or none: it is one rule as the editors show it. */
+export function planSetEnabledMany(
+  rows: readonly AuditRuleRow[],
+  input: { ids: readonly string[]; enabled: boolean },
+  context: PlanContext,
+): AuditPlan {
+  const targets = [...new Set(input.ids)].map((id) => rows.find((row) => row.id === id))
+  if (targets.length === 0 || targets.some((row) => !row)) return { ok: false, error: 'not-found' }
+  // The places that are taken while the change is made, one per dimension and selector.
+  const taken = new Set(
+    rows.flatMap((row) => (row.activeKey === null ? [] : [`${row.dimension} ${row.activeKey}`])),
+  )
+  const changes: RuleChange[] = []
+  for (const row of targets as AuditRuleRow[]) {
+    if (row.enabled === input.enabled) continue
+    const key = `${row.dimension} ${row.selectorHash}`
+    if (input.enabled) {
+      if (taken.has(key)) return { ok: false, error: 'conflict' }
+      taken.add(key)
+    } else taken.delete(key)
     changes.push({
-      op: 'insert',
-      row: {
-        id: context.newId(),
-        domainId: input.domainId,
-        ...columns,
-        createdAt: context.now,
+      op: 'update',
+      id: row.id,
+      patch: {
+        enabled: input.enabled,
+        activeKey: input.enabled ? row.selectorHash : null,
         updatedAt: context.now,
       },
     })
   }
-
-  for (const url of urls) {
-    const exceptions = (dimension: 'audit' | 'intent') => {
-      const all = rows.filter((row) => isException(row, dimension, url))
-      return { all, acting: all.find((row) => row.enabled) ?? all[0] }
-    }
-    const selector: AuditSelector = { kind: 'url', url }
-
-    if (input.audit !== undefined) {
-      const { all, acting } = exceptions('audit')
-      if (input.audit === 'inherit') {
-        for (const row of all) changes.push({ op: 'delete', id: row.id })
-      } else {
-        write(acting, {
-          dimension: 'audit',
-          value: input.audit,
-          selector,
-          reason: input.reason !== undefined ? input.reason : (acting?.reason ?? null),
-          enabled: true,
-        })
-      }
-    }
-
-    if (input.intent !== undefined || input.acceptNofollow !== undefined) {
-      const { all, acting } = exceptions('intent')
-      // A rule of the retired `none` states no expectation.
-      const stated: IndexIntent | null =
-        acting && (acting.value === 'indexable' || acting.value === 'not-indexable')
-          ? acting.value
-          : null
-      const value =
-        input.intent === undefined ? stated : input.intent === 'inherit' ? null : input.intent
-      const accept = input.acceptNofollow ?? acting?.acceptNofollow
-      const reason = input.reason !== undefined ? input.reason : (acting?.reason ?? null)
-      if (value !== null) {
-        write(acting, {
-          dimension: 'intent',
-          value,
-          selector,
-          acceptNofollow: accept ?? resolver.resolve(url).intent.acceptNofollow,
-          reason,
-          enabled: true,
-        })
-      } else if (accept === undefined || accept === underRules.resolve(url).intent.acceptNofollow) {
-        // Nothing left that differs from what the rules say.
-        for (const row of all) changes.push({ op: 'delete', id: row.id })
-      } else {
-        write(acting, {
-          dimension: 'intent',
-          value: 'inherit',
-          selector,
-          acceptNofollow: accept,
-          reason,
-          enabled: true,
-        })
-      }
-    }
-  }
-  if (rows.length + created > AUDIT_LIMITS.rulesPerDomain) return { ok: false, error: 'limit' }
   return { ok: true, changes }
+}
+
+/** Removes some rules together, all or none. */
+export function planDeleteMany(
+  rows: readonly AuditRuleRow[],
+  input: { ids: readonly string[] },
+): AuditPlan {
+  const ids = [...new Set(input.ids)]
+  if (ids.length === 0 || ids.some((id) => !rows.some((row) => row.id === id))) {
+    return { ok: false, error: 'not-found' }
+  }
+  return { ok: true, changes: ids.map((id) => ({ op: 'delete' as const, id })) }
 }
 
 /** Changes the language directories of the domain, if they are not these already. */
@@ -355,20 +449,97 @@ export function planLanguages(languages: LanguageConfig, context: PlanContext): 
 }
 
 /**
- * What moving to the second semantics does to the rules a domain already has. A rule that said `none`
- * (no declared intent, to cancel a broader rule) has no counterpart: those URLs go back to what the
- * rules say, which can bring back a broader rule that `none` was holding off. Audit rules, and every
- * other intent rule, stay as they are. The version moves whether or not a rule goes: what a
- * configuration means changed for every domain.
+ * Whether an accepting rule `a` could win over rule `r` for some URL `r` covers, which is when `r`
+ * has to say for itself that it does not accept `nofollow`. Over-approximate on purpose: a rule too
+ * many changes nothing (a condition that is `forbidden` is what a URL without a rule has), a rule too
+ * few would change what a URL had.
  */
-export function planUpgradeSemantics(rows: readonly AuditRuleRow[]): AuditPlan {
-  return {
-    ok: true,
-    changes: rows
-      .filter((row) => row.dimension === 'intent' && row.value === 'none')
-      .map((row) => ({ op: 'delete' as const, id: row.id })),
-    bump: true,
+function couldWinOver(a: AuditSelector, r: AuditSelector): boolean {
+  // An exact URL decides one URL, and nothing is more specific than it.
+  if (a.kind === 'url') return false
+  const rPath = r.kind === 'url' ? new URL(r.url).pathname : r.path
+  const shared = a.scope === 'shared' || (r.kind !== 'url' && r.scope === 'shared')
+  if (a.kind === 'path') {
+    return r.kind === 'url'
+      ? shared || rPath === a.path
+      : r.kind === 'path' && (shared || rPath === a.path)
   }
+  if (shared) return true
+  return a.path === '/' || rPath === a.path || rPath.startsWith(`${a.path}/`)
+}
+
+/**
+ * What moving to a newer meaning of a configuration (`AUDIT_SEMANTICS`) does to the rules a domain
+ * already has. `from` is the meaning they have now.
+ * - From 1: a rule that said `none` (no declared intent, to cancel a broader rule) has no
+ *   counterpart: those URLs go back to what the rules say, which can bring back a broader rule that
+ *   `none` was holding off.
+ * - From 1 or 2: accepting the page's own `nofollow` hung off the intent rule that won. That becomes
+ *   the `nofollow` condition, a rule of its own with the same selector: `allowed` where it was
+ *   accepted and, where a more specific rule did not accept it under one that did, `forbidden`
+ *   (which is what a URL without a rule has, written down only where it is needed). The intent rules
+ *   keep their expectation: an old `not-indexable` is never read as a required `noindex`. An
+ *   exception that only accepted `nofollow` (`inherit`) leaves nothing but the condition.
+ * Audit rules and the expectation of every other intent rule stay as they are. Running it again
+ * finds nothing to change. The version moves for every domain from 1, whether or not a rule goes:
+ * what a configuration means changed for all of them; from 2 it moves only where rules changed,
+ * since everything else reads the same under both.
+ */
+export function planUpgradeSemantics(
+  rows: readonly AuditRuleRow[],
+  context: PlanContext,
+  from = 1,
+): AuditPlan {
+  const changes: RuleChange[] = []
+  const gone = new Set<string>()
+  if (from < 2) {
+    for (const row of rows) {
+      if (row.dimension === 'intent' && row.value === 'none') {
+        changes.push({ op: 'delete', id: row.id })
+        gone.add(row.id)
+      }
+    }
+  }
+  const intents = rows.filter((row) => row.dimension === 'intent' && !gone.has(row.id))
+  const accepting = intents.filter((row) => row.acceptNofollow)
+  for (const row of intents) {
+    const asked = row.acceptNofollow
+      ? ('allowed' as const)
+      : accepting.some((other) =>
+            couldWinOver(toAuditRule(other).selector, toAuditRule(row).selector),
+          )
+        ? ('forbidden' as const)
+        : null
+    // Written once: a rule that is already there for this selector is the user's, not ours to redo.
+    const taken = rows.some(
+      (other) =>
+        other.dimension === 'nofollow' &&
+        other.selectorHash === row.selectorHash &&
+        (!row.enabled || other.enabled),
+    )
+    if (asked !== null && !taken) {
+      const selector = toAuditRule(row).selector
+      changes.push({
+        op: 'insert',
+        row: {
+          id: context.newId(),
+          domainId: row.domainId,
+          ...ruleColumns(ruleOf('nofollow', asked, selector, row.reason, row.enabled)),
+          createdAt: context.now,
+          updatedAt: context.now,
+        },
+      })
+    }
+    if (row.value === 'inherit') changes.push({ op: 'delete', id: row.id })
+    else if (row.acceptNofollow) {
+      changes.push({
+        op: 'update',
+        id: row.id,
+        patch: { acceptNofollow: false, updatedAt: context.now },
+      })
+    }
+  }
+  return { ok: true, changes, bump: from < 2 || changes.length > 0 }
 }
 
 /**

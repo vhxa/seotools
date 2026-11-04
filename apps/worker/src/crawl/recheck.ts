@@ -8,25 +8,16 @@ import {
   type AuditSnapshot,
   type CrawlLinkKind,
   type CrawlUrlSource,
-  type ParsedRobots,
   type PageIssueId,
   type VerificationOutcome,
 } from '@seotools/core'
 import type { CrawlUrl, CrawlUrlResult } from '@seotools/db'
+import { conditionStatesOf } from './conditions'
 import { CHECKS, applyAuditPolicy, type Finding } from './issue-checks'
-import { auditUrl, type AuditedUrl, type Site } from './site-audit'
+import { SiteContextError } from './site-context'
+import { auditUrl, type AuditedUrl, type RobotsFile, type Site } from './site-audit'
 
-/**
- * Thrown by anything a recheck cannot know because it is about the rest of the site: other pages,
- * who links here, the sitemaps. A check that reaches for it was not made, which is not the same as
- * finding nothing.
- */
-export class SiteContextError extends Error {
-  override name = 'SiteContextError'
-  constructor(what: string) {
-    super(`A recheck of some URLs does not know ${what}: only a full crawl does`)
-  }
-}
+export { SiteContextError }
 
 const refuse = (what: string) => () => {
   throw new SiteContextError(what)
@@ -67,6 +58,7 @@ function siteOfARecheck(input: { now: Date; config: AuditSnapshot; answered: boo
     h1s: 'the headings of the other pages',
     texts: 'the texts of the other pages',
     nearDuplicates: 'the texts of the other pages',
+    sitemapCoverage: 'the sitemaps',
   }
   for (const [field, what] of Object.entries(unknown)) {
     Object.defineProperty(site, field, { get: refuse(what) })
@@ -82,8 +74,8 @@ export interface RecheckContext {
   /** The audit configuration in force when the recheck ran. */
   config: AuditSnapshot
   resolver: AuditResolver
-  /** `robots.txt` as it answered to this recheck, by origin; an origin without a body is absent. */
-  robots: ReadonlyMap<string, ParsedRobots>
+  /** `robots.txt` as it answered to this recheck, by origin; an origin that was not asked is absent. */
+  robots: ReadonlyMap<string, RobotsFile>
   /**
    * Whether the site answered at the last full crawl. Only used to tell a URL the crawler merely
    * tried from one that is linked: see `linksIn`.
@@ -95,13 +87,16 @@ export function recheckContext(input: {
   host: string
   now: Date
   config: AuditSnapshot
-  /** The text of each origin's `robots.txt`, or `null` when it did not answer with one. */
-  robotsTexts: ReadonlyMap<string, string | null>
+  /**
+   * What each origin's `robots.txt` answered to the recheck: its status (`null`: no answer) and its
+   * text (`null`: none). What the status settles is `robotsConclusive`.
+   */
+  robotsTexts: ReadonlyMap<string, { status: number | null; text: string | null }>
   answered: boolean
 }): RecheckContext {
-  const robots = new Map<string, ParsedRobots>()
-  for (const [origin, text] of input.robotsTexts) {
-    if (text !== null) robots.set(origin, parseRobots(text))
+  const robots = new Map<string, RobotsFile>()
+  for (const [origin, { status, text }] of input.robotsTexts) {
+    robots.set(origin, { parsed: text !== null ? parseRobots(text) : null, status })
   }
   return {
     host: input.host,
@@ -221,7 +216,8 @@ export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): V
       participationRule: url.participationRule?.id ?? null,
       intent: url.intent,
       intentRule: url.intentRule?.id ?? null,
-      acceptNofollow: url.acceptNofollow,
+      // The sitemaps are not read by a recheck: what rules ask of them is stated, not observed.
+      conditions: conditionStatesOf(url, site),
       indexability: url.indexability.state,
       blockers: url.indexability.blockers,
     },

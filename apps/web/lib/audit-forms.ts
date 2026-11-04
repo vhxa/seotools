@@ -1,8 +1,9 @@
 import {
-  AUDIT_DIMENSIONS,
+  AUDIT_CONDITIONS,
   AUDIT_LIMITS,
   AUDIT_VALUES,
   INDEX_INTENTS,
+  REQUIREMENTS,
   SELECTOR_KINDS,
   SELECTOR_SCOPES,
   isInternalUrl,
@@ -10,19 +11,32 @@ import {
   parseAuditReason,
   parseAuditSelector,
   parseLanguagePrefixes,
-  type AuditDimension,
+  type AuditCondition,
+  type AuditSelector,
   type LanguageConfig,
-  type NewAuditRule,
   type SelectorError,
   type SelectorScope,
 } from '@seotools/core'
-import type { UrlAuditChoice, UrlIntentChoice } from '@seotools/db'
+import type {
+  RuleStatements,
+  UrlAuditChoice,
+  UrlConditionChoices,
+  UrlIntentChoice,
+} from '@seotools/db'
 
 /** Validation of what comes from the audit settings and the actions on URLs, at the boundary. */
 
-export type RuleError = 'dimension' | 'value' | 'kind' | 'scope' | 'reason' | SelectorError
+export type RuleError = 'statements' | 'value' | 'kind' | 'scope' | 'reason' | SelectorError
 
-export type RuleResult = { ok: true; rule: NewAuditRule } | { ok: false; error: RuleError }
+/** A rule as the editor saves it: where it applies and what it says about those URLs. */
+export interface RuleSet {
+  selector: AuditSelector
+  statements: RuleStatements
+  reason: string | null
+  enabled: boolean
+}
+
+export type RuleResult = ({ ok: true } & RuleSet) | { ok: false; error: RuleError }
 
 export interface RuleInput {
   kind: unknown
@@ -31,25 +45,50 @@ export interface RuleInput {
   queryValue: unknown
   /** `literal` when left out. Only a path or a prefix has one. */
   scope?: unknown
-  value: unknown
-  /** Intent rules only: accept the page's own `nofollow`. */
-  acceptNofollow?: unknown
+  /** What the rule says about the audit (`exclude`, `include`) or nothing (`''`). */
+  audit?: unknown
+  /** What it says about the expectation of indexing as a whole (an advanced concept) or nothing. */
+  intent?: unknown
+  /** What it asks of each condition, or nothing: `required`, `allowed`, `forbidden` or `''`. */
+  noindex?: unknown
+  nofollow?: unknown
+  robots?: unknown
+  sitemap?: unknown
   reason: unknown
   enabled: boolean
 }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 
+/** What a statement says when it says something: a value of its set, nothing, or an error. */
+function statementValue<V extends string>(
+  value: unknown,
+  allowed: readonly V[],
+): { ok: true; value: V | undefined } | { ok: false } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: undefined }
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? { ok: true, value: value as V }
+    : { ok: false }
+}
+
 /** What a rule is made of, from untrusted input: the selector is checked against the domain. */
-export function parseRuleInput(
-  input: RuleInput,
-  dimension: AuditDimension,
-  host: string,
-): RuleResult {
-  if (!AUDIT_DIMENSIONS.includes(dimension)) return { ok: false, error: 'dimension' }
-  const value = text(input.value)
-  const allowed: readonly string[] = dimension === 'audit' ? AUDIT_VALUES : INDEX_INTENTS
-  if (!allowed.includes(value)) return { ok: false, error: 'value' }
+export function parseRuleInput(input: RuleInput, host: string): RuleResult {
+  const audit = statementValue(input.audit, AUDIT_VALUES)
+  const intent = statementValue(input.intent, INDEX_INTENTS)
+  if (!audit.ok || !intent.ok) return { ok: false, error: 'value' }
+  const conditions: NonNullable<RuleStatements['conditions']> = {}
+  for (const condition of AUDIT_CONDITIONS) {
+    const asked = statementValue(input[condition], REQUIREMENTS)
+    if (!asked.ok) return { ok: false, error: 'value' }
+    if (asked.value !== undefined) conditions[condition] = asked.value
+  }
+  const statements: RuleStatements = {
+    ...(audit.value === undefined ? {} : { audit: audit.value }),
+    ...(intent.value === undefined ? {} : { intent: intent.value }),
+    ...(Object.keys(conditions).length === 0 ? {} : { conditions }),
+  }
+  // A rule that says nothing is not a rule.
+  if (Object.keys(statements).length === 0) return { ok: false, error: 'statements' }
 
   const kind = text(input.kind)
   if (!(SELECTOR_KINDS as readonly string[]).includes(kind)) return { ok: false, error: 'kind' }
@@ -73,31 +112,24 @@ export function parseRuleInput(
   const reason = parseAuditReason(text(input.reason))
   if (reason === undefined) return { ok: false, error: 'reason' }
 
-  return {
-    ok: true,
-    rule: {
-      dimension,
-      value,
-      selector: parsed.selector,
-      // A switch that is on sends `on`; only an expectation can accept a nofollow.
-      ...(dimension === 'intent'
-        ? { acceptNofollow: input.acceptNofollow === true || input.acceptNofollow === 'on' }
-        : {}),
-      reason,
-      enabled: input.enabled,
-    } as NewAuditRule,
-  }
+  return { ok: true, selector: parsed.selector, statements, reason, enabled: input.enabled }
 }
 
 /** The ids of rules are UUIDs: anything else cannot be one, and is not looked up. */
 export const isRuleId = (value: unknown): value is string =>
   typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value)
 
+/** The rules of a request, as the ids they come in: some, each one an id, no more than a rule can have. */
+export function parseRuleIds(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 8) return null
+  if (!value.every(isRuleId)) return null
+  return [...new Set(value as string[])]
+}
+
 export function parseRuleForm(
   form: FormData,
-  dimension: AuditDimension,
   host: string,
-): (RuleResult & { ok: true; id: string | null }) | Extract<RuleResult, { ok: false }> {
+): (RuleResult & { id: string | null }) | Extract<RuleResult, { ok: false }> {
   const parsed = parseRuleInput(
     {
       kind: form.get('kind'),
@@ -105,13 +137,16 @@ export function parseRuleForm(
       query: form.get('query'),
       queryValue: form.get('queryValue'),
       scope: form.get('scope'),
-      acceptNofollow: form.get('acceptNofollow'),
-      value: form.get('value'),
+      audit: form.get('audit'),
+      intent: form.get('intent'),
+      noindex: form.get('noindex'),
+      nofollow: form.get('nofollow'),
+      robots: form.get('robots'),
+      sitemap: form.get('sitemap'),
       reason: form.get('reason'),
       // A switch that is off sends nothing.
       enabled: form.get('enabled') === 'on',
     },
-    dimension,
     host,
   )
   if (!parsed.ok) return parsed
@@ -127,23 +162,22 @@ export type UrlConfigResult =
       urls: string[]
       audit?: UrlAuditChoice
       intent?: UrlIntentChoice
-      acceptNofollow?: boolean
+      conditions?: UrlConditionChoices
       /** Left out when the request did not name one: the reasons the exceptions have stay. */
       reason?: string | null
     }
   | { ok: false; error: UrlConfigError }
 
 /**
- * What the table and the detail of a URL send: the URLs, and what to change. A dimension that is not
- * in the request is not touched, so nothing the user did not edit can be reset by saving. Every URL
- * has to be one of the domain; one that is not refuses the whole request, so a change is never
- * applied to some of the URLs asked for. `inherit` is "according to the rules": the exception no
- * longer states an expectation. Whether `nofollow` is accepted is its own choice: it can come with
- * `inherit`, and then only that stays different from the rules.
+ * What the table and the detail of a URL send: the URLs, and what to change. A statement that is not
+ * in the request is not touched, so nothing the user did not edit can be reset by saving (that is
+ * "no change", which is not the same as `inherit`: according to the rules, which removes the
+ * exception). Every URL has to be one of the domain; one that is not refuses the whole request, so a
+ * change is never applied to some of the URLs asked for.
  */
 export function parseUrlConfig(input: unknown, host: string): UrlConfigResult {
   if (typeof input !== 'object' || input === null) return { ok: false, error: 'urls' }
-  const { urls, audit, intent, acceptNofollow, reason } = input as Record<string, unknown>
+  const { urls, audit, intent, conditions, reason } = input as Record<string, unknown>
   if (
     !Array.isArray(urls) ||
     urls.length === 0 ||
@@ -162,13 +196,25 @@ export function parseUrlConfig(input: unknown, host: string): UrlConfigResult {
 
   const auditChoices: readonly unknown[] = ['inherit', ...AUDIT_VALUES]
   const intentChoices: readonly unknown[] = ['inherit', ...INDEX_INTENTS]
+  const conditionChoices: readonly unknown[] = ['inherit', ...REQUIREMENTS]
   if (audit !== undefined && !auditChoices.includes(audit)) return { ok: false, error: 'choice' }
   if (intent !== undefined && !intentChoices.includes(intent)) return { ok: false, error: 'choice' }
-  if (acceptNofollow !== undefined && typeof acceptNofollow !== 'boolean') {
-    return { ok: false, error: 'choice' }
+
+  const chosen: UrlConditionChoices = {}
+  if (conditions !== undefined) {
+    if (typeof conditions !== 'object' || conditions === null || Array.isArray(conditions)) {
+      return { ok: false, error: 'choice' }
+    }
+    for (const [name, choice] of Object.entries(conditions)) {
+      if (!(AUDIT_CONDITIONS as readonly string[]).includes(name))
+        return { ok: false, error: 'choice' }
+      if (choice === undefined) continue
+      if (!conditionChoices.includes(choice)) return { ok: false, error: 'choice' }
+      chosen[name as AuditCondition] = choice as UrlConditionChoices[AuditCondition]
+    }
   }
   // Asking for nothing is not a request.
-  if (audit === undefined && intent === undefined && acceptNofollow === undefined) {
+  if (audit === undefined && intent === undefined && Object.keys(chosen).length === 0) {
     return { ok: false, error: 'choice' }
   }
 
@@ -183,7 +229,7 @@ export function parseUrlConfig(input: unknown, host: string): UrlConfigResult {
     urls: [...new Set(normalized)],
     ...(audit === undefined ? {} : { audit: audit as UrlAuditChoice }),
     ...(intent === undefined ? {} : { intent: intent as UrlIntentChoice }),
-    ...(acceptNofollow === undefined ? {} : { acceptNofollow }),
+    ...(Object.keys(chosen).length === 0 ? {} : { conditions: chosen }),
     ...(cleanReason === undefined ? {} : { reason: cleanReason }),
   }
 }

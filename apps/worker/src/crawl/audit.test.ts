@@ -75,15 +75,18 @@ const exclusion = (
 const expecting = (
   selector: AuditSelector,
   value: 'indexable' | 'not-indexable',
-  acceptNofollow = false,
 ): NewAuditRule => ({
   dimension: 'intent',
   value,
   selector,
-  acceptNofollow,
   reason: null,
   enabled: true,
 })
+const asking = (
+  selector: AuditSelector,
+  dimension: 'noindex' | 'nofollow' | 'robots' | 'sitemap',
+  value: 'required' | 'allowed' | 'forbidden',
+): NewAuditRule => ({ dimension, value, selector, reason: null, enabled: true })
 
 async function addRules(rules: NewAuditRule[], domain = domainId) {
   const ids: string[] = []
@@ -556,7 +559,7 @@ describe('the indexation expected of a URL', () => {
     expect(await stateOf(id, '/product')).toMatchObject({
       intent: 'indexable',
       intentRule: null,
-      acceptNofollow: false,
+      conditions: {},
       indexability: 'not-indexable',
     })
   })
@@ -1120,12 +1123,11 @@ describe('what is expected of a URL when nothing is declared', () => {
 
 // --- nofollow ------------------------------------------------------------------------------------------
 
-describe('a page that accepts its own nofollow', () => {
+describe('a page that allows its own nofollow', () => {
   const robots = (content: string) => `<meta name="robots" content="${content}">`
   const product = (content: string, headers: Record<string, string> = {}) =>
     shop({ '/product': page('/product', { head: robots(content), headers }) })
-  const accepting = (value: 'indexable' | 'not-indexable' = 'indexable') =>
-    expecting(exactPath('/product'), value, true)
+  const allowing = (path = '/product') => asking(exactPath(path), 'nofollow', 'allowed')
 
   it('raises a finding for it, and is not made less indexable by it', async () => {
     const { id } = await crawl(product('nofollow'))
@@ -1133,12 +1135,12 @@ describe('a page that accepts its own nofollow', () => {
     expect(await stateOf(id, '/product')).toMatchObject({
       indexability: 'indexable',
       blockers: [],
-      acceptNofollow: false,
+      conditions: {},
     })
   })
 
-  it('stops raising it once a rule accepts it, without changing how indexable the page is', async () => {
-    await addRules([accepting()])
+  it('stops raising it once a rule allows it, without changing how indexable the page is', async () => {
+    await addRules([allowing()])
     const { id, requests } = await crawl(
       shop({
         '/product': page('/product', {
@@ -1152,7 +1154,7 @@ describe('a page that accepts its own nofollow', () => {
     expect(await stateOf(id, '/product')).toMatchObject({
       indexability: 'indexable',
       blockers: [],
-      acceptNofollow: true,
+      conditions: { nofollow: { requirement: 'allowed', observed: 'present' } },
     })
     // The crawler is the same: what the page links to was found and requested all the same.
     expect(requests).toContain(absolute('/only-from-product'))
@@ -1160,24 +1162,26 @@ describe('a page that accepts its own nofollow', () => {
   })
 
   it('does not need a nofollow to be there', async () => {
-    await addRules([accepting()])
+    await addRules([allowing()])
     const { id } = await crawl(shop())
     expect(await findings(id, '/product')).toEqual([])
-    expect(await stateOf(id, '/product')).toMatchObject({ acceptNofollow: true })
+    expect(await stateOf(id, '/product')).toMatchObject({
+      conditions: { nofollow: { requirement: 'allowed', observed: 'absent' } },
+    })
   })
 
-  it('is not an acceptance of nofollow by itself to expect a page not to be indexable', async () => {
+  it('is not allowed by expecting a page not to be indexable', async () => {
     await addRules([expecting(exactPath('/product'), 'not-indexable')])
     const { id } = await crawl(product('noindex, nofollow'))
     const found = await findings(id, '/product')
-    // The noindex is what was expected; the nofollow was not said to be.
+    // The noindex is what was expected; the nofollow was not said to be fine.
     expect(found).not.toContain('noindex')
     expect(found).toContain('nofollow')
     expect(found).not.toContain('expected-not-indexable-but-indexable')
   })
 
-  it('goes with an expectation of not being indexable too', async () => {
-    await addRules([accepting('not-indexable')])
+  it('goes with an expectation of not being indexable too, each by its own rule', async () => {
+    await addRules([expecting(exactPath('/product'), 'not-indexable'), allowing()])
     const { id } = await crawl(product('noindex, nofollow'))
     const found = await findings(id, '/product')
     expect(found).not.toContain('noindex')
@@ -1193,28 +1197,25 @@ describe('a page that accepts its own nofollow', () => {
     expect(found).toContain('nofollow')
     expect(await stateOf(id, '/product')).toMatchObject({ indexability: 'indexable' })
 
-    // Accepting the nofollow does not meet it either: it only stops the finding for the nofollow.
-    await db.audit.saveRule({
-      domainId,
-      rule: expecting(exactUrl('/product'), 'not-indexable', true),
-    })
+    // Allowing the nofollow does not meet it either: it only stops the finding for the nofollow.
+    await db.audit.saveRule({ domainId, rule: allowing() })
     await recomputeAudit({ db, domainId, log, finalAttempt: false })
     const after = await findings(id, '/product')
     expect(after).toContain('expected-not-indexable-but-indexable')
     expect(after).not.toContain('nofollow')
   })
 
-  it('is accepted by an exception on the URL that leaves the expectation to the rules', async () => {
+  it('is allowed by an exception on the URL that leaves the expectation to the rules', async () => {
     // The rules expect the whole site not to be indexed; this page also has a nofollow.
     await addRules([expecting(prefix('/'), 'not-indexable')])
     const { id } = await crawl(product('noindex, nofollow'))
     expect(await findings(id, '/product')).toContain('nofollow')
-    // Only nofollow is said for the URL, through the same call the dialog uses.
+    // Only the nofollow is said for the URL, through the same call the dialog uses.
     const changed = await db.audit.setUrlConfig({
       domainId,
       host: 'example.com',
       urls: [`${SITE}/product`],
-      acceptNofollow: true,
+      conditions: { nofollow: 'allowed' },
     })
     expect(changed).toMatchObject({ ok: true })
     await recomputeAudit({ db, domainId, log, finalAttempt: false })
@@ -1223,7 +1224,10 @@ describe('a page that accepts its own nofollow', () => {
     // The expectation is still the rules': the noindex is what they expect, and it is met.
     expect(found).not.toContain('noindex')
     expect(found).not.toContain('expected-not-indexable-but-indexable')
-    expect(await stateOf(id, '/product')).toMatchObject({ acceptNofollow: true })
+    expect(await stateOf(id, '/product')).toMatchObject({
+      intent: 'not-indexable',
+      conditions: { nofollow: { requirement: 'allowed' } },
+    })
   })
 
   it('reads `none` as a noindex and a nofollow, and keeps their consequences apart', async () => {
@@ -1236,8 +1240,8 @@ describe('a page that accepts its own nofollow', () => {
       blockers: ['noindex'],
     })
 
-    // Accepting the nofollow of a page expected to be indexable: the noindex is still the problem.
-    await addRules([accepting('indexable')])
+    // Allowing the nofollow of a page expected to be indexable: the noindex is still the problem.
+    await addRules([expecting(exactPath('/product'), 'indexable'), allowing()])
     await recomputeAudit({ db, domainId, log, finalAttempt: false })
     const after = await findings(id, '/product')
     expect(after).toContain('expected-indexable-blocked')
@@ -1245,8 +1249,8 @@ describe('a page that accepts its own nofollow', () => {
     expect(after).not.toContain('nofollow')
   })
 
-  it('keeps a noindex a page is expected to be indexable with, whatever nofollow is accepted', async () => {
-    await addRules([accepting('indexable')])
+  it('keeps a noindex a page is expected to be indexable with, whatever nofollow is allowed', async () => {
+    await addRules([expecting(exactPath('/product'), 'indexable'), allowing()])
     const { id } = await crawl(product('noindex, nofollow'))
     const rows = await db.crawls.issuesOf(id, [hashOf('/product')])
     expect(rows.find((row) => row.issue === 'expected-indexable-blocked')?.details).toEqual([
@@ -1255,7 +1259,7 @@ describe('a page that accepts its own nofollow', () => {
   })
 
   it('does not hide a conflict of directives', async () => {
-    await addRules([accepting()])
+    await addRules([allowing()])
     const { id } = await crawl(product('nofollow, follow'))
     const found = await findings(id, '/product')
     expect(found).toContain('directives-conflict')
@@ -1266,7 +1270,7 @@ describe('a page that accepts its own nofollow', () => {
   })
 
   it('does not touch a link marked nofollow, or what other pages say', async () => {
-    await addRules([accepting()])
+    await addRules([allowing()])
     const { id } = await crawl(
       shop({
         '/': page('/', {
@@ -1289,11 +1293,11 @@ describe('a page that accepts its own nofollow', () => {
   it('reads the directives of a header, and only those meant for the bot it follows', async () => {
     const forAll = await crawl(product('index', { 'x-robots-tag': 'nofollow' }))
     expect(await findings(forAll.id, '/product')).toContain('nofollow')
-    await addRules([accepting()])
+    await addRules([allowing()])
     await recomputeAudit({ db, domainId, log, finalAttempt: false })
     expect(await findings(forAll.id, '/product')).not.toContain('nofollow')
 
-    // What is meant for another bot is not this page's nofollow, so there is nothing to accept.
+    // What is meant for another bot is not this page's nofollow, so there is nothing to allow.
     const other = await crawl(product('index', { 'x-robots-tag': 'bingbot: nofollow' }))
     expect(await findings(other.id, '/product')).not.toContain('nofollow')
     const forGoogle = await crawl(
@@ -1302,23 +1306,25 @@ describe('a page that accepts its own nofollow', () => {
       }),
     )
     expect(await findings(forGoogle.id, '/product')).not.toContain('nofollow')
-    expect(await stateOf(forGoogle.id, '/product')).toMatchObject({ acceptNofollow: true })
+    expect(await stateOf(forGoogle.id, '/product')).toMatchObject({
+      conditions: { nofollow: { requirement: 'allowed', observed: 'present' } },
+    })
   })
 
   it('leaves an excluded page without findings, as ever', async () => {
-    await addRules([accepting(), exclusion(exactPath('/product'))])
+    await addRules([allowing(), exclusion(exactPath('/product'))])
     const { id } = await crawl(product('noindex, nofollow'))
     expect(await findings(id, '/product')).toEqual([])
     expect(await stateOf(id, '/product')).toMatchObject({
       participation: 'excluded',
-      acceptNofollow: true,
+      conditions: { nofollow: { requirement: 'allowed' } },
     })
   })
 
-  it('is what a rule decides: the rule that wins takes the acceptance with it', async () => {
+  it('is what the most specific rule decides', async () => {
     await addRules([
-      expecting(prefix('/'), 'indexable', true),
-      expecting(exactUrl('/product'), 'indexable', false),
+      asking(prefix('/'), 'nofollow', 'allowed'),
+      asking(exactUrl('/product'), 'nofollow', 'forbidden'),
     ])
     const { id } = await crawl(product('nofollow'))
     expect(await findings(id, '/product')).toContain('nofollow')

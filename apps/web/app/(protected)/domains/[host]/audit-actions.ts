@@ -1,12 +1,13 @@
 'use server'
 
-import type { AuditDimension } from '@seotools/core'
+import type { AuditSelector } from '@seotools/core'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
 import {
   isRuleId,
   parseLanguagesForm,
   parseRuleForm,
+  parseRuleIds,
   parseRuleInput,
   parseUrlConfig,
   type RuleError,
@@ -42,52 +43,66 @@ function mutationError(t: Errors, error: 'conflict' | 'not-found' | 'limit') {
 }
 
 /**
- * Creates a rule, or edits the one named by the form's `id`. The dimension comes from the section
- * that holds the form, never from the form itself, and is checked like the rest.
+ * Creates a rule, or edits the one the form names with `id` (any of its rows: the rule being edited
+ * is every row that has the same selector). A rule says several things about the URLs it covers, each
+ * one decided on its own; the form carries them all, and what it leaves out the rule no longer says.
  */
 export async function saveAuditRuleAction(
   host: string,
-  dimension: AuditDimension,
   _previous: RuleFormState,
   formData: FormData,
 ): Promise<RuleFormState> {
   const { domain } = await requireDomain(host)
   const t = await errorMessages()
-  const parsed = parseRuleForm(formData, dimension, domain.host)
+  const parsed = parseRuleForm(formData, domain.host)
   if (!parsed.ok) return { error: ruleError(t, parsed.error) }
   if (parsed.id !== null && !isRuleId(parsed.id)) return { error: t('notFound') }
 
-  const saved = await (
-    await getDb()
-  ).audit.saveRule({
+  const db = await getDb()
+  let editing: AuditSelector | undefined
+  if (parsed.id !== null) {
+    // Looked up in this domain only: an id of another domain is not a rule here.
+    const found = (await db.audit.config(domain.id)).rules.find((rule) => rule.id === parsed.id)
+    if (!found) return { error: t('notFound') }
+    editing = found.selector
+  }
+  const saved = await db.audit.saveRuleSet({
     domainId: domain.id,
-    ...(parsed.id === null ? {} : { id: parsed.id }),
-    rule: parsed.rule,
+    selector: parsed.selector,
+    statements: parsed.statements,
+    reason: parsed.reason,
+    enabled: parsed.enabled,
+    ...(editing ? { editing } : {}),
   })
   if (!saved.ok) return { error: mutationError(t, saved.error) }
   revalidateAudit(host)
   return { saved: true }
 }
 
-export async function setAuditRuleEnabledAction(
+/** Turns a rule on or off. It is every row of the rule: they are one rule as far as anyone sees. */
+export async function setAuditRulesEnabledAction(
   host: string,
-  id: string,
+  ids: unknown,
   enabled: boolean,
 ): Promise<RuleFormState> {
   const { domain } = await requireDomain(host)
   const t = await errorMessages()
-  if (!isRuleId(id) || typeof enabled !== 'boolean') return { error: t('notFound') }
-  const changed = await (await getDb()).audit.setRuleEnabled({ domainId: domain.id, id, enabled })
+  const rules = parseRuleIds(ids)
+  if (!rules || typeof enabled !== 'boolean') return { error: t('notFound') }
+  const changed = await (
+    await getDb()
+  ).audit.setRulesEnabled({ domainId: domain.id, ids: rules, enabled })
   if (!changed.ok) return { error: mutationError(t, changed.error) }
   revalidateAudit(host)
   return { saved: true }
 }
 
-export async function deleteAuditRuleAction(host: string, id: string): Promise<RuleFormState> {
+export async function deleteAuditRulesAction(host: string, ids: unknown): Promise<RuleFormState> {
   const { domain } = await requireDomain(host)
   const t = await errorMessages()
-  if (!isRuleId(id)) return { error: t('notFound') }
-  const deleted = await (await getDb()).audit.deleteRule({ domainId: domain.id, id })
+  const rules = parseRuleIds(ids)
+  if (!rules) return { error: t('notFound') }
+  const deleted = await (await getDb()).audit.deleteRules({ domainId: domain.id, ids: rules })
   if (!deleted.ok) return { error: mutationError(t, deleted.error) }
   revalidateAudit(host)
   return { saved: true }
@@ -101,7 +116,6 @@ export type PreviewState = AuditPreview | { status: 'error'; error: string }
  */
 export async function previewAuditRuleAction(
   host: string,
-  dimension: AuditDimension,
   input: RuleInput & { id?: unknown },
 ): Promise<PreviewState> {
   const { domain } = await requireDomain(host)
@@ -109,34 +123,38 @@ export async function previewAuditRuleAction(
   // Whatever arrives from a client is checked, including that it is an object at all.
   if (typeof input !== 'object' || input === null) return { status: 'error', error: t('value') }
   // Whether it is on matters: a rule that is off changes what it was deciding, and clashes with none.
-  const parsed = parseRuleInput(
-    { ...input, enabled: input.enabled === true },
-    dimension,
-    domain.host,
-  )
+  const parsed = parseRuleInput({ ...input, enabled: input.enabled === true }, domain.host)
   if (!parsed.ok) return { status: 'error', error: ruleError(t, parsed.error) }
-  const replacing = typeof input.id === 'string' && isRuleId(input.id) ? input.id : null
 
   const db = await getDb()
   const [crawl, config] = await Promise.all([
     db.crawls.latestWithResults(domain.id, 'full'),
     db.audit.config(domain.id),
   ])
+  const editing =
+    typeof input.id === 'string' && isRuleId(input.id)
+      ? (config.rules.find((rule) => rule.id === input.id)?.selector ?? null)
+      : null
   return previewRule({
     db,
     host: domain.host,
     crawl,
     rules: config.rules,
     languages: config.languages,
-    replacing,
-    candidate: parsed.rule,
+    editing,
+    candidate: {
+      selector: parsed.selector,
+      statements: parsed.statements,
+      reason: parsed.reason,
+      enabled: parsed.enabled,
+    },
   })
 }
 
 /**
  * Sets what is declared for exact URLs: what the table and the detail of a URL offer. The same
- * model as the rules of the settings page — a rule whose selector is that URL — so the three never
- * contradict each other.
+ * model as the rules of the settings page — rules whose selector is that URL — so the three never
+ * contradict each other. A statement left out of the request is "no change"; `inherit` removes it.
  */
 export async function setUrlAuditAction(host: string, input: unknown): Promise<RuleFormState> {
   const { domain } = await requireDomain(host)

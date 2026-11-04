@@ -1,6 +1,5 @@
 'use client'
 
-import type { AuditDimension } from '@seotools/core/crawl/audit'
 import { PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -17,12 +16,10 @@ import {
 /** "Create rule": opens the editor in a dialog, with the preview inside it. */
 export function CreateRuleButton({
   host,
-  dimension,
   languagesDeclared,
   variant = 'default',
 }: {
   host: string
-  dimension: AuditDimension
   languagesDeclared: boolean
   variant?: 'default' | 'outline'
 }) {
@@ -42,7 +39,6 @@ export function CreateRuleButton({
           </DialogHeader>
           <RuleForm
             host={host}
-            dimension={dimension}
             languagesDeclared={languagesDeclared}
             onSaved={() => setOpen(false)}
             onCancel={() => setOpen(false)}

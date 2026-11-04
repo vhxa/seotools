@@ -87,7 +87,7 @@ describe('viewRecheck', () => {
           participationRule: null,
           intent: 'indexable',
           intentRule: null,
-          acceptNofollow: false,
+          conditions: {},
           indexability: 'indexable',
           blockers: [],
         },

@@ -434,8 +434,7 @@
     "bulk": {
       "mark": "Marcar como prioritarias",
       "unmark": "Quitar de prioritarias",
-      "excludeFromAudit": "Excluir de auditoría…",
-      "configureAudit": "Auditoría e indexación esperada…"
+      "configureAudit": "Configurar auditoría…"
     },
     "openUrl": "Abrir {url} en una pestaña nueva",
     "empty": "Ninguna URL coincide.",
@@ -580,8 +579,8 @@
       "excludedNote": "Esta URL se rastrea y conserva todos sus datos, pero queda fuera de la auditoría: no tiene hallazgos propios. Eso no significa que no tenga nada que arreglar.",
       "pendingNote": "La configuración de auditoría cambió después de analizar este crawl. Lo que se muestra aquí puede no reflejarla todavía.",
       "notAnalysed": "Este crawl se analizó antes de que existieran las reglas de auditoría, o no se ha analizado: el estado de auditoría de esta URL no se conoce.",
-      "configure": "Auditoría e indexación…",
-      "nofollow": "nofollow en esta página"
+      "configure": "Configurar auditoría…",
+      "conditions": "Condiciones"
     },
     "noFindings": "Sin hallazgos.",
     "excludedFindings": "Excluida de la auditoría: no tiene hallazgos propios.",
@@ -1123,6 +1122,26 @@
     "expected-not-indexable-but-indexable": {
       "name": "Se esperaba no indexable pero es indexable",
       "description": "Declaraste que esta URL no debe ser indexable, pero el rastreo no encontró nada que impida indexarla: añade un noindex o apunta su canonical a otra URL."
+    },
+    "noindex-required-missing": {
+      "name": "Falta el noindex obligatorio",
+      "description": "Una regla exige que esta página declare noindex, pero el crawl la leyó entera y no encontró ninguno. No se señala una página que el crawl no pudo leer entera o que no pidió."
+    },
+    "nofollow-required-missing": {
+      "name": "Falta el nofollow obligatorio",
+      "description": "Una regla exige que esta página declare nofollow para sí misma, pero el crawl la leyó entera y no encontró ninguno. No se señala una página que el crawl no pudo leer entera o que no pidió."
+    },
+    "robots-block-required-missing": {
+      "name": "Falta el bloqueo obligatorio de robots.txt",
+      "description": "Una regla exige que robots.txt bloquee esta URL, pero el robots.txt que respondió no la bloquea. Un bloqueo solo impide que los rastreadores lean la URL: no la saca del índice de un buscador. Un robots.txt que no respondió no demuestra nada y no se señala."
+    },
+    "sitemap-required-missing": {
+      "name": "Falta aparecer en un sitemap, como exige una regla",
+      "description": "Una regla exige que esta URL esté en un sitemap y ninguno de los sitemaps la incluye. Solo se señala cuando se leyeron todos los sitemaps del sitio en un crawl que terminó; una nueva comprobación de algunas URLs no puede saberlo."
+    },
+    "sitemap-forbidden-present": {
+      "name": "Incluida en un sitemap donde una regla lo prohíbe",
+      "description": "Una regla prohíbe que esta URL esté en un sitemap y un sitemap la incluye."
     }
   },
   "LinkKinds": {
@@ -1696,7 +1715,7 @@
       "urls": "URLs",
       "security": "Seguridad",
       "html": "HTML",
-      "indexing-intent": "Intención de indexación"
+      "indexing-intent": "Expectativas declaradas"
     },
     "types": {
       "issue": "Issue",
@@ -1743,10 +1762,6 @@
       "unknown": "No analizada",
       "notApplicable": "No aplica: no es una página"
     },
-    "nofollow": {
-      "accepted": "nofollow aceptado",
-      "notAccepted": "nofollow no aceptado"
-    },
     "indexability": {
       "indexable": "Técnicamente indexable",
       "not-indexable": "No indexable",
@@ -1788,82 +1803,69 @@
         "notIndexableByRule": "Se espera no indexable por la regla “{rule}”.",
         "notIndexableByException": "Se espera no indexable por una excepción para esta URL."
       },
-      "nofollow": {
-        "default": "El nofollow no se acepta por defecto.",
-        "acceptedByRule": "El nofollow se acepta por la regla “{rule}”.",
-        "acceptedByException": "El nofollow se acepta por una excepción para esta URL.",
-        "notAcceptedByRule": "El nofollow no se acepta: la regla “{rule}” no lo acepta.",
-        "notAcceptedByException": "El nofollow no se acepta en la excepción para esta URL."
+      "condition": {
+        "default": {
+          "noindex": "Ninguna regla aplica: un noindex genera un hallazgo.",
+          "nofollow": "Ninguna regla aplica: un nofollow de la propia página genera un aviso.",
+          "robots": "Ninguna regla aplica: un bloqueo de robots.txt genera un hallazgo.",
+          "sitemap": "Ninguna regla aplica: una página indexable que ningún sitemap incluye genera un aviso de baja prioridad."
+        },
+        "byRule": "{requirement} por la regla “{rule}”.",
+        "byException": "{requirement} por una excepción de esta URL."
       }
     },
     "technicalNote": "Es lo que vio el rastreo, no si un buscador ha indexado la URL, algo que un rastreo no puede saber.",
-    "empty": "—"
+    "empty": "—",
+    "conditions": {
+      "names": {
+        "noindex": "Noindex",
+        "nofollow": "Nofollow",
+        "robots": "Bloqueo de robots.txt",
+        "sitemap": "Sitemap"
+      },
+      "badge": "{condition}: {requirement}",
+      "outcome": {
+        "met": "El crawl vio lo que pide la regla.",
+        "unmet": "El crawl vio lo contrario de lo que pide la regla.",
+        "allowed": "La regla lo acepta en ambos casos.",
+        "unknown": "El crawl no pudo saberlo: la página no se leyó entera, o un archivo del que depende no respondió."
+      }
+    }
   },
   "AuditRules": {
     "metaTitle": "Configuración de auditoría · {host} · seotools",
     "tabs": {
       "label": "Configuración de auditoría",
-      "exclusions": "Exclusiones de auditoría",
-      "intent": "Indexación y directivas",
+      "rules": "Reglas",
       "languages": "Directorios de idioma"
     },
     "create": "Crear regla",
     "sections": {
-      "audit": {
-        "title": "Exclusiones de auditoría",
-        "description": "URLs que se siguen rastreando y conservan todos sus datos, pero quedan fuera de la auditoría: no generan issues, warnings ni oportunidades propios y no cuentan como páginas auditadas. Las demás páginas se siguen comprobando respecto a ellas: un canonical o un hreflang que lleve a una URL excluida rota sigue siendo un problema de la página que apunta.",
-        "default": "Por defecto, todas las URLs se auditan.",
-        "emptyTitle": "Sin exclusiones",
-        "empty": "Todas las URLs se auditan. Crea una regla para dejar fuera URLs que se siguen rastreando, como el carrito de una tienda."
-      },
-      "intent": {
-        "title": "Indexación y directivas",
-        "description": "Lo que esperas de la indexación de una URL. Declara una intención: nunca dice si un buscador la ha indexado. Un noindex no es un problema en una URL que se espera no indexable, y que resulte indexable sí lo es. Una regla también puede aceptar el nofollow de la propia página, que no impide que se indexe. Una URL excluida de la auditoría no genera hallazgos por incumplir su expectativa, pero la expectativa sigue visible.",
-        "default": "Por defecto, se espera que toda página sea indexable.",
+      "rules": {
+        "title": "Reglas de auditoría",
+        "description": "Lo que una regla dice de las URLs que cubre: si forman parte de la auditoría (las URLs excluidas se siguen rastreando y conservan sus datos, pero no generan hallazgos propios), qué se exige, permite o prohíbe de un noindex, un nofollow, un bloqueo de robots.txt y aparecer en un sitemap y, como concepto avanzado, si se espera que sean indexables. Una regla declara una intención: nunca dice si un buscador ha indexado una URL.",
+        "default": "Por defecto, todas las URLs se auditan, no se pide nada de sus condiciones y se espera que toda página sea indexable.",
         "emptyTitle": "Sin reglas",
-        "empty": "Se espera que toda página sea indexable. Crea una regla para esperar que algunas no lo sean, o para aceptar su nofollow."
-      }
-    },
-    "values": {
-      "audit": {
-        "exclude": "Excluir de auditoría",
-        "include": "Incluir en auditoría"
-      },
-      "intent": {
-        "indexable": "Se espera indexable",
-        "not-indexable": "Se espera no indexable",
-        "inherit": "Según las reglas"
-      }
-    },
-    "valueHelp": {
-      "audit": {
-        "exclude": "Rastreada y conservada, pero sin hallazgos propios.",
-        "include": "Auditada, aunque una exclusión más amplia la cubra."
-      },
-      "intent": {
-        "indexable": "Se comprueba qué impide su indexabilidad en el rastreo.",
-        "not-indexable": "Un noindex es correcto; ser indexable no."
+        "empty": "Todas las URLs se auditan y no se exige ninguna condición. Crea una regla para excluir URLs que se siguen rastreando, como el carrito de una tienda, o para exigir, permitir o prohibir un noindex, un nofollow, un bloqueo de robots.txt o aparecer en un sitemap."
       }
     },
     "kinds": {
-      "url": "URL exacta",
-      "path": "Ruta exacta",
-      "prefix": "Prefijo de ruta"
+      "url": "Esta URL exacta",
+      "path": "Esta ruta exacta",
+      "prefix": "Esta ruta y todo lo que cuelga de ella"
     },
     "kindHelp": {
-      "url": "Una URL, con su esquema, host, ruta y query. Prevalece sobre cualquier otra regla: es una excepción para esa URL.",
-      "path": "Esta ruta y ninguna otra: /cart no es /cart/. Se aplica al host y su variante www, en HTTP y HTTPS. Mayúsculas y minúsculas son distintas.",
-      "prefix": "Esta ruta y lo que cuelga de ella por segmentos: /cuenta cubre /cuenta, /cuenta/ y /cuenta/pedidos, pero no /cuentame. Gana el prefijo más largo."
+      "url": "Una URL, con su esquema, host, ruta y query. Tiene prioridad sobre cualquier otra regla: es una excepción para esa URL.",
+      "path": "Esta ruta y ninguna otra: /cart no es /cart/. Se aplica al host y a su variante www, en HTTP y HTTPS. Las mayúsculas y minúsculas son distintas.",
+      "prefix": "Esta ruta y lo que cuelga de ella por segmentos: /account cubre /account, /account/ y /account/orders, pero no /accounts. Gana el prefijo más largo."
     },
     "scope": {
       "label": "Dónde se lee la ruta",
       "literal": "Ruta literal",
       "shared": "Compartida entre idiomas",
-      "url": "Literal",
       "literalHelp": "La ruta se compara con la de la URL tal como es.",
       "sharedHelp": "La misma ruta dentro de cada directorio de idioma declarado y, si está habilitado, sin directorio: /cart cubre /cart, /es/cart, /en/cart… No traduce slugs: /es/carrito y /en/cart necesitan reglas diferentes.",
-      "noLanguages": "Declara antes los directorios de idioma, en la pestaña «Directorios de idioma». Hasta entonces una regla compartida no cubre nada.",
-      "badge": "Compartida"
+      "noLanguages": "Declara antes los directorios de idioma, en la pestaña «Directorios de idioma». Hasta entonces una regla compartida no cubre nada."
     },
     "query": {
       "label": "Parámetros (query)",
@@ -1876,18 +1878,11 @@
       "only": "query ?{query}",
       "none": "sin query"
     },
-    "nofollow": {
-      "label": "Aceptar nofollow en esta página",
-      "help": "El nofollow no impide que una página se indexe: afecta a si se siguen sus enlaces. Aceptarlo evita el hallazgo del nofollow de la propia página, con cualquiera de las dos expectativas. No exige que haya un nofollow, no oculta conflictos de directivas, no toca los enlaces marcados con rel=\"nofollow\" y no cuenta como esperar que la página no sea indexable.",
-      "accepted": "Aceptado",
-      "notAccepted": "—"
-    },
     "form": {
       "kind": "Se aplica a",
       "selector": "Dirección",
       "urlPlaceholder": "https://{host}/cart",
       "pathPlaceholder": "/cart",
-      "value": "Regla",
       "reason": "Motivo",
       "reasonPlaceholder": "¿Por qué? Se muestra donde esta regla es la que decide.",
       "enabled": "Activa",
@@ -1900,17 +1895,17 @@
       "cancel": "Cancelar",
       "saved": "Guardado. Se está analizando de nuevo el último crawl.",
       "preview": "Previsualizar coincidencias",
-      "previewing": "Mirando…"
+      "previewing": "Mirando…",
+      "appliesTo": "Esta regla se aplica a",
+      "says": "Y dice",
+      "advancedSelector": "Avanzado: query y idiomas"
     },
     "list": {
       "empty": "Todavía no hay reglas.",
       "columns": {
         "selector": "URLs",
-        "scope": "Alcance",
-        "rule": "Regla",
-        "nofollow": "nofollow",
+        "says": "Dice",
         "enabled": "Activa",
-        "affects": "Afecta a",
         "reason": "Motivo"
       },
       "exception": "Excepción para una URL",
@@ -1972,8 +1967,7 @@
       "noCrawl": "Las reglas se aplicarán al próximo crawl completo: todavía no hay ninguno con resultados que analizar."
     },
     "errors": {
-      "dimension": "Ese tipo de regla no existe.",
-      "value": "Elige qué hace la regla.",
+      "value": "Elige un valor que exista para cada cosa que dice la regla.",
       "kind": "Elige a qué se aplica la regla.",
       "scope": "Elige dónde se lee la ruta.",
       "url": "Eso no es una URL.",
@@ -1991,27 +1985,15 @@
         "external": "Solo se pueden configurar URLs de este dominio.",
         "choice": "Elige qué cambiar.",
         "reason": "El motivo es demasiado largo."
-      }
+      },
+      "statements": "Elige al menos una cosa que diga la regla: si las URLs forman parte de la auditoría, una condición o la indexación esperada."
     }
   },
   "AuditDialog": {
-    "title": "Auditoría e indexación esperada",
+    "title": "Configurar auditoría",
     "description": "{count, plural, one {# URL seleccionada.} other {# URLs seleccionadas.}} Se guarda como excepción para cada URL y el último crawl completo se analiza de nuevo en segundo plano, sin peticiones al sitio.",
     "descriptionOne": "Se guarda como excepción para esta URL y el último crawl completo se analiza de nuevo en segundo plano, sin peticiones al sitio.",
-    "auditLabel": "Auditoría",
-    "intentLabel": "Indexación esperada",
-    "rules": "Según las reglas",
-    "include": "Incluir en auditoría",
-    "exclude": "Excluir de auditoría",
-    "indexable": "Se espera indexable",
-    "not-indexable": "Se espera no indexable",
-    "rulesHelp": "Elimina la excepción de esta URL, si la tiene.",
-    "acceptNofollow": "Aceptar nofollow en esta página",
-    "acceptNofollowHelp": "El nofollow no impide que una página se indexe: afecta a si se siguen sus enlaces. Aceptarlo solo evita el hallazgo del nofollow de la propia página. No cuenta como esperar que la página no sea indexable.",
-    "changeAudit": "Cambiar auditoría",
-    "changeIntent": "Cambiar indexación esperada",
-    "changeNofollow": "Cambiar si se acepta nofollow",
-    "multipleHint": "No se cambia nada salvo lo que elijas. Lo que dejes sin marcar conserva sus valores, excepciones y motivos.",
+    "multipleHint": "No se cambia nada salvo lo que elijas. «Sin cambios» deja cada URL como está; «Según las reglas» elimina la excepción de las URLs, que pasan a tomar lo que dicen las reglas.",
     "reason": "Motivo (opcional)",
     "reasonPlaceholder": "¿Por qué? Se muestra donde esto es lo que decide.",
     "reasonKept": "Si lo dejas vacío, cada excepción conserva su propio motivo.",
@@ -2019,7 +2001,6 @@
     "applying": "Aplicando…",
     "cancel": "Cancelar",
     "nothing": "Elige qué cambiar.",
-    "directivesLabel": "Directivas",
     "state": {
       "now": "Ahora: {state}",
       "afterSave": "Al guardar: {state}"
@@ -2282,5 +2263,80 @@
   "HttpStatus": {
     "automaticCheck": "Comprobación automática",
     "notFound": "No encontrado"
+  },
+  "AuditStatements": {
+    "keep": "Sin cambios",
+    "rules": "Según las reglas",
+    "notSet": "No lo fija esta regla",
+    "audit": {
+      "label": "Participación en la auditoría",
+      "help": "Si estas URLs forman parte de la auditoría. Las URLs excluidas se siguen rastreando y conservan sus datos, pero no generan hallazgos propios.",
+      "include": "Incluir en auditoría",
+      "exclude": "Excluir de auditoría"
+    },
+    "requirement": {
+      "required": "Obligatorio",
+      "allowed": "Permitido",
+      "forbidden": "Prohibido"
+    },
+    "conditions": {
+      "title": "Condiciones",
+      "add": "Añadir condición",
+      "remove": "Quitar {condition}",
+      "noneUrl": "No hay ninguna condición. Añade una para exigir, permitir o prohibir un noindex, un nofollow, un bloqueo de robots.txt o aparecer en un sitemap.",
+      "noneRule": "Esta regla no fija ninguna condición. Añade una para exigir, permitir o prohibir un noindex, un nofollow, un bloqueo de robots.txt o aparecer en un sitemap.",
+      "unknown": "Si el crawl no pudo saberlo (una página que no pudo leer entera, un robots.txt o un sitemap que no respondió), no se genera ningún hallazgo y la condición no se cuenta como cumplida.",
+      "statement": "{condition}: {requirement}",
+      "noindex": {
+        "label": "Noindex",
+        "default": "Por defecto, una página que declara noindex genera un hallazgo.",
+        "help": {
+          "required": "Se genera un hallazgo cuando la página no declara noindex.",
+          "allowed": "La página puede declarar noindex o no: no hay hallazgo por el noindex en ningún caso.",
+          "forbidden": "Se genera un hallazgo cuando la página declara noindex."
+        }
+      },
+      "nofollow": {
+        "label": "Nofollow",
+        "default": "Por defecto, una página que declara nofollow para sí misma genera un aviso.",
+        "help": {
+          "required": "Se genera un hallazgo cuando la página no declara nofollow.",
+          "allowed": "La página puede declarar nofollow o no: no hay hallazgo en ningún caso. Los enlaces con rel=\"nofollow\" no se ven afectados.",
+          "forbidden": "Se genera un hallazgo cuando la página declara nofollow."
+        }
+      },
+      "robots": {
+        "label": "Bloqueada por robots.txt",
+        "default": "Por defecto, una URL bloqueada por robots.txt genera un hallazgo.",
+        "help": {
+          "required": "Se genera un hallazgo cuando robots.txt no bloquea la URL. Un bloqueo solo impide que los rastreadores la lean: no la saca del índice de un buscador.",
+          "allowed": "La URL puede estar bloqueada por robots.txt o no: no hay hallazgo por el bloqueo en ningún caso.",
+          "forbidden": "Se genera un hallazgo cuando robots.txt bloquea la URL."
+        }
+      },
+      "sitemap": {
+        "label": "Incluida en un sitemap",
+        "default": "Por defecto, una página indexable que ningún sitemap incluye genera un aviso de baja prioridad.",
+        "help": {
+          "required": "Se genera un hallazgo cuando ningún sitemap incluye la URL. Necesita un crawl completo: una nueva comprobación de algunas URLs no puede saberlo.",
+          "allowed": "La URL puede estar en un sitemap o no: no hay hallazgo por su ausencia. Una URL incluida que no puede indexarse se sigue señalando.",
+          "forbidden": "Se genera un hallazgo cuando un sitemap incluye la URL."
+        }
+      }
+    },
+    "advanced": {
+      "title": "Avanzado: indexación esperada",
+      "help": "La expectativa trata de la URL en su conjunto: un noindex, un canonical a otra URL, una redirección, un error o un bloqueo de robots.txt pueden impedir que se indexe. Las condiciones de arriba tratan de una directiva o un archivo cada una, y nunca de si la URL está en el índice de un buscador."
+    },
+    "intent": {
+      "label": "Indexación esperada",
+      "indexable": "Se espera indexable",
+      "not-indexable": "Se espera no indexable",
+      "help": {
+        "default": "Salvo que una regla diga otra cosa, se espera que toda página sea indexable.",
+        "indexable": "Se comprueba en el crawl qué impide indexar la URL.",
+        "not-indexable": "Un noindex está bien; ser indexable no. No es lo mismo que exigir un noindex."
+      }
+    }
   }
 }

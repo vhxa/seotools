@@ -10,6 +10,7 @@ import {
   type PagesWithType,
 } from '@seotools/core'
 import type { Crawl, CrawlUrlAudit, CrawlUrlIssue, Database } from '@seotools/db'
+import { conditionStatesOf } from './conditions'
 import { detectIssues } from './issue-checks'
 import { loadSite } from './site-audit'
 
@@ -87,7 +88,7 @@ export async function analyseCrawl(
       participationRule: url.participationRule?.id ?? null,
       intent: url.intent,
       intentRule: url.intentRule?.id ?? null,
-      acceptNofollow: url.acceptNofollow,
+      conditions: conditionStatesOf(url, site),
       indexability: url.indexability.state,
       blockers: url.indexability.blockers,
     })

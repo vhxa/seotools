@@ -1,5 +1,7 @@
 import type {
+  AuditCondition,
   AuditRule,
+  AuditSelector,
   CompareView,
   CrawlChange,
   UrlSnapshot,
@@ -10,6 +12,7 @@ import type {
   LanguageConfig,
   NewAuditRule,
   PagesAudit,
+  Requirement,
   UrlAuditState,
   CrawlFileData,
   CrawlFileKind,
@@ -623,6 +626,20 @@ export type AuditMutation =
 /** What to do with the audit of a URL: leave it to the rules, or set it. */
 export type UrlAuditChoice = 'inherit' | AuditValue
 export type UrlIntentChoice = 'inherit' | IndexIntent
+/** The same for each condition. A condition left out of the object is not touched. */
+export type UrlConditionChoices = Partial<Record<AuditCondition, 'inherit' | Requirement>>
+
+/**
+ * What a rule says, statement by statement, as the editor shows it. A statement that is absent is
+ * not made by the rule.
+ */
+export interface RuleStatements {
+  /** Whether the URLs it covers take part in the audit. */
+  audit?: AuditValue
+  /** The expectation of indexing as a whole, an advanced concept apart from the conditions. */
+  intent?: IndexIntent
+  conditions?: Partial<Record<AuditCondition, Requirement>>
+}
 
 export interface AuditRepository {
   /**
@@ -643,11 +660,11 @@ export interface AuditRepository {
   deleteRule(input: { domainId: string; id: string }): Promise<AuditMutation>
   /**
    * Sets what is declared for exact URLs, the one model behind the table, the detail and the
-   * settings. `inherit` removes the rule about that URL, and with it whatever it said. A dimension
-   * left out is not touched. The expectation and `nofollow` are independent: accepting `nofollow`
-   * does not state an expectation, so the URL keeps following the rules for it. A `reason` left out
-   * keeps the one each exception has (`planUrlConfig`). The URLs must be normalized and internal: the
-   * caller checked. `host` is the domain's, to work out what a new exception has to inherit.
+   * settings. `inherit` removes the statement about that URL (the rule that says it), and with it
+   * the URL goes back to what the broader rules say for that statement alone. A statement left out
+   * is not touched: the participation, the expectation and each condition are independent, and
+   * saving never resets what was not edited. A `reason` left out keeps the one each exception has
+   * (`planUrlConfig`). The URLs must be normalized and internal: the caller checked.
    */
   setUrlConfig(input: {
     domainId: string
@@ -655,18 +672,41 @@ export interface AuditRepository {
     urls: string[]
     audit?: UrlAuditChoice
     intent?: UrlIntentChoice
-    acceptNofollow?: boolean
+    conditions?: UrlConditionChoices
     reason?: string | null
   }): Promise<AuditMutation>
+  /**
+   * Saves a rule as the rule editor shows it: a selector and the statements made about it, each one
+   * a row of its own, in one change. With `editing`, the rows that have that selector are the rule
+   * being edited and the statements replace them (see `planSaveRuleSet`); without it, a new rule.
+   */
+  saveRuleSet(input: {
+    domainId: string
+    selector: AuditSelector
+    statements: RuleStatements
+    reason: string | null
+    enabled: boolean
+    editing?: AuditSelector
+  }): Promise<AuditMutation>
+  /** Turns the rows of one rule on or off together: all or none. */
+  setRulesEnabled(input: {
+    domainId: string
+    ids: string[]
+    enabled: boolean
+  }): Promise<AuditMutation>
+  /** Removes the rows of one rule together: all or none. */
+  deleteRules(input: { domainId: string; ids: string[] }): Promise<AuditMutation>
   /**
    * Declares the language directories shared rules look at. Moves the version only if they are not
    * these already.
    */
   setLanguages(input: { domainId: string; languages: LanguageConfig }): Promise<AuditMutation>
   /**
-   * Brings the rules of every domain to the current meaning of a configuration (`AUDIT_SEMANTICS`):
-   * the rules that said `none` go, and the version of each domain with rules or a crawl moves, so that
-   * its latest crawl is analysed again. Runs once, when migrations are applied; safe to repeat.
+   * Brings the rules of every domain to the current meaning of a configuration (`AUDIT_SEMANTICS`)
+   * from the one they have (`planUpgradeSemantics`): the rules that said `none` go, accepting
+   * `nofollow` becomes the `nofollow` condition, and the version of each domain whose rules changed
+   * moves, so that its latest crawl is analysed again. Runs once per meaning, when migrations are
+   * applied; safe to repeat.
    */
   upgradeSemantics(): Promise<void>
 

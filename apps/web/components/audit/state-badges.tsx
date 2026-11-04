@@ -1,4 +1,11 @@
-import type { AuditParticipation, IntentOutcome, RecordedIntent } from '@seotools/core/crawl/audit'
+import {
+  AUDIT_CONDITIONS,
+  conditionOutcome,
+  type AuditParticipation,
+  type ConditionStates,
+  type IntentOutcome,
+  type RecordedIntent,
+} from '@seotools/core/crawl/audit'
 import type { IndexabilityState } from '@seotools/core/crawl/indexability'
 import { EyeOffIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -72,14 +79,44 @@ export function IntentBadge({
   )
 }
 
-/** The page's own nofollow was accepted, by the rule that decided its expectation. */
-export function NofollowAcceptedBadge({ className }: { className?: string }) {
-  const t = useTranslations('AuditState.nofollow')
-  return (
-    <Badge variant="outline" className={cn('font-normal', className)}>
-      {t('accepted')}
-    </Badge>
-  )
+/**
+ * What rules ask of the conditions of a URL (noindex, nofollow, robots.txt, sitemap), one badge for
+ * each that a rule states, with whether the crawl saw it met. A condition nobody states has none.
+ * What the crawl could not tell is dashed and says so, never green.
+ */
+export function ConditionBadges({
+  conditions,
+  className,
+}: {
+  conditions: ConditionStates
+  className?: string
+}) {
+  const t = useTranslations('AuditState.conditions')
+  const tRequirement = useTranslations('AuditStatements.requirement')
+  return AUDIT_CONDITIONS.flatMap((condition) => {
+    const state = conditions[condition]
+    if (!state) return []
+    const outcome = conditionOutcome(state.requirement, state.observed)
+    return [
+      <Badge
+        key={condition}
+        variant="outline"
+        title={t(`outcome.${outcome}`)}
+        className={cn(
+          'font-normal',
+          outcome === 'met' && 'text-emerald-700 dark:text-emerald-400',
+          outcome === 'unmet' && 'text-destructive',
+          outcome === 'unknown' && 'border-dashed text-muted-foreground',
+          className,
+        )}
+      >
+        {t('badge', {
+          condition: t(`names.${condition}`),
+          requirement: tRequirement(state.requirement),
+        })}
+      </Badge>,
+    ]
+  })
 }
 
 /** What the crawl saw, whatever the audit says and whatever is expected. */

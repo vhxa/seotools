@@ -53,19 +53,9 @@ export default async function AuditSettingsPage({
         </Alert>
       )}
       <AuditTabs host={domain.host} active={tab}>
-        {tab === 'exclusions' && (
+        {tab === 'rules' && (
           <RulesTab
             host={domain.host}
-            dimension="audit"
-            rules={config.rules}
-            affected={affected}
-            languagesDeclared={languagesDeclared}
-          />
-        )}
-        {tab === 'intent' && (
-          <RulesTab
-            host={domain.host}
-            dimension="intent"
             rules={config.rules}
             affected={affected}
             languagesDeclared={languagesDeclared}

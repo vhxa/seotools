@@ -368,7 +368,6 @@ describe('exclusions and expected indexing', () => {
     dimension: 'intent',
     value: intent,
     selector: path(value),
-    acceptNofollow: false,
     reason: null,
     enabled: true,
   })

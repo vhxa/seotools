@@ -73,7 +73,19 @@ const expecting = (path: string, value: 'indexable' | 'not-indexable'): NewAudit
   dimension: 'intent',
   value,
   selector: { kind: 'path', path, query: { mode: 'any' }, scope: 'literal' },
-  acceptNofollow: false,
+  reason: null,
+  enabled: true,
+})
+
+/** A rule asking something of a condition of a path. */
+const asking = (
+  path: string,
+  dimension: 'noindex' | 'nofollow' | 'robots' | 'sitemap',
+  value: 'required' | 'allowed' | 'forbidden',
+): NewAuditRule => ({
+  dimension,
+  value,
+  selector: { kind: 'path', path, query: { mode: 'any' }, scope: 'literal' },
   reason: null,
   enabled: true,
 })
@@ -85,6 +97,33 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     pages: { '/x': page('/x', { head: '<meta name="robots" content="noindex">' }) },
     rules: [expecting('/x', 'indexable')],
     details: ['noindex'],
+  },
+  'noindex-required-missing': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    rules: [asking('/x', 'noindex', 'required')],
+  },
+  'nofollow-required-missing': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    rules: [asking('/x', 'nofollow', 'required')],
+  },
+  'robots-block-required-missing': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    robots: 'User-agent: *\nDisallow: /private',
+    rules: [asking('/x', 'robots', 'required')],
+  },
+  'sitemap-required-missing': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    notInSitemap: ['/x'],
+    rules: [asking('/x', 'sitemap', 'required')],
+  },
+  'sitemap-forbidden-present': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    rules: [asking('/x', 'sitemap', 'forbidden')],
   },
   'expected-not-indexable-but-indexable': {
     at: '/x',

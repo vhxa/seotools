@@ -3,13 +3,17 @@ import {
   AUDIT_LIMITS,
   AUDIT_SEMANTICS,
   EMPTY_AUDIT_SNAPSHOT,
+  AUDIT_CONDITIONS,
   LANGUAGE_LIMITS,
   NO_LANGUAGES,
+  REQUIREMENTS,
   auditSnapshotOf,
   auditResultsState,
   canonicalLanguages,
   compileAuditRules,
   compileAuditSnapshot,
+  conditionOutcome,
+  conditionsKey,
   defaultResolution,
   intentOutcome,
   normalizeLanguagePrefix,
@@ -17,12 +21,14 @@ import {
   parseAuditSelector,
   parseAuditSnapshot,
   parseLanguagePrefixes,
+  readUrlAuditState,
   sameLanguages,
   selectorKey,
   selectorMatches,
   semanticsOf,
   serializeAuditSnapshot,
   urlPartsOf,
+  type AuditCondition,
   type AuditRule,
   type AuditSelector,
   type IndexIntent,
@@ -30,6 +36,7 @@ import {
   type QuerySelector,
   type IntentRuleValue,
   type RecordedIntent,
+  type Requirement,
   type SelectorScope,
 } from './audit'
 
@@ -65,6 +72,21 @@ const intent = (
     reason: null,
     enabled: true,
     acceptNofollow: false,
+    ...extra,
+  }) as AuditRule
+const condition = (
+  selector: AuditSelector,
+  dimension: AuditCondition,
+  value: Requirement,
+  extra: Partial<AuditRule> = {},
+): AuditRule =>
+  ({
+    id: `r${String(++counter).padStart(3, '0')}`,
+    dimension,
+    value,
+    selector,
+    reason: null,
+    enabled: true,
     ...extra,
   }) as AuditRule
 const prefix = (
@@ -358,7 +380,13 @@ describe('resolving a URL', () => {
   it('audits everything and expects it to be indexable when there are no rules', () => {
     expect(resolve([], 'https://example.com/cart')).toEqual({
       audit: { value: 'audited', rule: null },
-      intent: { value: 'indexable', rule: null, acceptNofollow: false, acceptRule: null },
+      intent: { value: 'indexable', rule: null },
+      conditions: {
+        noindex: { requirement: null, rule: null },
+        nofollow: { requirement: null, rule: null },
+        robots: { requirement: null, rule: null },
+        sitemap: { requirement: null, rule: null },
+      },
     })
   })
 
@@ -367,12 +395,7 @@ describe('resolving a URL', () => {
     const expectation = intent(prefix('/cart'), 'not-indexable')
     const found = resolve([exclusion, expectation], 'https://example.com/cart/items')
     expect(found.audit).toEqual({ value: 'excluded', rule: exclusion })
-    expect(found.intent).toEqual({
-      value: 'not-indexable',
-      rule: expectation,
-      acceptNofollow: false,
-      acceptRule: expectation,
-    })
+    expect(found.intent).toEqual({ value: 'not-indexable', rule: expectation })
   })
 
   it('resolves each dimension on its own', () => {
@@ -990,85 +1013,250 @@ describe('precedence with languages', () => {
   })
 })
 
-describe('accepting nofollow', () => {
-  const on = (rules: AuditRule[], target: string) =>
-    compileAuditRules(rules, HOST, { languages: LANGUAGES }).resolve(`https://example.com${target}`)
-      .intent
+describe('conditions', () => {
+  const on = (rules: AuditRule[], target: string, languages = LANGUAGES) =>
+    compileAuditRules(rules, HOST, { languages }).resolve(`https://example.com${target}`).conditions
 
-  it('is not accepted unless a rule says so, whatever the intent', () => {
-    expect(on([], '/a')).toMatchObject({ acceptNofollow: false })
-    expect(on([intent(prefix('/a'), 'not-indexable')], '/a')).toMatchObject({
-      value: 'not-indexable',
-      acceptNofollow: false,
-    })
+  it('are not required, allowed or forbidden unless a rule says so', () => {
+    for (const state of Object.values(on([], '/a'))) {
+      expect(state).toEqual({ requirement: null, rule: null })
+    }
   })
 
-  it('goes with either expectation', () => {
-    expect(on([intent(prefix('/a'), 'indexable', { acceptNofollow: true })], '/a/x')).toMatchObject(
-      { value: 'indexable', acceptNofollow: true },
+  it('take what the rule asks, and name it', () => {
+    for (const value of REQUIREMENTS) {
+      for (const name of AUDIT_CONDITIONS) {
+        const rule = condition(prefix('/a'), name, value)
+        expect(on([rule], '/a/x')[name]).toEqual({ requirement: value, rule })
+      }
+    }
+  })
+
+  it('are resolved each on its own, so a rule about one never decides another', () => {
+    const noindex = condition(prefix('/a'), 'noindex', 'required')
+    const sitemap = condition(url('https://example.com/a/b'), 'sitemap', 'forbidden')
+    const found = on([noindex, sitemap], '/a/b')
+    expect(found.noindex.rule).toBe(noindex)
+    expect(found.sitemap.rule).toBe(sitemap)
+    expect(found.nofollow.rule).toBeNull()
+    expect(found.robots.rule).toBeNull()
+    // The exception on the sitemap does not take the URL out of the broader rule for the noindex.
+    expect(on([noindex, sitemap], '/a/c').sitemap.rule).toBeNull()
+  })
+
+  it('follow the precedence of selectors, one condition at a time', () => {
+    const broad = condition(prefix('/a'), 'nofollow', 'allowed')
+    const narrow = condition(prefix('/a/b'), 'nofollow', 'forbidden')
+    const onlyThis = condition(url('https://example.com/a/b/c'), 'nofollow', 'required')
+    expect(on([broad, narrow, onlyThis], '/a/x').nofollow.requirement).toBe('allowed')
+    expect(on([broad, narrow, onlyThis], '/a/b/x').nofollow.requirement).toBe('forbidden')
+    expect(on([broad, narrow, onlyThis], '/a/b/c').nofollow.requirement).toBe('required')
+    // A rule that asks for the query beats one that ignores it.
+    const withQuery = condition(path('/a', exact('page=2')), 'robots', 'required')
+    const anyQuery = condition(path('/a'), 'robots', 'forbidden')
+    expect(on([anyQuery, withQuery], '/a?page=2').robots.requirement).toBe('required')
+    expect(on([anyQuery, withQuery], '/a').robots.requirement).toBe('forbidden')
+  })
+
+  it('let an exception restate a condition without touching the others', () => {
+    const general = [
+      condition(prefix('/a'), 'noindex', 'required'),
+      condition(prefix('/a'), 'sitemap', 'forbidden'),
+    ]
+    const exception = condition(url('https://example.com/a/b'), 'noindex', 'allowed')
+    const found = on([...general, exception], '/a/b')
+    expect(found.noindex).toEqual({ requirement: 'allowed', rule: exception })
+    expect(found.sitemap.requirement).toBe('forbidden')
+  })
+
+  it('ignore a rule that is switched off, and fall back to the broader one', () => {
+    const broad = condition(prefix('/a'), 'noindex', 'required')
+    const off = condition(url('https://example.com/a/b'), 'noindex', 'forbidden', {
+      enabled: false,
+    })
+    expect(on([broad, off], '/a/b').noindex.rule).toBe(broad)
+    expect(on([off], '/a/b').noindex).toEqual({ requirement: null, rule: null })
+  })
+
+  it('follow the scope of the rule', () => {
+    const rule = condition(sharedPrefix('/blog'), 'sitemap', 'required')
+    expect(on([rule], '/es/blog/post').sitemap.requirement).toBe('required')
+    expect(on([rule], '/fr/blog/post').sitemap.requirement).toBeNull()
+  })
+
+  it('are independent of the expectation of indexing, which they never state', () => {
+    const rules = [
+      intent(prefix('/a'), 'not-indexable'),
+      condition(prefix('/a'), 'noindex', 'forbidden'),
+    ]
+    const found = compileAuditRules(rules, HOST).resolve('https://example.com/a')
+    expect(found.intent).toMatchObject({ value: 'not-indexable' })
+    expect(found.conditions.noindex.requirement).toBe('forbidden')
+  })
+
+  it('do not read the retired flags of semantics 2 under the current semantics', () => {
+    const rules = [
+      intent(prefix('/a'), 'indexable', { acceptNofollow: true }),
+      intent(url('https://example.com/a/b'), 'inherit', { acceptNofollow: true }),
+    ]
+    const found = compileAuditRules(rules, HOST).resolve('https://example.com/a/b')
+    expect(found.conditions.nofollow).toEqual({ requirement: null, rule: null })
+    expect(found.intent.rule).toBe(rules[0])
+  })
+
+  it('are not read at all in a configuration from before they existed', () => {
+    const rules = [condition(prefix('/a'), 'noindex', 'required')]
+    for (const semantics of [1, 2]) {
+      const old = compileAuditRules(rules, HOST, { semantics }).resolve('https://example.com/a')
+      expect(old.conditions.noindex.requirement).toBeNull()
+    }
+  })
+})
+
+describe('accepting nofollow in a configuration of semantics 2', () => {
+  const on = (rules: AuditRule[], target: string) =>
+    compileAuditRules(rules, HOST, { languages: LANGUAGES, semantics: 2 }).resolve(
+      `https://example.com${target}`,
     )
+
+  it('is not accepted unless a rule says so, whatever the intent', () => {
+    expect(on([], '/a').conditions.nofollow.requirement).toBeNull()
+    expect(on([intent(prefix('/a'), 'not-indexable')], '/a').conditions.nofollow.requirement).toBe(
+      null,
+    )
+  })
+
+  it('is the nofollow condition being allowed, with either expectation', () => {
+    const indexable = intent(prefix('/a'), 'indexable', { acceptNofollow: true })
+    expect(on([indexable], '/a/x')).toMatchObject({
+      intent: { value: 'indexable' },
+      conditions: { nofollow: { requirement: 'allowed', rule: indexable } },
+    })
     expect(
       on([intent(prefix('/a'), 'not-indexable', { acceptNofollow: true })], '/a/x'),
-    ).toMatchObject({ value: 'not-indexable', acceptNofollow: true })
+    ).toMatchObject({
+      intent: { value: 'not-indexable' },
+      conditions: { nofollow: { requirement: 'allowed' } },
+    })
   })
 
   it('belongs to the rule that decides the intent, and is not merged with other rules', () => {
     const general = intent(prefix('/a'), 'not-indexable', { acceptNofollow: true })
     const exception = intent(url('https://example.com/a/b'), 'indexable')
     expect(on([general, exception], '/a/b')).toMatchObject({
-      value: 'indexable',
-      acceptNofollow: false,
-      rule: exception,
+      intent: { value: 'indexable', rule: exception },
+      conditions: { nofollow: { requirement: null } },
     })
-    expect(on([general, exception], '/a/c')).toMatchObject({ acceptNofollow: true })
+    expect(on([general, exception], '/a/c').conditions.nofollow.requirement).toBe('allowed')
   })
 
   it('can be said on its own by an exception that leaves the expectation to the other rules', () => {
     const general = intent(prefix('/a'), 'not-indexable')
     const only = intent(url('https://example.com/a/b'), 'inherit', { acceptNofollow: true })
-    // The expectation is the general rule's; the acceptance is the exception's.
     expect(on([general, only], '/a/b')).toMatchObject({
-      value: 'not-indexable',
-      rule: general,
-      acceptNofollow: true,
-      acceptRule: only,
+      intent: { value: 'not-indexable', rule: general },
+      conditions: { nofollow: { requirement: 'allowed', rule: only } },
     })
-    // Another rule changing later still reaches the URL.
     const changed = intent(prefix('/a'), 'indexable')
-    expect(on([changed, only], '/a/b')).toMatchObject({ value: 'indexable', acceptNofollow: true })
+    expect(on([changed, only], '/a/b')).toMatchObject({
+      intent: { value: 'indexable' },
+      conditions: { nofollow: { requirement: 'allowed' } },
+    })
     // The exception can also say it is not accepted where the rules accept it.
     const accepting = intent(prefix('/a'), 'not-indexable', { acceptNofollow: true })
     const refusing = intent(url('https://example.com/a/b'), 'inherit', { acceptNofollow: false })
-    expect(on([accepting, refusing], '/a/b')).toMatchObject({
-      value: 'not-indexable',
-      acceptNofollow: false,
-      acceptRule: refusing,
-    })
-    expect(on([accepting, refusing], '/a/c')).toMatchObject({ acceptNofollow: true })
+    expect(on([accepting, refusing], '/a/b').conditions.nofollow.requirement).toBeNull()
+    expect(on([accepting, refusing], '/a/c').conditions.nofollow.requirement).toBe('allowed')
     // With nothing else to give an expectation, it is the default one.
     expect(on([only], '/a/b')).toMatchObject({
-      value: 'indexable',
-      rule: null,
-      acceptNofollow: true,
-      acceptRule: only,
+      intent: { value: 'indexable', rule: null },
+      conditions: { nofollow: { requirement: 'allowed' } },
     })
     // A disabled one says nothing.
-    expect(on([general, { ...only, enabled: false }], '/a/b')).toMatchObject({
-      acceptNofollow: false,
-      acceptRule: general,
-    })
+    expect(
+      on([general, { ...only, enabled: false }], '/a/b').conditions.nofollow.requirement,
+    ).toBeNull()
   })
 
-  it('does not read an exception that only says nofollow in a configuration from before they existed', () => {
+  it('is not read from an exception that only says nofollow in the first semantics', () => {
     const only = intent(url('https://example.com/a/b'), 'inherit', { acceptNofollow: true })
     const old = compileAuditRules([only], HOST, { semantics: 1 }).resolve('https://example.com/a/b')
-    expect(old.intent).toMatchObject({ value: 'none', acceptNofollow: false })
+    expect(old.intent).toMatchObject({ value: 'none' })
+    expect(old.conditions.nofollow.requirement).toBeNull()
   })
 
   it('follows the scope of its rule', () => {
     const rule = intent(sharedPrefix('/blog'), 'indexable', { acceptNofollow: true })
-    expect(on([rule], '/es/blog/post')).toMatchObject({ acceptNofollow: true })
-    expect(on([rule], '/fr/blog/post')).toMatchObject({ acceptNofollow: false })
+    expect(on([rule], '/es/blog/post').conditions.nofollow.requirement).toBe('allowed')
+    expect(on([rule], '/fr/blog/post').conditions.nofollow.requirement).toBeNull()
+  })
+})
+
+describe('what a stored analysis says about conditions', () => {
+  it('reads the nofollow that an analysis of semantics 2 accepted as the condition being allowed', () => {
+    const stored = {
+      participation: 'audited' as const,
+      participationRule: null,
+      intent: 'indexable' as const,
+      intentRule: 'r1',
+      acceptNofollow: true,
+      indexability: 'indexable' as const,
+      blockers: [],
+    }
+    expect(readUrlAuditState(stored)).toEqual({
+      participation: 'audited',
+      participationRule: null,
+      intent: 'indexable',
+      intentRule: 'r1',
+      conditions: { nofollow: { requirement: 'allowed', rule: 'r1', observed: null } },
+      indexability: 'indexable',
+      blockers: [],
+    })
+  })
+
+  it('keeps the conditions of a newer analysis, and invents none', () => {
+    const base = {
+      participation: 'audited' as const,
+      participationRule: null,
+      intent: 'indexable' as const,
+      intentRule: null,
+      indexability: 'indexable' as const,
+      blockers: [],
+    }
+    expect(readUrlAuditState({ ...base, conditions: null }).conditions).toEqual({})
+    const conditions = {
+      noindex: { requirement: 'required' as const, rule: 'r2', observed: 'absent' as const },
+    }
+    expect(readUrlAuditState({ ...base, conditions }).conditions).toEqual(conditions)
+    // A condition the newer analysis stated wins over the retired flag.
+    expect(
+      readUrlAuditState({
+        ...base,
+        acceptNofollow: true,
+        conditions: { nofollow: { requirement: 'forbidden', rule: 'r3', observed: 'present' } },
+      }).conditions.nofollow?.requirement,
+    ).toBe('forbidden')
+  })
+
+  it('tells a requirement met, missed or unknown, and never reads unknown as met', () => {
+    expect(conditionOutcome('required', 'present')).toBe('met')
+    expect(conditionOutcome('required', 'absent')).toBe('unmet')
+    expect(conditionOutcome('forbidden', 'absent')).toBe('met')
+    expect(conditionOutcome('forbidden', 'present')).toBe('unmet')
+    for (const requirement of ['required', 'forbidden'] as const) {
+      expect(conditionOutcome(requirement, 'unknown')).toBe('unknown')
+      expect(conditionOutcome(requirement, null)).toBe('unknown')
+    }
+    expect(conditionOutcome('allowed', 'present')).toBe('allowed')
+    expect(conditionOutcome('allowed', 'unknown')).toBe('allowed')
+  })
+
+  it('gives the same key to the same conditions, whatever order they come in', () => {
+    const noindex = { requirement: 'required' as const, rule: 'a', observed: null }
+    const sitemap = { requirement: 'forbidden' as const, rule: 'b', observed: 'present' as const }
+    expect(conditionsKey({ sitemap, noindex })).toBe(conditionsKey({ noindex, sitemap }))
+    expect(conditionsKey({})).toBe('')
+    expect(conditionsKey({ noindex })).not.toBe(conditionsKey({ sitemap }))
   })
 })
 
@@ -1093,8 +1281,6 @@ describe('what a configuration meant', () => {
     expect(compileAuditSnapshot(EMPTY_AUDIT_SNAPSHOT, HOST).resolve(HOME).intent).toEqual({
       value: 'none',
       rule: null,
-      acceptNofollow: false,
-      acceptRule: null,
     })
     expect(compileAuditRules([], HOST).resolve(HOME).intent.value).toBe('indexable')
   })
@@ -1158,7 +1344,7 @@ describe('what a configuration meant', () => {
       audit(shared('/cart'), 'exclude'),
     ]
     const old = compileAuditRules(rules, HOST, { semantics: 1, languages: LANGUAGES })
-    expect(old.resolve('https://example.com/a').intent.acceptNofollow).toBe(false)
+    expect(old.resolve('https://example.com/a').conditions.nofollow.requirement).toBeNull()
     expect(old.resolve('https://example.com/es/cart').audit.rule).toBeNull()
   })
 
@@ -1170,18 +1356,79 @@ describe('what a configuration meant', () => {
     expect(compileAuditSnapshot(before, HOST).resolve(HOME).audit.value).toBe('audited')
   })
 
-  it('round-trips the languages and semantics it keeps', () => {
+  it('round-trips the languages, semantics and conditions it keeps', () => {
     const snapshot = auditSnapshotOf(
       9,
-      [intent(shared('/cart'), 'not-indexable', { acceptNofollow: true })],
+      [
+        intent(shared('/cart'), 'not-indexable'),
+        condition(shared('/cart'), 'nofollow', 'allowed'),
+        condition(prefix('/'), 'sitemap', 'required'),
+      ],
       LANGUAGES,
     )
     const restored = parseAuditSnapshot(serializeAuditSnapshot(snapshot))!
     expect(restored).toEqual(snapshot)
-    expect(compileAuditSnapshot(restored, HOST).resolve(HOME).intent).toMatchObject({
-      value: 'not-indexable',
-      acceptNofollow: true,
+    const found = compileAuditSnapshot(restored, HOST).resolve(HOME)
+    expect(found.intent).toMatchObject({ value: 'not-indexable' })
+    expect(found.conditions).toMatchObject({
+      nofollow: { requirement: 'allowed' },
+      sitemap: { requirement: 'required' },
     })
+  })
+
+  it('reads a snapshot of semantics 2 with its accepted nofollow, as it was made', () => {
+    const stored = JSON.stringify({
+      version: 6,
+      semantics: 2,
+      languages: { prefixes: ['/es'], unprefixed: true },
+      rules: [
+        {
+          id: 'x',
+          dimension: 'intent',
+          value: 'not-indexable',
+          selector: { kind: 'prefix', path: '/cart', query: { mode: 'any' }, scope: 'shared' },
+          acceptNofollow: true,
+          reason: null,
+          enabled: true,
+        },
+        {
+          id: 'y',
+          dimension: 'intent',
+          value: 'inherit',
+          selector: { kind: 'url', url: 'https://example.com/es/cart/pay' },
+          acceptNofollow: false,
+          reason: null,
+          enabled: true,
+        },
+      ],
+    })
+    const snapshot = parseAuditSnapshot(stored)!
+    expect(semanticsOf(snapshot)).toBe(2)
+    const resolver = compileAuditSnapshot(snapshot, HOST)
+    expect(resolver.resolve('https://example.com/es/cart/x').conditions.nofollow).toMatchObject({
+      requirement: 'allowed',
+      rule: { id: 'x' },
+    })
+    expect(
+      resolver.resolve('https://example.com/es/cart/pay').conditions.nofollow.requirement,
+    ).toBe(null)
+  })
+
+  it('reads a snapshot with condition rules, and refuses a value a condition cannot take', () => {
+    const rule = {
+      id: 'c',
+      dimension: 'robots',
+      value: 'required',
+      selector: { kind: 'prefix', path: '/admin', query: { mode: 'any' }, scope: 'literal' },
+      reason: null,
+      enabled: true,
+    }
+    const ok = parseAuditSnapshot(JSON.stringify({ version: 1, semantics: 3, rules: [rule] }))
+    expect(ok?.rules[0]).toMatchObject({ dimension: 'robots', value: 'required' })
+    const bad = parseAuditSnapshot(
+      JSON.stringify({ version: 1, semantics: 3, rules: [{ ...rule, value: 'exclude' }] }),
+    )
+    expect(bad).toBeNull()
   })
 })
 

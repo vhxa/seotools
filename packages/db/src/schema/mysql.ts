@@ -392,8 +392,15 @@ export const auditRules = mysqlTable(
     domainId: id('domain_id')
       .notNull()
       .references(() => domains.id, { onDelete: 'cascade' }),
-    dimension: varchar('dimension', { length: 16, enum: ['audit', 'intent'] }).notNull(),
-    /** `exclude` or `include` for `audit`; `none`, `indexable` or `not-indexable` for `intent`. */
+    dimension: varchar('dimension', {
+      length: 16,
+      enum: ['audit', 'intent', 'noindex', 'nofollow', 'robots', 'sitemap'],
+    }).notNull(),
+    /**
+     * `exclude` or `include` for `audit`; `indexable` or `not-indexable` for `intent` (`none` and
+     * `inherit` only in rules from before semantics 3); `required`, `allowed` or `forbidden` for a
+     * condition (`noindex`, `nofollow`, `robots`, `sitemap`).
+     */
     value: varchar('value', { length: 16 }).notNull(),
     selectorKind: varchar('selector_kind', {
       length: 16,
@@ -408,7 +415,7 @@ export const auditRules = mysqlTable(
     scope: varchar('scope', { length: 16, enum: ['literal', 'shared'] })
       .notNull()
       .default('literal'),
-    /** Intent rules only: the page's own `nofollow` is accepted as intended. */
+    /** Retired with semantics 3 (a `nofollow` condition rule is `allowed`): always `false` in new rules. */
     acceptNofollow: boolean('accept_nofollow').notNull().default(false),
     /** Hash of `selectorKey`: two selectors with the same one are the same selector. */
     selectorHash: varchar('selector_hash', { length: 32 }).notNull(),
@@ -448,8 +455,49 @@ export const crawlUrlAudit = mysqlTable(
       enum: ['none', 'indexable', 'not-indexable'],
     }).notNull(),
     intentRule: id('intent_rule'),
-    /** The page's own `nofollow` was accepted, by the rule that decided the intent. */
+    /** Retired with semantics 3 (the `nofollow` condition is `allowed`): only analyses of semantics 2 have it. */
     acceptNofollow: boolean('accept_nofollow').notNull().default(false),
+    /**
+     * What rules asked of each condition of the URL (`AUDIT_CONDITIONS` in @seotools/core), the rule that
+     * did, and what the crawl saw. Only the conditions a rule stated have a value: `null` is the default.
+     * An analysis before conditions has none; its accepted `nofollow` is `accept_nofollow` above.
+     */
+    noindexRequirement: varchar('noindex_requirement', {
+      length: 16,
+      enum: ['required', 'allowed', 'forbidden'],
+    }),
+    noindexRule: id('noindex_rule'),
+    noindexObserved: varchar('noindex_observed', {
+      length: 16,
+      enum: ['present', 'absent', 'unknown'],
+    }),
+    nofollowRequirement: varchar('nofollow_requirement', {
+      length: 16,
+      enum: ['required', 'allowed', 'forbidden'],
+    }),
+    nofollowRule: id('nofollow_rule'),
+    nofollowObserved: varchar('nofollow_observed', {
+      length: 16,
+      enum: ['present', 'absent', 'unknown'],
+    }),
+    robotsRequirement: varchar('robots_requirement', {
+      length: 16,
+      enum: ['required', 'allowed', 'forbidden'],
+    }),
+    robotsRule: id('robots_rule'),
+    robotsObserved: varchar('robots_observed', {
+      length: 16,
+      enum: ['present', 'absent', 'unknown'],
+    }),
+    sitemapRequirement: varchar('sitemap_requirement', {
+      length: 16,
+      enum: ['required', 'allowed', 'forbidden'],
+    }),
+    sitemapRule: id('sitemap_rule'),
+    sitemapObserved: varchar('sitemap_observed', {
+      length: 16,
+      enum: ['present', 'absent', 'unknown'],
+    }),
     /** What the crawl saw, whatever was expected and whether or not it was audited. */
     indexability: varchar('indexability', {
       length: 16,

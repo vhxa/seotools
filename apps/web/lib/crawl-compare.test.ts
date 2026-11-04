@@ -61,7 +61,7 @@ const trace = (crawlId: string, urlHash: string, issues: string[]): CrawlUrlTrac
     participationRule: null,
     intent: 'indexable',
     intentRule: null,
-    acceptNofollow: false,
+    conditions: {},
     indexability: 'indexable',
     blockers: [],
   },

@@ -7,7 +7,11 @@ import {
   type IssueDetailKind,
 } from '@seotools/core/crawl/issues'
 import type { CrawlUrlKind } from '@seotools/core'
-import type { AuditParticipation, RecordedIntent } from '@seotools/core/crawl/audit'
+import type {
+  AuditParticipation,
+  ConditionStates,
+  RecordedIntent,
+} from '@seotools/core/crawl/audit'
 import { MAX_VERIFICATION_URLS } from '@seotools/core/crawl/verification'
 import type { IndexabilityState } from '@seotools/core/crawl/indexability'
 import type { CrawlUrlSort } from '@seotools/db'
@@ -43,11 +47,11 @@ import {
   setPriorityUrlsAction,
 } from '@/app/(protected)/domains/[host]/actions'
 import { recheckUrlsAction } from '@/app/(protected)/domains/[host]/verify-actions'
-import { AuditDialog, type AuditDialogPreset } from '@/components/audit/audit-dialog'
+import { AuditDialog } from '@/components/audit/audit-dialog'
 import {
   IndexabilityBadge,
   IntentBadge,
-  NofollowAcceptedBadge,
+  ConditionBadges,
   ParticipationBadge,
   RuleOrigin,
 } from '@/components/audit/state-badges'
@@ -110,7 +114,8 @@ export interface PageRow {
   intent: RecordedIntent | null
   intentRule: RuleRef
   /** The page's own nofollow is accepted, by the rule that decided its expectation. */
-  acceptNofollow: boolean
+  /** What rules asked of its conditions, each with what the crawl saw. */
+  conditions: ConditionStates
   /** What the crawl saw of whether it can be indexed; `null` as above. */
   indexability: IndexabilityState | null
   blockers: string[]
@@ -358,7 +363,7 @@ function Cell({
       return row.internal && row.kind === 'page' ? (
         <div className="flex flex-wrap gap-1">
           <IntentBadge intent={row.intent} isDefault={row.intentRule === null} />
-          {row.acceptNofollow && <NofollowAcceptedBadge />}
+          <ConditionBadges conditions={row.conditions} />
         </div>
       ) : (
         <Muted>—</Muted>
@@ -510,7 +515,7 @@ export function PagesTable({
     query.issue && isPageIssueId(query.issue) ? PAGE_ISSUES[query.issue].detail : undefined
   const [pending, startTransition] = useTransition()
   const [selection, setSelection] = useState<Record<string, true>>({})
-  const [auditDialog, setAuditDialog] = useState<AuditDialogPreset | null>(null)
+  const [auditDialogOpen, setAuditDialogOpen] = useState(false)
 
   const table = useTable({
     features,
@@ -619,11 +624,7 @@ export function PagesTable({
                   )}
                   {selectedInternal.length > 0 && (
                     <>
-                      <DropdownMenuItem onClick={() => setAuditDialog({ audit: 'exclude' })}>
-                        <EyeOffIcon />
-                        {t('bulk.excludeFromAudit')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setAuditDialog({})}>
+                      <DropdownMenuItem onClick={() => setAuditDialogOpen(true)}>
                         <SlidersHorizontalIcon />
                         {t('bulk.configureAudit')}
                       </DropdownMenuItem>
@@ -746,9 +747,8 @@ export function PagesTable({
       <AuditDialog
         host={host}
         urls={selectedInternal.map((row) => row.url)}
-        open={auditDialog !== null}
-        onOpenChange={(open) => !open && setAuditDialog(null)}
-        preset={auditDialog ?? {}}
+        open={auditDialogOpen}
+        onOpenChange={setAuditDialogOpen}
         onApplied={() => setSelection({})}
       />
     </div>

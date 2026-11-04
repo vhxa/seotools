@@ -1,5 +1,10 @@
 import {
+  AUDIT_CONDITIONS,
   compileAuditRules,
+  isAuditCondition,
+  isConditionRule,
+  selectorKey,
+  type AuditCondition,
   type AuditParticipation,
   type AuditRule,
   type AuditSelector,
@@ -8,6 +13,7 @@ import {
   type IndexIntent,
   type LanguageConfig,
   type RecordedIntent,
+  type Requirement,
 } from '@seotools/core/crawl/audit'
 
 /**
@@ -27,8 +33,12 @@ export function ruleRefsOf(snapshot: AuditSnapshot | null): (id: string | null) 
   }
 }
 
+/** The statements a rule can make about the URLs it covers, in the order the editors show them. */
+export const STATEMENTS = ['audit', 'intent', ...AUDIT_CONDITIONS] as const
+export type StatementKey = (typeof STATEMENTS)[number]
+
 /**
- * The exceptions set on one exact URL that act, one per dimension: what the table and detail edit.
+ * The exceptions set on one exact URL that act, one per statement: what the table and detail edit.
  * A disabled exception does not act, so it is not what the URL has: the resolver ignores it too.
  */
 export function explicitRulesOf<R extends AuditRule>(rules: readonly R[], url: string) {
@@ -40,7 +50,13 @@ export function explicitRulesOf<R extends AuditRule>(rules: readonly R[], url: s
         rule.selector.kind === 'url' &&
         rule.selector.url === url,
     ) ?? null
-  return { audit: about('audit'), intent: about('intent') }
+  return {
+    audit: about('audit'),
+    intent: about('intent'),
+    conditions: Object.fromEntries(
+      AUDIT_CONDITIONS.map((condition) => [condition, about(condition)]),
+    ) as Record<AuditCondition, R | null>,
+  }
 }
 
 /** What a rule says of itself where a sentence has to name it. */
@@ -48,19 +64,20 @@ export type RuleSummary =
   /** It is the exception set on this exact URL. */
   { exception: true } | { exception: false; selector: AuditSelector }
 
+/** What rules ask of a condition of a URL, and which rule says so. `null`: nothing does. */
+export interface ConditionOutcome {
+  requirement: Requirement | null
+  rule: RuleSummary | null
+}
+
 /**
- * What a URL is, and what it owes to which rule or exception, for each thing a rule can decide.
- * `acceptRule` is where `nofollow` comes from, which is not always where the expectation does: an
- * exception can say only that.
+ * What a URL is, and what it owes to which rule or exception, for each thing a rule can decide:
+ * whether it is audited, the expectation of its indexing as a whole, and each condition on its own.
  */
 export interface AuditOutcome {
   audit: { value: AuditParticipation; rule: RuleSummary | null }
-  intent: {
-    value: RecordedIntent
-    rule: RuleSummary | null
-    acceptNofollow: boolean
-    acceptRule: RuleSummary | null
-  }
+  intent: { value: RecordedIntent; rule: RuleSummary | null }
+  conditions: Record<AuditCondition, ConditionOutcome>
 }
 
 /**
@@ -72,14 +89,13 @@ export interface UrlAuditCurrent extends AuditOutcome {
   /** The exceptions that act on this URL: what each choice starts from. */
   explicit: {
     audit: AuditValue | null
-    /** The expectation the exception states; `null` if there is none or it leaves it to the rules. */
+    /** The expectation the exception states, if there is an exception for it. */
     intent: IndexIntent | null
-    /** The URL has an exception about its expectation or its `nofollow`, whichever it states. */
-    hasIntentException: boolean
+    conditions: Record<AuditCondition, Requirement | null>
   }
   /** What it would be with no exception of its own: the result of choosing "according to the rules". */
   underRules: AuditOutcome
-  /** The reason of the exception on this URL, for whichever dimension has one. */
+  /** The reason of the exception on this URL, for whichever statement has one. */
   reason: string | null
 }
 
@@ -96,15 +112,19 @@ export function outcomeOf(
   languages: LanguageConfig,
   url: string,
 ): AuditOutcome {
-  const { audit, intent } = compileAuditRules(rules, host, { languages }).resolve(url)
+  const { audit, intent, conditions } = compileAuditRules(rules, host, { languages }).resolve(url)
   return {
     audit: { value: audit.value, rule: summaryOf(audit.rule) },
-    intent: {
-      value: intent.value,
-      rule: summaryOf(intent.rule),
-      acceptNofollow: intent.acceptNofollow,
-      acceptRule: summaryOf(intent.acceptRule),
-    },
+    intent: { value: intent.value, rule: summaryOf(intent.rule) },
+    conditions: Object.fromEntries(
+      AUDIT_CONDITIONS.map((condition) => [
+        condition,
+        {
+          requirement: conditions[condition].requirement,
+          rule: summaryOf(conditions[condition].rule),
+        },
+      ]),
+    ) as Record<AuditCondition, ConditionOutcome>,
   }
 }
 
@@ -114,59 +134,120 @@ export function currentAuditOf(
   url: string,
 ): UrlAuditCurrent {
   const explicit = explicitRulesOf(config.rules, url)
-  const exception = explicit.intent
   const elsewhere = config.rules.filter(
     (rule) => !(rule.selector.kind === 'url' && rule.selector.url === url),
   )
+  const stating = [explicit.audit, explicit.intent, ...Object.values(explicit.conditions)]
   return {
     ...outcomeOf(config.rules, host, config.languages, url),
     explicit: {
       audit: explicit.audit ? (explicit.audit.value as AuditValue) : null,
       intent:
-        exception?.dimension === 'intent' &&
-        (exception.value === 'indexable' || exception.value === 'not-indexable')
-          ? exception.value
+        explicit.intent?.dimension === 'intent' &&
+        (explicit.intent.value === 'indexable' || explicit.intent.value === 'not-indexable')
+          ? explicit.intent.value
           : null,
-      hasIntentException: exception !== null,
+      conditions: Object.fromEntries(
+        AUDIT_CONDITIONS.map((condition) => {
+          const rule = explicit.conditions[condition]
+          return [condition, rule && isConditionRule(rule) ? rule.value : null]
+        }),
+      ) as Record<AuditCondition, Requirement | null>,
     },
     underRules: outcomeOf(elsewhere, host, config.languages, url),
-    reason: explicit.audit?.reason ?? exception?.reason ?? null,
+    reason: stating.find((rule) => rule !== null)?.reason ?? null,
   }
 }
 
-/** What is picked in the dialog of one URL. */
+/** What is picked in the dialog of one URL. `rules` is "according to the rules". */
 export interface AuditPicks {
   audit: 'rules' | AuditValue
   intent: 'rules' | IndexIntent
-  /** Whether the page's own `nofollow` should be accepted: what the checkbox shows. */
-  accept: boolean
+  conditions: Record<AuditCondition, 'rules' | Requirement>
 }
 
 const EXCEPTION: RuleSummary = { exception: true }
 
 /**
- * What the URL would be once the picks are saved, worked out the way `planUrlConfig` saves them:
- * - a value picked is the exception's; "according to the rules" is what the rules give;
- * - an exception that states an expectation also states `nofollow`; one that does not exists only
- *   when `nofollow` is to differ from what the rules give, and is gone when it is not.
+ * What the URL would be once the picks are saved, worked out the way `planUrlConfig` saves them: a
+ * value picked is the exception's, and "according to the rules" is what the rules give. Each
+ * statement is its own: none of them states, resets or copies another.
  */
 export function outcomeAfter(current: UrlAuditCurrent, picks: AuditPicks): AuditOutcome {
   const rules = current.underRules
-  const audit =
-    picks.audit === 'rules'
-      ? rules.audit
-      : {
-          value: picks.audit === 'exclude' ? ('excluded' as const) : ('audited' as const),
-          rule: EXCEPTION,
-        }
-  const acceptStated = picks.intent !== 'rules' || picks.accept !== rules.intent.acceptNofollow
   return {
-    audit,
-    intent: {
-      value: picks.intent === 'rules' ? rules.intent.value : picks.intent,
-      rule: picks.intent === 'rules' ? rules.intent.rule : EXCEPTION,
-      acceptNofollow: picks.accept,
-      acceptRule: acceptStated ? EXCEPTION : rules.intent.acceptRule,
-    },
+    audit:
+      picks.audit === 'rules'
+        ? rules.audit
+        : {
+            value: picks.audit === 'exclude' ? ('excluded' as const) : ('audited' as const),
+            rule: EXCEPTION,
+          },
+    intent: picks.intent === 'rules' ? rules.intent : { value: picks.intent, rule: EXCEPTION },
+    conditions: Object.fromEntries(
+      AUDIT_CONDITIONS.map((condition) => {
+        const pick = picks.conditions[condition]
+        return [
+          condition,
+          pick === 'rules' ? rules.conditions[condition] : { requirement: pick, rule: EXCEPTION },
+        ]
+      }),
+    ) as Record<AuditCondition, ConditionOutcome>,
   }
 }
+
+/**
+ * The rows of `audit_rules` as the settings page shows them: one rule per selector, with the
+ * statements it makes. A statement is a row of its own, so a rule is the rows that share a selector.
+ */
+export interface RuleGroup<R extends AuditRule = AuditRule> {
+  /** What identifies the selector. */
+  key: string
+  selector: AuditSelector
+  /** The row that acts for each statement the rule makes: the enabled one, or the first. */
+  statements: Partial<Record<StatementKey, R>>
+  /** Every row of the rule, to turn them on, off or away together. */
+  ids: string[]
+  /** Every row that acts is enabled. A rule with some rows off (from before rules were edited as one) is off. */
+  enabled: boolean
+  reason: string | null
+}
+
+export function groupRules<R extends AuditRule>(rules: readonly R[]): RuleGroup<R>[] {
+  const groups = new Map<string, RuleGroup<R>>()
+  for (const rule of rules) {
+    const key = selectorKey(rule.selector)
+    let group = groups.get(key)
+    if (!group) {
+      group = {
+        key,
+        selector: rule.selector,
+        statements: {},
+        ids: [],
+        enabled: true,
+        reason: null,
+      }
+      groups.set(key, group)
+    }
+    group.ids.push(rule.id)
+    const statement = rule.dimension as StatementKey
+    const current = group.statements[statement]
+    // A disabled duplicate never takes the place of the row that acts.
+    if (!current || (!current.enabled && rule.enabled)) group.statements[statement] = rule
+  }
+  for (const group of groups.values()) {
+    const acting = Object.values(group.statements)
+    group.enabled = acting.length > 0 && acting.every((rule) => rule.enabled)
+    group.reason = acting.find((rule) => rule.reason !== null)?.reason ?? null
+  }
+  return [...groups.values()]
+}
+
+/** The statements of a rule that are about conditions, in the order the editors show them. */
+export const conditionsOf = (group: RuleGroup): [AuditCondition, Requirement][] =>
+  AUDIT_CONDITIONS.flatMap((condition) => {
+    const rule = group.statements[condition]
+    return rule && isConditionRule(rule) && isAuditCondition(rule.dimension)
+      ? [[condition, rule.value] as [AuditCondition, Requirement]]
+      : []
+  })

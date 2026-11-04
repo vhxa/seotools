@@ -1,4 +1,4 @@
-import { intentOutcome } from '@seotools/core/crawl/audit'
+import { AUDIT_CONDITIONS, intentOutcome } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import { ChevronDownIcon, CircleHelpIcon, ExternalLinkIcon } from 'lucide-react'
 import { getFormatter, getTranslations } from 'next-intl/server'
@@ -8,7 +8,7 @@ import {
   IndexabilityBadge,
   IntentBadge,
   IntentOutcomeText,
-  NofollowAcceptedBadge,
+  ConditionBadges,
   ParticipationBadge,
   RuleOrigin,
 } from '@/components/audit/state-badges'
@@ -178,13 +178,29 @@ export async function UrlDetail({
                     <div className="grid gap-1">
                       <div className="flex flex-wrap gap-1">
                         <IntentBadge intent={audit.intent} isDefault={audit.intentRule === null} />
-                        {audit.acceptNofollow && <NofollowAcceptedBadge />}
                       </div>
                     </div>
                   ) : (
                     <span className="text-muted-foreground">{tState('intent.notApplicable')}</span>
                   )}
                 </Field>
+                {AUDIT_CONDITIONS.some((condition) => audit.conditions[condition]) && (
+                  <Field label={tAudit('conditions')}>
+                    <div className="grid gap-2">
+                      {AUDIT_CONDITIONS.map((condition) => {
+                        const state = audit.conditions[condition]
+                        return state ? (
+                          <div key={condition} className="grid gap-1">
+                            <div className="flex flex-wrap gap-1">
+                              <ConditionBadges conditions={{ [condition]: state }} />
+                            </div>
+                            <RuleOrigin rule={refOf(state.rule)} />
+                          </div>
+                        ) : null
+                      })}
+                    </div>
+                  </Field>
+                )}
                 <Field label={tAudit('technical')}>
                   <div className="grid gap-1.5">
                     <IndexabilityBadge state={audit.indexability} />

@@ -57,6 +57,13 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   // what is expected of the indexation, against what the recheck saw
   'expected-indexable-blocked': U,
   'expected-not-indexable-but-indexable': U,
+  // what a rule requires or forbids of a directive or file. The directives and robots.txt are read
+  // again by a recheck; the sitemaps are not, so no recheck can say a URL is, or is not, in one.
+  'noindex-required-missing': U,
+  'nofollow-required-missing': U,
+  'robots-block-required-missing': U,
+  'sitemap-required-missing': S,
+  'sitemap-forbidden-present': S,
   // directives
   'directive-outside-head': U,
   'directives-conflict': U,

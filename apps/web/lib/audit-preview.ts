@@ -1,4 +1,5 @@
 import {
+  AUDIT_CONDITIONS,
   compileAuditRules,
   selectorKey,
   selectorMatches,
@@ -10,9 +11,9 @@ import {
   type LanguageConfig,
   type NewAuditRule,
 } from '@seotools/core'
-import type { AuditRuleRecord, Crawl, Database } from '@seotools/db'
+import type { AuditRuleRecord, Crawl, Database, RuleStatements } from '@seotools/db'
 
-/** The id the rule being previewed has among the others. It is not a UUID, so no rule can have it. */
+/** The id the rows of the rule being previewed have among the others. Not a UUID, so no rule has it. */
 const PREVIEW_ID = 'preview'
 const BATCH = 5000
 const MAX_SAMPLES = 8
@@ -29,7 +30,7 @@ export interface RuleBrief {
 export type AuditPreview =
   /** There is no full crawl with results to look at. The rule can still be saved. */
   | { status: 'no-results' }
-  /** An enabled rule of that dimension already has that selector. */
+  /** An enabled rule already says something of the same kind about that selector. */
   | { status: 'conflict'; with: RuleBrief }
   | {
       status: 'ok'
@@ -41,7 +42,7 @@ export type AuditPreview =
       active: boolean
       /** URLs the selector covers, whether or not this rule decides them. */
       matches: number
-      /** Of those, the ones this rule would decide, were it on. */
+      /** Of those, the ones where this rule would decide at least one of its statements, were it on. */
       decides: number
       /**
        * URLs whose effective result would be different from what it is now, wherever they are: the
@@ -49,7 +50,7 @@ export type AuditPreview =
        * longer does.
        */
       changes: number
-      /** URLs it covers where a more specific rule decides. */
+      /** URLs it covers where a more specific rule decides every statement it makes. */
       overriddenCount: number
       /** Examples of the URLs it covers. */
       matchSamples: string[]
@@ -67,11 +68,43 @@ export const briefOf = (rule: AuditRule): RuleBrief => ({
   reason: rule.reason,
 })
 
-/** What a dimension makes of a URL: the part of a resolution a rule of that dimension can change. */
-const effectOf = (resolution: AuditResolution, dimension: AuditDimension) =>
-  dimension === 'audit'
-    ? resolution.audit.value
-    : `${resolution.intent.value}${resolution.intent.acceptNofollow ? '+nofollow' : ''}`
+/** The rule as the editor shows it: the statements it makes, each one a row of its own. */
+export function rulesOfSet(
+  selector: AuditSelector,
+  statements: RuleStatements,
+  reason: string | null,
+  enabled: boolean,
+): NewAuditRule[] {
+  const base = { selector, reason, enabled }
+  return [
+    ...(statements.audit ? [{ ...base, dimension: 'audit', value: statements.audit }] : []),
+    ...(statements.intent ? [{ ...base, dimension: 'intent', value: statements.intent }] : []),
+    ...AUDIT_CONDITIONS.flatMap((condition) => {
+      const value = statements.conditions?.[condition]
+      return value ? [{ ...base, dimension: condition, value }] : []
+    }),
+  ] as NewAuditRule[]
+}
+
+/** What a resolution makes of a URL, for every statement a rule can make. */
+const effectOf = (resolution: AuditResolution) =>
+  [
+    resolution.audit.value,
+    resolution.intent.value,
+    ...AUDIT_CONDITIONS.map((condition) => resolution.conditions[condition].requirement ?? '-'),
+  ].join('|')
+
+/** The rule that decides each statement of a resolution, by dimension. */
+const decidersOf = (resolution: AuditResolution): Partial<Record<AuditDimension, AuditRule>> => ({
+  ...(resolution.audit.rule ? { audit: resolution.audit.rule } : {}),
+  ...(resolution.intent.rule ? { intent: resolution.intent.rule } : {}),
+  ...Object.fromEntries(
+    AUDIT_CONDITIONS.flatMap((condition) => {
+      const rule = resolution.conditions[condition].rule
+      return rule ? [[condition, rule]] : []
+    }),
+  ),
+})
 
 /**
  * What a rule would do to the URLs the last full crawl knows, before it is saved. It resolves with
@@ -79,11 +112,13 @@ const effectOf = (resolution: AuditResolution, dimension: AuditDimension) =>
  * are now and over the rules as they would be, so the answer is the one the next analysis gives. It
  * only looks at known URLs; the rule will apply to the ones found later too.
  *
- * It tells apart the URLs the selector covers, the ones whose effective result would change, and the
- * ones it covers where a more specific rule prevails. A change is any URL that is different between
- * the rules as they are and as they would be: when a rule is edited, that includes what the old
- * selector covered and the new one does not, and a rule that is switched off changes what it was
- * deciding before. The URLs neither selector covers cannot change, so they are not resolved.
+ * A rule makes several statements, each decided on its own: it decides a URL where it wins at least
+ * one of them, and is overridden where another rule is more specific for all of them. It tells apart
+ * the URLs the selector covers, the ones whose effective result would change, and the ones it covers
+ * where a more specific rule prevails. A change is any URL that is different between the rules as they
+ * are and as they would be: when a rule is edited, that includes what the old selector covered and
+ * the new one does not, and a rule that is switched off changes what it was deciding before. The URLs
+ * neither selector covers cannot change, so they are not resolved.
  */
 export async function previewRule(input: {
   db: Database
@@ -91,37 +126,54 @@ export async function previewRule(input: {
   crawl: Crawl | null
   rules: readonly AuditRuleRecord[]
   languages: LanguageConfig
-  /** The rule being edited, which the candidate replaces. */
-  replacing: string | null
-  candidate: NewAuditRule
+  /** The selector of the rule being edited, whose rows the candidate replaces. */
+  editing: AuditSelector | null
+  candidate: {
+    selector: AuditSelector
+    statements: RuleStatements
+    reason: string | null
+    enabled: boolean
+  }
 }): Promise<AuditPreview> {
   const { db, host, crawl, candidate, languages } = input
   if (!crawl) return { status: 'no-results' }
 
-  const others = input.rules.filter((rule) => rule.id !== input.replacing)
-  const replaced = input.rules.find((rule) => rule.id === input.replacing) ?? null
+  const editingKey = input.editing ? selectorKey(input.editing) : null
+  const replaced = input.rules.filter((rule) => selectorKey(rule.selector) === editingKey)
+  const others = input.rules.filter((rule) => selectorKey(rule.selector) !== editingKey)
   const key = selectorKey(candidate.selector)
+  const rows = rulesOfSet(
+    candidate.selector,
+    candidate.statements,
+    candidate.reason,
+    candidate.enabled,
+  )
+
+  // A rule that is off cannot clash: only enabled rules are unique, per statement.
   const clash = others.find(
     (rule) =>
-      rule.enabled && rule.dimension === candidate.dimension && selectorKey(rule.selector) === key,
+      rule.enabled &&
+      selectorKey(rule.selector) === key &&
+      rows.some((row) => row.dimension === rule.dimension),
   )
-  // A rule that is off cannot clash: only enabled rules are unique.
   if (clash && candidate.enabled) return { status: 'conflict', with: briefOf(clash) }
 
-  const previewed = { ...candidate, id: PREVIEW_ID } as AuditRule
+  const previewed = rows.map((row) => ({ ...row, id: PREVIEW_ID }) as AuditRule)
   const now = compileAuditRules(input.rules, host, { languages })
-  const after = compileAuditRules([...others, previewed], host, { languages })
+  const after = compileAuditRules([...others, ...previewed], host, { languages })
   // What it would decide if it were on: the same unless it is off.
   const ifOn = candidate.enabled
     ? after
     : compileAuditRules(
-        [...others.filter((rule) => rule !== clash), { ...previewed, enabled: true }],
+        [
+          ...others.filter((rule) => rule !== clash),
+          ...previewed.map((rule) => ({ ...rule, enabled: true })),
+        ],
         host,
-        {
-          languages,
-        },
+        { languages },
       )
-  const dimension = candidate.dimension
+  const stated = new Set<AuditDimension>(rows.map((row) => row.dimension))
+
   let scanned = 0
   let matches = 0
   let decides = 0
@@ -137,19 +189,23 @@ export async function previewRule(input: {
       const parts = urlPartsOf(url, host, languages)
       if (!parts) continue
       const covered = selectorMatches(candidate.selector, parts)
-      const wasCovered = replaced !== null && selectorMatches(replaced.selector, parts)
+      const wasCovered = replaced.some((rule) => selectorMatches(rule.selector, parts))
       if (!covered && !wasCovered) continue
       if (covered) {
         matches++
         if (matchSamples.length < MAX_SAMPLES) matchSamples.push(url)
-        const winner = ifOn.resolve(url)[dimension].rule
-        if (winner?.id === PREVIEW_ID) decides++
-        else if (winner) {
-          overriddenCount++
-          if (overridden.length < MAX_SAMPLES) overridden.push({ url, by: briefOf(winner) })
+        const winners = decidersOf(ifOn.resolve(url))
+        const mine = [...stated].filter((dimension) => winners[dimension]?.id === PREVIEW_ID)
+        if (mine.length > 0) decides++
+        else {
+          const by = [...stated].map((dimension) => winners[dimension]).find(Boolean)
+          if (by) {
+            overriddenCount++
+            if (overridden.length < MAX_SAMPLES) overridden.push({ url, by: briefOf(by) })
+          }
         }
       }
-      if (effectOf(after.resolve(url), dimension) !== effectOf(now.resolve(url), dimension)) {
+      if (effectOf(after.resolve(url)) !== effectOf(now.resolve(url))) {
         changes++
         if (changeSamples.length < MAX_SAMPLES) changeSamples.push(url)
       }
