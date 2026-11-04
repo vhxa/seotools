@@ -173,7 +173,6 @@ export default async function PagesDetailsPage({
           host: domain.host,
           crawl: browsable,
           urlHash: query.url,
-          linkLimit: 10,
           historical,
         })
       : null

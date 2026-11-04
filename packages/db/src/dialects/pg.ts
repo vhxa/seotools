@@ -51,6 +51,10 @@ import {
   toCrawlUrlIssue,
   crawlUrlOrder,
   crawlUrlWhere,
+  crawlLinkJoin,
+  crawlLinkOrder,
+  crawlLinkWhere,
+  toCrawlLinkRow,
   crawlFileColumns,
   crawlFileRow,
   crawlSettingsColumns,
@@ -1043,6 +1047,48 @@ export function createPgDatabase(options: {
           .orderBy(asc(crawlUrls.url), asc(crawlLinks.kind))
           .limit(limit)
         return rows as { url: string; kind: CrawlLinkKind }[]
+      },
+
+      async listLinks({ limit, offset, ...query }) {
+        if (query.kinds?.length === 0) return []
+        const rows = await db
+          .select({
+            url: crawlUrls.url,
+            urlHash: crawlUrls.urlHash,
+            kind: crawlLinks.kind,
+            scope: crawlUrls.scope,
+            urlKind: crawlUrls.kind,
+            state: crawlUrls.state,
+            statusCode: crawlUrls.statusCode,
+            error: crawlUrls.error,
+          })
+          .from(crawlLinks)
+          .innerJoin(crawlUrls, crawlLinkJoin(crawlLinks, crawlUrls, query.direction))
+          .where(crawlLinkWhere(crawlLinks, crawlUrls.url, query))
+          .orderBy(...crawlLinkOrder(crawlUrls.url, crawlUrls.urlHash, crawlLinks.kind))
+          .limit(limit)
+          .offset(offset)
+        return rows.map(toCrawlLinkRow)
+      },
+
+      async countLinks(query) {
+        if (query.kinds?.length === 0) return 0
+        const [row] = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(crawlLinks)
+          .innerJoin(crawlUrls, crawlLinkJoin(crawlLinks, crawlUrls, query.direction))
+          .where(crawlLinkWhere(crawlLinks, crawlUrls.url, query))
+        return Number(row?.count ?? 0)
+      },
+
+      async linkKindCounts(crawlId, urlHash, direction) {
+        const rows = await db
+          .select({ kind: crawlLinks.kind, count: sql<number>`count(*)` })
+          .from(crawlLinks)
+          .innerJoin(crawlUrls, crawlLinkJoin(crawlLinks, crawlUrls, direction))
+          .where(crawlLinkWhere(crawlLinks, crawlUrls.url, { crawlId, urlHash, direction }))
+          .groupBy(crawlLinks.kind)
+        return rows.map((row) => ({ kind: row.kind as CrawlLinkKind, count: Number(row.count) }))
       },
 
       async linksFrom(crawlId, sourceHashes) {

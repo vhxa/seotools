@@ -32,6 +32,7 @@ import {
   type ExtraCrawlFileKind,
   type Job,
   type JobStatus,
+  type LinkDirection,
   type PagesAudit,
   type FieldChange,
   type PagesByWorstIssue,
@@ -48,6 +49,8 @@ import type {
   CrawlFile,
   CrawlFileCheck,
   CrawlLink,
+  CrawlLinkQuery,
+  CrawlLinkRow,
   CrawlSchedule,
   CrawlComparisonQuery,
   CrawlUrl,
@@ -476,6 +479,74 @@ export function crawlUrlOrder(
     asc(columns.url),
   ]
 }
+
+/** The columns of `crawl_links` that listing the links of a URL looks at. */
+export interface CrawlLinkColumns {
+  crawlId: AnyColumn
+  sourceHash: AnyColumn
+  targetHash: AnyColumn
+  kind: AnyColumn
+}
+
+/**
+ * The two ends of a link as a list of one URL sees them: `self` is the end that is the URL the
+ * list is about, `other` the end each row shows (where an incoming link starts, where an outgoing
+ * one points).
+ */
+export function crawlLinkEnds(columns: CrawlLinkColumns, direction: LinkDirection) {
+  return direction === 'in'
+    ? { self: columns.targetHash, other: columns.sourceHash }
+    : { self: columns.sourceHash, other: columns.targetHash }
+}
+
+/** Joins each link to the `crawl_urls` row of its other end, within the same crawl. */
+export const crawlLinkJoin = (
+  columns: CrawlLinkColumns,
+  urls: { crawlId: AnyColumn; urlHash: AnyColumn },
+  direction: LinkDirection,
+) =>
+  and(eq(urls.crawlId, columns.crawlId), eq(urls.urlHash, crawlLinkEnds(columns, direction).other))
+
+/**
+ * The condition that selects the links of a query, within its crawl. `otherUrl` is the address of
+ * the `crawl_urls` row at the other end (see `crawlLinkJoin`), which is what a search looks at.
+ * An empty list of `kinds` is for the caller to answer with nothing.
+ */
+export function crawlLinkWhere(
+  columns: CrawlLinkColumns,
+  otherUrl: AnyColumn,
+  query: CrawlLinkQuery,
+): SQL | undefined {
+  const pattern = query.search ? containsPattern(query.search) : null
+  return and(
+    eq(columns.crawlId, query.crawlId),
+    eq(crawlLinkEnds(columns, query.direction).self, query.urlHash),
+    query.kinds ? inArray(columns.kind, [...query.kinds]) : undefined,
+    pattern ? sql`lower(${otherUrl}) like ${pattern} escape '!'` : undefined,
+  )
+}
+
+/**
+ * Pages of links must not repeat or skip a row, so the order has to be total: by address, and the
+ * hash decides between two addresses a dialect's collation may consider the same (`/A` and `/a`).
+ */
+export const crawlLinkOrder = (otherUrl: AnyColumn, otherHash: AnyColumn, kind: AnyColumn) => [
+  asc(otherUrl),
+  asc(otherHash),
+  asc(kind),
+]
+
+/** A row of `listLinks`, as the repository returns it. */
+export const toCrawlLinkRow = (row: {
+  url: string
+  urlHash: string
+  kind: string
+  scope: string
+  urlKind: string
+  state: string
+  statusCode: number | null
+  error: string | null
+}) => row as CrawlLinkRow
 
 /**
  * What an issue row keeps in its `details` column. Rows written before evidence existed hold a JSON

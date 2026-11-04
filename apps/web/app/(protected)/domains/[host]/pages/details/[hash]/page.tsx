@@ -58,7 +58,6 @@ export default async function UrlPage({
     host: domain.host,
     crawl: selected,
     urlHash: hash,
-    linkLimit: 100,
     historical,
   })
   if (!data) notFound()

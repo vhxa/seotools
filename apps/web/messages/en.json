@@ -570,8 +570,6 @@
     "notSet": "Not set",
     "noIssues": "Nothing was found on this URL.",
     "notChecked": "This crawl has not been checked for issues.",
-    "noLinks": "None found.",
-    "moreLinks": "There are more.",
     "responseTime": "{value, number} ms",
     "loading": "Loading the detail of the URL",
     "audit": {
@@ -596,6 +594,57 @@
       "low": "Low importance ({count, number})",
       "unknown": "Other findings ({count, number})"
     }
+  },
+  "UrlLinks": {
+    "in": {
+      "title": "Incoming links",
+      "description": "Pages of this crawl that link to this URL.",
+      "empty": "No page of this crawl links to this URL.",
+      "note": "A page counts once for each type of link it uses to reach this URL, however many times it repeats it."
+    },
+    "out": {
+      "title": "Outgoing links",
+      "description": "URLs this one links to, on this site and on other sites.",
+      "empty": "The crawl recorded no links from this URL.",
+      "unread": "The crawl did not read this URL, so what it links to is not known.",
+      "note": "A URL counts once for each type of link this page uses to point at it, however many times it repeats it."
+    },
+    "count": "{count, plural, one {# link} other {# links}}",
+    "groupsLabel": "Types of link",
+    "groups": {
+      "navigation": "Navigation",
+      "resources": "Resources",
+      "declared": "Declared",
+      "all": "All"
+    },
+    "groupHelp": {
+      "navigation": "Links in the content of a page: the ones people click and search engines follow. Those marked rel=\"nofollow\" say so.",
+      "resources": "Scripts, stylesheets, images, media, frames and other files a page loads. Problems with them are reported under Issues whichever list is open.",
+      "declared": "URLs that a page, a header or a sitemap names: canonical, hreflang, redirects, forms, structured data and others.",
+      "all": "Every type of link."
+    },
+    "groupEmpty": {
+      "navigation": "No navigation links. Other types of link have some: see the counts above.",
+      "resources": "No resources. Other types of link have some: see the counts above.",
+      "declared": "No declared URLs. Other types of link have some: see the counts above.",
+      "all": "No links."
+    },
+    "search": "Search by address",
+    "searchPlaceholder": "Search by address…",
+    "kind": {
+      "label": "Type of link",
+      "all": "All types"
+    },
+    "noMatch": "No link matches “{search}”.",
+    "showing": "{from, number}–{to, number} of {total, number}",
+    "external": "External",
+    "incomplete": "This crawl stopped at its URL limit. Pages it never requested and URLs past the limit are not part of these links.",
+    "errors": {
+      "unavailable": "These links cannot be shown: the crawl is not available.",
+      "pruned": "The results of this crawl were removed, so its links are no longer stored.",
+      "failed": "The links could not be loaded. Try again."
+    },
+    "notRequested": "The crawl did not request this URL, so it has no status."
   },
   "IssueEvidence": {
     "unavailable": "The examples are not available: this crawl was parsed before they were kept. Crawl the site again to see them.",

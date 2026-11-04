@@ -1,11 +1,12 @@
 import { auditResultsState, type AuditResultsState } from '@seotools/core/crawl/audit'
 import type { Crawl, CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
-import { crawlUrlHash, type CrawlLinkKind } from '@seotools/core'
+import { crawlUrlHash } from '@seotools/core'
 import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
 import { automaticFileChecks } from './automatic-checks'
 import { getDb } from './db'
 import { crawlUrlsInEvidence } from './issue-evidence'
 import { canRecheck, viewRecheck, type RecheckView } from './recheck'
+import { loadUrlLinks, type UrlLinksPage } from './url-links'
 
 export interface UrlDetailData {
   automaticCheck: boolean
@@ -17,11 +18,11 @@ export interface UrlDetailData {
    * the only ones the detail links to its own detail.
    */
   evidenceUrls: ReadonlySet<string>
-  /** Pages of the crawl that link here, and what this URL links to: capped, see `hasMore*`. */
-  linksIn: { url: string; kind: CrawlLinkKind }[]
-  linksOut: { url: string; kind: CrawlLinkKind }[]
-  hasMoreIn: boolean
-  hasMoreOut: boolean
+  /**
+   * The first page of the links that arrive at this URL and of those that leave it, navigation
+   * links as a list opens on. The rest is read a page at a time (`loadLinksAction`).
+   */
+  links: { in: UrlLinksPage; out: UrlLinksPage }
   priority: boolean
   /**
    * What the analysis concluded about this URL: whether it was audited, what is expected of it and
@@ -52,7 +53,8 @@ export interface UrlDetailData {
 
 /**
  * Everything the detail of a URL shows, as the crawl saw it, or `null` if the crawl does not have
- * that URL. A page linked from every other page (the home) has thousands of links, hence the cap.
+ * that URL. A page linked from every other page (the home) has thousands of links, so only a
+ * page of them is read here.
  */
 export async function loadUrlDetail(input: {
   domainId: string
@@ -60,14 +62,13 @@ export async function loadUrlDetail(input: {
   host: string
   crawl: Crawl
   urlHash: string
-  linkLimit: number
   /**
    * The crawl is not the latest one. Its analysis is never recalculated when the rules change, so
    * it is not "behind" the configuration: it is what it was analysed with.
    */
   historical?: boolean
 }): Promise<UrlDetailData | null> {
-  const { domainId, host, crawl, urlHash, linkLimit, historical = false } = input
+  const { domainId, host, crawl, urlHash, historical = false } = input
   const db = await getDb()
   const url = await db.crawls.getUrl(crawl.id, urlHash)
   if (!url) return null
@@ -76,8 +77,8 @@ export async function loadUrlDetail(input: {
       db.crawls.issuesOf(crawl.id, [urlHash]),
       db.crawls.auditOf(crawl.id, [urlHash]),
       db.audit.config(domainId),
-      db.crawls.linkSources(crawl.id, urlHash, { limit: linkLimit + 1 }),
-      db.crawls.linkTargets(crawl.id, urlHash, { limit: linkLimit + 1 }),
+      loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'in' }),
+      loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'out' }),
       db.priorityUrls.list(domainId),
       db.verifications.latestFor(domainId, [urlHash]),
       db.verifications.active(domainId),
@@ -97,10 +98,7 @@ export async function loadUrlDetail(input: {
     url,
     issues,
     evidenceUrls,
-    linksIn: linksIn.slice(0, linkLimit),
-    linksOut: linksOut.slice(0, linkLimit),
-    hasMoreIn: linksIn.length > linkLimit,
-    hasMoreOut: linksOut.length > linkLimit,
+    links: { in: linksIn, out: linksOut },
     priority: priorities.some((p) => p.urlHash === urlHash),
     audit: audit[0] ?? null,
     current: currentAuditOf(config, host, url.url),

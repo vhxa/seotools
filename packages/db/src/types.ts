@@ -32,6 +32,7 @@ import type {
   IssueEvidence,
   Job,
   JobStatus,
+  LinkDirection,
   SettingsStore,
   StatusFilter,
   PagesByWorstIssue,
@@ -277,6 +278,37 @@ export interface CrawlUrlQuery {
 
 /** The URLs of a crawl in each view. `all` is the sum of `internal` and `external`. */
 export type CrawlViewCounts = Record<CrawlUrlView, number>
+/** Which links of one URL of a crawl a list shows. */
+export interface CrawlLinkQuery {
+  crawlId: string
+  /** The URL the list is about. */
+  urlHash: string
+  /** `in`: the links that arrive at it, listed by where they start. `out`: those that leave it. */
+  direction: LinkDirection
+  /** Only these types of link. Absent: every type. Empty: none, so nothing is listed. */
+  kinds?: readonly CrawlLinkKind[]
+  /** Text the address at the other end contains, whatever its case. */
+  search?: string
+}
+
+/**
+ * One link of a URL, seen from it: the URL at the other end (where an incoming link starts, where
+ * an outgoing one points), the type of the link, and what the crawl knows of that URL. It is what
+ * was stored and nothing more: there is no anchor text, and no attribute but `rel="nofollow"`,
+ * which is a type of its own. Several links of the same type between two URLs are one.
+ */
+export interface CrawlLinkRow {
+  url: string
+  urlHash: string
+  kind: CrawlLinkKind
+  /** Of the URL at the other end. */
+  scope: CrawlUrlScope
+  /** `unknown` when it was not requested, never answered, or is external: never a verdict. */
+  urlKind: CrawlUrlKind
+  state: CrawlUrlState
+  statusCode: number | null
+  error: string | null
+}
 
 /** An issue found on a URL of a crawl. */
 export interface CrawlUrlIssue {
@@ -400,6 +432,23 @@ export interface CrawlRepository {
     sourceHash: string,
     options?: { limit?: number },
   ): Promise<{ url: string; kind: CrawlLinkKind }[]>
+  /**
+   * The links of one URL in one direction (external URLs included), sorted by the address at the
+   * other end and then by type, so that pages of it follow each other with no gap or repeat.
+   * Another crawl's URLs are never mixed in: everything is read within `query.crawlId`.
+   */
+  listLinks(query: CrawlLinkQuery & { limit: number; offset: number }): Promise<CrawlLinkRow[]>
+  /** How many links `listLinks` would list for the same query, ignoring the page. */
+  countLinks(query: CrawlLinkQuery): Promise<number>
+  /**
+   * How many links a URL has of each type in one direction, whatever the types and search of a
+   * list: types without links are left out.
+   */
+  linkKindCounts(
+    crawlId: string,
+    urlHash: string,
+    direction: LinkDirection,
+  ): Promise<{ kind: CrawlLinkKind; count: number }[]>
 
   /** The links going out of these URLs of a crawl. */
   linksFrom(crawlId: string, sourceHashes: string[]): Promise<CrawlLink[]>

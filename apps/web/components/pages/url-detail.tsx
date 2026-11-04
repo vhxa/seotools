@@ -1,4 +1,3 @@
-import { crawlUrlHash } from '@seotools/core'
 import { intentOutcome } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import { ChevronDownIcon, CircleHelpIcon, ExternalLinkIcon } from 'lucide-react'
@@ -18,7 +17,7 @@ import { PriorityToggle, UrlLink } from '@/components/crawl/url-cells'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
-import { OpenUrlLink } from '@/components/pages/url-drawer'
+import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -81,10 +80,9 @@ export async function UrlDetail({
   data: UrlDetailData
   hrefFor: (urlHash: string) => string
 }) {
-  const [t, tIssues, tKinds, format] = await Promise.all([
+  const [t, tIssues, format] = await Promise.all([
     getTranslations('UrlDetail'),
     getTranslations('PageIssues'),
-    getTranslations('LinkKinds'),
     getFormatter(),
   ])
   const { url, crawl, audit } = data
@@ -98,31 +96,6 @@ export async function UrlDetail({
   const refOf = ruleRefsOf(crawl.auditSnapshot)
   const notSet = <span className="text-muted-foreground">{t('notSet')}</span>
   const text = (value: string | null | undefined) => (value ? value : notSet)
-
-  const links = (items: UrlDetailData['linksIn'], more: boolean) =>
-    items.length === 0 ? (
-      <p className="text-sm text-muted-foreground">{t('noLinks')}</p>
-    ) : (
-      <ul className="grid gap-1.5 text-sm">
-        {items.map((link) => (
-          <li
-            key={`${link.kind}:${link.url}`}
-            className="flex items-baseline justify-between gap-3"
-          >
-            <OpenUrlLink
-              target={{ hash: crawlUrlHash(link.url), url: link.url }}
-              href={hrefFor(crawlUrlHash(link.url))}
-              className="min-w-0 truncate font-mono text-xs hover:underline"
-              title={link.url}
-            >
-              {link.url}
-            </OpenUrlLink>
-            <Badge variant="outline">{tKinds(link.kind)}</Badge>
-          </li>
-        ))}
-        {more && <li className="text-muted-foreground">{t('moreLinks')}</li>}
-      </ul>
-    )
 
   return (
     <div className="grid gap-6">
@@ -335,8 +308,8 @@ export async function UrlDetail({
         </Fields>
       </Disclosure>
 
-      <Section title={t('sections.linksIn')}>{links(data.linksIn, data.hasMoreIn)}</Section>
-      <Section title={t('sections.linksOut')}>{links(data.linksOut, data.hasMoreOut)}</Section>
+      <UrlLinks host={host} data={data} direction="in" hrefFor={hrefFor} />
+      <UrlLinks host={host} data={data} direction="out" hrefFor={hrefFor} />
     </div>
   )
 }

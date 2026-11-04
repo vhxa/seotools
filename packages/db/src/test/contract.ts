@@ -6,6 +6,7 @@ import {
   compileAuditRules,
   MAX_VERIFICATION_URLS,
   crawlUrlHash,
+  type CrawlLinkKind,
   type CrawlRecurrence,
   type CrawlUrlKind,
   type VerificationOutcome,
@@ -1229,6 +1230,262 @@ export function describeDatabaseContract(
             ...(await page(4, 'desc')),
             ...(await page(8, 'desc')),
           ]).toEqual([500, 404, 404, 301, 200, 200, 200, 200, null, null, null])
+        })
+      })
+
+      describe('the links of a URL', () => {
+        const site = 'https://acme.com'
+        const outside = 'https://elsewhere.org/'
+        const url = (path: string) => `${site}${path}`
+        const hashOf = (address: string) => crawlUrlHash(address)
+        const home = url('/')
+        const sale = url('/sale/50%_off')
+        const never = url('/never-requested')
+
+        async function crawlWithLinks(domainId?: string) {
+          const { id } = await startCrawl(domainId ?? (await domain()))
+          await db.crawls.addUrls(id, [
+            newUrl(home, { depth: 0 }),
+            ...['/about', '/app.js', '/blog/a', '/blog/b', '/gone', '/logo.png'].map((path) =>
+              newUrl(url(path)),
+            ),
+            newUrl(sale),
+            newUrl(never),
+            newUrl(outside, { scope: 'external' }),
+          ])
+          const answered = {
+            [home]: result('page', { title: 'Home' }),
+            [url('/about')]: result('page', { title: 'About' }),
+            [url('/blog/a')]: result('page'),
+            [url('/blog/b')]: result('page'),
+            [url('/gone')]: result('page', { statusCode: 404 }),
+            [url('/app.js')]: result('resource', { contentType: 'text/javascript' }),
+            [url('/logo.png')]: result('resource', { contentType: 'image/png' }),
+            [sale]: result('page', { statusCode: 500, error: 'boom' }),
+          }
+          const link = (from: string, to: string, kind: CrawlLinkKind) => ({
+            sourceHash: hashOf(from),
+            targetHash: hashOf(to),
+            kind,
+          })
+          const links = {
+            [home]: [
+              link(home, url('/about'), 'anchor'),
+              link(home, url('/blog/a'), 'anchor'),
+              link(home, url('/blog/b'), 'anchor-nofollow'),
+              link(home, url('/gone'), 'anchor'),
+              link(home, sale, 'anchor'),
+              link(home, never, 'anchor'),
+              link(home, outside, 'anchor'),
+              link(home, url('/logo.png'), 'image'),
+              link(home, url('/app.js'), 'script'),
+              link(home, home, 'canonical'),
+            ],
+            [url('/about')]: [
+              link(url('/about'), home, 'anchor'),
+              link(url('/about'), url('/logo.png'), 'image'),
+            ],
+            [url('/blog/a')]: [
+              link(url('/blog/a'), home, 'anchor'),
+              link(url('/blog/a'), home, 'canonical'),
+            ],
+            [url('/blog/b')]: [link(url('/blog/b'), home, 'anchor-nofollow')],
+          }
+          for (const [address, outcome] of Object.entries(answered)) {
+            await db.crawls.recordResult({
+              crawlId: id,
+              urlHash: hashOf(address),
+              result: outcome,
+              links: links[address as keyof typeof links] ?? [],
+            })
+          }
+          // A domain runs one crawl at a time.
+          await db.crawls.finish(id, { status: 'completed' })
+          return id
+        }
+
+        const list = (
+          crawlId: string,
+          address: string,
+          direction: 'in' | 'out',
+          options: Partial<Parameters<Database['crawls']['listLinks']>[0]> = {},
+        ) =>
+          db.crawls.listLinks({
+            crawlId,
+            urlHash: hashOf(address),
+            direction,
+            limit: 100,
+            offset: 0,
+            ...options,
+          })
+        const pairs = (rows: { url: string; kind: string }[]) =>
+          rows.map((row) => `${row.url.replace(site, '')} ${row.kind}`)
+
+        it('lists each direction on its own, by address and then by type', async () => {
+          const crawlId = await crawlWithLinks()
+          expect(pairs(await list(crawlId, home, 'in'))).toEqual([
+            '/ canonical',
+            '/about anchor',
+            '/blog/a anchor',
+            '/blog/a canonical',
+            '/blog/b anchor-nofollow',
+          ])
+          expect(pairs(await list(crawlId, home, 'out'))).toEqual([
+            '/ canonical',
+            '/about anchor',
+            '/app.js script',
+            '/blog/a anchor',
+            '/blog/b anchor-nofollow',
+            '/gone anchor',
+            '/logo.png image',
+            '/never-requested anchor',
+            '/sale/50%_off anchor',
+            'https://elsewhere.org/ anchor',
+          ])
+          expect(pairs(await list(crawlId, url('/logo.png'), 'in'))).toEqual([
+            '/ image',
+            '/about image',
+          ])
+          expect(await list(crawlId, url('/logo.png'), 'out')).toEqual([])
+          expect(await list(crawlId, 'nope', 'in')).toEqual([])
+        })
+
+        it('says what the crawl knows of the URL at the other end, and nothing it does not', async () => {
+          const crawlId = await crawlWithLinks()
+          const out = await list(crawlId, home, 'out')
+          const at = (address: string) => out.find((row) => row.url === address)
+          expect(at(url('/gone'))).toMatchObject({
+            urlHash: hashOf(url('/gone')),
+            scope: 'internal',
+            urlKind: 'page',
+            state: 'done',
+            statusCode: 404,
+            error: null,
+          })
+          expect(at(sale)).toMatchObject({ statusCode: 500, error: 'boom' })
+          expect(at(url('/logo.png'))).toMatchObject({ urlKind: 'resource', statusCode: 200 })
+          // Linked but never requested, or external and not requested: unknown, not a verdict.
+          for (const address of [never, outside]) {
+            expect(at(address)).toMatchObject({
+              urlKind: 'unknown',
+              state: expect.stringMatching(/queued|skipped/),
+              statusCode: null,
+            })
+          }
+          expect(at(outside)).toMatchObject({ scope: 'external' })
+        })
+
+        it('filters by the types of link, and an empty list of them keeps nothing', async () => {
+          const crawlId = await crawlWithLinks()
+          expect(pairs(await list(crawlId, home, 'out', { kinds: ['image', 'script'] }))).toEqual([
+            '/app.js script',
+            '/logo.png image',
+          ])
+          expect(
+            pairs(await list(crawlId, home, 'in', { kinds: ['anchor', 'anchor-nofollow'] })),
+          ).toEqual(['/about anchor', '/blog/a anchor', '/blog/b anchor-nofollow'])
+          expect(await list(crawlId, home, 'out', { kinds: [] })).toEqual([])
+          expect(
+            await db.crawls.countLinks({
+              crawlId,
+              urlHash: hashOf(home),
+              direction: 'out',
+              kinds: [],
+            }),
+          ).toBe(0)
+        })
+
+        it('searches the other address as text, ignoring case', async () => {
+          const crawlId = await crawlWithLinks()
+          const search = async (text: string) =>
+            pairs(await list(crawlId, home, 'out', { search: text }))
+          expect(await search('ABOUT')).toEqual(['/about anchor'])
+          expect(await search('/blog/')).toEqual(['/blog/a anchor', '/blog/b anchor-nofollow'])
+          // % and _ are characters here, not wildcards.
+          expect(await search('50%_')).toEqual(['/sale/50%_off anchor'])
+          expect(await search('%')).toEqual(['/sale/50%_off anchor'])
+          expect(await search('_')).toEqual(['/sale/50%_off anchor'])
+          expect(await search('a!b')).toEqual([])
+          expect(await search('')).toHaveLength(10)
+          expect(
+            await db.crawls.countLinks({
+              crawlId,
+              urlHash: hashOf(home),
+              direction: 'out',
+              kinds: ['anchor'],
+              search: '/blog/',
+            }),
+          ).toBe(1)
+        })
+
+        it('pages without skipping or repeating a link, and counts what it pages', async () => {
+          const crawlId = await crawlWithLinks()
+          const query = { crawlId, urlHash: hashOf(home), direction: 'out' as const }
+          const everything = await list(crawlId, home, 'out')
+          expect(await db.crawls.countLinks(query)).toBe(everything.length)
+          const paged = []
+          for (let offset = 0; offset < everything.length; offset += 4) {
+            paged.push(...(await list(crawlId, home, 'out', { limit: 4, offset })))
+          }
+          expect(paged).toEqual(everything)
+          expect(await list(crawlId, home, 'out', { limit: 4, offset: 40 })).toEqual([])
+        })
+
+        it('counts the links of each type in a direction', async () => {
+          const crawlId = await crawlWithLinks()
+          const counts = async (address: string, direction: 'in' | 'out') =>
+            Object.fromEntries(
+              (await db.crawls.linkKindCounts(crawlId, hashOf(address), direction)).map(
+                ({ kind, count }) => [kind, count],
+              ),
+            )
+          expect(await counts(home, 'in')).toEqual({
+            anchor: 2,
+            'anchor-nofollow': 1,
+            canonical: 2,
+          })
+          expect(await counts(home, 'out')).toEqual({
+            anchor: 6,
+            'anchor-nofollow': 1,
+            image: 1,
+            script: 1,
+            canonical: 1,
+          })
+          expect(await counts(url('/logo.png'), 'out')).toEqual({})
+          expect(await db.crawls.linkKindCounts(crawlId, 'nope', 'in')).toEqual([])
+        })
+
+        it('keeps one crawl apart from another, and from another domain', async () => {
+          const domainId = await domain()
+          const first = await crawlWithLinks(domainId)
+          const second = await crawlWithLinks(domainId)
+          const other = await crawlWithLinks(await domain('other.com'))
+          // The same URLs are in every crawl; a link between them is only in the crawl that saw it.
+          await db.crawls.recordResult({
+            crawlId: second,
+            urlHash: hashOf(url('/about')),
+            result: result('page'),
+            links: [
+              {
+                sourceHash: hashOf(url('/about')),
+                targetHash: hashOf(url('/blog/a')),
+                kind: 'anchor',
+              },
+            ],
+          })
+          const links = async (crawlId: string) => pairs(await list(crawlId, url('/blog/a'), 'in'))
+          expect(await links(first)).toEqual(['/ anchor'])
+          expect(await links(second)).toEqual(['/ anchor', '/about anchor'])
+          expect(await links(other)).toEqual(['/ anchor'])
+          expect(await links('missing')).toEqual([])
+          expect(
+            await db.crawls.countLinks({
+              crawlId: 'missing',
+              urlHash: hashOf(home),
+              direction: 'in',
+            }),
+          ).toBe(0)
+          expect(await db.crawls.linkKindCounts('missing', hashOf(home), 'in')).toEqual([])
         })
       })
 

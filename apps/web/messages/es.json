@@ -570,8 +570,6 @@
     "notSet": "Sin definir",
     "noIssues": "No se ha encontrado nada en esta URL.",
     "notChecked": "Este rastreo no se ha comprobado en busca de issues.",
-    "noLinks": "No se ha encontrado ninguno.",
-    "moreLinks": "Hay más.",
     "responseTime": "{value, number} ms",
     "loading": "Cargando el detalle de la URL",
     "audit": {
@@ -596,6 +594,57 @@
       "low": "Importancia baja ({count, number})",
       "unknown": "Otros hallazgos ({count, number})"
     }
+  },
+  "UrlLinks": {
+    "in": {
+      "title": "Enlaces entrantes",
+      "description": "Páginas de este rastreo que enlazan a esta URL.",
+      "empty": "Ninguna página de este rastreo enlaza a esta URL.",
+      "note": "Una página cuenta una vez por cada tipo de enlace con el que llega a esta URL, aunque lo repita."
+    },
+    "out": {
+      "title": "Enlaces salientes",
+      "description": "URLs a las que enlaza esta, de este sitio y de otros.",
+      "empty": "El rastreo no registró enlaces desde esta URL.",
+      "unread": "El rastreo no leyó esta URL, así que no se sabe a qué enlaza.",
+      "note": "Una URL cuenta una vez por cada tipo de enlace con el que esta página apunta a ella, aunque lo repita."
+    },
+    "count": "{count, plural, one {# enlace} other {# enlaces}}",
+    "groupsLabel": "Tipos de enlace",
+    "groups": {
+      "navigation": "Navegación",
+      "resources": "Recursos",
+      "declared": "Declarados",
+      "all": "Todos"
+    },
+    "groupHelp": {
+      "navigation": "Enlaces en el contenido de una página: los que la gente pulsa y los buscadores siguen. Los marcados con rel=\"nofollow\" lo indican.",
+      "resources": "Scripts, hojas de estilo, imágenes, medios, marcos y otros archivos que carga una página. Sus problemas se informan en Issues, sea cual sea la lista abierta.",
+      "declared": "URLs que nombra una página, una cabecera o un sitemap: canonical, hreflang, redirecciones, formularios, datos estructurados y otros.",
+      "all": "Todos los tipos de enlace."
+    },
+    "groupEmpty": {
+      "navigation": "No hay enlaces de navegación. Otros tipos de enlace sí tienen: mira los recuentos de arriba.",
+      "resources": "No hay recursos. Otros tipos de enlace sí tienen: mira los recuentos de arriba.",
+      "declared": "No hay URLs declaradas. Otros tipos de enlace sí tienen: mira los recuentos de arriba.",
+      "all": "No hay enlaces."
+    },
+    "search": "Buscar por dirección",
+    "searchPlaceholder": "Buscar por dirección…",
+    "kind": {
+      "label": "Tipo de enlace",
+      "all": "Todos los tipos"
+    },
+    "noMatch": "Ningún enlace coincide con «{search}».",
+    "showing": "{from, number}–{to, number} de {total, number}",
+    "external": "Externa",
+    "incomplete": "Este rastreo se detuvo en su límite de URLs. Las páginas que nunca pidió y las URLs más allá del límite no forman parte de estos enlaces.",
+    "errors": {
+      "unavailable": "No se pueden mostrar estos enlaces: el rastreo no está disponible.",
+      "pruned": "Los resultados de este rastreo se eliminaron, así que sus enlaces ya no se conservan.",
+      "failed": "No se pudieron cargar los enlaces. Inténtalo de nuevo."
+    },
+    "notRequested": "El rastreo no pidió esta URL, así que no tiene estado."
   },
   "IssueEvidence": {
     "unavailable": "Los ejemplos no están disponibles: este rastreo se analizó antes de guardarlos. Vuelve a rastrear el sitio para verlos.",
