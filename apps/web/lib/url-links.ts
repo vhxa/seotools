@@ -88,7 +88,7 @@ const MARKER = '0'.repeat(32)
 
 export function hrefPattern(hrefFor: (urlHash: string) => string): HrefPattern {
   const href = hrefFor(MARKER)
-  const at = href.indexOf(MARKER)
+  const at = href.lastIndexOf(MARKER)
   return at === -1
     ? { prefix: href, suffix: '' }
     : { prefix: href.slice(0, at), suffix: href.slice(at + MARKER.length) }

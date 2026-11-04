@@ -87,7 +87,7 @@ export async function UrlDetail({
   ])
   const { url, crawl, audit } = data
   const findingGroups = groupDetailFindings(data.issues)
-  const findingsId = `url-findings-${crawl.id}-${crawlUrlHash(url.url)}`
+  const findingsId = `url-findings-${crawl.id}-${url.urlHash}`
   const isPage = url.kind === 'page'
   const [tAudit, tState] = await Promise.all([
     getTranslations('UrlDetail.audit'),

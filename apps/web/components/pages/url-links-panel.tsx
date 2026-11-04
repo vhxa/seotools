@@ -211,7 +211,7 @@ export function UrlLinksPanel({
             aria-busy={pending}
             className={pending ? 'opacity-60 transition-opacity' : undefined}
           >
-            {shown.items.length === 0 ? (
+            {failure ? null : shown.items.length === 0 ? (
               <p className="text-sm text-muted-foreground">{empty}</p>
             ) : (
               <ul className="grid gap-1.5 text-sm">
@@ -252,7 +252,7 @@ export function UrlLinksPanel({
             )}
           </div>
 
-          {shown.total > 0 && (
+          {!failure && shown.total > 0 && (
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground tabular-nums">
                 {t('showing', { from: first, to: last, total: shown.total })}

@@ -162,6 +162,13 @@ describe('loadUrlLinks', () => {
 })
 
 describe('hrefPattern', () => {
+  it('preserves a search containing the placeholder hash', () => {
+    const hrefFor = (hash: string) =>
+      `/domains/acme.com/pages/details?q=${'0'.repeat(32)}&url=${hash}`
+    const hash = hashOf(`${SITE}/about`)
+    expect(applyHref(hrefPattern(hrefFor), hash)).toBe(hrefFor(hash))
+  })
+
   it('turns where a detail opens into something that can cross to the browser', () => {
     const drawer = (hash: string) => `/domains/acme.com/pages/details?crawl=abc&url=${hash}`
     const page = (hash: string) => `/domains/acme.com/pages/details/${hash}?crawl=abc`
