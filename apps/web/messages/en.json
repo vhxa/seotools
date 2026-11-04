@@ -500,6 +500,7 @@
     "results": {
       "unfiltered": "{total, plural, one {# URL} other {# URLs}} {scope}",
       "filtered": "{matching, plural, one {# URL matches} other {# URLs match}} the filters, out of {total, plural, one {# URL} other {# URLs}} {scope}",
+      "internalOnly": "These filters apply only to URLs on this site; external URLs are not included.",
       "crawl": "{total, plural, one {# URL} other {# URLs}} in the whole crawl",
       "scopes": {
         "pages": "in pages",

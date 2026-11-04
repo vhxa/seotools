@@ -47,6 +47,17 @@ export async function ListStatus({
   const filters = activeFilters(query)
   // A filter that does not apply leaves the list as it was: the line says so only for the others.
   const narrowed = filters.some((key) => !unapplied[key])
+  const internalOnly =
+    query.view === 'all' &&
+    filters.some(
+      (key) =>
+        !unapplied[key] &&
+        (key === 'type' ||
+          key === 'indexability' ||
+          key === 'participation' ||
+          key === 'intent' ||
+          key === 'rule'),
+    )
   const scope = t(`results.scopes.${query.view}`)
 
   const value = (key: FilterKey): string => {
@@ -82,6 +93,9 @@ export async function ListStatus({
           <span className="text-muted-foreground"> · {t('results.crawl', { total: inCrawl })}</span>
         )}
       </p>
+      {internalOnly && (
+        <span className="text-xs text-muted-foreground">{t('results.internalOnly')}</span>
+      )}
       {filters.length > 0 && (
         <ul aria-label={t('activeFilters.label')} className="flex flex-wrap items-center gap-1.5">
           {filters.map((key) => {

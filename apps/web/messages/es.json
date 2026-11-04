@@ -500,6 +500,7 @@
     "results": {
       "unfiltered": "{total, plural, one {# URL} other {# URLs}} {scope}",
       "filtered": "{matching, plural, one {# URL coincide} other {# URLs coinciden}} con los filtros, de {total, plural, one {# URL} other {# URLs}} {scope}",
+      "internalOnly": "Estos filtros solo se aplican a las URLs del sitio; las externas quedan fuera.",
       "crawl": "{total, plural, one {# URL} other {# URLs}} en todo el rastreo",
       "scopes": {
         "pages": "en páginas",
