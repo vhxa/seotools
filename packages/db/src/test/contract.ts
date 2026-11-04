@@ -935,7 +935,7 @@ export function describeDatabaseContract(
           participationRule: null,
           intent: 'indexable' as const,
           intentRule: null,
-          acceptNofollow: false,
+          conditions: {},
           indexability: 'unknown' as const,
           blockers: [],
           ...overrides,
