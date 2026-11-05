@@ -26,6 +26,7 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Fixed
 
+- Crawl alerts no longer compare a crawl whose findings were never analysed (after waiting two hours for the analysis): only a crawl problem is reported if it applies, otherwise nothing is sent, and the worker logs a warning.
 - Every page under System answered with an error when the saved email settings could not be decrypted (the encryption key changed after saving them). They now render, System → Email and the warning in System say that the settings must be entered again, and the worker records the email as not sent instead of failing.
 
 ## [0.2.0-rc.1] - 2026-11-05
