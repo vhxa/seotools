@@ -153,9 +153,14 @@ Dokploy runs the image as a Docker Swarm service. Set the application up once:
   Dokploy's zero-downtime guide describes waiting for the new container's health check before
   switching traffic: that is for stateless applications. With SQLite accept the short pause, and if
   your version offers "start first" ordering, do not use it.
-- **Stop Grace Period**: at least 40 s, so that the worker can finish what it is doing. Dokploy
-  stores it with the Swarm settings of the application (`stopGracePeriod`); its documentation does
-  not describe it, so look for it in the Advanced tab of your version.
+- **Stop Grace Period**: at least **40 s**. When the container is asked to stop, the entrypoint
+  gives the web app and the worker up to 30 s to finish what they are doing; if the orchestrator's
+  grace period is shorter (Docker's default is 10 s), it kills the container in the middle of that
+  and a job can be left half done until its lock expires. `docker-compose.yml` already sets
+  `stop_grace_period: 40s`. In Dokploy, open the application, go to **Advanced**, then the
+  **Swarm Settings** section, and set **Stop Grace Period** (`StopGracePeriod`, in the Swarm
+  settings of the service) to `40s` or more; Deploy again for it to apply. Its name and place can
+  vary with the version of Dokploy.
 - **Health check**: leave the one the image declares. If you set Dokploy's own, do not use `curl`
   (the image does not have it): use `node /app/healthcheck.mjs`.
 - **Auto Deploy**: leave it off unless you build [automatic updates](#automatic-updates-with-dokploy-optional).
