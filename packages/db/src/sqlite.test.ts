@@ -56,8 +56,6 @@ describe('detectDialect', () => {
     [':memory:', 'sqlite'],
     ['postgres://u:p@h:5432/db', 'pg'],
     ['postgresql://u:p@h/db', 'pg'],
-    ['mysql://u:p@h:3306/db', 'mysql'],
-    ['mariadb://u:p@h/db', 'mysql'],
   ])('%s → %s', (url, dialect) => {
     expect(detectDialect(url)).toBe(dialect)
   })
@@ -65,6 +63,18 @@ describe('detectDialect', () => {
   it('honours an explicit dialect and rejects unknown schemes', () => {
     expect(detectDialect('whatever', 'pg')).toBe('pg')
     expect(() => detectDialect('mongodb://localhost/x')).toThrow(/DATABASE_DIALECT/)
+  })
+
+  it.each(['mysql://u:p@h:3306/db', 'mysql2://u:p@h/db', 'mariadb://u:p@h/db'])(
+    'refuses %s: MySQL is no longer supported',
+    (url) => {
+      expect(() => detectDialect(url)).toThrow(/MySQL is no longer supported.*PostgreSQL/)
+      expect(() => detectDialect(url, 'pg')).toThrow(/MySQL is no longer supported/)
+    },
+  )
+
+  it('keeps the message free of credentials', () => {
+    expect(() => detectDialect('mysql://root:hunter2@h/db')).not.toThrow(/hunter2/)
   })
 })
 

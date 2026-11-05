@@ -8,7 +8,7 @@ SEO Tools is an open-source application with a set of features for monitoring an
 apps/web/            # Next.js app: UI, login + first-run setup + onboarding, /api/health, better-auth routes, server actions
 apps/worker/         # Background job runner + handlers (example.echo, mail.send, access.email, crawl.alerts, crawl.run, audit.recompute), crawler, crawl scheduler, favicon and crawl file refreshers; also the bootstrap CLI (migrations)
 packages/core/       # Shared logic: env validation, logger, job types, settings encryption, mail (SMTP + Resend), crawl types and URL rules
-packages/db/         # Database layer: Drizzle schemas, migrations and repositories for SQLite, PostgreSQL and MySQL
+packages/db/         # Database layer: Drizzle schemas, migrations and repositories for SQLite and PostgreSQL
 docker/              # Container entrypoint and healthcheck
 docs/                # Guides: updating an installation (docs/updating.md), making a release (docs/releases.md)
 scripts/             # Release tooling (`node scripts/release.mjs`; its logic is in packages/core/src/release)
@@ -22,7 +22,7 @@ The workspaces are:
 | `@seotools/web`    | Next.js (App Router) web app with shadcn/ui and multi-user, role-based auth        |
 | `@seotools/worker` | Job processor backed by the database (no Redis); bundled with tsdown               |
 | `@seotools/core`   | Env validation (zod), logger (pino), job types, encrypted settings, mail           |
-| `@seotools/db`     | Database abstraction (SQLite, PostgreSQL, MySQL), migrations, first-admin creation |
+| `@seotools/db`     | Database abstraction (SQLite, PostgreSQL), migrations, first-admin creation |
 
 The most important third-party packages are:
 
@@ -33,8 +33,8 @@ The most important third-party packages are:
 | `shadcn`, `@base-ui/react`             | web          | UI components                                               |
 | `next-intl`                            | web          | i18n (messages in `apps/web/messages`)                      |
 | `tailwindcss`                          | web          | Styling                                                     |
-| `drizzle-orm`, `drizzle-kit`           | db           | Query layer and migration generation for all three dialects |
-| `better-sqlite3`, `postgres`, `mysql2` | db, worker   | Database drivers (`better-sqlite3` is the only native one)  |
+| `drizzle-orm`, `drizzle-kit`           | db           | Query layer and migration generation for both dialects |
+| `better-sqlite3`, `postgres`           | db, worker   | Database drivers (`better-sqlite3` is the only native one)  |
 | `zod`                                  | core         | Environment validation                                      |
 | `pino`                                 | core         | Structured logging                                          |
 | `htmlparser2`                          | worker       | HTML and sitemap parsing in the crawler                     |
@@ -118,11 +118,9 @@ pnpm --filter @seotools/worker dev
 # Apply migrations without starting anything
 pnpm db:bootstrap
 
-# PostgreSQL / MySQL: start a database, then set DATABASE_URL in .env
+# PostgreSQL: start a database, then set DATABASE_URL in .env
 docker run -d --name seotools-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=seotools -p 5432:5432 postgres:17
-docker run -d --name seotools-mysql -e MYSQL_ROOT_PASSWORD=test -e MYSQL_DATABASE=seotools -p 3306:3306 mysql:8.4
 # DATABASE_URL=postgres://postgres:test@localhost:5432/seotools
-# DATABASE_URL=mysql://root:test@localhost:3306/seotools
 
 # Run the production image locally
 docker compose up -d --build
@@ -149,22 +147,21 @@ pnpm exec vitest run packages/db     # one workspace
 pnpm exec vitest run -t "admin"      # filter by test name
 ```
 
-### Database contract (SQLite, PostgreSQL, MySQL)
+### Database contract (SQLite, PostgreSQL)
 
 `packages/db/src/test/contract.ts` defines the behaviour every dialect must provide (jobs queue, heartbeats, settings, companies and domains, crawls, audit rules, first admin) and runs once per dialect.
 
 - SQLite always runs, on an in-memory database (`createTestDatabase()` from `@seotools/db/test`).
-- PostgreSQL and MySQL are **skipped** unless you provide a database. CI runs them against real services.
+- PostgreSQL is **skipped** unless you provide a database. CI runs it against a real service.
 
 ```bash
 TEST_POSTGRES_URL=postgres://postgres:test@localhost:5432/seotools \
-TEST_MYSQL_URL=mysql://root:test@localhost:3306/seotools \
 pnpm test
 ```
 
-These tests **wipe the tables** of the database they point to. Use a throwaway database, never your dev data. Each dialect's `reset` (`sqlite.test.ts`, `postgres.test.ts`, `mysql.test.ts`) lists the tables by hand: add every new table to all three.
+These tests **wipe the tables** of the database they point to. Use a throwaway database, never your dev data. Each dialect's `reset` (`sqlite.test.ts`, `postgres.test.ts`) lists the tables by hand: add every new table to both.
 
-A change to the database layer is not done until the contract passes on all three dialects.
+A change to the database layer is not done until the contract passes on both dialects.
 
 ### Type checking
 
@@ -175,11 +172,11 @@ pnpm typecheck   # tsc in every workspace (web runs `next typegen` first)
 ### Migrations
 
 ```bash
-pnpm --filter @seotools/db generate --name <what_changed>   # generates sqlite + pg + mysql together
+pnpm --filter @seotools/db generate --name <what_changed>   # generates sqlite + pg together
 pnpm db:check                                               # migration files are consistent
 ```
 
-Schemas exist once per dialect (`packages/db/src/schema/{sqlite,pg,mysql}.ts`): change all three. Never edit generated migrations by hand.
+Schemas exist once per dialect (`packages/db/src/schema/{sqlite,pg}.ts`): change both. Never edit generated migrations by hand.
 
 ### Pre-PR checklist
 
@@ -228,7 +225,7 @@ ESLint ignores `packages/db/migrations/**` and `apps/web/components/ui/**` (gene
 - Admin credentials never come from environment variables. The first admin is registered on `/setup` through `createFirstAdmin`, which refuses to run once any user exists. Never re-enable better-auth sign-up.
 - `proxy.ts` only checks that a session cookie exists. Every protected page and **every server action** must call `requireSession()` (or what builds on it: `requireViewer`, `requireAdmin`, `requireDomain`, `requireDomainEditor`) itself; a layout does not protect actions. `lib/authorization.test.ts` reads the code and fails on an action or a page that does not.
 - A valid session is not authorization. Pages and server actions restricted to a role (e.g. admin) must also check the user's role on the server. Instance-wide ones (`/system/*`) call `requireAdmin()` (`lib/session.ts`), the single place that checks it.
-- Use Drizzle's operators, which parameterize values. Migration compatibility checks use fixed, read-only journal and table-existence queries. The only other raw `sql` in `@seotools/db` is `select 1`, `count(*)`, the attempt decrement in `jobs.release`, the MySQL job-claim query, the null-safe comparisons (`sqliteDiffers`/`pgDiffers`/`mysqlDiffers`) and the `sum(case …)` of `compareCounts`, and the URL search (`like … escape '!'`) of `crawlUrlWhere` / `compareSearch` / `crawlLinkWhere` and the `is null` ordering of `crawlUrlOrder` (`mapping.ts`). They interpolate Drizzle columns; the only user text in them, the search, is a bound parameter with `%`, `_` and `!` escaped.
+- Use Drizzle's operators, which parameterize values. Migration compatibility checks use fixed, read-only journal and table-existence queries. The only other raw `sql` in `@seotools/db` is `select 1`, `count(*)`, the attempt decrement in `jobs.release`, the null-safe comparisons (`sqliteDiffers`/`pgDiffers`) and the `sum(case …)` of `compareCounts`, and the URL search (`like … escape '!'`) of `crawlUrlWhere` / `compareSearch` / `crawlLinkWhere` and the `is null` ordering of `crawlUrlOrder` (`mapping.ts`). They interpolate Drizzle columns; the only user text in them, the search, is a bound parameter with `%`, `_` and `!` escaped.
 - Validate at the boundaries: the environment with the zod schemas in `@seotools/core/env`, job payloads with their schema in `packages/core/src/jobs.ts`, and form input in the server action before touching the database.
 - Secrets saved from the admin panel (SMTP password, Resend key) go through the `settings` repository with `encrypted: true` (AES-256-GCM, key `SETTINGS_ENCRYPTION_KEY` or `BETTER_AUTH_SECRET`). Never log them.
 - `GET /api/health` is public: it reports status, version and channel only. Error details stay in the server logs.

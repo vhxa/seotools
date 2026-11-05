@@ -37,7 +37,7 @@ const config: NextConfig = {
   // Workspace packages ship TypeScript sources.
   transpilePackages: ['@seotools/core', '@seotools/db'],
   // Native / driver packages must be required at runtime, not bundled.
-  serverExternalPackages: ['better-sqlite3', 'postgres', 'mysql2', 'pino', 'nodemailer', 'resend'],
+  serverExternalPackages: ['better-sqlite3', 'postgres', 'pino', 'nodemailer', 'resend'],
   env: { APP_VERSION: pkg.version },
   poweredByHeader: false,
 }

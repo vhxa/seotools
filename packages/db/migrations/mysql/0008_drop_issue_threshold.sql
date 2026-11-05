@@ -1,1 +1,0 @@
-ALTER TABLE `crawl_settings` DROP COLUMN `issue_threshold`;

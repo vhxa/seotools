@@ -102,7 +102,7 @@ release it descends from, not a release.
 ## What an update does
 
 - **The container is replaced.** Everything inside it is lost except what is stored outside: the
-  `/data` volume (SQLite, the default) or your PostgreSQL/MySQL server. seotools keeps nothing
+  `/data` volume (SQLite, the default) or your PostgreSQL server. seotools keeps nothing
   else.
 - **Migrations run by themselves**, on every start, before the web app and the worker start
   (`RUN_MIGRATIONS=true`). They apply in order and only forward: there is no "down". Some releases
@@ -121,7 +121,7 @@ release it descends from, not a release.
   at start). Once healthy it reports the new `version`.
 - **Never two copies at once.** One container per SQLite database. Do not run the old and the new
   version side by side (no "start the new one before stopping the old one", no replicas above 1).
-- **Split web and worker** (PostgreSQL/MySQL only): use the same tag for both, and update `web`
+- **Split web and worker** (PostgreSQL only): use the same tag for both, and update `web`
   first, because only `web` migrates.
 
 ## Update with Docker Compose
@@ -265,9 +265,6 @@ failed database and logs separately, without overwriting the pre-update backup.
   SQL rolls back that batch, including its DDL. Journal-table creation can remain.
   Post-migration audit semantics upgrades run separately, so a later bootstrap failure does not
   prove that migrations rolled back.
-- **MySQL:** Drizzle opens a transaction, but [DDL implicitly commits](https://dev.mysql.com/doc/refman/8.4/en/implicit-commit.html). A failure can leave tables
-  or columns changed without the matching journal entry. Re-running may fail on an already
-  existing object. Restore the pre-update dump into an empty database before retrying.
 - **Unknown migration history:** the guard reports that the database is newer than the image
   and that going back requires restoring the backup. Use the matching newer image or restore;
   never delete journal rows to bypass it.
@@ -279,7 +276,7 @@ first is the conservative recovery procedure on every dialect.
 
 **Precise rollback rule:** restoring is required if the target image does not understand any
 committed schema migration or stored-data conversion from the newer image. Restore also whenever
-you cannot establish compatibility, including a partially applied MySQL migration. A missing
+you cannot establish compatibility, including a partially applied migration. A missing
 `migrations applied` log does not prove nothing changed. An image-only rollback is appropriate
 only when no incompatible database change committed (for example a connection failure before
 migration), and the target supports the stored data. A successful startup of an old image is
@@ -324,7 +321,7 @@ Back up **the database and your secrets** (`BETTER_AUTH_SECRET`, `SETTINGS_ENCRY
 
 For Compose, external database selection is `DATABASE_URL_DOCKER` in `.env`; direct Docker
 and Dokploy Docker applications use `DATABASE_URL`. The startup `database selected` log records
-only `sqlite`, `pg` or `mysql`. Verify it before relying on a backup procedure.
+only `sqlite` or `pg`. Verify it before relying on a backup procedure.
 
 ### SQLite (the default)
 
@@ -370,21 +367,18 @@ Replace `seotools-recovery-image` with your saved image reference. Point the dep
 `/data` mount at `seotools-restored`, restore its original keys and select the previous image
 before starting. Keep the failed volume intact until recovery has been verified.
 
-### PostgreSQL and MySQL
+### PostgreSQL
 
-Use matching database client versions. The following examples run clients in database
-containers named `postgres` and `mysql`; adapt user/database/container names. Configure passwords
-through protected client credentials (`PGPASSFILE` / MySQL option file), never command arguments.
+Use matching database client versions. The following examples run clients in a database
+container named `postgres`; adapt user/database/container names. Configure passwords
+through protected client credentials (`PGPASSFILE`), never command arguments.
 Stop the app and worker for the update after the dump completes.
 
 ```bash
 docker exec postgres pg_dump -U seotools -d seotools -Fc > pre-update.dump
-docker exec mysql mysqldump --defaults-extra-file=/run/secrets/mysql-backup.cnf \
-  --single-transaction --routines --triggers --events --no-tablespaces seotools > pre-update.sql
 ```
 
-PostgreSQL dumps provide a consistent snapshot. MySQL's `--single-transaction` requires InnoDB
-(the application tables use it); do not run schema changes during either dump.
+PostgreSQL dumps provide a consistent snapshot; do not run schema changes during the dump.
 Check the dump command's exit status before treating the file as a backup.
 
 Restore with seotools stopped, into a **new empty database**, not over existing tables:
@@ -392,10 +386,6 @@ Restore with seotools stopped, into a **new empty database**, not over existing 
 ```bash
 docker exec postgres createdb -U seotools seotools_restored
 docker exec -i postgres pg_restore -U seotools -d seotools_restored --exit-on-error < pre-update.dump
-docker exec mysql mysql --defaults-extra-file=/run/secrets/mysql-backup.cnf \
-  -e 'CREATE DATABASE seotools_restored'
-docker exec -i mysql mysql --defaults-extra-file=/run/secrets/mysql-backup.cnf \
-  seotools_restored < pre-update.sql
 ```
 
 Point the deployment at the restored database, preserve the original keys, select the previous
@@ -425,30 +415,32 @@ already pruned.
 
 ## What has been validated
 
-Rehearsed on **2026-11-05**, Docker Desktop (Linux ARM64 containers on macOS), with locally
+Rehearsed on **2026-11-05** (MySQL, also rehearsed then, is no longer supported and its column was
+removed here; the [rehearsal evidence](rehearsals/2026-11-05-pending-migrations.md) keeps it),
+Docker Desktop (Linux ARM64 containers on macOS), with locally
 built images of **a651c7a** (14 migrations) and **3e67bc5c9b2bf5e4a5df65d1fc9d77982ef2dd98**
 (19 migrations). Neither image was published. This supersedes the earlier same-schema rehearsal:
 **real pending migrations 0014–0018 ran**, including the existing-users-to-administrators data
 migration. These are development builds, not published releases.
 
-| Procedure                                                         | SQLite                                | PostgreSQL 17                         | MySQL 8.4                                 |
-| ----------------------------------------------------------------- | ------------------------------------- | ------------------------------------- | ----------------------------------------- |
-| Representative data and completed crawl in old image              | Passed                                | Passed                                | Passed                                    |
-| Consistent backup while app was running                           | Installed-module online backup        | `pg_dump -Fc`                         | `mysqldump --single-transaction`          |
-| Apply pending migrations, verify exact timestamp/hash pairs       | 14 → 19                               | 14 → 19                               | 14 → 19                                   |
-| Existing session, admin login and `/system/users`                 | Passed                                | Passed                                | Passed                                    |
-| Preserved rules, findings and decryptable setting                 | Passed                                | Passed                                | Passed                                    |
-| Startup reanalysis backfills accepted findings                    | 1 accepted finding                    | 1 accepted finding                    | 1 accepted finding                        |
-| New full crawl on upgraded data                                   | Completed                             | Completed                             | Completed                                 |
-| Member invitation, password link, login, ungranted-domain 404     | Passed                                | Passed                                | Passed                                    |
-| Real recovery CLI, password link and subsequent admin login       | Passed                                | Passed                                | Passed                                    |
-| Wrong-email CLI fails without changing table counts               | Passed                                | Passed                                | Passed                                    |
-| Worker sends `access.email` through local SMTP                    | Passed                                | Passed                                | Passed                                    |
-| Old image starts on migrated database (unsafe rollback)           | Yes                                   | Yes                                   | Yes                                       |
-| New image refuses artificial future history on a scratch copy     | Exit 1                                | Exit 1                                | Exit 1                                    |
-| Restore original backup into fresh volume/database with old image | Passed                                | Passed                                | Passed                                    |
-| Failed migration 0016 on independent old-data copy                | Batch rolled back; 14 journal entries | Batch rolled back; 14 journal entries | Partial DDL persisted; 16 journal entries |
-| Recover from that failure using untouched backup and old image    | Passed                                | Passed                                | Passed                                    |
+| Procedure                                                         | SQLite                                | PostgreSQL 17                         |
+| ----------------------------------------------------------------- | ------------------------------------- | ------------------------------------- |
+| Representative data and completed crawl in old image              | Passed                                | Passed                                |
+| Consistent backup while app was running                           | Installed-module online backup        | `pg_dump -Fc`                         |
+| Apply pending migrations, verify exact timestamp/hash pairs       | 14 → 19                               | 14 → 19                               |
+| Existing session, admin login and `/system/users`                 | Passed                                | Passed                                |
+| Preserved rules, findings and decryptable setting                 | Passed                                | Passed                                |
+| Startup reanalysis backfills accepted findings                    | 1 accepted finding                    | 1 accepted finding                    |
+| New full crawl on upgraded data                                   | Completed                             | Completed                             |
+| Member invitation, password link, login, ungranted-domain 404     | Passed                                | Passed                                |
+| Real recovery CLI, password link and subsequent admin login       | Passed                                | Passed                                |
+| Wrong-email CLI fails without changing table counts               | Passed                                | Passed                                |
+| Worker sends `access.email` through local SMTP                    | Passed                                | Passed                                |
+| Old image starts on migrated database (unsafe rollback)           | Yes                                   | Yes                                   |
+| New image refuses artificial future history on a scratch copy     | Exit 1                                | Exit 1                                |
+| Restore original backup into fresh volume/database with old image | Passed                                | Passed                                |
+| Failed migration 0016 on independent old-data copy                | Batch rolled back; 14 journal entries | Batch rolled back; 14 journal entries |
+| Recover from that failure using untouched backup and old image    | Passed                                | Passed                                |
 
 The old app's actual HTTP forms/server actions created the first administrator through `/setup`,
 a company/domain, an enabled rule allowing `noindex` on `/private`, and a full crawl. Its worker
@@ -475,20 +467,19 @@ invitation to a local SMTP capture server and recorded `invite/sent`, exercising
 mail dependencies, public URL and settings configuration. This was not delivery to an external
 email provider.
 
-The old image predates the migration guard: on **all three newer databases** it started, allowed
+The old image predates the migration guard: on **both newer databases** it started, allowed
 login and displayed the domain's pages despite 19 journal entries. The rollback warning above
 therefore remains essential. On independent copies, the new image rejected an artificial future
 journal entry before starting services.
 
 The documented restore commands recovered the original 14-entry journal, all original table
 counts (apart from a new worker heartbeat), the original findings distribution, rule, decryptable
-setting and password login. SQLite used a fresh volume and UID 1000 ownership; PostgreSQL and
-MySQL used new empty databases. The post-update member and second crawl were gone, as expected.
+setting and password login. SQLite used a fresh volume and UID 1000 ownership; PostgreSQL
+used a new empty database. The post-update member and second crawl were gone, as expected.
 
 For the failure rehearsal, a scratch copy of each pre-update backup was given a conflicting
 `user_tokens` table before starting the new image in migration mode. Bootstrap exited 1 at 0016. SQLite and PostgreSQL rolled back 0014–0016: neither the accepted-findings table nor
-`user_access` remained, and the journal still had 14 entries. MySQL retained 0014–0015 (16
-entries), the accepted-findings table and the unjournaled `user_access` table from 0016.
+`user_access` remained, and the journal still had 14 entries.
 Following the runbook—preserve diagnostics, restore the untouched backup into another fresh
 volume/database, select the previous image and original keys—returned each to a working login
 and known crawl. No journal entries were deleted or manually marked applied.

@@ -52,7 +52,7 @@ import type {
   VerificationUrlState,
 } from '@seotools/core'
 
-export type Dialect = 'sqlite' | 'pg' | 'mysql'
+export type Dialect = 'sqlite' | 'pg'
 
 export interface ListJobsOptions {
   limit?: number

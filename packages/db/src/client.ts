@@ -32,7 +32,5 @@ export async function createDatabase(options: CreateDatabaseOptions): Promise<Da
       return withArchiveGuard((await import('./dialects/sqlite')).createSqliteDatabase(config))
     case 'pg':
       return withArchiveGuard((await import('./dialects/pg')).createPgDatabase(config))
-    case 'mysql':
-      return withArchiveGuard((await import('./dialects/mysql')).createMysqlDatabase(config))
   }
 }
