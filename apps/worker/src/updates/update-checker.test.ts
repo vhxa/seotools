@@ -116,3 +116,28 @@ describe('createUpdateChecker', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('createUpdateChecker when automation is paused', () => {
+  it('never contacts anyone, even when a check is due', async () => {
+    const fetchImpl = vi.fn(async () => latest())
+    const rows = new Map<string, StoredSetting>()
+    const settings = createSettings(
+      {
+        get: async (key) => rows.get(key) ?? null,
+        set: async (key, value, encrypted) => void rows.set(key, { value, encrypted }),
+        delete: async (key) => void rows.delete(key),
+      },
+      'k'.repeat(32),
+    )
+    await saveUpdateConfig(settings, { periodicChecks: true })
+    const checker = createUpdateChecker({
+      settings,
+      log: { info: vi.fn(), error: vi.fn() } as unknown as Logger,
+      fetch: fetchImpl as unknown as typeof fetch,
+      now: () => now,
+      paused: true,
+    })
+    await checker.tick()
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})

@@ -90,6 +90,12 @@ describe('createFaviconRefresher', () => {
     expect(configs).toHaveLength(1)
   })
 
+  it('does nothing when automation is paused', async () => {
+    await createFaviconRefresher({ db, log, createFetcher, now: () => clock, paused: true }).tick()
+    expect(configs).toEqual([])
+    expect(await db.favicons.get(domainId)).toBeNull()
+  })
+
   it('picks up a changed icon, and the loss of one', async () => {
     const r = refresher()
     await r.tick()

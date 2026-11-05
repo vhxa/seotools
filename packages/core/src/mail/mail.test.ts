@@ -14,8 +14,15 @@ vi.mock('resend', () => ({
   },
 }))
 
-const { createMailer, getMailConfig, getMailer, mailConfigSchema, setMailConfig } =
-  await import('./index')
+const {
+  MAIL_UNDECRYPTABLE,
+  createMailer,
+  getMailConfig,
+  getMailer,
+  mailConfigSchema,
+  readMailConfig,
+  setMailConfig,
+} = await import('./index')
 const { createSettings } = await import('../settings')
 
 beforeEach(() => vi.clearAllMocks())
@@ -137,5 +144,28 @@ describe('stored mail config', () => {
     expect(stored.value).not.toContain('hunter2')
     expect(await getMailConfig(settings)).toEqual(config)
     expect(await getMailer(settings)).not.toBeNull()
+  })
+
+  it('reports settings saved with another key as undecryptable instead of throwing', async () => {
+    const rows = new Map<string, { value: string; encrypted: boolean }>()
+    const store = {
+      get: async (k: string) => rows.get(k) ?? null,
+      set: async (k: string, value: string, encrypted: boolean) =>
+        void rows.set(k, { value, encrypted }),
+      delete: async (k: string) => void rows.delete(k),
+    }
+    await setMailConfig(createSettings(store, 'a'.repeat(32)), smtp)
+    const other = createSettings(store, 'b'.repeat(32))
+
+    expect(await readMailConfig(other)).toEqual({ state: 'undecryptable' })
+    expect(await getMailConfig(other)).toBeNull()
+    const mailer = await getMailer(other)
+    await expect(mailer!.send({ to: 'a@b.co', subject: 's', text: 't' })).rejects.toMatchObject({
+      name: 'MailUnavailableError',
+      message: MAIL_UNDECRYPTABLE,
+    })
+    expect(await readMailConfig(createSettings(store, 'a'.repeat(32)))).toMatchObject({
+      state: 'ready',
+    })
   })
 })

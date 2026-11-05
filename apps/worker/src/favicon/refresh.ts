@@ -28,6 +28,8 @@ export function createFaviconRefresher(options: {
   db: Database
   log: Logger
   createFetcher: (config: Omit<FetcherConfig, 'allowPrivateNetworks'>) => Fetcher
+  /** `SEOTOOLS_PAUSE_AUTOMATION`: a pass does nothing. */
+  paused?: boolean
   appVersion?: string
   now?: () => Date
 }): FaviconRefresher {
@@ -94,7 +96,7 @@ export function createFaviconRefresher(options: {
 
   return {
     tick() {
-      if (stopping.signal.aborted) return Promise.resolve()
+      if (options.paused || stopping.signal.aborted) return Promise.resolve()
       running ??= pass()
         .catch((error) => log.error({ err: error }, 'favicon refresh failed'))
         .finally(() => {

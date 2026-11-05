@@ -1,7 +1,9 @@
 import { type JobStatus } from '@seotools/core'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { PauseIcon } from 'lucide-react'
 import { HelpDisclosure } from '@/components/help'
 import { AutoRefresh } from '@/components/auto-refresh'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { getDb } from '@/lib/db'
+import { getEnv } from '@/lib/env'
 import { getHealth } from '@/lib/health'
 import { requireAdmin } from '@/lib/session'
 import { enqueueExampleJob } from './actions'
@@ -50,6 +53,14 @@ export default async function SystemPage() {
   return (
     <main className="grid gap-6">
       <AutoRefresh />
+
+      {getEnv().SEOTOOLS_PAUSE_AUTOMATION && (
+        <Alert>
+          <PauseIcon />
+          <AlertTitle>{t('paused.title')}</AlertTitle>
+          <AlertDescription>{t('paused.description')}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>

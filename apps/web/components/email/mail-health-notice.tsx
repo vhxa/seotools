@@ -1,4 +1,4 @@
-import { getMailConfig } from '@seotools/core'
+import { readMailConfig } from '@seotools/core'
 import { TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
@@ -17,9 +17,13 @@ export async function MailHealthNotice() {
   const db = await getDb()
   const [[latest], config] = await Promise.all([
     db.mail.recent({ limit: 1 }),
-    getSettings().then(getMailConfig),
+    getSettings().then(readMailConfig),
   ])
-  const health = mailHealth({ configured: config !== null, latest: latest ?? null })
+  const health = mailHealth({
+    configured: config.state === 'ready',
+    undecryptable: config.state === 'undecryptable',
+    latest: latest ?? null,
+  })
   if (health.state === 'ok') return null
   const t = await getTranslations('Email.health')
   return (

@@ -23,6 +23,8 @@ export function createUpdateChecker(options: {
   settings: Settings
   log: Logger
   fetch?: typeof fetch
+  /** `SEOTOOLS_PAUSE_AUTOMATION`: a pass does nothing. */
+  paused?: boolean
   now?: () => Date
 }): UpdateChecker {
   const { settings, log } = options
@@ -50,7 +52,7 @@ export function createUpdateChecker(options: {
 
   return {
     tick() {
-      if (stopping) return Promise.resolve()
+      if (options.paused || stopping) return Promise.resolve()
       running ??= pass()
         .catch((error) => log.error({ err: error }, 'checking for updates failed'))
         .finally(() => {

@@ -167,6 +167,10 @@
       "running": "en curso",
       "completed": "completado",
       "failed": "fallido"
+    },
+    "paused": {
+      "title": "La automatización está en pausa",
+      "description": "SEOTOOLS_PAUSE_AUTOMATION está activada: los rastreos programados, las actualizaciones periódicas, la búsqueda de versiones y todo el correo están desactivados. Lo que inicias tú sigue funcionando."
     }
   },
   "Updates": {
@@ -2823,6 +2827,11 @@
         "title": "El último correo no se entregó",
         "description": "Revisa los ajustes, envía un correo de prueba y mira los problemas recientes.",
         "open": "Ver qué ha fallado"
+      },
+      "undecryptable": {
+        "title": "No se pueden leer los ajustes de correo guardados",
+        "description": "La clave de cifrado cambió después de guardarlos. Vuelve a escribir los ajustes del proveedor: al guardarlos sustituyen a los anteriores.",
+        "open": "Escribirlos de nuevo"
       }
     },
     "provider": {
@@ -2845,7 +2854,8 @@
       "fromHint": "La dirección desde la que salen los correos, por ejemplo seo@example.com.",
       "save": "Guardar",
       "saving": "Guardando…",
-      "saved": "Guardado."
+      "saved": "Guardado.",
+      "undecryptable": "Los ajustes guardados del proveedor no se pueden leer con la clave de cifrado actual (SETTINGS_ENCRYPTION_KEY o BETTER_AUTH_SECRET cambió después de guardarlos). Vuelve a escribirlos abajo: al guardar sustituyen a los anteriores."
     },
     "test": {
       "title": "Enviar un correo de prueba",
@@ -2890,7 +2900,9 @@
       "from": "Escribe la dirección desde la que salen los correos.",
       "apiKey": "Escribe la clave de API.",
       "address": "Escribe una dirección de correo válida.",
-      "notConfigured": "Guarda primero los ajustes."
+      "notConfigured": "Guarda primero los ajustes.",
+      "undecryptable": "Los ajustes guardados no se pueden leer con la clave actual. Vuelve a escribirlos y guarda.",
+      "paused": "El correo está en pausa (SEOTOOLS_PAUSE_AUTOMATION está activada), así que no se envía nada."
     }
   },
   "AlertsSettings": {

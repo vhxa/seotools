@@ -31,13 +31,21 @@ async function fire(db: Database, schedule: CrawlSchedule): Promise<CrawlSchedul
  * Starts the crawls that are due, and cleans up after crawls whose job gave up. A worker that was
  * down catches up with one run per schedule, not with every run it missed.
  */
-export async function runDueSchedules(db: Database, log: Logger, now = new Date()) {
+export async function runDueSchedules(
+  db: Database,
+  log: Logger,
+  now = new Date(),
+  options: { paused?: boolean } = {},
+) {
   const orphaned = await db.crawls.failOrphaned()
   if (orphaned > 0) log.warn({ orphaned }, 'failed crawls whose job gave up')
   const orphanedRechecks = await db.verifications.failOrphaned()
   if (orphanedRechecks > 0) {
     log.warn({ orphaned: orphanedRechecks }, 'failed rechecks whose job gave up')
   }
+
+  // Paused on purpose (`SEOTOOLS_PAUSE_AUTOMATION`): nothing is claimed, so no run is lost or advanced.
+  if (options.paused) return
 
   for (const schedule of await db.crawlSchedules.due({ now, limit: DUE_BATCH })) {
     const claimed = await db.crawlSchedules.advance({
