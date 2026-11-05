@@ -1,8 +1,10 @@
 import { getTranslations } from 'next-intl/server'
+import { AlertsForm } from '@/components/alerts/alerts-form'
 import { PasswordForm } from '@/components/users/password-form'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
 import { requireViewer } from '@/lib/session'
+import { visibleCompanies } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +16,27 @@ export async function generateMetadata() {
 export default async function AccountPage() {
   const viewer = await requireViewer()
   const [t, tUsers] = await Promise.all([getTranslations('Account'), getTranslations('Users')])
-  const companies = await (await getDb()).companies.list()
+  const db = await getDb()
+  const companies = await db.companies.list()
+  const [visible, subscriptions] = await Promise.all([
+    visibleCompanies(viewer),
+    db.alerts.forUser(viewer.session.user.id),
+  ])
+  const chosen = new Map(subscriptions.map((s) => [s.domainId, s.kinds]))
+  // Nothing is sent for an archived domain, so there is nothing to choose for it.
+  const alertGroups = visible
+    .map((company) => ({
+      id: company.id,
+      name: company.name,
+      domains: company.domains
+        .filter((domain) => domain.archivedAt === null)
+        .map((domain) => ({
+          id: domain.id,
+          host: domain.host,
+          kinds: chosen.get(domain.id) ?? [],
+        })),
+    }))
+    .filter((group) => group.domains.length > 0)
   const nameOf = (grant: (typeof viewer.grants)[number]) =>
     grant.domainId
       ? companies.flatMap((c) => c.domains).find((d) => d.id === grant.domainId)?.host
@@ -46,6 +68,15 @@ export default async function AccountPage() {
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+      <Card id="alerts" className="scroll-mt-16">
+        <CardHeader>
+          <CardTitle>{t('alerts.title')}</CardTitle>
+          <CardDescription>{t('alerts.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AlertsForm groups={alertGroups} />
         </CardContent>
       </Card>
       <Card>

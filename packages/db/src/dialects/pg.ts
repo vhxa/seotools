@@ -128,6 +128,16 @@ import {
   type AuditRuleRow,
   type PlanContext,
 } from '../audit'
+import {
+  alertColumns,
+  alertJobId,
+  alertJobValues,
+  knownAlertKinds,
+  mailDeliveryRow,
+  toAlertSubscription,
+  toMailDelivery,
+} from '../mapping'
+import type { AlertKind } from '@seotools/core'
 import * as schema from '../schema/pg'
 import { DomainArchivedError } from '../archive'
 import type {
@@ -146,6 +156,9 @@ import type {
 
 const {
   jobs,
+  mailDeliveries,
+  alertSubscriptions,
+  alertNotices,
   workerHeartbeats,
   settings,
   user,
@@ -498,15 +511,19 @@ export function createPgDatabase(options: {
   const removeJobsOf = async (tx: Pick<typeof db, 'select' | 'delete'>, domainIds: string[]) => {
     if (domainIds.length === 0) return
     const ids = [
-      ...(await tx
-        .select({ id: crawls.jobId })
-        .from(crawls)
-        .where(inArray(crawls.domainId, domainIds))),
-      ...(await tx
-        .select({ id: urlVerifications.jobId })
-        .from(urlVerifications)
-        .where(inArray(urlVerifications.domainId, domainIds))),
-    ].map((row) => row.id)
+      ...(
+        await tx
+          .select({ id: crawls.jobId, crawlId: crawls.id })
+          .from(crawls)
+          .where(inArray(crawls.domainId, domainIds))
+      ).flatMap((row) => [row.id, alertJobId(row.crawlId)]),
+      ...(
+        await tx
+          .select({ id: urlVerifications.jobId })
+          .from(urlVerifications)
+          .where(inArray(urlVerifications.domainId, domainIds))
+      ).map((row) => row.id),
+    ]
     for (const batch of chunk(ids)) await tx.delete(jobs).where(inArray(jobs.id, batch))
   }
 
@@ -898,6 +915,124 @@ export function createPgDatabase(options: {
       },
     },
 
+    mail: {
+      async record(input) {
+        await db.insert(mailDeliveries).values(mailDeliveryRow(input))
+      },
+      async recent({ limit, outcome }) {
+        const rows = await db
+          .select()
+          .from(mailDeliveries)
+          .where(
+            outcome === 'sent'
+              ? eq(mailDeliveries.status, 'sent')
+              : outcome === 'problems'
+                ? ne(mailDeliveries.status, 'sent')
+                : undefined,
+          )
+          .orderBy(desc(mailDeliveries.createdAt))
+          .limit(limit)
+        return rows.map(toMailDelivery)
+      },
+      async prune({ before, keep }) {
+        let removed = (
+          await db
+            .delete(mailDeliveries)
+            .where(lt(mailDeliveries.createdAt, before))
+            .returning({ id: mailDeliveries.id })
+        ).length
+        const edge = (
+          await db
+            .select({ createdAt: mailDeliveries.createdAt })
+            .from(mailDeliveries)
+            .orderBy(desc(mailDeliveries.createdAt))
+            .limit(1)
+            .offset(Math.max(1, keep) - 1)
+        )[0]
+        if (edge) {
+          removed += (
+            await db
+              .delete(mailDeliveries)
+              .where(lt(mailDeliveries.createdAt, edge.createdAt))
+              .returning({ id: mailDeliveries.id })
+          ).length
+        }
+        return removed
+      },
+    },
+
+    alerts: {
+      async forUser(userId) {
+        const rows = await db
+          .select()
+          .from(alertSubscriptions)
+          .where(eq(alertSubscriptions.userId, userId))
+          .orderBy(asc(alertSubscriptions.domainId))
+        return rows.map(toAlertSubscription)
+      },
+      async forDomain(domainId) {
+        const rows = await db
+          .select()
+          .from(alertSubscriptions)
+          .where(eq(alertSubscriptions.domainId, domainId))
+          .orderBy(asc(alertSubscriptions.userId))
+        return rows.map(toAlertSubscription)
+      },
+      async save({ userId, locale, domains: entries }) {
+        await db.transaction(async (tx) => {
+          for (const { domainId, kinds } of entries) {
+            const known = knownAlertKinds(kinds)
+            if (known.length === 0) {
+              await tx
+                .delete(alertSubscriptions)
+                .where(
+                  and(
+                    eq(alertSubscriptions.userId, userId),
+                    eq(alertSubscriptions.domainId, domainId),
+                  ),
+                )
+              continue
+            }
+            const columns = alertColumns(known, locale)
+            await tx
+              .insert(alertSubscriptions)
+              .values({ userId, domainId, ...columns })
+              .onConflictDoUpdate({
+                target: [alertSubscriptions.userId, alertSubscriptions.domainId],
+                set: columns,
+              })
+          }
+          await tx
+            .update(alertSubscriptions)
+            .set({ locale })
+            .where(eq(alertSubscriptions.userId, userId))
+        })
+      },
+      async claim({ crawlId, userId, kinds }) {
+        const taken: AlertKind[] = []
+        for (const kind of knownAlertKinds(kinds)) {
+          const inserted = await db
+            .insert(alertNotices)
+            .values({ crawlId, userId, kind })
+            .onConflictDoNothing()
+            .returning({ kind: alertNotices.kind })
+          if (inserted.length > 0) taken.push(kind)
+        }
+        return taken
+      },
+      async release({ crawlId, userId, kinds }) {
+        await db
+          .delete(alertNotices)
+          .where(
+            and(
+              eq(alertNotices.crawlId, crawlId),
+              eq(alertNotices.userId, userId),
+              inArray(alertNotices.kind, knownAlertKinds(kinds)),
+            ),
+          )
+      },
+    },
+
     companies: {
       async list() {
         // Domains first: every domain read has its company, so the second read can't miss one.
@@ -1203,17 +1338,27 @@ export function createPgDatabase(options: {
 
       async finish(id, { status, error }) {
         const counts = await this.countUrls(id)
-        const result = await db
-          .update(crawls)
-          .set({
-            ...counts,
-            status,
-            error: error === undefined ? null : truncateError(error),
-            activeKey: null,
-            finishedAt: new Date(),
-          })
-          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
-        return result.count > 0
+        return db.transaction(async (tx) => {
+          const crawl = (
+            await tx.select({ type: crawls.type }).from(crawls).where(eq(crawls.id, id))
+          )[0]
+          const result = await tx
+            .update(crawls)
+            .set({
+              ...counts,
+              status,
+              error: error === undefined ? null : truncateError(error),
+              activeKey: null,
+              finishedAt: new Date(),
+            })
+            .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
+          if (result.count === 0) return false
+          // The one place a crawl ends: whoever asked to be told hears of a full crawl from here.
+          if (crawl?.type === 'full') {
+            await tx.insert(jobs).values(alertJobValues(id, new Date())).onConflictDoNothing()
+          }
+          return true
+        })
       },
 
       async cancel(id) {

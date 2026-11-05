@@ -109,7 +109,8 @@
     "versionRelease": "v{version}",
     "versionDevelopment": "v{version} · desarrollo",
     "companies": "Empresas",
-    "users": "Usuarios"
+    "users": "Usuarios",
+    "email": "Correo"
   },
   "ProtectedShell": {
     "skipToContent": "Saltar al contenido principal"
@@ -1395,7 +1396,8 @@
     "sections": {
       "crawl": "Rastreo",
       "priority": "Páginas prioritarias",
-      "audit": "Auditoría"
+      "audit": "Auditoría",
+      "alerts": "Alertas"
     }
   },
   "CrawlSettings": {
@@ -2743,6 +2745,33 @@
     "errors": {
       "length": "Usa entre {min, number} y {max, number} caracteres.",
       "wrongPassword": "La contraseña actual no es correcta."
+    },
+    "alerts": {
+      "title": "Alertas",
+      "description": "Elige de qué quieres recibir correo en cada dominio. No se envía nada hasta que lo elijas, y solo de los dominios que puedes ver.",
+      "language": "Los correos se escriben en el idioma que estés usando al guardar.",
+      "empty": "Todavía no puedes ver ningún dominio.",
+      "archived": "Archivado: no se envían alertas.",
+      "kinds": {
+        "crawl-problem": {
+          "label": "Problemas de rastreo",
+          "hint": "Un rastreo falló o se detuvo antes de llegar a todo el sitio."
+        },
+        "important-findings": {
+          "label": "Nuevos hallazgos importantes",
+          "hint": "Hallazgos de importancia alta que han aparecido o vuelto desde el rastreo anterior. No se incluyen los cambios que solo vienen de las reglas de auditoría."
+        },
+        "change-summary": {
+          "label": "Resumen de cambios",
+          "hint": "Un correo por cada rastreo terminado, con lo que ha cambiado."
+        }
+      },
+      "save": "Guardar alertas",
+      "saving": "Guardando…",
+      "saved": "Tus alertas están guardadas.",
+      "errors": {
+        "failed": "No se pudieron guardar las alertas."
+      }
     }
   },
   "PasswordRecovery": {
@@ -2774,5 +2803,98 @@
       "mismatch": "Las dos contraseñas no coinciden.",
       "expired": "Este enlace ya no funciona. Pide uno nuevo."
     }
+  },
+  "Email": {
+    "metaTitle": "Correo · seotools",
+    "title": "Correo",
+    "description": "Cómo envía correo la aplicación: invitaciones, enlaces de contraseña y alertas de rastreo.",
+    "health": {
+      "unconfigured": {
+        "title": "El correo no está configurado",
+        "description": "Algo ha intentado enviar un correo y no hay proveedor. Configúralo abajo: lo que espera se envía cuando funcione.",
+        "open": "Configurarlo"
+      },
+      "failing": {
+        "title": "El último correo no se entregó",
+        "description": "Revisa los ajustes, envía un correo de prueba y mira los problemas recientes.",
+        "open": "Ver qué ha fallado"
+      }
+    },
+    "provider": {
+      "title": "Proveedor",
+      "description": "Desde dónde se envían los correos. Una contraseña o clave de API se guarda cifrada y no se vuelve a mostrar.",
+      "label": "Proveedor",
+      "smtp": "SMTP",
+      "resend": "Resend",
+      "host": "Servidor",
+      "port": "Puerto",
+      "secure": "Usar TLS desde el principio",
+      "secureHint": "Actívalo para el puerto 465. Déjalo desactivado para el 587: la conexión se cifra cuando el servidor lo ofrece.",
+      "user": "Usuario",
+      "userHint": "Déjalo vacío si el servidor no pide ninguno.",
+      "pass": "Contraseña",
+      "apiKey": "Clave de API",
+      "secretSaved": "Hay una guardada. Déjalo vacío para conservarla.",
+      "secretNone": "Aún no hay ninguna guardada.",
+      "from": "Remitente",
+      "fromHint": "La dirección desde la que salen los correos, por ejemplo seo@example.com.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "saved": "Guardado."
+    },
+    "test": {
+      "title": "Enviar un correo de prueba",
+      "description": "Envía un mensaje corto con los ajustes guardados y muestra aquí mismo lo que responde el proveedor.",
+      "to": "Enviar a",
+      "send": "Enviar prueba",
+      "sending": "Enviando…",
+      "sent": "Enviado a {address}. Comprueba que ha llegado.",
+      "failed": "El proveedor no lo aceptó: {error}"
+    },
+    "recent": {
+      "problemsTitle": "Problemas recientes",
+      "problemsDescription": "Intentos que no se enviaron. Los antiguos se eliminan.",
+      "problemsEmpty": "No ha fallado nada.",
+      "sentTitle": "Correos recientes",
+      "sentDescription": "A quién fue un correo y de qué tipo. Nunca se guarda el texto.",
+      "sentEmpty": "Aún no se ha enviado nada.",
+      "columns": {
+        "when": "Cuándo",
+        "kind": "Tipo",
+        "recipient": "Para",
+        "status": "Resultado",
+        "error": "Lo que dijo el proveedor"
+      }
+    },
+    "kinds": {
+      "invite": "Invitación",
+      "reset": "Restablecer contraseña",
+      "alert": "Alerta de rastreo",
+      "test": "Prueba",
+      "other": "Otro"
+    },
+    "status": {
+      "sent": "Enviado",
+      "failed": "Fallido",
+      "unconfigured": "Sin configurar"
+    },
+    "errors": {
+      "provider": "Elige un proveedor.",
+      "host": "Escribe la dirección del servidor, sin esquema ni ruta.",
+      "port": "El puerto es un número entre 1 y 65535.",
+      "from": "Escribe la dirección desde la que salen los correos.",
+      "apiKey": "Escribe la clave de API.",
+      "address": "Escribe una dirección de correo válida.",
+      "notConfigured": "Guarda primero los ajustes."
+    }
+  },
+  "AlertsSettings": {
+    "metaTitle": "Alertas · {host}",
+    "title": "Alertas",
+    "description": "Las alertas son personales: cada persona elige en su cuenta de qué se le avisa por correo sobre {host}.",
+    "current": "Recibes correo sobre: {kinds}.",
+    "none": "No recibes correo sobre este dominio.",
+    "archived": "Este dominio está archivado: no se envían alertas.",
+    "manage": "Elegir mis alertas"
   }
 }

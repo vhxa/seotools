@@ -50,6 +50,9 @@ describe('smtp mailer (nodemailer)', () => {
       port: 587,
       secure: false,
       auth: { user: 'me', pass: 'pw' },
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 30_000,
     })
     const res = await mailer.send({ to: 'a@b.co', subject: 'Hi', text: 'hello' })
     expect(sendMail).toHaveBeenCalledWith({

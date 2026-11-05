@@ -27,6 +27,7 @@ import type {
 } from '../types'
 import { addDomain, createCompany } from '../workspace'
 import { describeLifecycle } from './lifecycle'
+import { describeMailAndAlerts } from './mail-alerts'
 import { describeUsers } from './users'
 
 const minutes = (n: number) => n * 60_000
@@ -283,6 +284,7 @@ export function describeDatabaseContract(
       (table) => countRows(table),
     )
     describeUsers(() => db)
+    describeMailAndAlerts(() => db)
 
     describe('companies and domains', () => {
       it('creates a company with its first domain, normalized', async () => {

@@ -165,6 +165,12 @@ export function describeLifecycle(
         { pageHash: crawlUrlHash(url), lang: 'es', url: `${url}es` },
       ])
       await db.crawls.finish(crawl.id, { status: 'completed' })
+      await db.alerts.save({
+        userId: member.id,
+        locale: 'en',
+        domains: [{ domainId, kinds: ['crawl-problem'] }],
+      })
+      await db.alerts.claim({ crawlId: crawl.id, userId: member.id, kinds: ['crawl-problem'] })
       await db.crawls.saveAnalysis({
         crawlId: crawl.id,
         issues: [{ urlHash: crawlUrlHash(url), issue: 'missing-title' }],
@@ -527,6 +533,15 @@ export function describeLifecycle(
         expect(await db.jobs.get(crawl!.jobId)).toBeNull()
         expect(await db.jobs.get(recheck!.jobId)).toBeNull()
         expect(await db.jobs.get(keptCrawl!.jobId)).not.toBeNull()
+        // So are the jobs that tell people about the crawls that ended.
+        const alertsFor = async (crawlId: string) =>
+          (await db.jobs.list({ limit: 100 })).filter(
+            (job) =>
+              job.type === 'crawl.alerts' &&
+              (job.payload as { crawlId: string }).crawlId === crawlId,
+          )
+        expect(await alertsFor(doomed.crawlId)).toEqual([])
+        expect(await alertsFor(kept.crawlId)).toHaveLength(1)
         // What a worker asks next finds nothing, rather than failing.
         expect(await db.crawls.markRunning(crawl!.id)).toBeNull()
         expect(await db.verifications.markRunning(recheck!.id)).toBeNull()

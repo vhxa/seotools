@@ -1,4 +1,5 @@
 export * from './access'
+export * from './alerts'
 export * from './crawl'
 export * from './crypto'
 export * from './domain'

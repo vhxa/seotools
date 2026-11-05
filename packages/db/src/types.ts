@@ -1,6 +1,10 @@
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
   AccessGrant,
+  AlertKind,
+  AlertLocale,
+  MailKind,
+  MailStatus,
   UserRole,
   AuditCondition,
   AuditRule,
@@ -160,6 +164,73 @@ export interface UserRepository {
    */
   redeemToken(input: { tokenHash: string; passwordHash: string; now: Date }): Promise<boolean>
   markResetRequested(id: string, at: Date): Promise<void>
+}
+
+/** One attempt to send an email. No subject, body or link is ever kept. */
+export interface MailDelivery {
+  id: string
+  kind: MailKind
+  recipient: string
+  status: MailStatus
+  /** What the provider answered, bounded. `null` when it was sent. */
+  error: string | null
+  createdAt: Date
+}
+
+export interface MailRepository {
+  /** Records an attempt. `error` is cut to `MAX_DELIVERY_ERROR_LENGTH`. */
+  record(input: {
+    kind: MailKind
+    recipient: string
+    status: MailStatus
+    error?: string | null
+  }): Promise<void>
+  /** Newest first. `problems`: only the attempts that did not send. */
+  recent(options: { limit: number; outcome?: 'sent' | 'problems' }): Promise<MailDelivery[]>
+  /**
+   * Removes attempts older than `before`, and all but the newest `keep` of the rest. Returns how
+   * many went.
+   */
+  prune(input: { before: Date; keep: number }): Promise<number>
+}
+
+/** What a person asked to be told about a domain. */
+export interface AlertSubscription {
+  userId: string
+  domainId: string
+  /** At least one: a person who wants none has no subscription. */
+  kinds: AlertKind[]
+  /** The language of the emails, as the person had it when they saved. */
+  locale: AlertLocale
+  updatedAt: Date
+}
+
+export interface AlertRepository {
+  /** Everything a person asked for. */
+  forUser(userId: string): Promise<AlertSubscription[]>
+  /** Everyone who asked for something about a domain: not yet checked for access or an active account. */
+  forDomain(domainId: string): Promise<AlertSubscription[]>
+  /**
+   * Replaces what a person asked for in these domains, all or nothing. A domain with no kinds loses
+   * its subscription. Domains not listed are left as they are.
+   */
+  save(input: {
+    userId: string
+    locale: AlertLocale
+    domains: { domainId: string; kinds: readonly AlertKind[] }[]
+  }): Promise<void>
+  /**
+   * Takes the right to send these kinds of a crawl to a person. Returns the ones this call took:
+   * a kind already taken, by anyone, is not returned, so that two attempts never send the same
+   * notice. Taking is atomic per kind.
+   */
+  claim(input: {
+    crawlId: string
+    userId: string
+    kinds: readonly AlertKind[]
+  }): Promise<AlertKind[]>
+  /** Gives back what `claim` took when sending failed, so that a retry can send it. */
+  release(input: { crawlId: string; userId: string; kinds: readonly AlertKind[] }): Promise<void>
 }
 
 export interface Company {
@@ -1095,6 +1166,8 @@ export interface Database {
   readonly settings: SettingsStore
   readonly admin: AdminRepository
   readonly users: UserRepository
+  readonly mail: MailRepository
+  readonly alerts: AlertRepository
   readonly companies: CompanyRepository
   readonly domains: DomainRepository
   readonly crawls: CrawlRepository

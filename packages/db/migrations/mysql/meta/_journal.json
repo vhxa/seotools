@@ -127,6 +127,13 @@
       "when": 1793871732887,
       "tag": "0017_existing_users_are_admins",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1793872859105,
+      "tag": "0018_email_and_alerts",
+      "breakpoints": true
     }
   ]
 }

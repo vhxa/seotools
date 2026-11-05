@@ -131,6 +131,16 @@ import {
   type AuditRuleRow,
   type PlanContext,
 } from '../audit'
+import {
+  alertColumns,
+  alertJobId,
+  alertJobValues,
+  knownAlertKinds,
+  mailDeliveryRow,
+  toAlertSubscription,
+  toMailDelivery,
+} from '../mapping'
+import type { AlertKind } from '@seotools/core'
 import * as schema from '../schema/sqlite'
 import { DomainArchivedError } from '../archive'
 import type {
@@ -150,6 +160,9 @@ import type {
 
 const {
   jobs,
+  mailDeliveries,
+  alertSubscriptions,
+  alertNotices,
   workerHeartbeats,
   settings,
   user,
@@ -505,16 +518,18 @@ export function createSqliteDatabase(options: {
     if (domainIds.length === 0) return
     const ids = [
       ...tx
-        .select({ id: crawls.jobId })
+        .select({ id: crawls.jobId, crawlId: crawls.id })
         .from(crawls)
         .where(inArray(crawls.domainId, domainIds))
-        .all(),
+        .all()
+        .flatMap((row) => [row.id, alertJobId(row.crawlId)]),
       ...tx
         .select({ id: urlVerifications.jobId })
         .from(urlVerifications)
         .where(inArray(urlVerifications.domainId, domainIds))
-        .all(),
-    ].map((row) => row.id)
+        .all()
+        .map((row) => row.id),
+    ]
     for (const batch of chunk(ids)) tx.delete(jobs).where(inArray(jobs.id, batch)).run()
   }
 
@@ -930,6 +945,122 @@ export function createSqliteDatabase(options: {
       },
     },
 
+    mail: {
+      async record(input) {
+        db.insert(mailDeliveries).values(mailDeliveryRow(input)).run()
+      },
+      async recent({ limit, outcome }) {
+        return db
+          .select()
+          .from(mailDeliveries)
+          .where(
+            outcome === 'sent'
+              ? eq(mailDeliveries.status, 'sent')
+              : outcome === 'problems'
+                ? ne(mailDeliveries.status, 'sent')
+                : undefined,
+          )
+          .orderBy(desc(mailDeliveries.createdAt))
+          .limit(limit)
+          .all()
+          .map(toMailDelivery)
+      },
+      async prune({ before, keep }) {
+        let removed = db
+          .delete(mailDeliveries)
+          .where(lt(mailDeliveries.createdAt, before))
+          .run().changes
+        const edge = db
+          .select({ createdAt: mailDeliveries.createdAt })
+          .from(mailDeliveries)
+          .orderBy(desc(mailDeliveries.createdAt))
+          .limit(1)
+          .offset(Math.max(1, keep) - 1)
+          .get()
+        if (edge) {
+          removed += db
+            .delete(mailDeliveries)
+            .where(lt(mailDeliveries.createdAt, edge.createdAt))
+            .run().changes
+        }
+        return removed
+      },
+    },
+
+    alerts: {
+      async forUser(userId) {
+        return db
+          .select()
+          .from(alertSubscriptions)
+          .where(eq(alertSubscriptions.userId, userId))
+          .orderBy(asc(alertSubscriptions.domainId))
+          .all()
+          .map(toAlertSubscription)
+      },
+      async forDomain(domainId) {
+        return db
+          .select()
+          .from(alertSubscriptions)
+          .where(eq(alertSubscriptions.domainId, domainId))
+          .orderBy(asc(alertSubscriptions.userId))
+          .all()
+          .map(toAlertSubscription)
+      },
+      async save({ userId, locale, domains: entries }) {
+        db.transaction((tx) => {
+          for (const { domainId, kinds } of entries) {
+            const known = knownAlertKinds(kinds)
+            if (known.length === 0) {
+              tx.delete(alertSubscriptions)
+                .where(
+                  and(
+                    eq(alertSubscriptions.userId, userId),
+                    eq(alertSubscriptions.domainId, domainId),
+                  ),
+                )
+                .run()
+              continue
+            }
+            const columns = alertColumns(known, locale)
+            tx.insert(alertSubscriptions)
+              .values({ userId, domainId, ...columns })
+              .onConflictDoUpdate({
+                target: [alertSubscriptions.userId, alertSubscriptions.domainId],
+                set: columns,
+              })
+              .run()
+          }
+          tx.update(alertSubscriptions)
+            .set({ locale })
+            .where(eq(alertSubscriptions.userId, userId))
+            .run()
+        })
+      },
+      async claim({ crawlId, userId, kinds }) {
+        const taken: AlertKind[] = []
+        for (const kind of knownAlertKinds(kinds)) {
+          const result = db
+            .insert(alertNotices)
+            .values({ crawlId, userId, kind })
+            .onConflictDoNothing()
+            .run()
+          if (result.changes > 0) taken.push(kind)
+        }
+        return taken
+      },
+      async release({ crawlId, userId, kinds }) {
+        db.delete(alertNotices)
+          .where(
+            and(
+              eq(alertNotices.crawlId, crawlId),
+              eq(alertNotices.userId, userId),
+              inArray(alertNotices.kind, knownAlertKinds(kinds)),
+            ),
+          )
+          .run()
+      },
+    },
+
     companies: {
       async list() {
         // Domains first: every domain read has its company, so the second read can't miss one.
@@ -1226,18 +1357,26 @@ export function createSqliteDatabase(options: {
 
       async finish(id, { status, error }) {
         const counts = await this.countUrls(id)
-        const result = db
-          .update(crawls)
-          .set({
-            ...counts,
-            status,
-            error: error === undefined ? null : truncateError(error),
-            activeKey: null,
-            finishedAt: new Date(),
-          })
-          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
-          .run()
-        return result.changes > 0
+        return db.transaction((tx) => {
+          const crawl = tx.select({ type: crawls.type }).from(crawls).where(eq(crawls.id, id)).get()
+          const result = tx
+            .update(crawls)
+            .set({
+              ...counts,
+              status,
+              error: error === undefined ? null : truncateError(error),
+              activeKey: null,
+              finishedAt: new Date(),
+            })
+            .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
+            .run()
+          if (result.changes === 0) return false
+          // The one place a crawl ends: whoever asked to be told hears of a full crawl from here.
+          if (crawl?.type === 'full') {
+            tx.insert(jobs).values(alertJobValues(id, new Date())).onConflictDoNothing().run()
+          }
+          return true
+        })
       },
 
       async cancel(id) {

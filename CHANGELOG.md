@@ -31,7 +31,7 @@ which moves the entries of `[Unreleased]` into the new version.
 - Accounts that already exist become administrators, which is what they could do until now. New
   accounts have nothing until they are given it.
 - With `SEOTOOLS_MODE=worker`, set `BETTER_AUTH_URL` in the worker too, or the emails with password
-  links fail: they need the address of the app. A single container already has it.
+  links and the crawl alerts fail: they need the address of the app. A single container already has it.
 - Keep the pre-update database backup and both secret keys. To go back after any schema or
   stored-data conversion, stop the app and restore that backup with the previous image.
   Older images predating this guard still allow unsafe downgrades; their starting successfully
@@ -41,7 +41,8 @@ which moves the entries of `[Unreleased]` into the new version.
   set only `DATABASE_URL` for Compose, the installation used SQLite. Back up that SQLite volume
   before changing configuration: pointing at another database does not transfer your data.
 - This version adds migrations (`crawl_url_accepted_issues`, `domains.archived_at`, empty for every
-  existing domain, and users' roles and access). Migrations only move forward: going back to an earlier version needs the
+  existing domain, users' roles and access, and the record of sent email and the alerts people
+  choose, empty at first: nobody receives an alert until they turn it on). Migrations only move forward: going back to an earlier version needs the
   backup taken before updating.
 
 ### Fixed
@@ -52,6 +53,19 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **Email, alerts and delivery problems.** System → Email sets how the instance sends email (SMTP or
+  Resend; a saved password or key is never shown again and is kept when left blank), sends a test
+  email and shows the provider's answer right there. Every attempt to send an email (invitations,
+  password links, alerts, tests) is recorded, without its text or links, and kept for a while; a
+  warning in System shows while the latest one failed or something wanted to send and nothing is
+  configured. Each person chooses, in their account (also linked from a domain's Settings → Alerts),
+  which alerts they want per domain: a **crawl problem** (a full crawl failed or stopped at its URL
+  limit), **new important findings** (findings of high importance that are new or back since the
+  previous completed crawl, grouped by issue with a few URLs) and a **change summary** for each
+  finished crawl. Nobody receives anything until they choose it. At most one email per person and
+  crawl, with every kind they chose in it, however often a job is retried; access, an active account
+  and the choice are checked again when sending. Changing audit rules or the checks never sends an
+  alert, and a change that only a rule explains is not presented as a regression.
 - **Users and permissions.** Administrators invite users from System → Users, without opening
   registration. A member only reaches what they are given: **editor** (runs crawls, changes rules and
   settings) or **viewer** (reads and exports), on a company, which covers all its domains, or on a

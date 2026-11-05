@@ -33,6 +33,9 @@ describeDatabaseContract(
       reset: async () => {
         for (const table of [
           'jobs',
+          'alert_notices',
+          'alert_subscriptions',
+          'mail_deliveries',
           'worker_heartbeats',
           'settings',
           'user_tokens',

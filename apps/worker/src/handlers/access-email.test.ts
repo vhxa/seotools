@@ -59,11 +59,34 @@ describe('the email with a link to set a password', () => {
     ).toBe(true)
   })
 
+  it('records every attempt, with who it went to and what the provider said, and never the link', async () => {
+    await handler()(job({ userId, kind: 'invite', locale: 'en' }), context())
+    const failing: Mailer = {
+      send: vi.fn(async () => {
+        throw new Error('535 login failed for https://seo.example.com/set-password?token=abc123')
+      }),
+    } as unknown as Mailer
+    await expect(
+      handler()(job({ userId, kind: 'reset', locale: 'en' }), context(failing)),
+    ).rejects.toThrow('login failed')
+
+    const deliveries = await db.mail.recent({ limit: 10 })
+    expect(deliveries.map((d) => [d.kind, d.recipient, d.status])).toEqual([
+      ['reset', 'ana@example.com', 'failed'],
+      ['invite', 'ana@example.com', 'sent'],
+    ])
+    expect(deliveries[0]!.error).toContain('login failed')
+    expect(JSON.stringify(deliveries)).not.toMatch(/abc123|set-password|token=/)
+  })
+
   it('is retried while no email provider is set, and spends no link', async () => {
     await expect(
       handler()(job({ userId, kind: 'reset', locale: 'en' }), context(null)),
     ).rejects.toThrow('No email provider')
     expect(sent).toEqual([])
+    expect(await db.mail.recent({ limit: 5 })).toMatchObject([
+      { kind: 'reset', status: 'unconfigured', recipient: 'ana@example.com' },
+    ])
   })
 
   it('is not sent to an account disabled since, or gone', async () => {

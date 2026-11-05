@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./access": "./src/access.ts",
+    "./alerts": "./src/alerts.ts",
     "./crawl/acceptance": "./src/crawl/acceptance.ts",
     "./crawl/audit": "./src/crawl/audit.ts",
     "./crawl/evidence": "./src/crawl/evidence.ts",

@@ -17,16 +17,24 @@ import {
 } from 'drizzle-orm'
 import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/acceptance'
 import {
+  ALERT_KINDS,
   JOB_TYPES,
+  MAX_DELIVERY_ERROR_LENGTH,
   MAX_VERIFICATION_URLS,
+  alertLocaleOf,
   crawlUrlHash,
   enabledExtraFiles,
   parseAuditSnapshot,
   parseIssueEvidence,
   readUrlAuditState,
   serializeAuditSnapshot,
+  sortedAlertKinds,
   statusRange,
   type AccessGrant,
+  type AlertKind,
+  type AlertLocale,
+  type MailKind,
+  type MailStatus,
   type AuditCondition,
   type AuditSnapshot,
   type ConditionObservation,
@@ -48,6 +56,8 @@ import {
   type VerificationOutcome,
 } from '@seotools/core'
 import type {
+  AlertSubscription,
+  MailDelivery,
   Company,
   CompanyWithDomains,
   UserRecord,
@@ -363,6 +373,98 @@ export function crawlJobValues(crawlId: string, jobId: string, now: Date) {
     updatedAt: now,
   }
 }
+
+/**
+ * The job that tells people about a full crawl that ended. Its id comes from the crawl, so a crawl has
+ * one at most, and whatever removes the jobs of a crawl can find it without storing it.
+ */
+export function alertJobId(crawlId: string): string {
+  const hex = createHash('sha256').update(`crawl.alerts:${crawlId}`, 'utf8').digest('hex')
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-')
+}
+
+export function alertJobValues(crawlId: string, now: Date) {
+  return {
+    id: alertJobId(crawlId),
+    type: JOB_TYPES.crawlAlerts,
+    payload: JSON.stringify({ crawlId }),
+    runAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+// --- email and alerts ----------------------------------------------------
+export const toMailDelivery = (row: {
+  id: string
+  kind: string
+  recipient: string
+  status: string
+  error: string | null
+  createdAt: Date
+}): MailDelivery => ({ ...row, kind: row.kind as MailKind, status: row.status as MailStatus })
+
+/** Attempts recorded in the same millisecond still have an order: the newest is the latest. */
+let lastDeliveryAt = 0
+const nextDeliveryAt = () => {
+  lastDeliveryAt = Math.max(Date.now(), lastDeliveryAt + 1)
+  return new Date(lastDeliveryAt)
+}
+
+export const mailDeliveryRow = (input: {
+  kind: MailKind
+  recipient: string
+  status: MailStatus
+  error?: string | null
+}) => ({
+  id: randomUUID(),
+  kind: input.kind,
+  recipient: cleanText(input.recipient, 254),
+  status: input.status,
+  error: input.error ? cleanText(input.error, MAX_DELIVERY_ERROR_LENGTH) : null,
+  createdAt: nextDeliveryAt(),
+})
+
+interface AlertRow {
+  userId: string
+  domainId: string
+  crawlProblem: boolean
+  importantFindings: boolean
+  changeSummary: boolean
+  locale: string
+  updatedAt: Date
+}
+
+export const toAlertSubscription = (row: AlertRow): AlertSubscription => ({
+  userId: row.userId,
+  domainId: row.domainId,
+  kinds: sortedAlertKinds([
+    ...(row.crawlProblem ? (['crawl-problem'] as const) : []),
+    ...(row.importantFindings ? (['important-findings'] as const) : []),
+    ...(row.changeSummary ? (['change-summary'] as const) : []),
+  ]),
+  locale: alertLocaleOf(row.locale),
+  updatedAt: row.updatedAt,
+})
+
+/** The columns of a subscription for the kinds asked for. */
+export const alertColumns = (kinds: readonly AlertKind[], locale: AlertLocale) => ({
+  crawlProblem: kinds.includes('crawl-problem'),
+  importantFindings: kinds.includes('important-findings'),
+  changeSummary: kinds.includes('change-summary'),
+  locale,
+  updatedAt: new Date(),
+})
+
+/** Only kinds that exist, once each. */
+export const knownAlertKinds = (kinds: readonly AlertKind[]) =>
+  ALERT_KINDS.filter((kind) => kinds.includes(kind))
 
 const MAX_TEXT_LENGTH = 2048
 const MAX_CONTENT_TYPE_LENGTH = 255

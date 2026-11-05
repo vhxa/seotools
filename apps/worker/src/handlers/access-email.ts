@@ -1,5 +1,6 @@
 import { accessEmail, accessEmailPayload, setPasswordLink } from '@seotools/core'
 import { USER_TOKEN_TTL_MS, issueUserToken, type Database } from '@seotools/db'
+import { deliver } from '../mail/deliver'
 import { PermanentJobError, type JobHandler } from '../types'
 
 /**
@@ -14,7 +15,8 @@ export function createAccessEmailHandler(deps: {
     const parsed = accessEmailPayload.safeParse(job.payload)
     if (!parsed.success) throw new PermanentJobError(`Invalid payload: ${parsed.error.message}`)
     const { userId, kind, locale } = parsed.data
-    if (!deps.publicUrl) {
+    const { publicUrl } = deps
+    if (!publicUrl) {
       throw new PermanentJobError('BETTER_AUTH_URL is not set in the worker: no link can be made')
     }
     const user = await deps.db.users.get(userId)
@@ -22,14 +24,17 @@ export function createAccessEmailHandler(deps: {
     if (!user || user.disabledAt) return { skipped: true }
 
     // Not configured is retryable: the admin may set it up while the job is waiting.
-    const mailer = await ctx.getMailer()
-    if (!mailer) throw new Error('No email provider configured')
-
-    const token = await issueUserToken(deps.db, { userId, kind })
-    const link = setPasswordLink(deps.publicUrl, token)
-    const { id } = await mailer.send({
+    const { id } = await deliver({
+      db: deps.db,
+      log: ctx.log,
+      mailer: await ctx.getMailer(),
+      kind,
       to: user.email,
-      ...accessEmail({ kind, locale, link, ttlMs: USER_TOKEN_TTL_MS[kind] }),
+      content: async () => {
+        const token = await issueUserToken(deps.db, { userId, kind })
+        const link = setPasswordLink(publicUrl, token)
+        return accessEmail({ kind, locale, link, ttlMs: USER_TOKEN_TTL_MS[kind] })
+      },
     })
     return { messageId: id ?? null }
   }

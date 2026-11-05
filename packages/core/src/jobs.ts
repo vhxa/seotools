@@ -37,6 +37,8 @@ export const JOB_TYPES = {
   urlVerify: 'url.verify',
   /** Sends someone a link to set their password. The link is made when sending, never stored. */
   accessEmail: 'access.email',
+  /** Tells the people who asked for it that a full crawl ended, if there is something to act on. */
+  crawlAlerts: 'crawl.alerts',
 } as const
 
 export const exampleEchoPayload = z.object({
@@ -77,3 +79,6 @@ export const accessEmailPayload = z.object({
   locale: z.enum(['en', 'es']),
 })
 export type AccessEmailPayload = z.infer<typeof accessEmailPayload>
+
+export const crawlAlertsPayload = z.object({ crawlId: z.string().min(1) })
+export type CrawlAlertsPayload = z.infer<typeof crawlAlertsPayload>

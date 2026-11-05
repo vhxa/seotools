@@ -40,7 +40,7 @@ const PUBLIC_ACTIONS = new Set(['createAdmin', 'requestPasswordEmailAction', 'se
 /** Inside a domain and only reading, so anyone who can see the domain may call them. */
 const READ_ONLY_DOMAIN_ACTIONS = new Set(['loadLinksAction'])
 /** About the person's own account. */
-const OWN_ACCOUNT_ACTIONS = new Set(['changePasswordAction'])
+const OWN_ACCOUNT_ACTIONS = new Set(['changePasswordAction', 'saveAlertsAction'])
 
 describe('server actions', () => {
   const inDomain = (path: string) => path.includes(join('domains', '[host]'))
@@ -53,7 +53,8 @@ describe('server actions', () => {
     for (const { name: action, body } of exportedFunctions(readFileSync(path, 'utf8'))) {
       if (PUBLIC_ACTIONS.has(action)) continue
       if (OWN_ACCOUNT_ACTIONS.has(action)) {
-        expect(body, action).toContain('requireSession()')
+        // Whoever asks is who it is about; `requireViewer` is `requireSession` with the access.
+        expect(body, action).toMatch(/requireSession\(\)|requireViewer\(\)/)
       } else if (READ_ONLY_DOMAIN_ACTIONS.has(action)) {
         expect(body, action).toContain('requireDomain(host)')
       } else if (inDomain(path)) {

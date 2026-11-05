@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRunner } from './runner'
 import { JobDeferredError, JobInterruptedError, PermanentJobError, type JobHandler } from './types'
 import { exampleEcho } from './handlers/example-echo'
-import { mailSend } from './handlers/mail-send'
+import { createMailSendHandler } from './handlers/mail-send'
 
 const log = createLogger('test', 'silent')
 
@@ -276,7 +276,7 @@ describe('handlers', () => {
 
   it('mail.send sends through the configured mailer', async () => {
     const send = vi.fn(async () => ({ id: 'msg-1' }))
-    const result = await mailSend(
+    const result = await createMailSendHandler({ db })(
       jobOf('mail.send', { to: 'a@b.co', subject: 'Hi', text: 'hello' }),
       ctx({ getMailer: async () => ({ send, verify: async () => {} }) }),
     )
@@ -285,7 +285,7 @@ describe('handlers', () => {
   })
 
   it('mail.send fails (retryably) when no provider is configured', async () => {
-    const promise = mailSend(
+    const promise = createMailSendHandler({ db })(
       jobOf('mail.send', { to: 'a@b.co', subject: 'Hi', text: 'hello' }),
       ctx(),
     )

@@ -744,3 +744,66 @@ export const userTokens = mysqlTable(
   },
   (t) => [index('user_tokens_user_idx').on(t.userId)],
 )
+
+/**
+ * Every attempt to send an email, so that a failure can be seen (System → Email). Only that
+ * something was sent to someone and what the provider answered: never the subject, the body or a
+ * link. Kept for a while and capped (`MAIL_DELIVERIES_KEEP`).
+ */
+export const mailDeliveries = mysqlTable(
+  'mail_deliveries',
+  {
+    id: id('id').primaryKey(),
+    kind: varchar('kind', { length: 16 }).notNull(),
+    recipient: varchar('recipient', { length: 255 }).notNull(),
+    status: varchar('status', { length: 16 }).notNull(),
+    error: text('error'),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [index('mail_deliveries_created_idx').on(t.createdAt)],
+)
+
+/**
+ * The alerts a person asked for about a domain. No row, no alerts: nothing is sent to anyone who did
+ * not choose it. Access is checked again when sending, never trusted from here.
+ */
+export const alertSubscriptions = mysqlTable(
+  'alert_subscriptions',
+  {
+    userId: varchar('user_id', { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    domainId: id('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    crawlProblem: boolean('crawl_problem').notNull().default(false),
+    importantFindings: boolean('important_findings').notNull().default(false),
+    changeSummary: boolean('change_summary').notNull().default(false),
+    /** The language of the emails: the one the person used when they saved. */
+    locale: varchar('locale', { length: 8 }).notNull().default('en'),
+    updatedAt: ts('updated_at').notNull().$defaultFn(now),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.domainId] }),
+    index('alert_subscriptions_domain_idx').on(t.domainId),
+  ],
+)
+
+/**
+ * An alert of one kind about one crawl that was handed to a person (`crawl.alerts`). The primary key
+ * is what makes it at most one per person, per crawl and per kind, however often a job runs again.
+ */
+export const alertNotices = mysqlTable(
+  'alert_notices',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    userId: varchar('user_id', { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 16 }).notNull(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [primaryKey({ columns: [t.crawlId, t.userId, t.kind] })],
+)

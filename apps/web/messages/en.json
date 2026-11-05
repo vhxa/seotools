@@ -109,7 +109,8 @@
     "versionRelease": "v{version}",
     "versionDevelopment": "v{version} · development",
     "companies": "Companies",
-    "users": "Users"
+    "users": "Users",
+    "email": "Email"
   },
   "ProtectedShell": {
     "skipToContent": "Skip to main content"
@@ -1395,7 +1396,8 @@
     "sections": {
       "crawl": "Crawling",
       "priority": "Priority pages",
-      "audit": "Audit"
+      "audit": "Audit",
+      "alerts": "Alerts"
     }
   },
   "CrawlSettings": {
@@ -2743,6 +2745,33 @@
     "errors": {
       "length": "Use between {min, number} and {max, number} characters.",
       "wrongPassword": "The current password is not correct."
+    },
+    "alerts": {
+      "title": "Alerts",
+      "description": "Choose what you want to be emailed about each domain. Nothing is sent until you choose it, and only for domains you can see.",
+      "language": "Emails are written in the language you are using when you save.",
+      "empty": "You cannot see any domain yet.",
+      "archived": "Archived: no alerts are sent.",
+      "kinds": {
+        "crawl-problem": {
+          "label": "Crawl problems",
+          "hint": "A crawl failed or stopped before it reached the whole site."
+        },
+        "important-findings": {
+          "label": "New important findings",
+          "hint": "Findings of high importance that appeared or came back since the previous crawl. Changes that only come from audit rules are left out."
+        },
+        "change-summary": {
+          "label": "Change summary",
+          "hint": "One email for each finished crawl, with what changed."
+        }
+      },
+      "save": "Save alerts",
+      "saving": "Saving…",
+      "saved": "Your alerts are saved.",
+      "errors": {
+        "failed": "The alerts could not be saved."
+      }
     }
   },
   "PasswordRecovery": {
@@ -2774,5 +2803,98 @@
       "mismatch": "The two passwords are not the same.",
       "expired": "This link no longer works. Ask for a new one."
     }
+  },
+  "Email": {
+    "metaTitle": "Email · seotools",
+    "title": "Email",
+    "description": "How the app sends email: invitations, password links and crawl alerts.",
+    "health": {
+      "unconfigured": {
+        "title": "Email is not set up",
+        "description": "Something tried to send an email and there is no provider. Set one up below: what is waiting is sent when it works.",
+        "open": "Set it up"
+      },
+      "failing": {
+        "title": "The last email was not delivered",
+        "description": "Check the settings, send a test email and read the recent problems.",
+        "open": "See what failed"
+      }
+    },
+    "provider": {
+      "title": "Provider",
+      "description": "Where emails are sent from. A password or API key is stored encrypted and is never shown again.",
+      "label": "Provider",
+      "smtp": "SMTP",
+      "resend": "Resend",
+      "host": "Server",
+      "port": "Port",
+      "secure": "Use TLS from the start",
+      "secureHint": "Turn it on for port 465. Leave it off for 587: the connection is upgraded when the server offers it.",
+      "user": "Username",
+      "userHint": "Leave it empty for a server that asks for none.",
+      "pass": "Password",
+      "apiKey": "API key",
+      "secretSaved": "One is saved. Leave this empty to keep it.",
+      "secretNone": "None saved yet.",
+      "from": "Sender",
+      "fromHint": "The address emails come from, for example seo@example.com.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved."
+    },
+    "test": {
+      "title": "Send a test email",
+      "description": "Sends a short message with the saved settings and shows right here what the provider answers.",
+      "to": "Send to",
+      "send": "Send test",
+      "sending": "Sending…",
+      "sent": "Sent to {address}. Check that it arrived.",
+      "failed": "The provider did not accept it: {error}"
+    },
+    "recent": {
+      "problemsTitle": "Recent problems",
+      "problemsDescription": "Attempts that were not sent. Old ones are removed.",
+      "problemsEmpty": "Nothing has failed.",
+      "sentTitle": "Recent emails",
+      "sentDescription": "Who an email went to and what kind it was. The text is never kept.",
+      "sentEmpty": "Nothing has been sent yet.",
+      "columns": {
+        "when": "When",
+        "kind": "Kind",
+        "recipient": "To",
+        "status": "Result",
+        "error": "What the provider said"
+      }
+    },
+    "kinds": {
+      "invite": "Invitation",
+      "reset": "Password reset",
+      "alert": "Crawl alert",
+      "test": "Test",
+      "other": "Other"
+    },
+    "status": {
+      "sent": "Sent",
+      "failed": "Failed",
+      "unconfigured": "Not set up"
+    },
+    "errors": {
+      "provider": "Choose a provider.",
+      "host": "Enter the address of the server, without a scheme or a path.",
+      "port": "The port is a number between 1 and 65535.",
+      "from": "Enter the address emails come from.",
+      "apiKey": "Enter the API key.",
+      "address": "Enter a valid email address.",
+      "notConfigured": "Save the settings first."
+    }
+  },
+  "AlertsSettings": {
+    "metaTitle": "Alerts · {host}",
+    "title": "Alerts",
+    "description": "Alerts are personal: each person chooses what they are emailed about {host} in their account.",
+    "current": "You are emailed about: {kinds}.",
+    "none": "You are not emailed about this domain.",
+    "archived": "This domain is archived: no alerts are sent.",
+    "manage": "Choose your alerts"
   }
 }

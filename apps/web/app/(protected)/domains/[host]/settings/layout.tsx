@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { getTranslations } from 'next-intl/server'
 import { SettingsNav } from '@/components/settings-nav'
-import { cn } from '@/lib/utils'
 import { requireDomain } from '@/lib/workspace'
 
 /** A layout does not protect what it wraps: each section still calls `requireDomain` itself. */
@@ -13,8 +12,7 @@ export default async function DomainSettingsLayout({
   children: ReactNode
 }) {
   const { host } = await params
-  const { domain, canEdit } = await requireDomain(host)
-  const readOnly = domain.archivedAt !== null || !canEdit
+  const { domain } = await requireDomain(host)
   const t = await getTranslations('DomainSettings')
   return (
     <main className="grid gap-6">
@@ -23,10 +21,8 @@ export default async function DomainSettingsLayout({
       </div>
       <div className="grid items-start gap-6 md:grid-cols-[12rem_minmax(0,1fr)]">
         <SettingsNav host={domain.host} />
-        {/* Inert for who cannot change them, or while archived: the actions refuse either way. */}
-        <div className={cn('grid min-w-0 gap-6', readOnly && 'opacity-60')} inert={readOnly}>
-          {children}
-        </div>
+        {/* What changes the domain is inert for who cannot change it: see `(config)/layout.tsx`. */}
+        <div className="grid min-w-0 gap-6">{children}</div>
       </div>
     </main>
   )

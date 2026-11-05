@@ -9,6 +9,7 @@ import {
   FileCode2Icon,
   FileTextIcon,
   LayoutDashboardIcon,
+  MailIcon,
   SettingsIcon,
   UsersIcon,
   type LucideIcon,
@@ -225,6 +226,7 @@ export function AppSidebar({
     { label: t('companies'), href: '/companies', icon: BuildingIcon },
     { label: t('users'), href: '/system/users', icon: UsersIcon },
     { label: t('system'), href: '/system', icon: ActivityIcon, exact: true },
+    { label: t('email'), href: '/system/email', icon: MailIcon },
     { label: t('updates'), href: '/system/updates', icon: ArrowUpCircleIcon },
   ]
 
