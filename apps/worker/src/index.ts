@@ -103,7 +103,9 @@ async function main() {
   crawlRunner.start()
 
   const tickScheduler = () =>
-    runDueSchedules(db, log, new Date(), { paused }).catch((err) => log.error({ err }, 'crawl scheduler failed'))
+    runDueSchedules(db, log, new Date(), { paused }).catch((err) =>
+      log.error({ err }, 'crawl scheduler failed'),
+    )
   // The record of sent email is capped by count and age, so it cannot grow forever.
   const pruneDeliveries = () =>
     db.mail

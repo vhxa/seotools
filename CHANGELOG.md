@@ -20,6 +20,14 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Added
+
+- `SEOTOOLS_PAUSE_AUTOMATION` (default `false`) for staging copies of a production database: the worker fires no scheduled crawls, runs no periodic refreshes or update checks and sends no email (each attempt is recorded as not sent, "automation paused"). Crawls and rechecks you start from the UI still run, and System shows a notice while it is on.
+
+### Fixed
+
+- Every page under System answered with an error when the saved email settings could not be decrypted (the encryption key changed after saving them). They now render, System → Email and the warning in System say that the settings must be entered again, and the worker records the email as not sent instead of failing.
+
 ## [0.2.0-rc.1] - 2026-11-05
 
 ### Breaking

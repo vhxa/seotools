@@ -21,9 +21,9 @@ describe('mailHealth', () => {
     expect(mailHealth({ configured: false, undecryptable: true, latest: null })).toEqual({
       state: 'undecryptable',
     })
-    expect(mailHealth({ configured: false, undecryptable: true, latest: delivery('sent') })).toEqual(
-      { state: 'undecryptable' },
-    )
+    expect(
+      mailHealth({ configured: false, undecryptable: true, latest: delivery('sent') }),
+    ).toEqual({ state: 'undecryptable' })
   })
 
   it('warns when the latest delivery failed, even with a provider', () => {

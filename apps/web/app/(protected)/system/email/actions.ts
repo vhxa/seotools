@@ -14,6 +14,7 @@ import { isValidEmail, normalizeEmail } from '@seotools/db'
 import { revalidatePath } from 'next/cache'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { getDb } from '@/lib/db'
+import { getEnv } from '@/lib/env'
 import { parseMailForm, secretsOf } from '@/lib/mail-config'
 import { requireAdmin } from '@/lib/session'
 import { getSettings } from '@/lib/settings'
@@ -62,7 +63,9 @@ export async function sendTestEmailAction(
   const to = normalizeEmail(String(formData.get('to') ?? ''))
   if (!isValidEmail(to)) return { error: t('address') }
   if (getEnv().SEOTOOLS_PAUSE_AUTOMATION) {
-    await (await getDb()).mail.record({
+    await (
+      await getDb()
+    ).mail.record({
       kind: 'test',
       recipient: to,
       status: 'unconfigured',

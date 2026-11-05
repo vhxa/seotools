@@ -18,7 +18,10 @@ afterEach(async () => {
   await db.close()
 })
 
-const input = (mailer: Mailer | null, content = vi.fn(async () => ({ subject: 's', text: 't' }))) => ({
+const input = (
+  mailer: Mailer | null,
+  content = vi.fn(async () => ({ subject: 's', text: 't' })),
+) => ({
   db,
   log,
   mailer,

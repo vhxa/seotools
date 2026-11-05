@@ -9,10 +9,7 @@ import type { MailDelivery } from '@seotools/db'
  *   when new ones are saved.
  */
 export type MailHealth =
-  | { state: 'ok' }
-  | { state: 'unconfigured' }
-  | { state: 'failing' }
-  | { state: 'undecryptable' }
+  { state: 'ok' } | { state: 'unconfigured' } | { state: 'failing' } | { state: 'undecryptable' }
 
 export function mailHealth(input: {
   configured: boolean
