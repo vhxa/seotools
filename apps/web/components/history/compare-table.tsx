@@ -2,17 +2,11 @@ import type { CrawlChange, FieldChange, UrlSnapshot } from '@seotools/core/crawl
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
+import { ResultsTable } from '@/components/results-table'
 import { FindingChangeBadge } from '@/components/history/finding-badge'
 import { Answer, Robots, Text } from '@/components/history/snapshot-cells'
 import { IssueBadge } from '@/components/pages/issue-mark'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { compareHref, type CompareQuery } from '@/lib/compare-query'
 import type { ComparisonRow } from '@/lib/crawl-compare'
 
@@ -36,7 +30,9 @@ export function CompareTable({
   rows,
   baseId,
   targetId,
+  footer,
 }: {
+  footer: ReactNode
   host: string
   query: CompareQuery
   change: CrawlChange
@@ -45,13 +41,19 @@ export function CompareTable({
   targetId: string
 }) {
   const t = useTranslations('CrawlCompare.table')
-  if (rows.length === 0) return <p className="text-sm text-muted-foreground">{t('empty')}</p>
+  if (rows.length === 0)
+    return (
+      <ResultsTable footer={footer} fill>
+        <p className="p-4 text-sm text-muted-foreground">{t('empty')}</p>
+      </ResultsTable>
+    )
 
   const urlCell = (row: ComparisonRow) => (
-    <TableCell className="max-w-md min-w-48 align-top">
+    <TableCell className="results-url bg-background align-top">
       <Link
         href={`/domains/${host}/pages/details/${row.urlHash}?crawl=${row.target ? targetId : baseId}`}
-        className="font-mono text-xs break-all hover:underline"
+        title={row.url}
+        className="block font-mono text-xs break-all whitespace-normal hover:underline"
       >
         {row.url}
       </Link>
@@ -107,7 +109,7 @@ export function CompareTable({
       const changes = row.findings?.filter((finding) => finding.kind !== 'persistent') ?? []
       const same = (row.findings?.length ?? 0) - changes.length
       return (
-        <TableCell className="align-top">
+        <TableCell className="align-top [&_[data-slot=badge]]:h-auto [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:whitespace-normal">
           {row.findings === null ? (
             <span className="text-muted-foreground">{t('findingsUnavailable')}</span>
           ) : (
@@ -117,7 +119,7 @@ export function CompareTable({
                   <FindingChangeBadge change={finding} />
                   <Link
                     href={compareHref(host, query, { issue: finding.issue, page: 1 })}
-                    className="rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    className="max-w-full min-w-0 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
                     <IssueBadge issue={finding.issue} />
                   </Link>
@@ -136,21 +138,40 @@ export function CompareTable({
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t('columns.url')}</TableHead>
-          {head}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.urlHash}>
-            {urlCell(row)}
-            {cells(row)}
+    <ResultsTable footer={footer} fill>
+      <table className="w-full min-w-[56rem] table-fixed text-sm [&_td]:overflow-hidden [&_td]:[overflow-wrap:anywhere] [&_td]:whitespace-normal">
+        <colgroup>
+          <col className="w-[36%]" />
+          {change === 'added' || change === 'missing' ? (
+            <>
+              <col className="w-[18%]" />
+              <col className="w-[36%]" />
+              <col className="w-[10%]" />
+            </>
+          ) : FIELD_CHANGES.includes(change) ? (
+            <>
+              <col className="w-[32%]" />
+              <col className="w-[32%]" />
+            </>
+          ) : (
+            <col className="w-[64%]" />
+          )}
+        </colgroup>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="results-url bg-muted">{t('columns.url')}</TableHead>
+            {head}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.urlHash}>
+              {urlCell(row)}
+              {cells(row)}
+            </TableRow>
+          ))}
+        </TableBody>
+      </table>
+    </ResultsTable>
   )
 }

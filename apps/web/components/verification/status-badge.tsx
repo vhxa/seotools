@@ -12,5 +12,6 @@ const variants: Record<VerificationStatus, 'default' | 'secondary' | 'destructiv
 
 export function RecheckStatusBadge({ status }: { status: VerificationStatus }) {
   const t = useTranslations('Verification.status')
+  if (status === 'completed') return <span className="text-sm">{t(status)}</span>
   return <Badge variant={variants[status]}>{t(status)}</Badge>
 }

@@ -7,13 +7,13 @@ import {
 } from '@seotools/core/crawl/files'
 import {
   CRAWL_RENDERING_AVAILABLE,
-  CRAWL_RENDERING_MODES,
   CRAWL_SETTINGS_LIMITS as limits,
   type CrawlSettings,
 } from '@seotools/core/crawl/settings'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { saveCrawlSettingsAction, type ActionState } from '@/app/(protected)/domains/[host]/actions'
+import { InfoHelp } from '@/components/help'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -51,7 +51,10 @@ function NumberField({
 }) {
   return (
     <div className="grid content-start gap-2">
-      <Label htmlFor={name}>{label}</Label>
+      <div className="flex items-center gap-1">
+        <Label htmlFor={name}>{label}</Label>
+        <InfoHelp label={label}>{hint}</InfoHelp>
+      </div>
       <Input
         id={name}
         name={name}
@@ -60,12 +63,8 @@ function NumberField({
         max={max}
         step={1}
         defaultValue={defaultValue}
-        aria-describedby={`${name}-hint`}
         required={required}
       />
-      <p id={`${name}-hint`} className="text-xs text-muted-foreground">
-        {hint}
-      </p>
     </div>
   )
 }
@@ -89,11 +88,11 @@ export function CrawlSettingsForm({
   const [retention, setRetention] = useState<Retention>(retentionOf(settings.retainCrawls))
   const [files, setFiles] = useState<readonly ExtraCrawlFileKind[]>(enabledExtraFiles(settings))
 
-  const modes = CRAWL_RENDERING_MODES.map((value) => ({
+  const modes = CRAWL_RENDERING_AVAILABLE.map((value) => ({
     value,
     label: t(`rendering.modes.${value}`),
-    disabled: !CRAWL_RENDERING_AVAILABLE.includes(value),
   }))
+
   const retentions = (['latest', 'current', 'all'] as const).map((value) => ({
     value,
     label: t(`retention.modes.${value}`),
@@ -101,27 +100,31 @@ export function CrawlSettingsForm({
 
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
-      <div className="grid gap-2">
-        <Label htmlFor="renderingMode">{t('rendering.label')}</Label>
-        <Select
-          name="renderingMode"
-          items={modes}
-          value={mode}
-          onValueChange={(value) => value && setMode(value)}
-        >
-          <SelectTrigger id="renderingMode" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
-            {modes.map((item) => (
-              <SelectItem key={item.value} value={item.value} disabled={item.disabled}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">{t('rendering.hint')}</p>
-      </div>
+      {modes.length > 1 ? (
+        <div className="grid gap-2">
+          <Label htmlFor="renderingMode">{t('rendering.label')}</Label>
+          <Select
+            name="renderingMode"
+            items={modes}
+            value={mode}
+            onValueChange={(value) => value && setMode(value)}
+          >
+            <SelectTrigger id="renderingMode" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              {modes.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">{t('rendering.hint')}</p>
+        </div>
+      ) : (
+        <input type="hidden" name="renderingMode" value={modes[0]?.value ?? mode} />
+      )}
 
       <div className="grid gap-2">
         <Label htmlFor="userAgent">{t('userAgent.label')}</Label>

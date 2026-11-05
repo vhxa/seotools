@@ -1,11 +1,14 @@
-import { WORKER_STALE_AFTER_MS } from '@seotools/core'
+import { WORKER_STALE_AFTER_MS, type BuildInfo } from '@seotools/core'
 import type { Database } from '@seotools/db'
+import { getBuildInfo } from './build-info'
 
 export type HealthStatus = 'ok' | 'degraded' | 'down'
 
 export interface HealthReport {
   status: HealthStatus
   version: string
+  /** `release` only for an image the release workflow published; anything else is `development`. */
+  channel: BuildInfo['channel']
   db: { ok: boolean; dialect: string | null }
   worker: { ok: boolean; lastSeen: string | null }
 }
@@ -17,10 +20,14 @@ export interface HealthReport {
  */
 export async function getHealth(
   getDatabase: () => Promise<Database>,
-  options: { requireWorker?: boolean; now?: Date; version?: string } = {},
+  options: {
+    requireWorker?: boolean
+    now?: Date
+    build?: Pick<BuildInfo, 'version' | 'channel'>
+  } = {},
 ): Promise<{ httpStatus: 200 | 503; report: HealthReport }> {
   const now = options.now ?? new Date()
-  const version = options.version ?? process.env.APP_VERSION ?? 'unknown'
+  const { version, channel } = options.build ?? getBuildInfo()
 
   let db: Database | null = null
   let dbOk = false
@@ -50,6 +57,7 @@ export async function getHealth(
     report: {
       status,
       version,
+      channel,
       db: { ok: dbOk, dialect: db?.dialect ?? null },
       worker: { ok: workerOk, lastSeen: lastSeen?.toISOString() ?? null },
     },

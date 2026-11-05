@@ -1,5 +1,7 @@
 'use client'
 
+import { useId } from 'react'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -24,6 +26,7 @@ export function FilterSelect<T extends string>({
   onChange,
   unavailable,
   className,
+  showLabel = false,
 }: {
   /** What the filter is, for whoever cannot see the box. */
   label: string
@@ -34,31 +37,37 @@ export function FilterSelect<T extends string>({
   /** Why the filter does nothing here, if it does not. */
   unavailable?: string | undefined
   className?: string
+  showLabel?: boolean
 }) {
+  const id = useId()
   const items = [{ value: ANY, label: anyLabel }, ...options]
   return (
-    <Select
-      items={items}
-      // A filter that does not apply is not choosing anything, whatever the address still says.
-      value={unavailable !== undefined ? ANY : (value ?? ANY)}
-      disabled={unavailable !== undefined}
-      onValueChange={(next) => onChange(next === ANY ? null : (next as T))}
-    >
-      <SelectTrigger
-        size="sm"
-        className={cn('w-44', className)}
-        aria-label={label}
-        title={unavailable}
+    <div className={showLabel ? 'grid gap-1.5' : 'contents'}>
+      {showLabel && <Label htmlFor={id}>{label}</Label>}
+      <Select
+        items={items}
+        // A filter that does not apply is not choosing anything, whatever the address still says.
+        value={unavailable !== undefined ? ANY : (value ?? ANY)}
+        disabled={unavailable !== undefined}
+        onValueChange={(next) => onChange(next === ANY ? null : (next as T))}
       >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false}>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+        <SelectTrigger
+          id={id}
+          size="sm"
+          className={cn('w-44', className, showLabel && 'w-full')}
+          aria-label={label}
+          title={unavailable}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   )
 }

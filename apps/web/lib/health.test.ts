@@ -18,11 +18,15 @@ const dbWith =
 
 describe('getHealth', () => {
   it('is ok when the db answers and the worker is fresh', async () => {
-    const res = await getHealth(dbWith(new Date(now.getTime() - 5_000)), { now, version: '1.2.3' })
+    const res = await getHealth(dbWith(new Date(now.getTime() - 5_000)), {
+      now,
+      build: { version: '1.2.3', channel: 'release' },
+    })
     expect(res.httpStatus).toBe(200)
     expect(res.report).toEqual({
       status: 'ok',
       version: '1.2.3',
+      channel: 'release',
       db: { ok: true, dialect: 'sqlite' },
       worker: { ok: true, lastSeen: '2026-01-01T11:59:55.000Z' },
     })

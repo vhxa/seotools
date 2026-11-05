@@ -75,7 +75,6 @@ export default async function CrawlHistoryPage({ params }: { params: Promise<{ h
     <main className="grid gap-6">
       <div className="grid gap-1">
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 
       {crawls.length === 0 ? (
@@ -129,7 +128,9 @@ export default async function CrawlHistoryPage({ params }: { params: Promise<{ h
                             <span className="text-sm font-medium">{when(crawl)}</span>
                             <span className="flex flex-wrap gap-1">
                               <CrawlStatusBadge status={crawl.status} />
-                              <Badge variant="outline">{t(`trigger.${crawl.trigger}`)}</Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {t(`trigger.${crawl.trigger}`)}
+                              </span>
                               {crawl.id === latest?.id && <Badge>{t('latest')}</Badge>}
                             </span>
                             <span className="flex flex-wrap gap-x-3 gap-y-1 pt-1 text-xs">
@@ -163,7 +164,9 @@ export default async function CrawlHistoryPage({ params }: { params: Promise<{ h
                               {tStamp('pruned')}
                             </Badge>
                           ) : (
-                            <Badge variant="outline">{tStamp('retained')}</Badge>
+                            <span className="text-sm text-muted-foreground">
+                              {tStamp('retained')}
+                            </span>
                           )}
                         </TableCell>
                         <TableCell className="align-top text-sm tabular-nums">

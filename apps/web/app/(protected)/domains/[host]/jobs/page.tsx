@@ -88,7 +88,6 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
     <main className="grid gap-6">
       <div className="grid gap-1">
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 
       {active && <ActiveCrawl host={domain.host} crawl={active} />}

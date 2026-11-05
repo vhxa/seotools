@@ -99,7 +99,10 @@
     "pagesOverview": "Overview",
     "pagesDetails": "Details",
     "pagesHistory": "History",
-    "pagesCompare": "Compare"
+    "pagesCompare": "Compare",
+    "updates": "Updates",
+    "versionRelease": "v{version}",
+    "versionDevelopment": "v{version} · development"
   },
   "ProtectedShell": {
     "skipToContent": "Skip to main content"
@@ -156,6 +159,86 @@
       "running": "running",
       "completed": "completed",
       "failed": "failed"
+    }
+  },
+  "Updates": {
+    "metaTitle": "Updates · seotools",
+    "title": "Updates",
+    "description": "Which version is installed and whether a newer release exists. Looking for updates does not install them.",
+    "status": {
+      "upToDate": {
+        "title": "You are up to date",
+        "description": "{latest} is the latest stable release, as seen {when}.",
+        "ahead": "You are running {installed}, which is newer than the latest stable release ({latest}), as seen {when}."
+      },
+      "updateAvailable": {
+        "title": "Version {latest} is available",
+        "description": "You are running {installed}.",
+        "compatible": "A compatible update. Take a backup before updating anyway.",
+        "mayBreak": "This update can include breaking changes. Read the release notes and take a backup before updating.",
+        "candidate": "You are running a release candidate of this version. The stable release is available."
+      },
+      "checkFailed": {
+        "title": "Could not check for updates",
+        "description": "{reason} That does not mean you are up to date: it means nobody knows.",
+        "known": "Last stable release seen: {latest}, {when}."
+      },
+      "notChecked": {
+        "title": "Not checked yet",
+        "description": "seotools has not looked for new releases yet. Check now, or turn on periodic checks."
+      },
+      "development": {
+        "title": "Development build",
+        "description": "This build does not come from a release. {version} is the last release it descends from, so it is not compared with new ones."
+      }
+    },
+    "failures": {
+      "network": "seotools could not reach GitHub.",
+      "timeout": "GitHub did not answer in time.",
+      "rate-limited": "GitHub is limiting the requests of this server. Try again later.",
+      "not-found": "The release feed was not found; the repository may have moved.",
+      "http": "GitHub answered with an error.",
+      "invalid-response": "The answer from GitHub was not understood."
+    },
+    "details": {
+      "title": "This installation",
+      "installed": "Installed version",
+      "build": "Build",
+      "builds": {
+        "release": "Release",
+        "candidate": "Release candidate",
+        "development": "Development build"
+      },
+      "commit": "Commit",
+      "latest": "Latest stable release",
+      "latestValue": "{version}, published {when}",
+      "latestUnknown": "Unknown",
+      "lastCheck": "Last check",
+      "lastCheckValue": "{when}, {trigger}",
+      "lastCheckFailed": "{when}, {trigger}: failed",
+      "lastSuccess": "Last successful check",
+      "triggers": {
+        "manual": "by hand",
+        "periodic": "periodic"
+      },
+      "never": "Never"
+    },
+    "checkNow": "Check now",
+    "checking": "Checking…",
+    "releaseNotes": "Release notes",
+    "allReleases": "All releases",
+    "updateGuide": "How to update",
+    "periodic": {
+      "title": "Periodic checks",
+      "description": "Off by default: an installation does not contact anyone it was not told to.",
+      "label": "Look for new releases once a day",
+      "hint": "A check asks GitHub for the latest release of seotools. It sends nothing about your domains, your data or this installation; GitHub only sees the address your server connects from. It never changes anything by itself.",
+      "save": "Save",
+      "saved": "Saved"
+    },
+    "installing": {
+      "title": "Installing an update",
+      "description": "seotools never replaces its own container or asks for access to Docker. Docker or Dokploy does that, with the version you choose. Take a backup first: going back to an older image can require restoring it."
     }
   },
   "Crawl": {
@@ -274,7 +357,9 @@
         "none": "The last full crawl found nothing at this URL that only a full crawl can settle.",
         "note": "These depend on other pages or on links. They stay as the crawl of {when} found them: a recheck does not say whether they remain.",
         "badge": "Needs a full crawl"
-      }
+      },
+      "checkedScope": "Checked again: the HTTP response, page data, robots.txt and checks that depend only on this URL. Links from other pages, duplicates and sitemap membership still require a full crawl.",
+      "evidenceNote": "The response fields above and the recorded details below are from this recheck. Evidence samples from the full crawl are not reused here."
     },
     "results": {
       "metaTitle": "Recheck · {host} · seotools",
@@ -407,7 +492,7 @@
     },
     "columnsMenu": {
       "label": "Columns",
-      "reset": "Show the default columns"
+      "reset": "Reset columns and widths"
     },
     "columns": {
       "url": "URL",
@@ -440,7 +525,10 @@
     "empty": "No URLs match.",
     "responseTime": "{value, number} ms",
     "issueList": {
-      "all": "All pages"
+      "all": "All pages",
+      "units": "Each issue counts affected URLs. Category totals count findings; one URL can contribute several.",
+      "findings": "{count, number} findings",
+      "urls": "{count, number} URLs"
     },
     "actionsMenu": {
       "label": "Actions"
@@ -525,7 +613,11 @@
         "intent": "{value}",
         "rule": "Decided by one rule"
       }
-    }
+    },
+    "advancedFilters": "Advanced filters and issues",
+    "filtersMenu": "Filters",
+    "issuesMenu": "Issues",
+    "rowsShown": "{shown, number} of {matching, number} URLs shown"
   },
   "UrlDetail": {
     "back": "Back to the detail",
@@ -580,7 +672,8 @@
       "pendingNote": "The audit configuration changed after this crawl was analysed. What is shown here may not reflect it yet.",
       "notAnalysed": "This crawl was analysed before audit rules existed, or has not been analysed: the audit state of this URL is not known.",
       "configure": "Configure audit…",
-      "conditions": "Conditions"
+      "conditions": "Conditions",
+      "noExplicitRules": "No explicit rules apply to this URL."
     },
     "noFindings": "No findings.",
     "excludedFindings": "Excluded from the audit: it has no findings of its own.",
@@ -592,7 +685,10 @@
       "medium": "Medium importance ({count, number})",
       "low": "Low importance ({count, number})",
       "unknown": "Other findings ({count, number})"
-    }
+    },
+    "observedAt": "Full crawl · {when}",
+    "crawlFindingsNote": "These findings belong to the selected full crawl. A recheck is shown separately below and does not replace them.",
+    "recheckAvailable": "Rechecked {when} · view separate results"
   },
   "UrlLinks": {
     "in": {
@@ -1667,7 +1763,8 @@
           "description": "It has to hold exactly the key, or search engines will refuse what is announced with it."
         }
       }
-    }
+    },
+    "aboutFile": "About this file"
   },
   "Pagination": {
     "summary": "Page {page, number} of {pages, number}",
@@ -2020,12 +2117,16 @@
     },
     "picker": {
       "label": "Crawl",
-      "option": "{when} · {status}{coverage, select, pruned { · results pruned} other {}}{latest, select, yes { · latest} other {}}"
+      "option": "{when} · {status}{coverage, select, pruned { · results pruned} other {}}{latest, select, yes { · latest} other {}}",
+      "latestCompact": "Latest analysis · {when}",
+      "historicalCompact": "Historical analysis · {when}"
     },
     "banner": {
       "viewing": "You are viewing the crawl of {when}, not the latest one.",
       "backToLatest": "Back to the latest crawl",
-      "configBehind": "Analysed under: {config}. In force now: {current}. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated."
+      "configBehind": "Analysed under: {config}. In force now: {current}. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated.",
+      "details": "Analysis details",
+      "incomplete": "Partial coverage: this crawl did not complete. Findings may be missing."
     },
     "details": {
       "detailsDescription": "Every URL of the chosen full crawl, as that crawl saw it. Select some to act on them together.",
@@ -2258,7 +2359,8 @@
         },
         "description": "URLs it did not reach are not missing, and findings that look at other pages (duplicates, inbound links, redirects) are not called new or resolved for it."
       }
-    }
+    },
+    "rowsShown": "{shown, number} of {matching, number} URLs shown"
   },
   "HttpStatus": {
     "automaticCheck": "Automatic check",
@@ -2338,5 +2440,47 @@
         "not-indexable": "A noindex is fine; being indexable is not. It is not the same as requiring a noindex. Pages that point at it are not told about its noindex or a canonical elsewhere; a robots.txt block is still reported."
       }
     }
+  },
+  "Help": {
+    "about": "About {subject}",
+    "close": "Close help",
+    "documentation": "About these results",
+    "diagnostics": "Diagnostic tools"
+  },
+  "ResultsTable": {
+    "rows": "Results table. Scroll to explore rows and columns.",
+    "resize": "Resize {column}. Use arrow keys; Home resets the width."
+  },
+  "FindingHelp": {
+    "title": "Edit the page template to provide one descriptive title in the head. Make it specific to this page and review its length and any duplicates.",
+    "response-codes": "Inspect the response and redirect destination. Fix unintended server errors, broken URLs or redirect chains at the server, then check the URL again.",
+    "indexing-intent": "Compare the observed blockers with the intended indexing policy. Adjust the relevant directive or sitemap entry; change the rule only if the declared expectation is wrong.",
+    "directives": "Review both the HTTP X-Robots-Tag header and the robots meta tags. Make them consistent with the intended policy and place HTML directives in the head.",
+    "canonicals": "Review the canonical declarations and their destination. Use a consistent absolute URL without a fragment, and confirm that the chosen destination is the intended canonical page.",
+    "sitemaps": "Review the sitemap file and the affected entries. Align listed URLs with your sitemap policy, fix invalid or oversized files, then run a full crawl to check site-wide findings.",
+    "hreflang": "Review the affected language cluster. Correct language codes and destinations, use consistent canonical URLs and return links, then run a full crawl.",
+    "meta-description": "Provide one useful description in the head that reflects the page content. Review its length and avoid reusing the same description on different pages.",
+    "headings": "Review the heading hierarchy in the page template. Use descriptive, nonempty headings that reflect the structure of the content.",
+    "content": "Review the rendered content and any related pages in the evidence. Replace placeholders, add useful original content, or consolidate pages that serve the same purpose.",
+    "images": "Inspect the affected images in the page template. Add useful alt text for informative images, keep decorative images empty, and review dimensions and file weight.",
+    "structured-data": "Review the page’s JSON-LD. Fix syntax errors and use structured data appropriate to the visible content; validate it after editing.",
+    "links": "Review the affected links and their source pages. Use reachable HTTP(S) destinations and descriptive anchors, and add useful internal navigation where needed. Run a full crawl for findings about incoming links.",
+    "urls": "Review URL generation and internal links. Choose a stable, readable URL format and, if an address must change, update links and configure the appropriate redirect.",
+    "security": "Review the affected resources, forms, links or HTTP headers. Use HTTPS destinations and apply the relevant browser security protections, checking that the change preserves site functionality.",
+    "html": "Inspect the returned HTML and its template. Correct the document structure, keep metadata inside a valid head and reduce excessive document size where relevant.",
+    "robots-blocked": "If this URL should be crawlable, edit the matching robots.txt rule for the audited bot. If the block is intentional, declare it in the audit rules; a block does not prove that the URL is absent from search results.",
+    "no-response": "Check DNS, TLS, server availability and timeout settings. Restore access for the configured crawler User-Agent, then recheck the URL.",
+    "client-error": "Restore the intended resource or correct the links pointing to it. If it moved, redirect to the relevant replacement; if the error is intentional, review the audit policy.",
+    "soft-404-confirmed": "Check whether the page is actually missing. Return a real 404/410 for removed content, or restore useful content and remove misleading error signals.",
+    "soft-404-possible": "Inspect the page manually to confirm whether it is an error page. If so, return an appropriate error status; otherwise review the content that resembles an error message.",
+    "broken-external-link": "Check the linked external destination and update or remove the broken link on its source pages. Run a full crawl to check external links again.",
+    "refresh-redirect": "Review the refresh declaration. If the move is permanent, prefer an HTTP redirect to the final destination and update internal links.",
+    "noindex": "If the page should be indexable, remove the noindex directive from the HTML and HTTP headers. If it is intentional, declare the intended policy in the audit rules.",
+    "canonicalised": "Confirm that the declared canonical is the intended preferred URL. If this page should stand on its own, correct the canonical; otherwise align internal links and the audit expectation with the preferred page.",
+    "noindex-required-missing": "Add a noindex directive in the page head or X-Robots-Tag header if this requirement is correct. Otherwise edit the rule that requires it, then recheck.",
+    "nofollow-required-missing": "Add the required nofollow directive in the page head or HTTP header, or correct the rule if links should be followed. Nofollow does not prevent indexing.",
+    "robots-block-required-missing": "Add the intended block in robots.txt for the audited bot, or correct the rule that requires it. A robots.txt block does not guarantee removal from the index.",
+    "sitemap-required-missing": "Include this URL as an entry in a sitemap that the crawler can read, or correct the rule requiring it. Run a full crawl to verify membership.",
+    "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change."
   }
 }

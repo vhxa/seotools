@@ -1,11 +1,18 @@
 name: Docker
 
-# Builds the image natively for amd64 and arm64 (no QEMU emulation), then publishes a single
-# multi-arch tag to GHCR:  ghcr.io/<owner>/seotools
+# Builds the image natively for amd64 and arm64 (no QEMU emulation), checks it, and publishes one
+# multi-arch image to GHCR:  ghcr.io/<owner>/seotools   What each tag means: docs/updating.md.
 #
-#   push to main  → :latest, :edge, :sha-<short>
-#   tag v1.2.3    → :1.2.3, :1.2, :1
-#   pull request  → build only (nothing is pushed)
+#   tag v1.2.3     → :1.2.3, then :1.2, :1, :latest   a release (GitHub release created last)
+#   tag v0.3.0-rc.1→ :0.3.0-rc.1                      a candidate: its exact tag only
+#   push to main   → :sha-<short>, then :edge         a development build, never a release
+#   pull request   → build only (nothing is pushed)
+#
+# The exact tag goes out first and is run before anything that follows releases moves: the channel
+# tags, and the GitHub release that installations learn about new versions from. A release that
+# fails the check is therefore never announced. A published version is never replaced.
+# What is published is decided by `node scripts/release.mjs plan`, which also refuses a tag that is
+# not the version in package.json or whose CHANGELOG.md entry is missing.
 
 on:
   push:
@@ -26,7 +33,42 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      channel: ${{ steps.plan.outputs.channel }}
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      latest: ${{ steps.plan.outputs.latest }}
+      exact_tags: ${{ steps.plan.outputs.exact_tags }}
+      channel_tags: ${{ steps.plan.outputs.channel_tags }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Every tag and branch: which release is the newest, and whether a tag is on main.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: A release is a commit of main, or of a maintenance branch
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # `maintenance/0.2` is where a fix for an older line is made (docs/releases.md).
+          for branch in origin/main $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/maintenance/*'); do
+            if git merge-base --is-ancestor "$GITHUB_SHA" "$branch"; then exit 0; fi
+          done
+          echo "::error::$GITHUB_REF is not on main or on a maintenance/* branch. Tag the merge commit of the release pull request."
+          exit 1
+
+      - id: plan
+        run: node scripts/release.mjs plan --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF" --sha "$GITHUB_SHA" | tee -a "$GITHUB_OUTPUT"
+
   build:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
@@ -52,9 +94,12 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          # The version a development build descends from, marked as not being that release.
+          labels: |
+            org.opencontainers.image.version=${{ needs.plan.outputs.channel == 'release' && needs.plan.outputs.version || format('{0}+dev.{1}', needs.plan.outputs.version, github.sha) }}
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: needs.plan.outputs.publish == 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -67,21 +112,25 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Pushed by digest; the merge job below stitches both archs into the final tags.
-          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          # What the app reports about itself: only a tag makes a build a release.
+          build-args: |
+            SEOTOOLS_BUILD_CHANNEL=${{ needs.plan.outputs.channel }}
+            SEOTOOLS_BUILD_COMMIT=${{ github.sha }}
+          # Pushed by digest; the publish job below stitches both archs into the final tags.
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ needs.plan.outputs.publish == 'true' }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
           provenance: false
 
       - name: Export digest
-        if: github.event_name != 'pull_request'
+        if: needs.plan.outputs.publish == 'true'
         run: |
           mkdir -p "${{ runner.temp }}/digests"
           digest="${{ steps.build.outputs.digest }}"
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
-        if: github.event_name != 'pull_request'
+        if: needs.plan.outputs.publish == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
@@ -89,14 +138,30 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  merge:
-    if: github.event_name != 'pull_request'
-    needs: build
+  publish:
+    if: needs.plan.outputs.publish == 'true'
+    needs: [plan, build]
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: write # the GitHub release
+      packages: write
+    env:
+      CHANNEL: ${{ needs.plan.outputs.channel }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      EXACT_TAGS: ${{ needs.plan.outputs.exact_tags }}
+      CHANNEL_TAGS: ${{ needs.plan.outputs.channel_tags }}
     steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
       - name: Prepare
-        run: echo "IMAGE=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+        run: |
+          echo "IMAGE=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "FIRST_TAG=${EXACT_TAGS%% *}" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@v8
         with:
@@ -106,19 +171,6 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
-      - id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE }}
-          flavor: latest=false
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=edge,branch=main
-            type=sha,format=short
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -126,12 +178,68 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create multi-arch manifest
+      - name: A published version is never replaced
+        if: env.CHANNEL == 'release'
+        run: |
+          if docker buildx imagetools inspect "${IMAGE}:${FIRST_TAG}" > /dev/null 2>&1; then
+            echo "::error::${IMAGE}:${FIRST_TAG} is already published. Publish a new version instead of replacing it."
+            exit 1
+          fi
+
+      - name: Publish the exact tags
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf "${IMAGE}@sha256:%s " *)
+          tags=""
+          for tag in $EXACT_TAGS; do tags="$tags -t ${IMAGE}:${tag}"; done
+          # shellcheck disable=SC2046,SC2086
+          docker buildx imagetools create $tags $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Both architectures are there
+        run: |
+          manifest="$(docker buildx imagetools inspect "${IMAGE}:${FIRST_TAG}")"
+          echo "$manifest"
+          grep -q 'Platform:.*linux/amd64' <<< "$manifest"
+          grep -q 'Platform:.*linux/arm64' <<< "$manifest"
+
+      - name: The image starts and says what it is
+        run: |
+          docker run -d --name smoke -p 3000:3000 \
+            -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
+            -e BETTER_AUTH_URL=http://localhost:3000 \
+            "${IMAGE}:${FIRST_TAG}"
+          health=""
+          for _ in $(seq 1 60); do
+            if health="$(curl -fsS 'http://localhost:3000/api/health?require=worker' 2> /dev/null)"; then break; fi
+            sleep 2
+          done
+          docker logs smoke | tail -n 20
+          docker rm -f smoke > /dev/null
+          echo "$health"
+          test "$(jq -r .version <<< "$health")" = "$VERSION"
+          test "$(jq -r .channel <<< "$health")" = "$CHANNEL"
+          test "$(jq -r .status <<< "$health")" = "ok"
+
+      - name: Move the channel tags
+        run: |
+          for tag in $CHANNEL_TAGS; do
+            docker buildx imagetools create -t "${IMAGE}:${tag}" "${IMAGE}:${FIRST_TAG}"
+          done
+
+      - name: Create the GitHub release
+        if: env.CHANNEL == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+          LATEST: ${{ needs.plan.outputs.latest }}
+        run: |
+          node scripts/release.mjs notes "$VERSION" > "${RUNNER_TEMP}/notes.md"
+          if [ "$PRERELEASE" = "true" ]; then flag="--prerelease"
+          elif [ "$LATEST" = "true" ]; then flag="--latest"
+          else flag="--latest=false"; fi
+          gh release create "v${VERSION}" --verify-tag --title "v${VERSION}" \
+            --notes-file "${RUNNER_TEMP}/notes.md" "$flag"
 
       - name: Inspect
-        run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
+        run: |
+          docker buildx imagetools inspect "${IMAGE}:${FIRST_TAG}"
+          for tag in $CHANNEL_TAGS; do docker buildx imagetools inspect "${IMAGE}:${tag}" | grep -m1 Digest; done

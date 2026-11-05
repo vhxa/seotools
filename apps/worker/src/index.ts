@@ -22,6 +22,7 @@ import { createCrawlRunHandler } from './handlers/crawl-run'
 import { createUrlVerifyHandler } from './handlers/url-verify'
 import { createRunner } from './runner'
 import { runDueSchedules } from './scheduler'
+import { createUpdateChecker } from './updates/update-checker'
 
 /** How often due schedules, favicon and crawl file checks are looked for. Nothing is to the second. */
 const SCHEDULER_INTERVAL_MS = 30_000
@@ -105,6 +106,11 @@ async function main() {
   void crawlFiles.tick()
   const crawlFilesTimer = setInterval(() => void crawlFiles.tick(), SCHEDULER_INTERVAL_MS)
 
+  // Only if an administrator asked for it: otherwise this reads one setting and returns.
+  const updates = createUpdateChecker({ settings, log: log.child({ lane: 'updates' }) })
+  void updates.tick()
+  const updatesTimer = setInterval(() => void updates.tick(), SCHEDULER_INTERVAL_MS)
+
   // After an update that changes the issues, earlier crawls show their old totals until this is done.
   let stopping = false
   const reanalysis = reanalyseOutdatedCrawls({
@@ -121,12 +127,14 @@ async function main() {
     clearInterval(scheduler)
     clearInterval(faviconTimer)
     clearInterval(crawlFilesTimer)
+    clearInterval(updatesTimer)
     // Crawls resume from their stored queue, so they don't need the grace period to finish.
     await Promise.all([
       runner.stop(),
       crawlRunner.stop(0),
       favicons.stop(),
       crawlFiles.stop(),
+      updates.stop(),
       reanalysis,
     ])
     await db.close()

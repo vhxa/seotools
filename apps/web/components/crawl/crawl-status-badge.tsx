@@ -13,5 +13,6 @@ const variants: Record<CrawlStatus, 'default' | 'secondary' | 'destructive' | 'o
 
 export function CrawlStatusBadge({ status }: { status: CrawlStatus }) {
   const t = useTranslations('Crawl.status')
+  if (status === 'completed') return <span className="text-sm">{t(status)}</span>
   return <Badge variant={variants[status]}>{t(status)}</Badge>
 }

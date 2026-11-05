@@ -1,5 +1,6 @@
 import { type JobStatus } from '@seotools/core'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { HelpDisclosure } from '@/components/help'
 import { AutoRefresh } from '@/components/auto-refresh'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ export default async function SystemPage() {
     db.jobs.countByStatus(),
     db.jobs.list({ limit: 10 }),
   ])
+  const tHelp = await getTranslations('Help')
   const workerAlive = report.worker.ok
   const lastSeen = report.worker.lastSeen ? new Date(report.worker.lastSeen) : null
   const ago = (date: Date | null) => (date ? format.relativeTime(date) : t('never'))
@@ -54,7 +56,7 @@ export default async function SystemPage() {
           <CardHeader>
             <CardDescription>{t('database')}</CardDescription>
             <CardTitle className="flex items-center gap-2">
-              <Badge>{t('connected')}</Badge>
+              <span className="text-sm">{t('connected')}</span>
               <span className="text-sm font-normal text-muted-foreground">{db.dialect}</span>
             </CardTitle>
           </CardHeader>
@@ -63,9 +65,11 @@ export default async function SystemPage() {
           <CardHeader>
             <CardDescription>{t('worker')}</CardDescription>
             <CardTitle className="flex items-center gap-2">
-              <Badge variant={workerAlive ? 'default' : 'destructive'}>
-                {workerAlive ? t('online') : t('offline')}
-              </Badge>
+              {workerAlive ? (
+                <span className="text-sm">{t('online')}</span>
+              ) : (
+                <Badge variant="destructive">{t('offline')}</Badge>
+              )}
               <span className="text-sm font-normal text-muted-foreground">
                 {t('seen', { when: ago(lastSeen) })}
               </span>
@@ -93,9 +97,6 @@ export default async function SystemPage() {
             <CardTitle>{t('queueTitle')}</CardTitle>
             <CardDescription>{t('queueDescription')}</CardDescription>
           </div>
-          <form action={enqueueExampleJob}>
-            <Button type="submit">{t('enqueue')}</Button>
-          </form>
         </CardHeader>
         <CardContent>
           <Table>
@@ -122,7 +123,11 @@ export default async function SystemPage() {
                   <TableCell className="font-mono text-xs">{job.id.slice(0, 8)}</TableCell>
                   <TableCell>{job.type}</TableCell>
                   <TableCell>
-                    <Badge variant={statusVariant[job.status]}>{t(`status.${job.status}`)}</Badge>
+                    {job.status === 'completed' ? (
+                      <span>{t('status.completed')}</span>
+                    ) : (
+                      <Badge variant={statusVariant[job.status]}>{t(`status.${job.status}`)}</Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     {job.attempts}/{job.maxAttempts}
@@ -141,6 +146,13 @@ export default async function SystemPage() {
           </Table>
         </CardContent>
       </Card>
+      <HelpDisclosure title={tHelp('diagnostics')}>
+        <form action={enqueueExampleJob}>
+          <Button type="submit" variant="outline">
+            {t('enqueue')}
+          </Button>
+        </form>
+      </HelpDisclosure>
     </main>
   )
 }

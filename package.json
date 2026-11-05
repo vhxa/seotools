@@ -20,7 +20,8 @@
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @seotools/db generate",
     "db:check": "pnpm --filter @seotools/db check",
-    "db:bootstrap": "pnpm --filter @seotools/worker bootstrap"
+    "db:bootstrap": "pnpm --filter @seotools/worker bootstrap",
+    "release:check": "node scripts/release.mjs check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

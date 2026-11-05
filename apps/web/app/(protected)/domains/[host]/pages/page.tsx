@@ -7,10 +7,11 @@ import { getFormatter, getTranslations } from 'next-intl/server'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
+import { HelpDisclosure, InfoHelp } from '@/components/help'
 import { IssueLabel, IssueMark, ISSUE_TYPE_STYLES } from '@/components/pages/issue-mark'
 import { PagesChart, type PagesPoint } from '@/components/pages/pages-chart'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
 import { rankIssueCounts } from '@/lib/pages-issues'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
@@ -30,11 +31,12 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
 export default async function PagesOverviewPage({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
   const { domain } = await requireDomain(host)
-  const [t, tIssues, tCatalog, format] = await Promise.all([
+  const [t, tIssues, tCatalog, format, tHelp] = await Promise.all([
     getTranslations('Pages'),
     getTranslations('PageIssues'),
     getTranslations('IssueCatalog'),
     getFormatter(),
+    getTranslations('Help'),
   ])
   const db = await getDb()
 
@@ -142,13 +144,9 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
       )}
 
       {!latest || !checked ? (
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              {!latest ? t('issues.noCrawl') : t('issues.notChecked')}
-            </p>
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground">
+          {!latest ? t('issues.noCrawl') : t('issues.notChecked')}
+        </p>
       ) : (
         <>
           {ISSUE_TYPES.map((type) => {
@@ -160,8 +158,10 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
                   <CardTitle className="flex items-center gap-2">
                     <Icon aria-hidden className={`size-4 shrink-0 ${text}`} />
                     {t(`findings.${type}.title`)}
+                    <InfoHelp label={t(`findings.${type}.title`)}>
+                      {tCatalog(`typeHelp.${type}`)}
+                    </InfoHelp>
                   </CardTitle>
-                  <CardDescription>{tCatalog(`typeHelp.${type}`)}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {found.length === 0 ? (
@@ -170,24 +170,25 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
                     <ul className="-mx-2 grid divide-y">
                       {found.map(({ issue, pages }) => (
                         <li key={issue}>
-                          <Link
-                            href={detailHref(domain.host, defaultQuery, { issue })}
-                            className="flex items-center gap-4 rounded-md px-2 py-3 outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
-                          >
-                            <div className="grid min-w-0 flex-1 gap-0.5">
-                              <span className="flex items-center gap-2 text-sm font-medium">
-                                <IssueLabel issue={issue} />
-                                <IssueMark issue={issue} />
+                          <div className="flex flex-wrap items-center gap-x-4 px-2 py-2">
+                            <Link
+                              href={detailHref(domain.host, defaultQuery, { issue })}
+                              className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <IssueLabel issue={issue} />
+                              <IssueMark issue={issue} />
+                              <span className="ml-auto font-normal whitespace-nowrap tabular-nums">
+                                {t('issues.pages', { count: pages })}
                               </span>
-                              <span className="text-sm text-muted-foreground">
-                                {tIssues(`${issue}.description`)}
-                              </span>
-                            </div>
-                            <span className="text-sm whitespace-nowrap tabular-nums">
-                              {t('issues.pages', { count: pages })}
-                            </span>
-                            <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-                          </Link>
+                              <ChevronRightIcon
+                                aria-hidden
+                                className="size-4 shrink-0 text-muted-foreground"
+                              />
+                            </Link>
+                            <HelpDisclosure title={tHelp('documentation')}>
+                              {tIssues(`${issue}.description`)}
+                            </HelpDisclosure>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -196,7 +197,9 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
               </Card>
             )
           })}
-          <p className="text-xs text-muted-foreground">{tCatalog('importanceHelp')}</p>
+          <HelpDisclosure title={tHelp('documentation')}>
+            {tCatalog('importanceHelp')}
+          </HelpDisclosure>
         </>
       )}
     </main>

@@ -23,11 +23,15 @@ export function CrawlPicker({
   value,
   label,
   className,
+  selectedLabel,
+  title,
 }: {
   items: CrawlPickerItem[]
   value: string
   label: string
   className?: string
+  selectedLabel?: string
+  title?: string
 }) {
   const router = useRouter()
   return (
@@ -39,8 +43,13 @@ export function CrawlPicker({
         if (item && item.value !== value) router.push(item.href, { scroll: false })
       }}
     >
-      <SelectTrigger size="sm" className={className ?? 'w-80 max-w-full'} aria-label={label}>
-        <SelectValue />
+      <SelectTrigger
+        size="sm"
+        className={className ?? 'w-80 max-w-full'}
+        aria-label={label}
+        title={title}
+      >
+        <SelectValue>{selectedLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} className="w-auto min-w-(--anchor-width)">
         {items.map((item) => (

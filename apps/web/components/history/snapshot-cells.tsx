@@ -9,7 +9,11 @@ export function NotSet() {
 }
 
 export function Text({ value }: { value: string | null }) {
-  return value ? <span className="break-words">{value}</span> : <NotSet />
+  return value ? (
+    <span className="block min-w-0 [overflow-wrap:anywhere] whitespace-normal">{value}</span>
+  ) : (
+    <NotSet />
+  )
 }
 
 /** How a URL answered: its status, what kind of URL it was, and where it redirected. */
@@ -22,7 +26,9 @@ export function Answer({ snapshot }: { snapshot: UrlSnapshot }) {
       <StatusCell row={snapshot} />
       {snapshot.kind !== 'page' && <Badge variant="outline">{tKinds(snapshot.kind)}</Badge>}
       {snapshot.redirectTo && (
-        <span className="font-mono text-xs break-all">→ {snapshot.redirectTo}</span>
+        <span className="min-w-0 basis-full font-mono text-xs break-all whitespace-normal">
+          → {snapshot.redirectTo}
+        </span>
       )}
     </span>
   )
@@ -32,7 +38,7 @@ export function Robots({ snapshot }: { snapshot: UrlSnapshot }) {
   const t = useTranslations('CrawlCompare.table')
   if (!snapshot.metaRobots && !snapshot.xRobotsTag) return <NotSet />
   return (
-    <span className="grid gap-0.5 text-xs">
+    <span className="grid min-w-0 gap-0.5 text-xs [overflow-wrap:anywhere] whitespace-normal">
       {snapshot.metaRobots && (
         <span>
           <span className="text-muted-foreground">{t('metaRobots')}</span> {snapshot.metaRobots}

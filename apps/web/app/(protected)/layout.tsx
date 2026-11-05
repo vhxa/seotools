@@ -1,3 +1,4 @@
+import { buildKind } from '@seotools/core'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
@@ -5,12 +6,14 @@ import type { ReactNode } from 'react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { getBuildInfo } from '@/lib/build-info'
 import { getDb } from '@/lib/db'
 import { requireSession } from '@/lib/session'
 
 export default async function ProtectedLayout({ children }: { children: ReactNode }) {
   const session = await requireSession()
   const t = await getTranslations('ProtectedShell')
+  const build = getBuildInfo()
   const db = await getDb()
   const [companies, faviconVersions, enabledFiles] = await Promise.all([
     db.companies.list(),
@@ -48,7 +51,8 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
             email: session.user.email,
             image: session.user.image,
           }}
-          version={process.env.APP_VERSION}
+          version={build.version}
+          development={buildKind(build) === 'development'}
         />
         {/* A plain div, not SidebarInset: that one renders a <main> and pages bring their own. */}
         <div className="flex min-w-0 flex-1 flex-col">

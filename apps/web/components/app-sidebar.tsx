@@ -2,6 +2,7 @@
 
 import {
   ActivityIcon,
+  ArrowUpCircleIcon,
   CalendarClockIcon,
   ChevronRightIcon,
   FileCode2Icon,
@@ -162,10 +163,13 @@ export function AppSidebar({
   companies,
   user,
   version,
+  development = false,
 }: {
   companies: SwitcherCompany[]
   user: NavUserData
   version?: string
+  /** The build is not a release: say so next to the version, so it is never taken for one. */
+  development?: boolean
 }) {
   const t = useTranslations('Sidebar')
   const tFiles = useTranslations('CrawlFiles.extra.kinds')
@@ -213,7 +217,10 @@ export function AppSidebar({
         { label: t('settings'), href: `/domains/${activeHost}/settings`, icon: SettingsIcon },
       ]
     : []
-  const instanceItems: NavLink[] = [{ label: t('system'), href: '/system', icon: ActivityIcon }]
+  const instanceItems: NavLink[] = [
+    { label: t('system'), href: '/system', icon: ActivityIcon, exact: true },
+    { label: t('updates'), href: '/system/updates', icon: ArrowUpCircleIcon },
+  ]
 
   return (
     <Sidebar collapsible="icon">
@@ -226,7 +233,9 @@ export function AppSidebar({
               <span className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">seotools</span>
                 {version && (
-                  <span className="truncate text-xs text-muted-foreground">v{version}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {t(development ? 'versionDevelopment' : 'versionRelease', { version })}
+                  </span>
                 )}
               </span>
             </SidebarMenuButton>

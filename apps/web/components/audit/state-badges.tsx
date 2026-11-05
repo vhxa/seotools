@@ -36,9 +36,7 @@ export function ParticipationBadge({
       {t('excluded')}
     </Badge>
   ) : (
-    <Badge variant="outline" className={cn('font-normal', className)}>
-      {t('audited')}
-    </Badge>
+    <span className={cn('text-sm', className)}>{t('audited')}</span>
   )
 }
 
@@ -63,6 +61,13 @@ export function IntentBadge({
       <Badge variant="outline" className={cn('font-normal text-muted-foreground', className)}>
         {t('unknown')}
       </Badge>
+    )
+  }
+  if (isDefault) {
+    return (
+      <span className={cn('text-sm text-muted-foreground', className)}>
+        {intent === 'indexable' ? t('indexableDefault') : t(intent)}
+      </span>
     )
   }
   return (
@@ -101,7 +106,6 @@ export function ConditionBadges({
       <Badge
         key={condition}
         variant="outline"
-        title={t(`outcome.${outcome}`)}
         className={cn(
           'font-normal',
           outcome === 'met' && 'text-emerald-700 dark:text-emerald-400',
@@ -114,6 +118,7 @@ export function ConditionBadges({
           condition: t(`names.${condition}`),
           requirement: tRequirement(state.requirement),
         })}
+        <span>· {t(`outcome.${outcome}`)}</span>
       </Badge>,
     ]
   })
@@ -137,6 +142,9 @@ export function IndexabilityBadge({
       </Badge>
     )
   }
+  if (state === 'indexable') {
+    return <span className={cn('text-sm', className)}>{t('indexability.indexable')}</span>
+  }
   const title = blockers
     .map((blocker) => (isBlocker(blocker) ? t(`blockers.${blocker}`) : blocker))
     .join('\n')
@@ -146,7 +154,6 @@ export function IndexabilityBadge({
       title={title || undefined}
       className={cn(
         'font-normal',
-        state === 'indexable' && 'text-emerald-700 dark:text-emerald-400',
         state === 'unknown' && 'border-dashed text-muted-foreground',
         className,
       )}

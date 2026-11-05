@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BUILD_CHANNELS, type BuildInfo } from './version'
 
 /** Treat empty strings (e.g. `FOO=` in a .env file) as "not set". */
 function cleanSource(source: Record<string, string | undefined>) {
@@ -54,6 +55,20 @@ export const bootstrapEnvSchema = commonEnvSchema.extend({
   RUN_MIGRATIONS: bool.default(true),
 })
 
+/**
+ * What the image says about the build it came from (the Dockerfile sets both). They are not
+ * settings: nothing an administrator configures. Anything missing or odd means "development",
+ * because only the release workflow sets `release`.
+ */
+export const buildEnvSchema = z.object({
+  SEOTOOLS_BUILD_CHANNEL: z.enum(BUILD_CHANNELS).catch('development'),
+  SEOTOOLS_BUILD_COMMIT: z
+    .string()
+    .regex(/^[0-9a-f]{7,40}$/i)
+    .optional()
+    .catch(undefined),
+})
+
 export type CommonEnv = z.infer<typeof commonEnvSchema>
 export type WebEnv = z.infer<typeof webEnvSchema>
 export type WorkerEnv = z.infer<typeof workerEnvSchema>
@@ -82,6 +97,19 @@ export const parseCommonEnv = (source: Source = process.env) => parse(commonEnvS
 export const parseWebEnv = (source: Source = process.env) => parse(webEnvSchema, source)
 export const parseWorkerEnv = (source: Source = process.env) => parse(workerEnvSchema, source)
 export const parseBootstrapEnv = (source: Source = process.env) => parse(bootstrapEnvSchema, source)
+
+/** The version comes from the code (`package.json`); the channel and the commit from the image. */
+export function readBuildInfo(
+  version: string | undefined,
+  source: Source = process.env,
+): BuildInfo {
+  const env = buildEnvSchema.parse(cleanSource(source))
+  return {
+    version: version ?? 'unknown',
+    channel: env.SEOTOOLS_BUILD_CHANNEL,
+    commit: env.SEOTOOLS_BUILD_COMMIT?.toLowerCase() ?? null,
+  }
+}
 
 /** The key used to encrypt secrets stored in the `settings` table. */
 export function settingsKeyFrom(

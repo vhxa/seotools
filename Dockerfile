@@ -54,6 +54,14 @@ COPY --chown=node:node docker/entrypoint.mjs docker/healthcheck.mjs ./
 RUN mkdir /data && chown node:node /data
 VOLUME /data
 
+# What this image is, so the app never has to guess. Only the release workflow passes `release`
+# (for a vX.Y.Z tag); a build from main, a pull request or your own machine is a development build,
+# whatever version number is in package.json. Declared last so a new commit rebuilds only this layer.
+ARG SEOTOOLS_BUILD_CHANNEL=development
+ARG SEOTOOLS_BUILD_COMMIT=
+ENV SEOTOOLS_BUILD_CHANNEL=$SEOTOOLS_BUILD_CHANNEL \
+    SEOTOOLS_BUILD_COMMIT=$SEOTOOLS_BUILD_COMMIT
+
 USER node
 EXPOSE 3000
 

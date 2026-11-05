@@ -1,6 +1,7 @@
 import { MinusIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { InfoHelp } from '@/components/help'
 import { IssueCategory } from '@/components/pages/issue-category'
 import { IssueMark, ISSUE_TYPE_STYLES } from '@/components/pages/issue-mark'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +23,7 @@ const rowClass = (active: boolean) =>
  * Every issue there is, in its group and category, to filter the table by one. Each is a link: the
  * filter lives in the address, like the rest of what the table shows. Zero counts indicate no recorded
  * findings, never proof that every URL was checkable or passed. Beside
- * the table on a wide screen, above it on a narrow one.
+ * the table on desktop, or in a sheet on smaller screens.
  */
 export async function IssuesFilter({
   host,
@@ -52,12 +53,15 @@ export async function IssuesFilter({
   const allSelected = selected === null && query.view === 'pages'
 
   return (
-    <aside aria-label={t('issues.title')} className={className}>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('issues.title')}</CardTitle>
+    <aside aria-label={t('issues.title')} className={cn('flex h-full min-h-0 flex-col', className)}>
+      <Card className="min-h-0 flex-1 gap-3 py-4">
+        <CardHeader className="shrink-0 px-4">
+          <CardTitle className="flex items-center gap-1 text-base">
+            {t('issues.title')}
+            <InfoHelp label={t('issues.title')}>{tDetails('issueList.units')}</InfoHelp>
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4">
           {!checked ? (
             <p className="text-sm text-muted-foreground">{t('issues.notChecked')}</p>
           ) : (
@@ -69,7 +73,9 @@ export async function IssuesFilter({
                 className={rowClass(allSelected)}
               >
                 <span>{tDetails('issueList.all')}</span>
-                <span className="text-muted-foreground tabular-nums">{format.number(pages)}</span>
+                <span className="shrink-0 whitespace-nowrap text-muted-foreground tabular-nums">
+                  {format.number(pages)}
+                </span>
               </Link>
 
               {summariseIssues(counts).map((group) => (
@@ -93,7 +99,7 @@ export async function IssuesFilter({
                                 'tabular-nums',
                               )}
                             >
-                              {format.number(category.total)}
+                              {tDetails('issueList.findings', { count: category.total })}
                             </Badge>
                           ) : (
                             <Badge variant="outline" className="text-muted-foreground">
@@ -122,15 +128,15 @@ export async function IssuesFilter({
                                 count === 0 && 'text-muted-foreground opacity-70',
                               )}
                             >
-                              <span>
+                              <span className="min-w-0 flex-1">
                                 {tIssues(`${issue}.name`)}
                                 {count === 0 && zeroFindingState(issue) === 'unavailable' && (
                                   <span className="block text-xs">{tCatalog('unavailable')}</span>
                                 )}
                               </span>
                               {count > 0 && (
-                                <span className="text-muted-foreground tabular-nums">
-                                  {format.number(count)}
+                                <span className="shrink-0 whitespace-nowrap text-muted-foreground tabular-nums">
+                                  {tDetails('issueList.urls', { count })}
                                 </span>
                               )}
                             </Link>

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { EnvError, parseBootstrapEnv, parseWebEnv, parseWorkerEnv, settingsKeyFrom } from './env'
+import {
+  EnvError,
+  parseBootstrapEnv,
+  parseWebEnv,
+  parseWorkerEnv,
+  readBuildInfo,
+  settingsKeyFrom,
+} from './env'
 
 const secret = 's'.repeat(32)
 
@@ -77,5 +84,36 @@ describe('env', () => {
     expect(
       settingsKeyFrom({ BETTER_AUTH_SECRET: secret, SETTINGS_ENCRYPTION_KEY: 'k'.repeat(32) }),
     ).toBe('k'.repeat(32))
+  })
+})
+
+describe('readBuildInfo', () => {
+  it('is a development build unless the image says otherwise', () => {
+    expect(readBuildInfo('0.2.0', {})).toEqual({
+      version: '0.2.0',
+      channel: 'development',
+      commit: null,
+    })
+    expect(readBuildInfo(undefined, {}).version).toBe('unknown')
+  })
+
+  it('reads what the image says', () => {
+    expect(
+      readBuildInfo('0.2.0', {
+        SEOTOOLS_BUILD_CHANNEL: 'release',
+        SEOTOOLS_BUILD_COMMIT: 'A651C7A0123456789abcdef0123456789abcdef0',
+      }),
+    ).toEqual({
+      version: '0.2.0',
+      channel: 'release',
+      commit: 'a651c7a0123456789abcdef0123456789abcdef0',
+    })
+  })
+
+  it('never fails, and never takes an odd value for a release', () => {
+    expect(
+      readBuildInfo('0.2.0', { SEOTOOLS_BUILD_CHANNEL: 'stable', SEOTOOLS_BUILD_COMMIT: 'main' }),
+    ).toEqual({ version: '0.2.0', channel: 'development', commit: null })
+    expect(readBuildInfo('0.2.0', { SEOTOOLS_BUILD_CHANNEL: '' }).channel).toBe('development')
   })
 })

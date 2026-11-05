@@ -26,7 +26,9 @@ export async function ListStatus({
   matching,
   inView,
   inCrawl,
+  compact = false,
 }: {
+  compact?: boolean
   host: string
   query: DetailQuery
   /** The filters in the address that do not apply to the list, and why. */
@@ -93,10 +95,10 @@ export async function ListStatus({
           <span className="text-muted-foreground"> · {t('results.crawl', { total: inCrawl })}</span>
         )}
       </p>
-      {internalOnly && (
+      {internalOnly && !compact && (
         <span className="text-xs text-muted-foreground">{t('results.internalOnly')}</span>
       )}
-      {filters.length > 0 && (
+      {filters.length > 0 && !compact && (
         <ul aria-label={t('activeFilters.label')} className="flex flex-wrap items-center gap-1.5">
           {filters.map((key) => {
             const reason = unapplied[key]
@@ -129,7 +131,7 @@ export async function ListStatus({
           })}
         </ul>
       )}
-      {filters.length > 0 && (
+      {filters.length > 0 && !compact && (
         <Link
           href={detailHref(host, query, withoutFilter('all'))}
           scroll={false}

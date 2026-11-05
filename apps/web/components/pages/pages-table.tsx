@@ -30,6 +30,7 @@ import {
   ArrowUpIcon,
   ChevronDownIcon,
   Columns3Icon,
+  ListFilterIcon,
   RefreshCwIcon,
   EyeOffIcon,
   ExternalLinkIcon,
@@ -41,7 +42,14 @@ import {
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
-import { useMemo, useOptimistic, useState, useTransition, type FormEvent } from 'react'
+import {
+  useMemo,
+  useOptimistic,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import {
   setPriorityUrlAction,
   setPriorityUrlsAction,
@@ -57,6 +65,17 @@ import {
 } from '@/components/audit/state-badges'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueBadge, IssueDetails, useIssueLabel } from '@/components/pages/issue-mark'
+import { TableFilters } from '@/components/pages/table-filters'
+import {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetClose,
+} from '@/components/ui/sheet'
+import { ResultsTable } from '@/components/results-table'
+import { readColumnWidths } from '@/lib/table-columns'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { OpenUrlLink } from '@/components/pages/url-drawer'
@@ -71,14 +90,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import type { RuleRef } from '@/lib/audit-rules'
 import { formatBytes } from '@/lib/format'
@@ -184,6 +196,23 @@ const HIDEABLE = [
   'redirectTo',
 ]
 const STORAGE_KEY = 'seotools:pages-columns'
+const WIDTHS_KEY = 'seotools:pages-widths'
+const DEFAULT_WIDTHS: Record<string, number> = {
+  url: 360,
+  title: 280,
+  status: 140,
+  issueDetail: 300,
+  issues: 300,
+  audit: 160,
+  intent: 260,
+  indexability: 200,
+  origin: 240,
+  depth: 100,
+  responseTime: 160,
+  bytes: 120,
+  contentType: 200,
+  redirectTo: 300,
+}
 
 /** What was saved, on top of the defaults so a column added later starts with its default. */
 function parseVisibility(raw: string | null): ColumnVisibilityState {
@@ -313,7 +342,7 @@ function Cell({
       )
     case 'url':
       return (
-        <div className="flex max-w-md items-center gap-1">
+        <div className="flex min-w-0 items-center gap-1">
           <OpenUrlLink
             target={{ hash: row.urlHash, url: row.url }}
             href={detailHref(host, query, { url: row.urlHash })}
@@ -336,7 +365,7 @@ function Cell({
       )
     case 'title':
       return row.title ? (
-        <span className="block max-w-xs truncate" title={row.title}>
+        <span className="block truncate" title={row.title}>
           {row.title}
         </span>
       ) : (
@@ -399,7 +428,7 @@ function Cell({
       )
     case 'contentType':
       return row.contentType ? (
-        <span className="block max-w-48 truncate" title={row.contentType}>
+        <span className="block truncate" title={row.contentType}>
           {row.contentType}
         </span>
       ) : (
@@ -407,7 +436,7 @@ function Cell({
       )
     case 'redirectTo':
       return row.redirectTo ? (
-        <span className="block max-w-xs truncate font-mono text-xs" title={row.redirectTo}>
+        <span className="block truncate font-mono text-xs" title={row.redirectTo}>
           {row.redirectTo}
         </span>
       ) : (
@@ -497,7 +526,17 @@ export function PagesTable({
   rows,
   query,
   analysed,
+  footer,
+  filters,
+  status,
+  issues,
+  analysis,
 }: {
+  analysis: ReactNode
+  filters: ReactNode
+  status: ReactNode
+  issues: ReactNode
+  footer: ReactNode
   host: string
   rows: PageRow[]
   query: DetailQuery
@@ -505,7 +544,11 @@ export function PagesTable({
   analysed: boolean
 }) {
   const t = useTranslations('PagesDetails')
+  const tCommon = useTranslations('Common')
   const tCatalog = useTranslations('IssueCatalog')
+  const tTable = useTranslations('ResultsTable')
+  const [storedWidths, saveWidths] = useLocalStorage(WIDTHS_KEY)
+  const widths = useMemo(() => readColumnWidths(storedWidths, DEFAULT_WIDTHS), [storedWidths])
   const tRecheck = useTranslations('Verification')
   const router = useRouter()
   const [recheckError, setRecheckError] = useState<string | null>(null)
@@ -541,6 +584,9 @@ export function PagesTable({
   const selectedInternal = selected.filter((row) => row.internal)
   const allSelected = rows.length > 0 && selected.length === rows.length
   const visibleColumns = table.getVisibleLeafColumns()
+  const widthOf = (id: string) => widths[id] ?? 40
+  const resize = (id: string, width: number) =>
+    saveWidths(JSON.stringify({ ...widths, [id]: Math.max(80, Math.min(800, width)) }))
 
   const mark = (marked: boolean) =>
     startTransition(async () => {
@@ -570,180 +616,283 @@ export function PagesTable({
     })
 
   return (
-    <div className="grid gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       {recheckError && (
         <Alert variant="destructive">
           <AlertDescription>{recheckError}</AlertDescription>
         </Alert>
       )}
-      {/* One row whatever the selection: what appears for it goes between the search and the
-          right-hand controls, and nothing there changes size, so nothing below ever moves. */}
-      <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
-        <Search host={host} query={query} />
-        {selected.length > 0 && (
-          <div
-            role="group"
-            aria-label={t('selected', { count: selected.length })}
-            className="flex shrink-0 items-center gap-1"
-          >
-            <span className="px-1 text-sm font-medium whitespace-nowrap">
-              {t('selected', { count: selected.length })}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t('clearSelection')}
-              title={t('clearSelection')}
-              onClick={() => setSelection({})}
+      <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,1fr)_21rem]">
+        {/* Search, selection and table controls share the toolbar above the scroll surface. */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Search host={host} query={query} />
+          {selected.length > 0 && (
+            <div
+              role="group"
+              aria-label={t('selected', { count: selected.length })}
+              className="flex shrink-0 items-center gap-1"
             >
-              <XIcon />
-            </Button>
-            {(selectedPages.length > 0 || selectedInternal.length > 0) && (
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={<Button variant="outline" size="sm" disabled={pending} />}
-                >
-                  {t('actionsMenu.label')}
-                  <ChevronDownIcon />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="min-w-52">
-                  {selectedPages.length > 0 && (
-                    <>
-                      <DropdownMenuItem onClick={() => mark(true)}>
-                        <StarIcon className="fill-current" />
-                        {t('bulk.mark')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => mark(false)}>
-                        <StarIcon />
-                        {t('bulk.unmark')}
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {selectedPages.length > 0 && selectedInternal.length > 0 && (
-                    <DropdownMenuSeparator />
-                  )}
-                  {selectedInternal.length > 0 && (
-                    <>
-                      <DropdownMenuItem onClick={() => setAuditDialogOpen(true)}>
-                        <SlidersHorizontalIcon />
-                        {t('bulk.configureAudit')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={selectedInternal.length > MAX_VERIFICATION_URLS}
-                        onClick={recheck}
-                      >
-                        <RefreshCwIcon />
-                        {selectedInternal.length > MAX_VERIFICATION_URLS
-                          ? tRecheck('bulk.recheckLimit', { max: MAX_VERIFICATION_URLS })
-                          : tRecheck('bulk.recheck')}
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
-        )}
-        <div className="ml-auto flex shrink-0 items-center gap-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-              <Columns3Icon />
-              {t('columnsMenu.label')}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-52">
-              {table
-                .getAllLeafColumns()
-                .filter((column) => column.getCanHide())
-                .map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) => column.toggleVisibility(value)}
+              <span className="px-1 text-sm font-medium whitespace-nowrap">
+                {t('selected', { count: selected.length })}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t('clearSelection')}
+                title={t('clearSelection')}
+                onClick={() => setSelection({})}
+              >
+                <XIcon />
+              </Button>
+              {(selectedPages.length > 0 || selectedInternal.length > 0) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button variant="outline" size="sm" disabled={pending} />}
                   >
-                    {t(`columns.${column.id as 'title'}`)}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => saveColumns(null)}>
-                {t('columnsMenu.reset')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    {t('actionsMenu.label')}
+                    <ChevronDownIcon />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-52">
+                    {selectedPages.length > 0 && (
+                      <>
+                        <DropdownMenuItem onClick={() => mark(true)}>
+                          <StarIcon className="fill-current" />
+                          {t('bulk.mark')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => mark(false)}>
+                          <StarIcon />
+                          {t('bulk.unmark')}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {selectedPages.length > 0 && selectedInternal.length > 0 && (
+                      <DropdownMenuSeparator />
+                    )}
+                    {selectedInternal.length > 0 && (
+                      <>
+                        <DropdownMenuItem onClick={() => setAuditDialogOpen(true)}>
+                          <SlidersHorizontalIcon />
+                          {t('bulk.configureAudit')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={selectedInternal.length > MAX_VERIFICATION_URLS}
+                          onClick={recheck}
+                        >
+                          <RefreshCwIcon />
+                          {selectedInternal.length > MAX_VERIFICATION_URLS
+                            ? tRecheck('bulk.recheckLimit', { max: MAX_VERIFICATION_URLS })
+                            : tRecheck('bulk.recheck')}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          )}
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <TableFilters>{filters}</TableFilters>
+            <Sheet>
+              <SheetTrigger render={<Button variant="outline" size="sm" className="xl:hidden" />}>
+                <ListFilterIcon />
+                {t('issuesMenu')}
+              </SheetTrigger>
+              <SheetContent showCloseButton={false} className="gap-0">
+                <SheetHeader className="flex-row items-center justify-between">
+                  <SheetTitle>{t('issuesMenu')}</SheetTitle>
+                  <SheetClose
+                    render={<Button variant="ghost" size="icon-sm" aria-label={tCommon('close')} />}
+                  >
+                    <XIcon />
+                  </SheetClose>
+                </SheetHeader>
+                <div className="min-h-0 flex-1 p-3 pt-0">{issues}</div>
+              </SheetContent>
+            </Sheet>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+                <Columns3Icon />
+                {t('columnsMenu.label')}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-52">
+                {table
+                  .getAllLeafColumns()
+                  .filter((column) => column.getCanHide())
+                  .map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) => column.toggleVisibility(value)}
+                    >
+                      {t(`columns.${column.id as 'title'}`)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    saveColumns(null)
+                    saveWidths(null)
+                  }}
+                >
+                  {t('columnsMenu.reset')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        <div className="flex min-w-0 items-center [&_[data-slot=select-trigger]]:w-full">
+          {analysis}
         </div>
       </div>
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {visibleColumns.map((column) => {
-              const sort = SORTABLE[column.id]
-              const active = sort !== undefined && query.sort === sort
-              return (
-                <TableHead
-                  key={column.id}
-                  className={column.id === 'select' || column.id === 'actions' ? 'w-10' : undefined}
-                  aria-sort={
-                    active ? (query.direction === 'asc' ? 'ascending' : 'descending') : undefined
-                  }
-                >
-                  {column.id === 'select' ? (
-                    <Checkbox
-                      checked={allSelected}
-                      indeterminate={selected.length > 0 && !allSelected}
-                      onCheckedChange={(value) => table.toggleAllRowsSelected(value)}
-                      aria-label={t('selectAll')}
-                    />
-                  ) : column.id === 'actions' ? null : (
-                    <SortableHead
-                      id={column.id}
-                      label={
-                        column.id === 'issueDetail' && detail
-                          ? tCatalog(`detailColumns.${detail}`)
-                          : t(`columns.${column.id as 'url'}`)
-                      }
-                      host={host}
-                      query={query}
-                    />
-                  )}
-                </TableHead>
-              )
-            })}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 && (
-            <TableRow>
-              <TableCell
-                colSpan={visibleColumns.length}
-                className="py-8 text-center text-muted-foreground"
-              >
-                {t('empty')}
-              </TableCell>
-            </TableRow>
-          )}
-          {table.getRowModel().rows.map((row) => (
-            <TableRow
-              key={row.id}
-              data-state={row.getIsSelected() ? 'selected' : undefined}
-              className="group/row"
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_21rem]">
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
+          {status && <div className="shrink-0">{status}</div>}
+          <ResultsTable footer={footer} fill>
+            <table
+              className="w-full table-fixed text-sm"
+              style={{ width: visibleColumns.reduce((sum, column) => sum + widthOf(column.id), 0) }}
             >
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  <Cell
-                    id={cell.column.id}
-                    row={row.original}
-                    host={host}
-                    query={query}
-                    analysed={analysed}
-                    selected={row.getIsSelected()}
-                    onSelect={(value) => row.toggleSelected(value)}
-                  />
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+              <colgroup>
+                {visibleColumns.map((column) => (
+                  <col key={column.id} style={{ width: widthOf(column.id) }} />
+                ))}
+              </colgroup>
+              <TableHeader>
+                <TableRow>
+                  {visibleColumns.map((column) => {
+                    const sort = SORTABLE[column.id]
+                    const active = sort !== undefined && query.sort === sort
+                    return (
+                      <TableHead
+                        key={column.id}
+                        className={cn(
+                          'relative overflow-hidden',
+                          column.id === 'url' && 'results-url bg-muted',
+                        )}
+                        aria-sort={
+                          active
+                            ? query.direction === 'asc'
+                              ? 'ascending'
+                              : 'descending'
+                            : undefined
+                        }
+                      >
+                        {column.id === 'select' ? (
+                          <Checkbox
+                            checked={allSelected}
+                            indeterminate={selected.length > 0 && !allSelected}
+                            onCheckedChange={(value) => table.toggleAllRowsSelected(value)}
+                            aria-label={t('selectAll')}
+                          />
+                        ) : column.id === 'actions' ? null : (
+                          <SortableHead
+                            id={column.id}
+                            label={
+                              column.id === 'issueDetail' && detail
+                                ? tCatalog(`detailColumns.${detail}`)
+                                : t(`columns.${column.id as 'url'}`)
+                            }
+                            host={host}
+                            query={query}
+                          />
+                        )}
+                        {DEFAULT_WIDTHS[column.id] !== undefined && (
+                          <div
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label={tTable('resize', {
+                              column:
+                                column.id === 'issueDetail' && detail
+                                  ? tCatalog(`detailColumns.${detail}`)
+                                  : t(`columns.${column.id as 'url'}`),
+                            })}
+                            aria-valuemin={80}
+                            aria-valuemax={800}
+                            aria-valuenow={widthOf(column.id)}
+                            tabIndex={0}
+                            className="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none border-r-2 border-transparent hover:border-primary focus-visible:border-primary focus-visible:outline-none"
+                            onKeyDown={(event) => {
+                              if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                                event.preventDefault()
+                                resize(
+                                  column.id,
+                                  widthOf(column.id) + (event.key === 'ArrowRight' ? 20 : -20),
+                                )
+                              } else if (event.key === 'Home') {
+                                event.preventDefault()
+                                resize(column.id, DEFAULT_WIDTHS[column.id]!)
+                              }
+                            }}
+                            onPointerDown={(event) => {
+                              event.preventDefault()
+                              const handle = event.currentTarget
+                              handle.focus()
+                              handle.setPointerCapture(event.pointerId)
+                              handle.dataset.startX = String(event.clientX)
+                              handle.dataset.startWidth = String(widthOf(column.id))
+                            }}
+                            onPointerMove={(event) => {
+                              if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+                              resize(
+                                column.id,
+                                Number(event.currentTarget.dataset.startWidth) +
+                                  event.clientX -
+                                  Number(event.currentTarget.dataset.startX),
+                              )
+                            }}
+                            onDoubleClick={() => resize(column.id, DEFAULT_WIDTHS[column.id]!)}
+                          />
+                        )}
+                      </TableHead>
+                    )
+                  })}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={visibleColumns.length}
+                      className="py-8 text-center text-muted-foreground"
+                    >
+                      {t('empty')}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {table.getRowModel().rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() ? 'selected' : undefined}
+                    className="group/row"
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        className={cn(
+                          'overflow-hidden',
+                          cell.column.id === 'url' &&
+                            'results-url bg-background group-data-[state=selected]/row:bg-muted',
+                        )}
+                      >
+                        <Cell
+                          id={cell.column.id}
+                          row={row.original}
+                          host={host}
+                          query={query}
+                          analysed={analysed}
+                          selected={row.getIsSelected()}
+                          onSelect={(value) => row.toggleSelected(value)}
+                        />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </table>
+          </ResultsTable>
+        </div>
+        <div className="hidden min-h-0 xl:block">{issues}</div>
+      </div>
       <AuditDialog
         host={host}
         urls={selectedInternal.map((row) => row.url)}

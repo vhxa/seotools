@@ -3,19 +3,15 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import {
-  CrawlStamp,
   crawlConfigVersion,
   useConfigLabel,
   useCrawlMoment,
 } from '@/components/history/crawl-stamp'
-import { buttonVariants } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 
 /**
- * Says which crawl the page is showing, always: its date, coverage and audit configuration. For a
- * crawl that is not the latest it says so plainly, and says how its configuration compares with the
- * one in force now, because its results are never recalculated (only the latest crawl follows the
- * current rules).
+ * Identifies the selected crawl and warns when it is historical, incomplete or analysed with an
+ * older audit configuration. Historical results keep their configuration; only the latest crawl
+ * follows the current rules.
  */
 export function CrawlBanner({
   crawl,
@@ -38,33 +34,32 @@ export function CrawlBanner({
   const configLabel = useConfigLabel()
   const version = crawlConfigVersion(crawl)
   const behind = historical && version !== null && version !== currentVersion
+  if (!picker && !historical && crawl.status === 'completed') return null
   return (
-    <div
-      className={cn(
-        'flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3',
-        historical && 'border-amber-500/40 bg-amber-500/5',
+    <div className="grid gap-2 text-sm">
+      {picker && <div className="flex flex-wrap items-center gap-2">{picker}</div>}
+      {(historical || crawl.status !== 'completed' || behind) && (
+        <div
+          role="status"
+          className="grid gap-1 rounded-md border border-amber-500/40 bg-amber-500/5 p-3"
+        >
+          {historical && <p>{t('viewing', { when: when(crawl) })}</p>}
+          {crawl.status !== 'completed' && <p>{t('incomplete')}</p>}
+          {behind && (
+            <p>
+              {t('configBehind', {
+                config: configLabel(version),
+                current: configLabel(currentVersion),
+              })}
+            </p>
+          )}
+          {historical && latestHref && (
+            <Link href={latestHref} className="w-fit underline underline-offset-4">
+              {t('backToLatest')}
+            </Link>
+          )}
+        </div>
       )}
-    >
-      <div className="grid min-w-0 gap-1.5">
-        {historical && <p className="text-sm font-medium">{t('viewing', { when: when(crawl) })}</p>}
-        <CrawlStamp crawl={crawl} />
-        {behind && (
-          <p className="text-xs text-muted-foreground">
-            {t('configBehind', {
-              config: configLabel(version),
-              current: configLabel(currentVersion),
-            })}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {historical && latestHref && (
-          <Link href={latestHref} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-            {t('backToLatest')}
-          </Link>
-        )}
-        {picker}
-      </div>
     </div>
   )
 }

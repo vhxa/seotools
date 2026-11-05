@@ -16,3 +16,12 @@ export async function requireSession() {
   if (!session) redirect('/login')
   return session
 }
+
+/**
+ * For what concerns the whole instance rather than one domain: updates, the system. Roles are not
+ * stored yet, so any signed-in account passes today; when they are, this is the one place that
+ * checks them (as `requireDomain` is for domains). Every such page and action calls it itself.
+ */
+export async function requireAdmin() {
+  return requireSession()
+}

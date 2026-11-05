@@ -1,0 +1,46 @@
+# Changelog
+
+What changed in each release of seotools. It follows [Keep a Changelog](https://keepachangelog.com)
+and [Semantic Versioning](https://semver.org), with the rules of
+[docs/releases.md](docs/releases.md): every change that reaches users, administrators or operators
+adds an entry under `## [Unreleased]` in the pull request that makes it, under the heading that
+names its impact:
+
+| Heading    | Impact on the next version               |
+| ---------- | ---------------------------------------- |
+| `Breaking` | MAJOR (MINOR while the version is `0.x`) |
+| `Added`    | MINOR                                    |
+| `Changed`  | MINOR                                    |
+| `Fixed`    | PATCH                                    |
+| `Security` | PATCH                                    |
+
+Documentation, tests, CI and refactors that change nothing visible have no entry and, by
+themselves, no release. Releases are prepared with `node scripts/release.mjs prepare <version>`,
+which moves the entries of `[Unreleased]` into the new version.
+
+## [Unreleased]
+
+### Added
+
+- **Updates** page (System → Updates) for administrators: the installed version and kind of build,
+  the latest stable release, when the last check ran and how it ended, and links to the release
+  notes and the update guide. It tells _up to date_, _update available_, _could not check_ and
+  _development build_ apart; a failed check is never shown as up to date.
+- Looking for updates by hand, or once a day in the background if an administrator turns it on
+  (off by default). A check only asks GitHub for the latest release: it sends nothing about the
+  domains audited or the installation. Installing an update stays with Docker or Dokploy.
+- `GET /api/health` reports `channel` (`release` or `development`) next to `version`.
+- A guide to [releases](docs/releases.md) for maintainers and to [updating](docs/updating.md) for
+  administrators: tags, backups, migrations, rollback, Docker Compose and Dokploy (manual and
+  automatic).
+- `node scripts/release.mjs` and a CI check that the versions of all packages agree with this file.
+
+### Changed
+
+- Docker tags now say what they are. `latest` is the newest **stable release** (it used to follow
+  `main`), `X.Y.Z` is one release, `X.Y` follows the patches of a minor version, and from 1.0.0
+  `X` follows a major version. Builds of `main` are published as `edge` and `sha-<commit>`, and
+  report themselves as development builds in the sidebar, in `/api/health` and on the Updates
+  page. There is no `0` tag: while the major version is 0 a minor release can break things.
+- The container image is checked (it starts and reports the version it was published as) before the
+  tags that follow releases move and before a GitHub release is created.
