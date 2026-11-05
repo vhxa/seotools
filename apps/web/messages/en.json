@@ -448,20 +448,19 @@
       "pages": "{count, plural, one {# URL} other {# URLs}}"
     },
     "findings": {
-      "issue": {
-        "title": "Issues"
-      },
-      "warning": {
-        "title": "Warnings"
-      },
-      "opportunity": {
-        "title": "Opportunities"
-      },
-      "empty": "Nothing of this kind was found."
+      "high": "High importance",
+      "medium": "Medium importance",
+      "low": "Low importance",
+      "empty": "Nothing of this importance was found."
     },
     "priority": {
       "mark": "Mark as priority",
       "unmark": "Remove from priority"
+    },
+    "accepted": {
+      "title": "Accepted by a rule",
+      "help": "The crawl still sees these, and a rule says they are expected. They are not pending, and they are not fixed: remove the rule and they count again.",
+      "viewAll": "View every URL with an accepted finding"
     }
   },
   "PagesDetails": {
@@ -611,8 +610,10 @@
         "indexability": "Technical state: {value}",
         "participation": "Audit: {value}",
         "intent": "{value}",
-        "rule": "Decided by one rule"
-      }
+        "rule": "Decided by one rule",
+        "accepted": "Accepted by a rule: {value}"
+      },
+      "anyFinding": "any finding"
     },
     "advancedFilters": "Advanced filters and issues",
     "filtersMenu": "Filters",
@@ -688,7 +689,20 @@
     },
     "observedAt": "Full crawl · {when}",
     "crawlFindingsNote": "These findings belong to the selected full crawl. A recheck is shown separately below and does not replace them.",
-    "recheckAvailable": "Rechecked {when} · view separate results"
+    "recheckAvailable": "Rechecked {when} · view separate results",
+    "noPendingIssues": "Nothing pending on this URL.",
+    "accepted": {
+      "title": "Accepted by a rule ({count, number})",
+      "note": "The crawl still sees these. A rule says they are expected, so they are not pending, and they are not fixed.",
+      "condition": "A rule states {condition}: {requirement}.",
+      "expectation": "A rule expects this URL not to be indexable.",
+      "origin": "A rule expects this URL not to be indexable, so what it points at or what links to it is not news.",
+      "destination": "A rule of the URL this one points at accepts it: {blockers}.",
+      "ruleRemoved": "The rule no longer exists.",
+      "related": "{total, plural, one {# URL it points at} other {# URLs it points at}}",
+      "elsewhereTitle": "Rules of this URL act on other URLs ({total, number})",
+      "elsewhereNote": "What a rule declares of this URL accepts these findings of the URLs that point at it. The first ones:"
+    }
   },
   "UrlLinks": {
     "in": {
@@ -2305,7 +2319,9 @@
       },
       "unverifiedHint": "The findings differ, but this is not shown as new or resolved because: {reasons}.",
       "persistent": "Still reported",
-      "persistentHint": "Reported by both crawls."
+      "persistentHint": "Reported by both crawls.",
+      "accepted": "Accepted by a rule",
+      "acceptedHint": "The later crawl still sees it, and a rule says it is expected. It was not fixed."
     },
     "reasons": {
       "pruned": "a crawl was pruned",
@@ -2439,7 +2455,8 @@
         "indexable": "The crawl is checked for what stands in the way of indexing the URL.",
         "not-indexable": "A noindex is fine; being indexable is not. It is not the same as requiring a noindex. Pages that point at it are not told about its noindex or a canonical elsewhere; a robots.txt block is still reported."
       }
-    }
+    },
+    "relationsNote": "This also accepts findings of the URLs that point here (canonical, hreflang). Accepted findings are not fixed: they stay visible as accepted by a rule."
   },
   "Help": {
     "about": "About {subject}",

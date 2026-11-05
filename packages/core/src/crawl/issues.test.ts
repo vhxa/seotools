@@ -95,27 +95,23 @@ describe('worstIssueType', () => {
 })
 
 describe('compareIssueSeverity', () => {
-  it('sorts by type and then by importance', () => {
+  it('sorts by importance and then by type', () => {
     expect(
       (
         [
-          'title-too-long',
-          'noindex',
-          'url-spaces',
-          'nofollow',
-          'title-missing',
-          'no-response',
+          'title-too-long', // opportunity, low
+          'url-spaces', // warning, medium
+          'uncrawlable-links', // issue, medium
+          'mixed-content', // warning, high
+          'no-response', // issue, high
         ] as const
       )
         .slice()
         .sort(compareIssueSeverity),
-    ).toEqual([
-      'noindex',
-      'no-response',
-      'title-missing',
-      'url-spaces',
-      'nofollow',
-      'title-too-long',
-    ])
+    ).toEqual(['no-response', 'mixed-content', 'uncrawlable-links', 'url-spaces', 'title-too-long'])
+  })
+
+  it('never lets the type bury something serious', () => {
+    expect(compareIssueSeverity('mixed-content', 'uncrawlable-links')).toBeLessThan(0)
   })
 })

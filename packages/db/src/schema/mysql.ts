@@ -357,6 +357,31 @@ export const crawlUrlIssues = mysqlTable(
 )
 
 /**
+ * Findings a rule accepts: the crawl saw them, and they are not pending, so nothing that reads
+ * `crawl_url_issues` counts them. One row per URL, issue and URL whose declaration accepts it, which
+ * is the URL itself or, for a finding about another URL, the one that says it is expected: that
+ * tells when a rule of one URL acts on the findings of others.
+ */
+export const crawlUrlAcceptedIssues = mysqlTable(
+  'crawl_url_accepted_issues',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    urlHash: varchar('url_hash', { length: 32 }).notNull(),
+    issue: varchar('issue', { length: 64 }).notNull(),
+    acceptedBy: varchar('accepted_by', { length: 32 }).notNull(),
+    /** As JSON: `{ acceptance, details?, evidence? }` (`crawlAcceptedRows`). */
+    details: longtext('details').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.urlHash, t.issue, t.acceptedBy] }),
+    index('crawl_url_accepted_issues_issue_idx').on(t.crawlId, t.issue),
+    index('crawl_url_accepted_issues_by_idx').on(t.crawlId, t.acceptedBy),
+  ],
+)
+
+/**
  * The version of a domain's audit configuration, which grows with every change to its rules, and
  * how the recalculation that follows a change is going. A domain without a row is at version 0.
  */

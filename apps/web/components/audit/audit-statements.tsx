@@ -184,6 +184,13 @@ export function AuditStatements({
   }
   const changedFrom = (pick: string, base: string | undefined) =>
     base !== undefined && pick !== base
+  // What a URL declares can accept findings of the URLs that point at it (`relations.ts`).
+  const reachesOthers =
+    picks.intent === 'not-indexable' ||
+    (['noindex', 'robots'] as const).some(
+      (condition) =>
+        picks.conditions[condition] === 'required' || picks.conditions[condition] === 'allowed',
+    )
 
   return (
     <div className="grid gap-5">
@@ -277,6 +284,7 @@ export function AuditStatements({
           })
         )}
         <p className="text-xs text-muted-foreground">{t('conditions.unknown')}</p>
+        {reachesOthers && <p className="text-xs text-muted-foreground">{t('relationsNote')}</p>}
       </div>
 
       <Collapsible defaultOpen={advancedOpen} className="grid gap-3">

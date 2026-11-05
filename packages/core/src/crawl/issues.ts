@@ -231,7 +231,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  *   what keeps the URL from being indexed. Analysing a crawl again does not repair one that stored
  *   every URL of a sitemap alike: it stops claiming a listing it cannot prove.
  */
-const CHECKS_REVISION = 6
+const CHECKS_REVISION = 7
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.
@@ -265,12 +265,16 @@ export function worstIssueType(ids: Iterable<PageIssueId>): IssueType | null {
   return worst === null ? null : (ISSUE_TYPES[worst] ?? null)
 }
 
-/** Worst type first, then the most important. For lists that are not in catalog order. */
+/**
+ * Most important first, then by type. For lists that are not in catalog order: a high-importance
+ * warning goes before a low-importance issue, since the type says what a finding is, not how much
+ * it matters.
+ */
 export function compareIssueSeverity(a: PageIssueId, b: PageIssueId): number {
   return (
-    ISSUE_TYPES.indexOf(PAGE_ISSUES[a].type) - ISSUE_TYPES.indexOf(PAGE_ISSUES[b].type) ||
     ISSUE_IMPORTANCES.indexOf(PAGE_ISSUES[a].importance) -
-      ISSUE_IMPORTANCES.indexOf(PAGE_ISSUES[b].importance)
+      ISSUE_IMPORTANCES.indexOf(PAGE_ISSUES[b].importance) ||
+    ISSUE_TYPES.indexOf(PAGE_ISSUES[a].type) - ISSUE_TYPES.indexOf(PAGE_ISSUES[b].type)
   )
 }
 

@@ -68,6 +68,10 @@ export async function ListStatus({
         return query.search
       case 'issue':
         return query.issue && isPageIssueId(query.issue) ? tIssues(`${query.issue}.name`) : ''
+      case 'accepted':
+        return query.accepted && isPageIssueId(query.accepted)
+          ? tIssues(`${query.accepted}.name`)
+          : t('activeFilters.anyFinding')
       case 'status':
         return tFilters(`status.${query.status!}`)
       case 'type':

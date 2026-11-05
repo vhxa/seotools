@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import {
   and,
   asc,
+  countDistinct,
   desc,
   eq,
   exists,
@@ -40,6 +41,7 @@ import {
   crawlJobValues,
   crawlResultColumns,
   crawlRobotsColumn,
+  crawlAcceptedRows,
   crawlIssueRows,
   crawlAnalysisColumns,
   crawlAuditRows,
@@ -48,6 +50,7 @@ import {
   supersedes,
   toCrawlUrlAudit,
   sitemapHreflangRow,
+  toCrawlUrlAcceptedIssue,
   toCrawlUrlIssue,
   crawlUrlOrder,
   crawlUrlWhere,
@@ -122,6 +125,7 @@ import type {
   CrawlLink,
   CrawlUrlAudit,
   CrawlUrlBrief,
+  CrawlUrlAcceptedIssue,
   CrawlUrlIssue,
   Database,
   NewCrawlUrl,
@@ -145,6 +149,7 @@ const {
   crawlSchedules,
   crawls,
   crawlUrls,
+  crawlUrlAcceptedIssues,
   crawlUrlIssues,
   crawlUrlAudit,
   crawlSitemapHreflang,
@@ -189,6 +194,16 @@ export function createMysqlDatabase(options: {
         .select({ urlHash: crawlUrlIssues.urlHash })
         .from(crawlUrlIssues)
         .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue))),
+    withAccepted: (issue: string | null) =>
+      db
+        .select({ urlHash: crawlUrlAcceptedIssues.urlHash })
+        .from(crawlUrlAcceptedIssues)
+        .where(
+          and(
+            eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+            issue === null ? undefined : eq(crawlUrlAcceptedIssues.issue, issue),
+          ),
+        ),
     withAudit: (filter: Parameters<typeof crawlAuditWhere>[2]) =>
       db
         .select({ urlHash: crawlUrlAudit.urlHash })
@@ -915,6 +930,9 @@ export function createMysqlDatabase(options: {
         await db.transaction(async (tx) => {
           await tx.delete(crawlLinks).where(inArray(crawlLinks.crawlId, expired))
           await tx.delete(crawlUrlIssues).where(inArray(crawlUrlIssues.crawlId, expired))
+          await tx
+            .delete(crawlUrlAcceptedIssues)
+            .where(inArray(crawlUrlAcceptedIssues.crawlId, expired))
           await tx.delete(crawlUrlAudit).where(inArray(crawlUrlAudit.crawlId, expired))
           await tx
             .delete(crawlSitemapHreflang)
@@ -1196,8 +1214,9 @@ export function createMysqlDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveAnalysis({ crawlId, issues, pages, withType, catalog, audit }) {
+      async saveAnalysis({ crawlId, issues, accepted = [], pages, withType, catalog, audit }) {
         const issueRows = crawlIssueRows(crawlId, issues)
+        const acceptedRows = crawlAcceptedRows(crawlId, accepted)
         const auditRows = crawlAuditRows(crawlId, audit.urls)
         return db.transaction(async (tx) => {
           // Locked: of two analyses of one crawl at once, the second reads what the first saved.
@@ -1213,6 +1232,10 @@ export function createMysqlDatabase(options: {
           }
           await tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId))
           for (const batch of chunk(issueRows)) await tx.insert(crawlUrlIssues).values(batch)
+          await tx.delete(crawlUrlAcceptedIssues).where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
+          for (const batch of chunk(acceptedRows)) {
+            await tx.insert(crawlUrlAcceptedIssues).values(batch)
+          }
           await tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId))
           for (const batch of chunk(auditRows)) await tx.insert(crawlUrlAudit).values(batch)
           await tx
@@ -1254,6 +1277,68 @@ export function createMysqlDatabase(options: {
           found.push(...rows.map(toCrawlUrlIssue))
         }
         return found
+      },
+
+      async acceptedCounts(crawlId) {
+        const rows = await db
+          .select({
+            issue: crawlUrlAcceptedIssues.issue,
+            pages: countDistinct(crawlUrlAcceptedIssues.urlHash),
+          })
+          .from(crawlUrlAcceptedIssues)
+          .where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
+          .groupBy(crawlUrlAcceptedIssues.issue)
+        return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
+      },
+
+      async acceptedOf(crawlId, urlHashes) {
+        const found: CrawlUrlAcceptedIssue[] = []
+        for (const batch of chunk(urlHashes)) {
+          const rows = await db
+            .select()
+            .from(crawlUrlAcceptedIssues)
+            .where(
+              and(
+                eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+                inArray(crawlUrlAcceptedIssues.urlHash, batch),
+              ),
+            )
+          for (const row of rows) {
+            const finding = toCrawlUrlAcceptedIssue(row)
+            if (finding) found.push(finding)
+          }
+        }
+        return found
+      },
+
+      async acceptedBecauseOf(crawlId, urlHash, { limit }) {
+        const where = and(
+          eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+          eq(crawlUrlAcceptedIssues.acceptedBy, urlHash),
+          ne(crawlUrlAcceptedIssues.urlHash, urlHash),
+        )
+        const [counted] = await db
+          .select({ total: sql<number>`count(*)` })
+          .from(crawlUrlAcceptedIssues)
+          .where(where)
+        const findings = await db
+          .select({
+            urlHash: crawlUrlAcceptedIssues.urlHash,
+            url: crawlUrls.url,
+            issue: crawlUrlAcceptedIssues.issue,
+          })
+          .from(crawlUrlAcceptedIssues)
+          .innerJoin(
+            crawlUrls,
+            and(
+              eq(crawlUrls.crawlId, crawlUrlAcceptedIssues.crawlId),
+              eq(crawlUrls.urlHash, crawlUrlAcceptedIssues.urlHash),
+            ),
+          )
+          .where(where)
+          .orderBy(asc(crawlUrls.url), asc(crawlUrlAcceptedIssues.issue))
+          .limit(limit)
+        return { total: Number(counted?.total ?? 0), findings }
       },
 
       async auditOf(crawlId, urlHashes) {
@@ -1474,6 +1559,7 @@ export function createMysqlDatabase(options: {
         const urls: Parameters<typeof foldTraces>[0] = []
         const issues: Parameters<typeof foldTraces>[1] = []
         const audits: Parameters<typeof foldTraces>[2] = []
+        const accepted: NonNullable<Parameters<typeof foldTraces>[3]> = []
         for (const ids of chunk(owned, HISTORY_BATCH)) {
           for (const hashes of chunk(urlHashes, HISTORY_BATCH)) {
             urls.push(
@@ -1511,6 +1597,21 @@ export function createMysqlDatabase(options: {
                   )
               ).map((row) => ({ crawlId: row.crawlId, ...toCrawlUrlIssue(row) })),
             )
+            accepted.push(
+              ...(await db
+                .select({
+                  crawlId: crawlUrlAcceptedIssues.crawlId,
+                  urlHash: crawlUrlAcceptedIssues.urlHash,
+                  issue: crawlUrlAcceptedIssues.issue,
+                })
+                .from(crawlUrlAcceptedIssues)
+                .where(
+                  and(
+                    inArray(crawlUrlAcceptedIssues.crawlId, ids),
+                    inArray(crawlUrlAcceptedIssues.urlHash, hashes),
+                  ),
+                )),
+            )
             audits.push(
               ...(
                 await db
@@ -1526,7 +1627,7 @@ export function createMysqlDatabase(options: {
             )
           }
         }
-        return foldTraces(urls, issues, audits)
+        return foldTraces(urls, issues, audits, accepted)
       },
     },
 

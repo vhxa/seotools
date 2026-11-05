@@ -1,6 +1,6 @@
 import { AUDIT_CONDITIONS, intentOutcome } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
-import { ChevronDownIcon, CircleHelpIcon, ExternalLinkIcon } from 'lucide-react'
+import { CircleHelpIcon, ExternalLinkIcon } from 'lucide-react'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
 import {
@@ -13,6 +13,8 @@ import {
   RuleOrigin,
 } from '@/components/audit/state-badges'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
+import { AcceptedFindings } from '@/components/pages/accepted-findings'
+import { Disclosure } from '@/components/pages/disclosure'
 import { FindingHelp } from '@/components/pages/finding-help'
 import { RecheckButton } from '@/components/verification/recheck-button'
 import { UrlAuditActions } from '@/components/audit/url-audit-actions'
@@ -24,7 +26,6 @@ import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-ma
 import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Badge } from '@/components/ui/badge'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { groupDetailFindings } from '@/lib/url-detail-findings'
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { formatBytes } from '@/lib/format'
@@ -36,29 +37,6 @@ function Section({ title, children, id }: { title: string; children: ReactNode; 
       <h3 className="text-sm font-medium">{title}</h3>
       {children}
     </section>
-  )
-}
-
-/** Keep the heading/name visible while explanations remain available to keyboard users. */
-function Disclosure({
-  title,
-  children,
-  defaultOpen = false,
-}: {
-  title: ReactNode
-  children: ReactNode
-  defaultOpen?: boolean
-}) {
-  return (
-    <Collapsible defaultOpen={defaultOpen} className="min-w-0 rounded-lg border">
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-lg p-3 text-left text-sm font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&[aria-expanded=true]>svg]:rotate-180">
-        <span className="min-w-0">{title}</span>
-        <ChevronDownIcon aria-hidden className="size-4 shrink-0 transition-transform" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="min-w-0">
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-3 pb-3">{children}</div>
-      </CollapsibleContent>
-    </Collapsible>
   )
 }
 
@@ -204,7 +182,9 @@ export async function UrlDetail({
         ) : audit?.participation === 'excluded' ? (
           <p className="text-sm text-muted-foreground">{t('excludedFindings')}</p>
         ) : data.issues.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('noIssues')}</p>
+          <p className="text-sm text-muted-foreground">
+            {data.accepted.length > 0 ? t('noPendingIssues') : t('noIssues')}
+          </p>
         ) : (
           <div className="grid gap-4">
             {findingGroups.map(({ importance, findings }) => (
@@ -244,6 +224,8 @@ export async function UrlDetail({
           </div>
         )}
       </Section>
+
+      <AcceptedFindings data={data} hrefFor={hrefFor} />
 
       <UrlRecheck data={data} />
 

@@ -15,6 +15,7 @@ import {
   type SQL,
   type SQLWrapper,
 } from 'drizzle-orm'
+import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/acceptance'
 import {
   JOB_TYPES,
   MAX_VERIFICATION_URLS,
@@ -48,6 +49,7 @@ import {
 import type {
   Company,
   CompanyWithDomains,
+  CrawlUrlAcceptedIssue,
   Crawl,
   CrawlCounts,
   CrawlFile,
@@ -461,6 +463,8 @@ export function crawlUrlWhere(
   query: CrawlUrlQuery,
   subqueries: {
     withIssue: (issue: string) => SQLWrapper
+    /** The hashes of the URLs with an accepted finding: this issue, or any when it is `null`. */
+    withAccepted: (issue: string | null) => SQLWrapper
     withAudit: (filter: AuditFilter) => SQLWrapper
   },
 ): SQL | undefined {
@@ -468,7 +472,7 @@ export function crawlUrlWhere(
   return and(
     eq(columns.crawlId, query.crawlId),
     // An issue picks its URLs wherever they are: a redirect or a broken link is not a page.
-    query.issue ? undefined : crawlViewWhere(columns, query.view),
+    query.issue || query.accepted ? undefined : crawlViewWhere(columns, query.view),
     query.status ? crawlStatusWhere(columns, query.status) : undefined,
     // A type is a fact about the URLs of the site: external ones are recorded, never typed.
     query.type ? and(eq(columns.scope, 'internal'), eq(columns.kind, query.type)) : undefined,
@@ -476,6 +480,12 @@ export function crawlUrlWhere(
       ? sql`(lower(${columns.url}) like ${pattern} escape '!' or lower(${columns.title}) like ${pattern} escape '!')`
       : undefined,
     query.issue ? inArray(columns.urlHash, subqueries.withIssue(query.issue)) : undefined,
+    query.accepted
+      ? inArray(
+          columns.urlHash,
+          subqueries.withAccepted(query.accepted === ANY_ACCEPTED ? null : query.accepted),
+        )
+      : undefined,
     hasAuditFilter(query) ? inArray(columns.urlHash, subqueries.withAudit(query)) : undefined,
   )
 }
@@ -615,6 +625,46 @@ export const toCrawlUrlIssue = (row: {
   issue: row.issue,
   ...parseIssueDetails(row.details),
 })
+
+/** One row per URL, issue and URL that accepts it. */
+export function crawlAcceptedRows(crawlId: string, accepted: readonly CrawlUrlAcceptedIssue[]) {
+  const unique = new Map<string, CrawlUrlAcceptedIssue>()
+  for (const finding of accepted) {
+    unique.set(`${finding.urlHash}:${finding.issue}:${finding.acceptedBy}`, finding)
+  }
+  return [...unique.values()].map(
+    ({ urlHash, issue, acceptedBy, acceptance, details, evidence }) => ({
+      crawlId,
+      urlHash,
+      issue,
+      acceptedBy,
+      details: JSON.stringify({
+        acceptance,
+        ...(details?.length ? { details } : {}),
+        ...(evidence ? { evidence } : {}),
+      }),
+    }),
+  )
+}
+
+/** The inverse of `crawlAcceptedRows`. `null`: what is stored does not say what accepted it. */
+export function toCrawlUrlAcceptedIssue(row: {
+  urlHash: string
+  issue: string
+  acceptedBy: string
+  details: string
+}): CrawlUrlAcceptedIssue | null {
+  const stored = parseJson(row.details) as { acceptance?: unknown } | null
+  const acceptance = parseFindingAcceptance(stored?.acceptance)
+  if (!acceptance) return null
+  return {
+    urlHash: row.urlHash,
+    issue: row.issue,
+    acceptedBy: row.acceptedBy,
+    acceptance,
+    ...parseIssueDetails(row.details),
+  }
+}
 
 /** One row per internal URL of an analysis. */
 export function crawlAuditRows(crawlId: string, urls: CrawlUrlAudit[]) {
@@ -1067,6 +1117,7 @@ export function foldTraces(
   urls: (SnapshotRow & { crawlId: string; urlHash: string; url: string })[],
   issues: (CrawlUrlIssue & { crawlId: string })[],
   audits: (CrawlUrlAudit & { crawlId: string })[],
+  accepted: { crawlId: string; urlHash: string; issue: string }[] = [],
 ): CrawlUrlTrace[] {
   const key = (crawlId: string, urlHash: string) => `${crawlId}:${urlHash}`
   const issuesBy = new Map<string, CrawlUrlIssue[]>()
@@ -1077,6 +1128,11 @@ export function foldTraces(
   const auditBy = new Map(
     audits.map(({ crawlId, ...audit }) => [key(crawlId, audit.urlHash), audit]),
   )
+  const acceptedBy = new Map<string, string[]>()
+  for (const { crawlId, urlHash, issue } of accepted) {
+    const k = key(crawlId, urlHash)
+    acceptedBy.set(k, [...(acceptedBy.get(k) ?? []), issue])
+  }
   return urls.flatMap(({ crawlId, urlHash, url, ...row }) => {
     const snapshot = toUrlSnapshot(row)
     if (!snapshot) return []
@@ -1088,6 +1144,7 @@ export function foldTraces(
         url,
         snapshot,
         issues: issuesBy.get(k) ?? [],
+        accepted: acceptedBy.get(k) ?? [],
         audit: auditBy.get(k) ?? null,
       },
     ]

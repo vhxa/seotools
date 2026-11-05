@@ -1,3 +1,4 @@
+import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
   AuditCondition,
   AuditRule,
@@ -255,6 +256,11 @@ export interface CrawlUrlQuery {
    */
   issue?: string
   /**
+   * Only URLs with a finding a rule accepts: this issue, or any (`ANY_ACCEPTED`). Like `issue`, the
+   * `view` is ignored.
+   */
+  accepted?: string
+  /**
    * Only URLs whose last request got a status of this class, or `none`: no status at all, because
    * the URL was never requested or the request failed. Within the `view`.
    */
@@ -325,6 +331,16 @@ export interface CrawlUrlIssue {
    * crawl cannot say, which is never filled in with guesses.
    */
   evidence?: IssueEvidence
+}
+
+/**
+ * A finding a rule accepts (see `@seotools/core/crawl/acceptance`): what the crawl saw, with its
+ * evidence, kept apart from what is pending.
+ */
+export interface CrawlUrlAcceptedIssue extends CrawlUrlIssue {
+  /** The URL whose declaration accepts it: this one, or the one the finding is about. */
+  acceptedBy: string
+  acceptance: FindingAcceptance
 }
 
 /** What an analysis concluded about a URL of a crawl. */
@@ -477,6 +493,8 @@ export interface CrawlRepository {
   saveAnalysis(input: {
     crawlId: string
     issues: CrawlUrlIssue[]
+    /** What rules accept, which is not in `issues` and so counts for nothing that is pending. */
+    accepted?: CrawlUrlAcceptedIssue[]
     /** Audited pages by the worst type of finding they have. */
     pages: PagesByWorstIssue
     withType: PagesWithType
@@ -493,6 +511,19 @@ export interface CrawlRepository {
   issueCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
+  /** For each issue a rule accepts in a crawl, how many URLs it accepts it on. */
+  acceptedCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
+  /** The findings rules accept on these URLs of a crawl. */
+  acceptedOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlAcceptedIssue[]>
+  /**
+   * The findings of other URLs that what is declared of this one accepts, in a stable order: what a
+   * rule of this URL does beyond it.
+   */
+  acceptedBecauseOf(
+    crawlId: string,
+    urlHash: string,
+    options: { limit: number },
+  ): Promise<{ total: number; findings: { urlHash: string; url: string; issue: string }[] }>
   /**
    * What the analysis of the crawl concluded about these URLs. Internal URLs of a crawl analysed
    * with this feature have an entry; the rest do not, and neither do the URLs of older analyses.
@@ -594,6 +625,8 @@ export interface CrawlUrlTrace {
   url: string
   snapshot: UrlSnapshot
   issues: CrawlUrlIssue[]
+  /** Ids of the issues a rule accepts on the URL in this crawl. */
+  accepted?: string[]
   /** `null`: the crawl was analysed before the audit state per URL was kept, or not analysed. */
   audit: CrawlUrlAudit | null
 }

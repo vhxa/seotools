@@ -406,6 +406,8 @@ export interface UrlEvidence {
   conditions: string
   /** Ids of the issues reported for it. */
   issues: ReadonlySet<string>
+  /** Ids of the issues the crawl saw and a rule accepts: not reported, and not fixed either. */
+  accepted?: ReadonlySet<string>
 }
 
 /** A crawl and what it has of one URL (`null`: nothing). */
@@ -472,6 +474,8 @@ function incomparable(issue: string, a: Basis, b: Basis): UnknownReason | null {
  *   Needs the crawl in which it was not reported: it is never inferred from two crawls alone.
  * - `excluded`: reported earlier, and the later crawl no longer audits the URL. Removed by policy, not
  *   resolved in the site.
+ * - `accepted`: reported earlier, and the later crawl still sees it but a rule takes it as expected.
+ *   Not resolved in the site.
  * - `audited`: reported by the later crawl for a URL the earlier one left out of the audit. Not new.
  * - `unverified`: the findings differ but the evidence does not say why (see `reasons`).
  */
@@ -479,6 +483,7 @@ export const FINDING_CHANGES = [
   'new',
   'reappeared',
   'resolved',
+  'accepted',
   'excluded',
   'audited',
   'unverified',
@@ -539,6 +544,8 @@ export function classifyFinding(
 
   if (a.presence === 'present') {
     if (b.presence === 'absent') {
+      // The later crawl says outright that it is still there, whatever else changed around it.
+      if (input.target.url?.accepted?.has(issue)) return change('accepted', 'base')
       const why = incomparable(issue, a.basis, b.basis)
       return why ? change('unverified', 'base', [why]) : change('resolved', 'base')
     }

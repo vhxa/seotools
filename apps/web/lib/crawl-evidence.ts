@@ -16,6 +16,7 @@ export function urlEvidenceOf(trace: CrawlUrlTrace): UrlEvidence {
     intent: trace.audit?.intent ?? null,
     conditions: conditionsKey(trace.audit?.conditions ?? {}),
     issues: new Set(trace.issues.map(({ issue }) => issue)),
+    accepted: new Set(trace.accepted ?? []),
   }
 }
 

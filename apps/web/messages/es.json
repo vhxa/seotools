@@ -448,20 +448,19 @@
       "pages": "{count, plural, one {# URL} other {# URLs}}"
     },
     "findings": {
-      "issue": {
-        "title": "Issues"
-      },
-      "warning": {
-        "title": "Warnings"
-      },
-      "opportunity": {
-        "title": "Oportunidades"
-      },
-      "empty": "No se ha encontrado nada de este tipo."
+      "high": "Importancia alta",
+      "medium": "Importancia media",
+      "low": "Importancia baja",
+      "empty": "No se ha encontrado nada de esta importancia."
     },
     "priority": {
       "mark": "Marcar como prioritaria",
       "unmark": "Quitar de prioritarias"
+    },
+    "accepted": {
+      "title": "Aceptado por una regla",
+      "help": "El rastreo los sigue viendo y una regla dice que son lo esperado. No están pendientes, y tampoco corregidos: si quitas la regla, vuelven a contar.",
+      "viewAll": "Ver todas las URLs con algún hallazgo aceptado"
     }
   },
   "PagesDetails": {
@@ -611,8 +610,10 @@
         "indexability": "Estado técnico: {value}",
         "participation": "Auditoría: {value}",
         "intent": "{value}",
-        "rule": "Decididas por una regla"
-      }
+        "rule": "Decididas por una regla",
+        "accepted": "Aceptado por una regla: {value}"
+      },
+      "anyFinding": "cualquier hallazgo"
     },
     "advancedFilters": "Filtros avanzados e incidencias",
     "filtersMenu": "Filtros",
@@ -688,7 +689,20 @@
     },
     "observedAt": "Rastreo completo · {when}",
     "crawlFindingsNote": "Estos hallazgos pertenecen al rastreo completo seleccionado. La reverificación se muestra por separado debajo y no los sustituye.",
-    "recheckAvailable": "Reverificada {when} · ver resultados separados"
+    "recheckAvailable": "Reverificada {when} · ver resultados separados",
+    "noPendingIssues": "Nada pendiente en esta URL.",
+    "accepted": {
+      "title": "Aceptado por una regla ({count, number})",
+      "note": "El rastreo los sigue viendo. Una regla dice que son lo esperado, así que no están pendientes, y tampoco corregidos.",
+      "condition": "Una regla indica {condition}: {requirement}.",
+      "expectation": "Una regla espera que esta URL no sea indexable.",
+      "origin": "Una regla espera que esta URL no sea indexable, así que lo que enlaza o a lo que apunta no aporta nada nuevo.",
+      "destination": "Lo acepta una regla de la URL a la que apunta esta: {blockers}.",
+      "ruleRemoved": "La regla ya no existe.",
+      "related": "{total, plural, one {# URL a la que apunta} other {# URLs a las que apunta}}",
+      "elsewhereTitle": "Las reglas de esta URL afectan a otras URLs ({total, number})",
+      "elsewhereNote": "Lo que una regla declara de esta URL acepta estos hallazgos de las URLs que apuntan a ella. Los primeros:"
+    }
   },
   "UrlLinks": {
     "in": {
@@ -2305,7 +2319,9 @@
       },
       "unverifiedHint": "Los hallazgos difieren, pero no se muestra como nuevo ni resuelto porque: {reasons}.",
       "persistent": "Sigue detectado",
-      "persistentHint": "Detectado por ambos rastreos."
+      "persistentHint": "Detectado por ambos rastreos.",
+      "accepted": "Aceptado por una regla",
+      "acceptedHint": "El rastreo posterior lo sigue viendo y una regla dice que es lo esperado. No se ha corregido."
     },
     "reasons": {
       "pruned": "un rastreo fue podado",
@@ -2439,7 +2455,8 @@
         "indexable": "Se comprueba en el crawl qué impide indexar la URL.",
         "not-indexable": "Un noindex está bien; ser indexable no. No es lo mismo que exigir un noindex. Las páginas que apuntan a ella no reciben aviso por su noindex ni por un canonical a otra URL; un bloqueo de robots.txt se sigue señalando."
       }
-    }
+    },
+    "relationsNote": "Esto también acepta hallazgos de las URLs que apuntan aquí (canonical, hreflang). Los hallazgos aceptados no están corregidos: siguen visibles como aceptados por una regla."
   },
   "Help": {
     "about": "Información sobre {subject}",

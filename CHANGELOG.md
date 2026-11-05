@@ -37,6 +37,15 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Changed
 
+- Priorities are ordered by importance first, and only then by type: a serious warning no longer
+  sits below a minor issue. The pages overview groups findings by importance.
+- A finding a rule accepts is no longer silently gone: it stays visible as **Accepted by a rule**,
+  out of what is pending, with its evidence and the rule that accepts it, on the pages overview, in
+  the pages table and in the detail of the URL. When a rule of one URL accepts findings of the URLs
+  that point at it (canonical, hreflang), that URL says so, and comparisons of crawls call those
+  findings accepted instead of resolved. Crawls still stored are analysed again at startup to show
+  this, with no requests.
+
 - Docker tags now say what they are. `latest` is the newest **stable release** (it used to follow
   `main`), `X.Y.Z` is one release, `X.Y` follows the patches of a minor version, and from 1.0.0
   `X` follows a major version. Builds of `main` are published as `edge` and `sha-<commit>`, and

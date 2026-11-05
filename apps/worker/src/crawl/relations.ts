@@ -1,3 +1,4 @@
+import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import {
   RELATIONS_SEMANTICS,
   semanticsOf,
@@ -40,6 +41,26 @@ export const relationsApply = (site: Pick<Site, 'config'>) =>
   semanticsOf(site.config) >= RELATIONS_SEMANTICS
 
 type Declared = Pick<AuditedUrl, 'intent' | 'conditions'> & { indexability: Indexability }
+
+/** The rules that accept each of these blockers of a URL (see `acceptedBlockers`). */
+function rulesAccepting(
+  url: Pick<AuditedUrl, 'conditions' | 'intentRule'>,
+  blockers: readonly IndexabilityBlocker[],
+): string[] {
+  const rules = new Set<string>()
+  for (const blocker of blockers) {
+    const rule =
+      blocker === 'noindex'
+        ? (url.conditions.noindex.rule ?? url.intentRule)
+        : blocker === 'robots'
+          ? url.conditions.robots.rule
+          : blocker === 'canonical'
+            ? url.intentRule
+            : null
+    if (rule) rules.add(rule.id)
+  }
+  return [...rules]
+}
 
 /** The blockers of a URL's indexation that what is declared of it accepts. */
 export function acceptedBlockers(url: Declared): ReadonlySet<IndexabilityBlocker> {
@@ -108,3 +129,43 @@ export function excusesMissingReturn(
  */
 export const excusesInlinks = (url: AuditedUrl, site: Pick<Site, 'config'>) =>
   relationsApply(site) && isExpectedOut(url)
+
+/**
+ * Who accepts a finding of `origin` about `destination` that the policy above excuses, and why. An
+ * accepted finding is not a fixed one: it is kept, and shown as accepted, with the URL whose
+ * declaration accepts it. That URL is the origin when it is itself expected out, whatever the
+ * destination is, and otherwise the destination, for `blockers`.
+ */
+export function relationAcceptance(
+  origin: AuditedUrl,
+  destination: AuditedUrl,
+  blockers: readonly IndexabilityBlocker[],
+): { by: AuditedUrl; acceptance: FindingAcceptance } {
+  if (isExpectedOut(origin)) return expectedOutAcceptance(origin)
+  return {
+    by: destination,
+    acceptance: {
+      kind: 'relation',
+      end: 'destination',
+      blockers: [...blockers],
+      rules: rulesAccepting(destination, blockers),
+    },
+  }
+}
+
+/** A URL that is expected out accepts what is only about that: it is the one declaring it. */
+export function expectedOutAcceptance(url: AuditedUrl): {
+  by: AuditedUrl
+  acceptance: FindingAcceptance
+} {
+  const { blockers } = url.indexability
+  return {
+    by: url,
+    acceptance: {
+      kind: 'relation',
+      end: 'origin',
+      blockers: [...blockers],
+      rules: rulesAccepting(url, blockers),
+    },
+  }
+}

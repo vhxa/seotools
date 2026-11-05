@@ -33,6 +33,7 @@ describeDatabaseContract(
           'settings',
           'user',
           'crawl_url_audit',
+          'crawl_url_accepted_issues',
           'crawl_url_issues',
           'crawl_sitemap_hreflang',
           'crawl_links',

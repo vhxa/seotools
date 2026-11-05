@@ -1,3 +1,4 @@
+import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
 import { MinusIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
@@ -30,6 +31,7 @@ export async function IssuesFilter({
   query,
   pages,
   counts,
+  hasAccepted = false,
   checked,
   className,
 }: {
@@ -38,6 +40,8 @@ export async function IssuesFilter({
   /** Pages of the crawl, which is what "all pages" counts. */
   pages: number
   counts: { issue: string; pages: number }[]
+  /** Whether a rule accepts any finding of the crawl: only then is there a list of them to open. */
+  hasAccepted?: boolean
   /** Whether the crawl was checked for issues at all. */
   checked: boolean
   className?: string
@@ -77,6 +81,18 @@ export async function IssuesFilter({
                   {format.number(pages)}
                 </span>
               </Link>
+
+              {hasAccepted && (
+                <Link
+                  href={detailHref(host, query, { accepted: ANY_ACCEPTED, page: 1, url: null })}
+                  scroll={false}
+                  aria-current={query.accepted ? 'true' : undefined}
+                  title={t('accepted.help')}
+                  className={rowClass(query.accepted !== null)}
+                >
+                  <span>{t('accepted.title')}</span>
+                </Link>
+              )}
 
               {summariseIssues(counts).map((group) => (
                 <section key={group.id} className="grid gap-1">

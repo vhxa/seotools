@@ -17,10 +17,19 @@ import {
   type LinkProblem,
   type PageIssueId,
 } from '@seotools/core'
+import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
 import { isValidHreflang } from './language-codes'
-import { excusedBlockers, excusesInlinks, excusesMissingReturn } from './relations'
+import {
+  excusedBlockers,
+  excusesInlinks,
+  excusesMissingReturn,
+  expectedOutAcceptance,
+  isExpectedOut,
+  relationAcceptance,
+  relationsApply,
+} from './relations'
 import {
   comparable,
   followRedirects,
@@ -171,6 +180,55 @@ const hreflangTargets =
       return target !== undefined && target !== page && target.internal && test(target, page, site)
     })
 
+/**
+ * What is wrong with a URL an hreflang entry points at, and when that is no news under the policy of
+ * `relations.ts`. Apart, so that the check and what is accepted say the same thing of each entry.
+ */
+const HREFLANG_RELATIONS = {
+  'hreflang-no-return': {
+    wrong: (target: AuditedUrl, page: AuditedUrl) =>
+      target.contentPage && !target.hreflang.some((entry) => entry.url === page.url.url),
+    excused: excusesMissingReturn,
+    blockers: (target: AuditedUrl): readonly IndexabilityBlocker[] => target.indexability.blockers,
+  },
+  'hreflang-non-canonical': {
+    wrong: (target: AuditedUrl) => target.contentPage && target.canonicalised,
+    excused: (page: AuditedUrl, target: AuditedUrl, site: Site) =>
+      excusedBlockers(page, target, site).has('canonical'),
+    blockers: (): readonly IndexabilityBlocker[] => ['canonical'],
+  },
+  'hreflang-noindex': {
+    wrong: (target: AuditedUrl) => target.contentPage && target.noindex,
+    excused: (page: AuditedUrl, target: AuditedUrl, site: Site) =>
+      excusedBlockers(page, target, site).has('noindex'),
+    blockers: (): readonly IndexabilityBlocker[] => ['noindex'],
+  },
+} as const
+
+const unexcused =
+  (issue: keyof typeof HREFLANG_RELATIONS) =>
+  (target: AuditedUrl, page: AuditedUrl, site: Site) => {
+    const relation = HREFLANG_RELATIONS[issue]
+    return relation.wrong(target, page) && !relation.excused(page, target, site)
+  }
+
+/** What the links that reach a URL say of it, whatever is expected of the URL. */
+const INLINKS_WRONG = {
+  'only-nofollow-inlinks': (url: AuditedUrl) => url.anchorsIn > 0 && url.followedAnchorsIn === 0,
+  'only-noindex-inlinks': (url: AuditedUrl) => url.anchorsIn > 0 && url.anchorsFromIndexable === 0,
+} as const
+
+/** The URL of the site a page's canonical leads to, when that one cannot be indexed. */
+function notIndexableCanonical(url: AuditedUrl, site: Site): AuditedUrl | null {
+  const target = url.url.canonical ? site.get(url.url.canonical) : undefined
+  return target &&
+    target !== url &&
+    target.internal &&
+    target.indexability.state === 'not-indexable'
+    ? target
+    : null
+}
+
 /** A URL can have thousands of them, and looking for repeats is quadratic. */
 const MAX_PATH_SEGMENTS = 50
 const pathSegments = (url: AuditedUrl) =>
@@ -315,14 +373,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
   // The canonical leads to a URL that cannot be indexed. Not news where every blocker is what was
   // declared of one end or the other (`excusedBlockers`); the blockers listed are all of them.
   'canonical-not-indexable': onPage((url, _, site) => {
-    const target = url.url.canonical ? site.get(url.url.canonical) : undefined
-    if (
-      !target ||
-      target === url ||
-      !target.internal ||
-      target.indexability.state !== 'not-indexable'
-    )
-      return false
+    const target = notIndexableCanonical(url, site)
+    if (!target) return false
     const excused = excusedBlockers(url, target, site)
     if (target.indexability.blockers.every((blocker) => excused.has(blocker))) return false
     const address = boundedUrl(target.url.url)
@@ -390,32 +442,13 @@ export const CHECKS: Record<PageIssueId, Check> = {
   ),
   // App policy: omit a missing return where either end is intentionally not indexable.
   // This does not establish whether a search engine indexed or read either URL.
-  'hreflang-no-return': hreflang(
-    hreflangTargets(
-      (target, page, site) =>
-        target.contentPage &&
-        !target.hreflang.some((entry) => entry.url === page.url.url) &&
-        !excusesMissingReturn(page, target, site),
-    ),
-  ),
+  'hreflang-no-return': hreflang(hreflangTargets(unexcused('hreflang-no-return'))),
   'hreflang-invalid-code': hreflang((_, entries) =>
     entries.filter((entry) => !isValidHreflang(entry.lang)),
   ),
   'hreflang-outside-head': hreflang((_, entries) => entries.filter((entry) => entry.outsideHead)),
-  'hreflang-non-canonical': hreflang(
-    hreflangTargets(
-      (target, page, site) =>
-        target.contentPage &&
-        target.canonicalised &&
-        !excusedBlockers(page, target, site).has('canonical'),
-    ),
-  ),
-  'hreflang-noindex': hreflang(
-    hreflangTargets(
-      (target, page, site) =>
-        target.contentPage && target.noindex && !excusedBlockers(page, target, site).has('noindex'),
-    ),
-  ),
+  'hreflang-non-canonical': hreflang(hreflangTargets(unexcused('hreflang-non-canonical'))),
+  'hreflang-noindex': hreflang(hreflangTargets(unexcused('hreflang-noindex'))),
   'hreflang-same-language': hreflang((_, entries) => {
     const urls = new Map<string, Set<string>>()
     for (const { lang, url } of entries) {
@@ -511,12 +544,10 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'uncrawlable-links': linkProblem('uncrawlable', (facts) => facts.uncrawlableLinks),
   // What links to a URL expected to be out of the index does not matter to it (`excusesInlinks`).
   'only-nofollow-inlinks': onPage(
-    (url, _, site) =>
-      url.anchorsIn > 0 && url.followedAnchorsIn === 0 && !excusesInlinks(url, site),
+    (url, _, site) => INLINKS_WRONG['only-nofollow-inlinks'](url) && !excusesInlinks(url, site),
   ),
   'only-noindex-inlinks': onPage(
-    (url, _, site) =>
-      url.anchorsIn > 0 && url.anchorsFromIndexable === 0 && !excusesInlinks(url, site),
+    (url, _, site) => INLINKS_WRONG['only-noindex-inlinks'](url) && !excusesInlinks(url, site),
   ),
   // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
   'orphan-in-sitemap': (url) =>
@@ -577,6 +608,9 @@ export const CHECKS: Record<PageIssueId, Check> = {
 
 export type Finding = { issue: PageIssueId; details?: string[]; evidence?: IssueEvidence }
 
+/** A finding a rule accepts, and the URL whose declaration does. */
+export type AcceptedFinding = Finding & { by: AuditedUrl; acceptance: FindingAcceptance }
+
 /**
  * The finding each blocker of indexation already has when nobody declared anything. A page the user
  * declared indexable gets one finding that names its blockers (`expected-indexable-blocked`), and
@@ -634,9 +668,20 @@ const EXPECTED_WHEN_NOT_INDEXABLE: ReadonlyMap<PageIssueId, AuditCondition | und
  * The checks of other URLs have already looked at this one as it really is, whatever happens here.
  */
 export function applyAuditPolicy(url: AuditedUrl, found: Finding[]): Finding[] {
-  if (url.excluded) return []
+  return auditPolicy(url, found).kept
+}
+
+/** `applyAuditPolicy`, and the findings it takes as what a rule accepts. */
+function auditPolicy(
+  url: AuditedUrl,
+  found: Finding[],
+): { kept: Finding[]; accepted: AcceptedFinding[] } {
+  if (url.excluded) return { kept: [], accepted: [] }
   const stated = (condition: AuditCondition) => url.conditions[condition].requirement
-  const replaced = new Set<PageIssueId>()
+  const accepted: AcceptedFinding[] = []
+  const accept = (finding: Finding, acceptance: FindingAcceptance) =>
+    accepted.push({ ...finding, by: url, acceptance })
+  const replaced = new Map<PageIssueId, AuditCondition>()
   for (const condition of AUDIT_CONDITIONS) {
     const requirement = stated(condition)
     // A sitemap that must not list the URL has nothing to say of the URL being out of it.
@@ -645,17 +690,28 @@ export function applyAuditPolicy(url: AuditedUrl, found: Finding[]): Finding[] {
       requirement === 'required' ||
       (condition === 'sitemap' && requirement === 'forbidden')
     ) {
-      for (const issue of GENERIC_OF[condition]) replaced.add(issue)
+      for (const issue of GENERIC_OF[condition]) replaced.set(issue, condition)
     }
   }
-  let kept = found.filter(({ issue }) => !replaced.has(issue))
+  let kept = found.filter((finding) => {
+    const condition = replaced.get(finding.issue)
+    if (!condition) return true
+    const { requirement, rule } = url.conditions[condition]
+    if (requirement) {
+      accept(finding, { kind: 'condition', condition, requirement, rule: rule?.id ?? null })
+    }
+    return false
+  })
   if (url.intent === 'not-indexable') {
-    kept = kept.filter(({ issue }) => {
-      if (!EXPECTED_WHEN_NOT_INDEXABLE.has(issue)) return true
-      const condition = EXPECTED_WHEN_NOT_INDEXABLE.get(issue)
-      return condition !== undefined && stated(condition) !== null
+    kept = kept.filter((finding) => {
+      if (!EXPECTED_WHEN_NOT_INDEXABLE.has(finding.issue)) return true
+      const condition = EXPECTED_WHEN_NOT_INDEXABLE.get(finding.issue)
+      if (condition !== undefined && stated(condition) !== null) return true
+      accept(finding, { kind: 'expectation', rule: url.intentRule?.id ?? null })
+      return false
     })
   } else if (url.intent === 'indexable') {
+    // Not accepted: `expected-indexable-blocked` reports the same cause, in other words.
     const blocked = kept.find(({ issue }) => issue === 'expected-indexable-blocked')
     if (blocked) {
       const repeated = new Set<PageIssueId>(
@@ -666,11 +722,75 @@ export function applyAuditPolicy(url: AuditedUrl, found: Finding[]): Finding[] {
       kept = kept.filter(({ issue }) => !repeated.has(issue))
     }
   }
-  return kept
+  return { kept, accepted }
+}
+
+/**
+ * The findings about other URLs that `relations.ts` excuses, which the checks therefore do not
+ * report. Each is what the check would have said were it not for what a URL declares: an hreflang
+ * finding can be partly reported and partly accepted, one target at a time.
+ */
+function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
+  if (url.excluded || !relationsApply(site) || !url.contentPage) return []
+  const accepted = new Map<string, AcceptedFinding & { related: string[]; total: number }>()
+  const add = (
+    issue: PageIssueId,
+    { by, acceptance }: Pick<AcceptedFinding, 'by' | 'acceptance'>,
+    target: AuditedUrl | null,
+  ) => {
+    const key = `${issue}:${by.url.urlHash}`
+    const entry = accepted.get(key) ?? { issue, by, acceptance, related: [], total: 0 }
+    accepted.set(key, entry)
+    if (!target) return
+    entry.total++
+    const address = boundedUrl(target.url.url)
+    if (address && entry.related.length < MAX_EVIDENCE_ITEMS) entry.related.push(address)
+  }
+
+  const canonical = url.facts && notIndexableCanonical(url, site)
+  if (canonical) {
+    const { blockers } = canonical.indexability
+    const excused = excusedBlockers(url, canonical, site)
+    if (blockers.every((blocker) => excused.has(blocker))) {
+      add('canonical-not-indexable', relationAcceptance(url, canonical, blockers), canonical)
+    }
+  }
+
+  for (const issue of Object.keys(HREFLANG_RELATIONS) as (keyof typeof HREFLANG_RELATIONS)[]) {
+    const relation = HREFLANG_RELATIONS[issue]
+    const seen = new Set<string>()
+    for (const entry of url.hreflang) {
+      const target = site.get(entry.url)
+      if (!target || target === url || !target.internal || seen.has(entry.url)) continue
+      seen.add(entry.url)
+      if (!relation.wrong(target, url) || !relation.excused(url, target, site)) continue
+      // A missing return is excused as much by the page being expected out as by the target.
+      add(issue, relationAcceptance(url, target, relation.blockers(target)), target)
+    }
+  }
+
+  if (url.facts && isExpectedOut(url)) {
+    for (const issue of Object.keys(INLINKS_WRONG) as (keyof typeof INLINKS_WRONG)[]) {
+      if (INLINKS_WRONG[issue](url)) add(issue, expectedOutAcceptance(url), null)
+    }
+  }
+
+  return [...accepted.values()].map(({ related, total, ...finding }) => ({
+    ...finding,
+    ...(total > 0 ? { evidence: { kind: 'related-urls' as const, total, urls: related } } : {}),
+  }))
 }
 
 /** The issues of a URL, in catalog order, with what each one details. */
 export function detectIssues(url: AuditedUrl, site: Site): Finding[] {
+  return detectFindings(url, site).found
+}
+
+/** What is pending on a URL, in catalog order, and apart what rules accept of what the crawl saw. */
+export function detectFindings(
+  url: AuditedUrl,
+  site: Site,
+): { found: Finding[]; accepted: AcceptedFinding[] } {
   const found: Finding[] = []
   for (const issue of PAGE_ISSUE_IDS) {
     const result = CHECKS[issue](url, site)
@@ -685,5 +805,6 @@ export function detectIssues(url: AuditedUrl, site: Site): Finding[] {
       })
     }
   }
-  return applyAuditPolicy(url, found)
+  const { kept, accepted } = auditPolicy(url, found)
+  return { found: kept, accepted: [...accepted, ...acceptedRelations(url, site)] }
 }

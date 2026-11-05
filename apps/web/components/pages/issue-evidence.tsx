@@ -161,6 +161,23 @@ function Items({ evidence, ...place }: Place & { evidence: IssueEvidence }) {
   }
 }
 
+/** The other URLs a finding a rule accepts is about, for any issue. */
+export function RelatedUrls({ urls, total, ...place }: Place & { urls: string[]; total: number }) {
+  const t = useTranslations('UrlDetail.accepted')
+  return (
+    <div className="grid gap-1 rounded-md border bg-muted/30 p-3 text-xs">
+      <p className="font-medium">{t('related', { total })}</p>
+      <ul className="grid gap-1">
+        {urls.map((url) => (
+          <li key={url}>
+            <Address url={url} {...place} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 /**
  * The evidence of a finding: what makes the URL have the issue, labelled by what it is. A finding
  * whose issue comes with evidence but has none says it is not available (the crawl predates it),

@@ -21,7 +21,7 @@ describeDatabaseContract(
         },
       },
       reset: async () => {
-        await sql`truncate table jobs, worker_heartbeats, settings, "user", crawl_url_audit, crawl_url_issues, crawl_sitemap_hreflang, crawl_links, crawl_urls, crawls, crawl_schedules, crawl_settings, url_verification_urls, url_verifications, priority_urls, domain_favicons, crawl_files, crawl_file_checks, audit_rules, domain_audit_config, domains, companies cascade`
+        await sql`truncate table jobs, worker_heartbeats, settings, "user", crawl_url_audit, crawl_url_accepted_issues, crawl_url_issues, crawl_sitemap_hreflang, crawl_links, crawl_urls, crawls, crawl_schedules, crawl_settings, url_verification_urls, url_verifications, priority_urls, domain_favicons, crawl_files, crawl_file_checks, audit_rules, domain_audit_config, domains, companies cascade`
       },
     }
   },

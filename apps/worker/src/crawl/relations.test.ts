@@ -681,6 +681,148 @@ describe('a URL left out of the audit', () => {
 
 // --- an analysis keeps the meaning it was made with ---------------------------------------------
 
+describe('a finding a rule accepts', () => {
+  const acceptedOf = (crawlId: string, path: string) =>
+    db.crawls.acceptedOf(crawlId, [hashOf(path)])
+  const ruleIds = async () => (await db.audit.config(domainId)).rules.map((rule) => rule.id)
+
+  it('stays out of what is pending on both ends, and is kept with who accepts it (noindex)', async () => {
+    await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
+    const id = await crawl(world({ target: NOINDEX }))
+
+    expect(await findings(id, '/t')).not.toContain('noindex')
+    const own = await acceptedOf(id, '/t')
+    expect(own.map(({ issue }) => issue)).toContain('noindex')
+    expect(own.find(({ issue }) => issue === 'noindex')).toMatchObject({
+      acceptedBy: hashOf('/t'),
+      acceptance: { kind: 'condition', condition: 'noindex', requirement: 'allowed' },
+    })
+    expect(await db.crawls.acceptedCounts(id)).toEqual(
+      expect.arrayContaining([{ issue: 'noindex', pages: 1 }]),
+    )
+  })
+
+  it('on a canonical is on the origin, with the destination as what accepts it and as evidence', async () => {
+    await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
+    const id = await crawl(world({ target: NOINDEX }))
+
+    expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
+    const [rule] = await ruleIds()
+    const accepted = (await acceptedOf(id, '/c')).find(
+      ({ issue }) => issue === 'canonical-not-indexable',
+    )
+    expect(accepted).toMatchObject({
+      acceptedBy: hashOf('/t'),
+      acceptance: { kind: 'relation', end: 'destination', blockers: ['noindex'], rules: [rule] },
+      evidence: { kind: 'related-urls', total: 1, urls: [url('/t')] },
+    })
+  })
+
+  it('on an hreflang says what it points at, and shows on the destination as acting on others', async () => {
+    await addRules([asking(exactPath('/t'), 'noindex', 'required')])
+    const id = await crawl(world({ target: NOINDEX }))
+
+    expect(await findings(id, '/s')).not.toContain('hreflang-noindex')
+    expect(
+      (await acceptedOf(id, '/s')).find(({ issue }) => issue === 'hreflang-noindex'),
+    ).toMatchObject({
+      acceptedBy: hashOf('/t'),
+      evidence: { kind: 'related-urls', total: 1, urls: [url('/t')] },
+    })
+
+    const elsewhere = await db.crawls.acceptedBecauseOf(id, hashOf('/t'), { limit: 10 })
+    expect(elsewhere.findings).toEqual(
+      expect.arrayContaining([
+        { urlHash: hashOf('/s'), url: url('/s'), issue: 'hreflang-noindex' },
+        { urlHash: hashOf('/c'), url: url('/c'), issue: 'canonical-not-indexable' },
+      ]),
+    )
+    expect(elsewhere.total).toBeGreaterThanOrEqual(2)
+    // Its own finding is not "another URL".
+    expect(elsewhere.findings.some(({ urlHash }) => urlHash === hashOf('/t'))).toBe(false)
+  })
+
+  it('from an origin out on purpose is accepted by the origin, and never acts on the destination', async () => {
+    await addRules([asking(exactPath('/s'), 'noindex', 'allowed')])
+    const id = await crawl(world({ source: NOINDEX, target: NOINDEX }))
+
+    expect(
+      (await acceptedOf(id, '/s')).find(({ issue }) => issue === 'hreflang-noindex'),
+    ).toMatchObject({
+      acceptedBy: hashOf('/s'),
+      acceptance: { kind: 'relation', end: 'origin', blockers: ['noindex'] },
+    })
+    expect(await findings(id, '/t')).toContain('noindex')
+    expect((await db.crawls.acceptedBecauseOf(id, hashOf('/t'), { limit: 10 })).total).toBe(0)
+  })
+
+  it('on a robots.txt block needs the robots condition: a noindex rule does not accept it', async () => {
+    const robots = 'User-agent: *\nDisallow: /t'
+    await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
+    const blocked = await crawl(world({ target: {}, robots }))
+    expect(await findings(blocked, '/c')).toContain('canonical-not-indexable')
+    expect(
+      (await acceptedOf(blocked, '/c')).some(({ issue }) => issue === 'canonical-not-indexable'),
+    ).toBe(false)
+
+    await addRules([asking(exactPath('/t'), 'robots', 'allowed')])
+    const accepted = await crawl(world({ target: {}, robots }))
+    expect(await findings(accepted, '/c')).not.toContain('canonical-not-indexable')
+    expect(
+      (await acceptedOf(accepted, '/c')).find(({ issue }) => issue === 'canonical-not-indexable'),
+    ).toMatchObject({
+      acceptedBy: hashOf('/t'),
+      acceptance: { kind: 'relation', end: 'destination', blockers: ['robots'] },
+    })
+    expect(await findings(accepted, '/t')).not.toContain('robots-blocked')
+    expect((await acceptedOf(accepted, '/t')).map(({ issue }) => issue)).toContain('robots-blocked')
+  })
+
+  it('is never what a destination that fails or redirects is', async () => {
+    await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
+    const id = await crawl(
+      world({ target: { answer: { statusCode: 500, headers: {}, body: Buffer.from('') } } }),
+    )
+    expect(await findings(id, '/c')).toContain('canonical-not-indexable')
+    expect(
+      (await acceptedOf(id, '/c')).some(({ issue }) => issue === 'canonical-not-indexable'),
+    ).toBe(false)
+  })
+
+  it('is nothing at all when nobody declared anything, or the URL is left out of the audit', async () => {
+    const none = await crawl(world({ target: NOINDEX }))
+    expect(await db.crawls.acceptedCounts(none)).toEqual([])
+
+    await addRules([excluding(exactPath('/s'))])
+    const left = await crawl(world({ source: NOINDEX, target: NOINDEX }))
+    expect(await acceptedOf(left, '/s')).toEqual([])
+  })
+
+  it('goes away when the rule does, and the finding is pending again', async () => {
+    await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
+    const id = await crawl(world({ target: NOINDEX }))
+    expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
+
+    const [rule] = await ruleIds()
+    await db.audit.deleteRule({ domainId, id: rule! })
+    await analyseCrawl(db, id, await currentAuditConfig(db, domainId))
+
+    expect(await findings(id, '/c')).toContain('canonical-not-indexable')
+    expect(await db.crawls.acceptedCounts(id)).toEqual([])
+  })
+
+  it('is not read back from an analysis under a meaning that accepted no relation', async () => {
+    await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
+    const id = await crawl(world({ target: NOINDEX }))
+    const old = { ...(await currentAuditConfig(db, domainId)), semantics: RELATIONS_SEMANTICS - 1 }
+    await analyseCrawl(db, id, old as AuditSnapshot)
+    expect(await findings(id, '/c')).toContain('canonical-not-indexable')
+    expect(
+      (await acceptedOf(id, '/c')).some(({ acceptance }) => acceptance.kind === 'relation'),
+    ).toBe(false)
+  })
+})
+
 describe('an analysis made before the meaning that reads relations', () => {
   const allowing = () => [asking(exactPath('/t'), 'noindex', 'allowed')]
   const analysedAs = async (id: string, snapshot: AuditSnapshot) => {

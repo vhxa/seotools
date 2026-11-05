@@ -89,10 +89,11 @@ export default async function PagesDetailsPage({
   const { host } = await params
   const query = parseDetailQuery(await searchParams)
   const { domain } = await requireDomain(host)
-  const [t, tIssues, tHistory, format] = await Promise.all([
+  const [t, tIssues, tHistory, tPages, format] = await Promise.all([
     getTranslations('PagesDetails'),
     getTranslations('PageIssues'),
     getTranslations('CrawlHistory.details'),
+    getTranslations('Pages'),
     getFormatter(),
   ])
   const db = await getDb()
@@ -120,6 +121,7 @@ export default async function PagesDetailsPage({
 
   let rows: PageRow[] = []
   let issueCounts: { issue: string; pages: number }[] = []
+  let hasAccepted = false
   let viewCounts: Awaited<ReturnType<typeof db.crawls.viewCounts>> | null = null
   let total = 0
   let page = 1
@@ -128,6 +130,7 @@ export default async function PagesDetailsPage({
     const listing = { crawlId: browsable.id, ...listingOf(query, unapplied) }
     if (browsable.pagesByWorstIssue !== null)
       issueCounts = await db.crawls.issueCounts(browsable.id)
+    hasAccepted = (await db.crawls.acceptedCounts(browsable.id)).length > 0
     viewCounts = await db.crawls.viewCounts(browsable.id)
     total = await db.crawls.countListed(listing)
     pageCount = Math.max(1, Math.ceil(total / PAGES_PAGE_SIZE))
@@ -318,6 +321,7 @@ export default async function PagesDetailsPage({
                 query.direction,
                 query.search,
                 query.issue,
+                query.accepted,
                 query.status,
                 query.type,
                 query.indexability,
@@ -352,6 +356,11 @@ export default async function PagesDetailsPage({
                     unavailable={available.audit ?? undefined}
                     {...(ruleOfList ? { rulesHref: auditTabHref(domain.host, 'rules') } : {})}
                   />
+                  {query.accepted && (
+                    <HelpDisclosure title={tPages('accepted.title')}>
+                      {tPages('accepted.help')}
+                    </HelpDisclosure>
+                  )}
                   {query.issue && isPageIssueId(query.issue) && (
                     <HelpDisclosure title={tIssues(`${query.issue}.name`)}>
                       {tIssues(`${query.issue}.description`)} {t('issueScope')}
@@ -377,6 +386,7 @@ export default async function PagesDetailsPage({
                   query={{ ...query, page }}
                   pages={browsable.pagesCount}
                   counts={issueCounts}
+                  hasAccepted={hasAccepted}
                   checked={browsable.pagesByWorstIssue !== null}
                 />
               }

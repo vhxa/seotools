@@ -1,5 +1,11 @@
 import { auditResultsState, type AuditResultsState } from '@seotools/core/crawl/audit'
-import type { Crawl, CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
+import type {
+  Crawl,
+  CrawlUrl,
+  CrawlUrlAudit,
+  CrawlUrlAcceptedIssue,
+  CrawlUrlIssue,
+} from '@seotools/db'
 import { crawlUrlHash } from '@seotools/core'
 import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
 import { automaticFileChecks } from './automatic-checks'
@@ -8,11 +14,21 @@ import { crawlUrlsInEvidence } from './issue-evidence'
 import { canRecheck, viewRecheck, type RecheckView } from './recheck'
 import { loadUrlLinks, type UrlLinksPage } from './url-links'
 
+/** At most this many findings of other URLs are named in the detail of the URL that accepts them. */
+const MAX_ACCEPTED_ELSEWHERE = 10
+
 export interface UrlDetailData {
   automaticCheck: boolean
   crawl: Crawl
   url: CrawlUrl
   issues: CrawlUrlIssue[]
+  /** What the crawl saw of this URL and a rule accepts: not pending, and not fixed either. */
+  accepted: CrawlUrlAcceptedIssue[]
+  /** The findings of other URLs that what is declared of this one accepts. */
+  acceptedElsewhere: {
+    total: number
+    findings: { urlHash: string; url: string; issue: string }[]
+  }
   /**
    * The addresses in the evidence of `issues` that the crawl has a page for, as normalized URLs:
    * the only ones the detail links to its own detail.
@@ -72,24 +88,36 @@ export async function loadUrlDetail(input: {
   const db = await getDb()
   const url = await db.crawls.getUrl(crawl.id, urlHash)
   if (!url) return null
-  const [issues, audit, config, linksIn, linksOut, priorities, verified, activeRecheck] =
-    await Promise.all([
-      db.crawls.issuesOf(crawl.id, [urlHash]),
-      db.crawls.auditOf(crawl.id, [urlHash]),
-      db.audit.config(domainId),
-      loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'in' }),
-      loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'out' }),
-      db.priorityUrls.list(domainId),
-      db.verifications.latestFor(domainId, [urlHash]),
-      db.verifications.active(domainId),
-    ])
+  const [
+    issues,
+    accepted,
+    acceptedElsewhere,
+    audit,
+    config,
+    linksIn,
+    linksOut,
+    priorities,
+    verified,
+    activeRecheck,
+  ] = await Promise.all([
+    db.crawls.issuesOf(crawl.id, [urlHash]),
+    db.crawls.acceptedOf(crawl.id, [urlHash]),
+    db.crawls.acceptedBecauseOf(crawl.id, urlHash, { limit: MAX_ACCEPTED_ELSEWHERE }),
+    db.crawls.auditOf(crawl.id, [urlHash]),
+    db.audit.config(domainId),
+    loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'in' }),
+    loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'out' }),
+    db.priorityUrls.list(domainId),
+    db.verifications.latestFor(domainId, [urlHash]),
+    db.verifications.active(domainId),
+  ])
   const waiting = activeRecheck
     ? (await db.verifications.urlsOf(activeRecheck.id)).some(
         (queued) => queued.urlHash === urlHash && queued.state === 'queued',
       )
     : false
   const evidenceUrls = await crawlUrlsInEvidence(
-    issues,
+    [...issues, ...accepted],
     async (address) => (await db.crawls.getUrl(crawl.id, crawlUrlHash(address))) !== null,
   )
   return {
@@ -97,6 +125,8 @@ export async function loadUrlDetail(input: {
     crawl,
     url,
     issues,
+    accepted,
+    acceptedElsewhere,
     evidenceUrls,
     links: { in: linksIn, out: linksOut },
     priority: priorities.some((p) => p.urlHash === urlHash),

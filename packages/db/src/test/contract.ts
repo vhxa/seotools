@@ -1661,6 +1661,117 @@ export function describeDatabaseContract(
           expect(await db.crawls.issueCounts(id)).toEqual([])
         })
 
+        it('keeps what rules accept apart from what is pending, and lists it', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const [urlA, urlB, urlC] = ['a', 'b', 'c'].map((path) => `https://acme.com/${path}`) as [
+            string,
+            string,
+            string,
+          ]
+          await db.crawls.addUrls(id, [newUrl(urlA), newUrl(urlB), newUrl(urlC)])
+          for (const url of [urlA, urlB, urlC]) {
+            await db.crawls.recordResult({
+              crawlId: id,
+              urlHash: crawlUrlHash(url),
+              result: result('page'),
+            })
+          }
+          const a = crawlUrlHash(urlA)
+          const b = crawlUrlHash(urlB)
+          const c = crawlUrlHash(urlC)
+          const finding = (urlHash: string, issue: string, acceptedBy: string) => ({
+            urlHash,
+            issue,
+            acceptedBy,
+            acceptance: {
+              kind: 'relation' as const,
+              end: 'destination' as const,
+              blockers: ['noindex' as const],
+              rules: ['rule-1'],
+            },
+            evidence: { kind: 'related-urls' as const, total: 1, urls: ['https://acme.com/c'] },
+          })
+          await saveIssues({
+            crawlId: id,
+            issues: [{ urlHash: a, issue: 'title-missing' }],
+            accepted: [
+              finding(a, 'hreflang-noindex', c),
+              finding(b, 'hreflang-noindex', c),
+              finding(b, 'canonical-not-indexable', c),
+              {
+                urlHash: c,
+                issue: 'noindex',
+                acceptedBy: c,
+                acceptance: {
+                  kind: 'condition',
+                  condition: 'noindex',
+                  requirement: 'allowed',
+                  rule: 'rule-1',
+                },
+              },
+            ],
+            pages: { issue: 0, warning: 1, opportunity: 0 },
+            withType: { issue: 0, warning: 1, opportunity: 0 },
+            catalog: 'v1',
+          })
+
+          // What is pending knows nothing of them.
+          expect(await db.crawls.issueCounts(id)).toEqual([{ issue: 'title-missing', pages: 1 }])
+          expect((await db.crawls.issuesOf(id, [b, c])).length).toBe(0)
+          expect(
+            (await db.crawls.acceptedCounts(id)).sort((x, y) => x.issue.localeCompare(y.issue)),
+          ).toEqual([
+            { issue: 'canonical-not-indexable', pages: 1 },
+            { issue: 'hreflang-noindex', pages: 2 },
+            { issue: 'noindex', pages: 1 },
+          ])
+          expect(await db.crawls.acceptedOf(id, [a])).toEqual([finding(a, 'hreflang-noindex', c)])
+
+          // Lists: any finding or one, whatever the view; and a URL with several is listed once.
+          const listed = async (accepted: string) =>
+            (
+              await db.crawls.listUrls({
+                crawlId: id,
+                view: 'pages',
+                accepted,
+                limit: 10,
+                offset: 0,
+              })
+            )
+              .map(({ urlHash }) => urlHash)
+              .sort()
+          expect(await listed('all')).toEqual([a, b, c].sort())
+          expect(await listed('noindex')).toEqual([c])
+          expect(await db.crawls.countListed({ crawlId: id, view: 'pages', accepted: 'all' })).toBe(
+            3,
+          )
+
+          // What a rule of a URL does beyond it: the URL's own finding is not one of them.
+          expect(await db.crawls.acceptedBecauseOf(id, c, { limit: 2 })).toEqual({
+            total: 3,
+            findings: [
+              { urlHash: a, url: urlA, issue: 'hreflang-noindex' },
+              { urlHash: b, url: urlB, issue: 'canonical-not-indexable' },
+            ],
+          })
+          expect((await db.crawls.acceptedBecauseOf(id, a, { limit: 2 })).total).toBe(0)
+
+          // A history tells them apart from what the crawl reported.
+          const [trace] = await db.crawls.urlHistory({ domainId, crawlIds: [id], urlHashes: [c] })
+          expect(trace).toMatchObject({ issues: [], accepted: ['noindex'] })
+
+          // Analysing again replaces them.
+          await saveIssues({
+            crawlId: id,
+            issues: [],
+            pages: { issue: 0, warning: 0, opportunity: 0 },
+            withType: { issue: 0, warning: 0, opportunity: 0 },
+            catalog: 'v1',
+          })
+          expect(await db.crawls.acceptedCounts(id)).toEqual([])
+        })
+
         it('keeps the evidence of a finding next to what it details', async () => {
           const domainId = await domain()
           const { id } = await startCrawl(domainId)
@@ -1720,6 +1831,14 @@ export function describeDatabaseContract(
             await saveIssues({
               crawlId: crawl.id,
               issues: [{ urlHash: crawlUrlHash('https://acme.com/'), issue: 'missing-title' }],
+              accepted: [
+                {
+                  urlHash: crawlUrlHash('https://acme.com/'),
+                  issue: 'noindex',
+                  acceptedBy: crawlUrlHash('https://acme.com/'),
+                  acceptance: { kind: 'expectation', rule: null },
+                },
+              ],
               pages: { issue: 1, warning: 0, opportunity: 0 },
               withType: { issue: 1, warning: 0, opportunity: 0 },
               catalog: 'v1',
@@ -1732,6 +1851,10 @@ export function describeDatabaseContract(
             pagesByWorstIssue: { issue: 1, warning: 0, opportunity: 0 },
           })
           expect(await db.crawls.issueCounts(oldest.id)).toEqual([])
+          expect(await db.crawls.acceptedCounts(oldest.id)).toEqual([])
+          expect(await db.crawls.acceptedCounts(newest.id)).toEqual([
+            { issue: 'noindex', pages: 1 },
+          ])
           expect(await db.crawls.issueCounts(newest.id)).toEqual([
             { issue: 'missing-title', pages: 1 },
           ])

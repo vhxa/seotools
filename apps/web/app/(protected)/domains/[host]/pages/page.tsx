@@ -1,5 +1,11 @@
 import { auditResultsState } from '@seotools/core/crawl/audit'
-import { ISSUE_TYPES, PAGE_ISSUES } from '@seotools/core/crawl/issues'
+import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
+import {
+  ISSUE_IMPORTANCES,
+  ISSUE_TYPES,
+  PAGE_ISSUES,
+  type PageIssueId,
+} from '@seotools/core/crawl/issues'
 import type { Crawl } from '@seotools/db'
 import { ChevronRightIcon, TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -8,12 +14,12 @@ import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
 import { HelpDisclosure, InfoHelp } from '@/components/help'
-import { IssueLabel, IssueMark, ISSUE_TYPE_STYLES } from '@/components/pages/issue-mark'
+import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { PagesChart, type PagesPoint } from '@/components/pages/pages-chart'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
-import { rankIssueCounts } from '@/lib/pages-issues'
+import { rankIssueCounts, type IssueCount } from '@/lib/pages-issues'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
 
@@ -26,6 +32,44 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   const { host } = await params
   const t = await getTranslations('Pages')
   return { title: t('metaTitle', { host }) }
+}
+
+/** Findings with how many URLs have each, each row leading to those URLs. */
+function IssueRows({
+  rows,
+  hrefOf,
+  describe,
+  documentation,
+  count,
+}: {
+  rows: IssueCount[]
+  hrefOf: (issue: PageIssueId) => string
+  describe: (issue: PageIssueId) => string
+  documentation: string
+  count: (pages: number) => string
+}) {
+  return (
+    <ul className="-mx-2 grid divide-y">
+      {rows.map(({ issue, pages }) => (
+        <li key={issue}>
+          <div className="flex flex-wrap items-center gap-x-4 px-2 py-2">
+            <Link
+              href={hrefOf(issue)}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <IssueLabel issue={issue} />
+              <IssueMark issue={issue} />
+              <span className="ml-auto font-normal whitespace-nowrap tabular-nums">
+                {count(pages)}
+              </span>
+              <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+            <HelpDisclosure title={documentation}>{describe(issue)}</HelpDisclosure>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 export default async function PagesOverviewPage({ params }: { params: Promise<{ host: string }> }) {
@@ -78,7 +122,11 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
     opportunities: null,
   }
 
-  const counts = latest && checked ? await db.crawls.issueCounts(latest.id) : []
+  const [counts, acceptedCounts] =
+    latest && checked
+      ? await Promise.all([db.crawls.issueCounts(latest.id), db.crawls.acceptedCounts(latest.id)])
+      : [[], []]
+  const accepted = rankIssueCounts(acceptedCounts)
   const issues = rankIssueCounts(counts)
   const defaultQuery = parseDetailQuery({})
 
@@ -149,56 +197,57 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
         </p>
       ) : (
         <>
-          {ISSUE_TYPES.map((type) => {
-            const { icon: Icon, text } = ISSUE_TYPE_STYLES[type]
-            const found = issues.filter(({ issue }) => PAGE_ISSUES[issue].type === type)
+          {ISSUE_IMPORTANCES.map((importance) => {
+            const found = issues.filter(({ issue }) => PAGE_ISSUES[issue].importance === importance)
             return (
-              <Card key={type}>
+              <Card key={importance}>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Icon aria-hidden className={`size-4 shrink-0 ${text}`} />
-                    {t(`findings.${type}.title`)}
-                    <InfoHelp label={t(`findings.${type}.title`)}>
-                      {tCatalog(`typeHelp.${type}`)}
-                    </InfoHelp>
-                  </CardTitle>
+                  <CardTitle>{t(`findings.${importance}`)}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {found.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{t('findings.empty')}</p>
                   ) : (
-                    <ul className="-mx-2 grid divide-y">
-                      {found.map(({ issue, pages }) => (
-                        <li key={issue}>
-                          <div className="flex flex-wrap items-center gap-x-4 px-2 py-2">
-                            <Link
-                              href={detailHref(domain.host, defaultQuery, { issue })}
-                              className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                            >
-                              <IssueLabel issue={issue} />
-                              <IssueMark issue={issue} />
-                              <span className="ml-auto font-normal whitespace-nowrap tabular-nums">
-                                {t('issues.pages', { count: pages })}
-                              </span>
-                              <ChevronRightIcon
-                                aria-hidden
-                                className="size-4 shrink-0 text-muted-foreground"
-                              />
-                            </Link>
-                            <HelpDisclosure title={tHelp('documentation')}>
-                              {tIssues(`${issue}.description`)}
-                            </HelpDisclosure>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                    <IssueRows
+                      rows={found}
+                      hrefOf={(issue) => detailHref(domain.host, defaultQuery, { issue })}
+                      describe={(issue) => tIssues(`${issue}.description`)}
+                      documentation={tHelp('documentation')}
+                      count={(pages) => t('issues.pages', { count: pages })}
+                    />
                   )}
                 </CardContent>
               </Card>
             )
           })}
+          {accepted.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1">
+                  {t('accepted.title')}
+                  <InfoHelp label={t('accepted.title')}>{t('accepted.help')}</InfoHelp>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <IssueRows
+                  rows={accepted}
+                  hrefOf={(issue) => detailHref(domain.host, defaultQuery, { accepted: issue })}
+                  describe={(issue) => tIssues(`${issue}.description`)}
+                  documentation={tHelp('documentation')}
+                  count={(pages) => t('issues.pages', { count: pages })}
+                />
+                <Link
+                  href={detailHref(domain.host, defaultQuery, { accepted: ANY_ACCEPTED })}
+                  className="text-sm underline-offset-4 hover:underline"
+                >
+                  {t('accepted.viewAll')}
+                </Link>
+              </CardContent>
+            </Card>
+          )}
           <HelpDisclosure title={tHelp('documentation')}>
-            {tCatalog('importanceHelp')}
+            {tCatalog('importanceHelp')}{' '}
+            {ISSUE_TYPES.map((type) => tCatalog(`typeHelp.${type}`)).join(' ')}
           </HelpDisclosure>
         </>
       )}

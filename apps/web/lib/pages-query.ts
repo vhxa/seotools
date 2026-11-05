@@ -1,6 +1,7 @@
 import type { CrawlUrlKind } from '@seotools/core'
 import { INDEX_INTENTS, type IndexIntent } from '@seotools/core/crawl/audit'
 import { INDEXABILITY_STATES, type IndexabilityState } from '@seotools/core/crawl/indexability'
+import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import {
   CRAWL_URL_VIEWS,
@@ -65,6 +66,11 @@ export interface DetailQuery {
   search: string
   /** An id from `PAGE_ISSUES`. */
   issue: string | null
+  /**
+   * Only URLs with a finding a rule accepts: an id from `PAGE_ISSUES`, or `ANY_ACCEPTED`. It lists
+   * every view at once, like `issue`, and the two exclude each other.
+   */
+  accepted: string | null
   /** Only URLs whose last request got a status of this class, or none at all. */
   status: StatusFilter | null
   /** Only URLs of the site that turned out to be this. */
@@ -98,17 +104,24 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
   const type = first(params.type)
   const indexability = first(params.indexability)
   const validIssue = issue && isPageIssueId(issue) ? issue : null
+  const accepted = first(params.accepted)
+  const validAccepted =
+    !validIssue && accepted && (accepted === ANY_ACCEPTED || isPageIssueId(accepted))
+      ? accepted
+      : null
   return {
     crawl: crawl && isCrawlId(crawl) ? crawl : null,
     // An issue picks its own URLs, in whichever view they are: that is every URL of the crawl.
-    view: validIssue
-      ? 'all'
-      : (CRAWL_URL_VIEWS.find((view) => view === first(params.view)) ?? 'pages'),
+    view:
+      validIssue || validAccepted
+        ? 'all'
+        : (CRAWL_URL_VIEWS.find((view) => view === first(params.view)) ?? 'pages'),
     page: Math.max(1, Math.floor(Number(first(params.page))) || 1),
     sort: DETAIL_SORTS.find((option) => option === sort) ?? null,
     direction: first(params.dir) === 'desc' ? 'desc' : 'asc',
     search: (first(params.q) ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     issue: validIssue,
+    accepted: validAccepted,
     status: STATUS_FILTERS.find((option) => option === status) ?? null,
     type: URL_TYPES.find((option) => option === type) ?? null,
     indexability: INDEXABILITY_STATES.find((option) => option === indexability) ?? null,
@@ -122,6 +135,7 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
 /** The filters that narrow a list, as opposed to where it starts from and how it is shown. */
 export const FILTER_KEYS = [
   'issue',
+  'accepted',
   'search',
   'status',
   'type',
@@ -199,6 +213,7 @@ export function listingOf(
     view: query.view,
     ...(query.search ? { search: query.search } : {}),
     ...(query.issue ? { issue: query.issue } : {}),
+    ...(query.accepted ? { accepted: query.accepted } : {}),
     ...(query.status && applies('status') ? { status: query.status } : {}),
     ...(query.type && applies('type') ? { type: query.type } : {}),
     ...(query.indexability && applies('indexability') ? { indexability: query.indexability } : {}),
@@ -218,6 +233,7 @@ export const activeFilters = (query: Pick<DetailQuery, FilterKey>): FilterKey[] 
 export function withoutFilter(key: FilterKey | 'all'): Partial<DetailQuery> {
   const cleared: Pick<DetailQuery, FilterKey> = {
     issue: null,
+    accepted: null,
     search: '',
     status: null,
     type: null,
@@ -247,13 +263,18 @@ export function detailHref(
 ): string {
   const next = { ...query, ...changes }
   if (changes.view !== undefined && changes.issue === undefined) next.issue = null
-  const view = next.issue ? 'all' : next.view
+  if (changes.view !== undefined && changes.accepted === undefined) next.accepted = null
+  // Asking for one kind of finding leaves the other: they exclude each other.
+  if (changes.issue) next.accepted = null
+  if (changes.accepted) next.issue = null
+  const view = next.issue || next.accepted ? 'all' : next.view
   const kept = (key: FilterKey) => blockedByView(view, key) === null
   const params = new URLSearchParams()
   if (next.crawl) params.set('crawl', next.crawl)
-  if (!next.issue && view !== 'pages') params.set('view', view)
+  if (!next.issue && !next.accepted && view !== 'pages') params.set('view', view)
   if (next.search) params.set('q', next.search)
   if (next.issue) params.set('issue', next.issue)
+  if (next.accepted) params.set('accepted', next.accepted)
   if (next.status) params.set('status', next.status)
   if (next.type && kept('type')) params.set('type', next.type)
   if (next.indexability && kept('indexability')) params.set('indexability', next.indexability)
