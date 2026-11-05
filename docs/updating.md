@@ -107,11 +107,12 @@ release it descends from, not a release.
   (`RUN_MIGRATIONS=true`). They apply in order and only forward: there is no "down". Some releases
   also convert stored data or analyse earlier crawls again in the background after starting; the
   release notes say so.
-- **Nothing stops an older image from opening a newer database.** It starts, says "migrations
-  applied", and runs on a schema it does not know. With luck it works (it did when the only new
-  migrations added tables and nullable columns); with a migration that changes what an old column
-  means it will misbehave without saying so. **Going back to an older image can require restoring
-  the database** — plan for that, not for luck.
+- **Startup refuses unknown migrations.** Images with the compatibility guard stop before
+  migrating when the database journal contains a timestamp/hash pair absent from the image.
+  This includes migrations-disabled and worker-only startup. An unknown or edited history is
+  also refused. It is a compatibility check, not a schema-integrity checker.
+  **Images predating the guard still start unsafely on newer databases.**
+
 - **Keys must not change.** `BETTER_AUTH_SECRET` signs sessions (changing it signs everyone out) and,
   unless `SETTINGS_ENCRYPTION_KEY` is set, encrypts the SMTP and Resend secrets (changing it makes
   them unreadable). Both go in the environment of the new container exactly as before.
@@ -254,91 +255,204 @@ An API key of Dokploy can do much more than this. Keep it where only the trigger
 
 ## When something goes wrong
 
-**The new container does not become healthy.** Read its log. The usual causes are a missing or
-changed environment variable (`BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`), a volume that was not mounted
-(an empty database opens the setup page: do not register an admin on it; stop and mount the
-volume), or a migration that failed (the container exits right after the error). If it never said
-`migrations applied`, fix the cause and deploy again; if you are not sure, restore the backup.
+A bootstrap error exits the container before the web app or worker starts. Read the first error
+in the logs; a restart policy may repeat it. Stop the service before diagnosis. Preserve the
+failed database and logs separately, without overwriting the pre-update backup.
 
-**You want the previous version back.**
+- **SQLite and PostgreSQL:** Drizzle creates its journal table outside the migration transaction,
+  then runs the pending migration SQL and journal inserts in one transaction. Failed migration
+  SQL rolls back that batch, including its DDL. Journal-table creation can remain.
+  Post-migration audit semantics upgrades run separately, so a later bootstrap failure does not
+  prove that migrations rolled back.
+- **MySQL:** Drizzle opens a transaction, but [DDL implicitly commits](https://dev.mysql.com/doc/refman/8.4/en/implicit-commit.html). A failure can leave tables
+  or columns changed without the matching journal entry. Re-running may fail on an already
+  existing object. Restore the pre-update dump into an empty database before retrying.
+- **Unknown migration history:** the guard reports that the database is newer than the image
+  and that going back requires restoring the backup. Use the matching newer image or restore;
+  never delete journal rows to bypass it.
 
-- If the new version **never ran migrations** (it failed before `migrations applied`): put the
-  previous image back and deploy.
-- If it **did** (even if it then crashed): put the previous image back **and restore the backup you
-  took before updating**. Whatever was written since — crawls, rules, rechecks — is lost with it.
-  An older image started on a newer database does not refuse to, and cannot promise to work.
-  Dokploy's registry-based rollback restores the image only; its documentation does not say it
-  restores data.
+If the failure is a connection, permissions or environment error, correct it and retry the same
+image after establishing what committed. Do not manually mark failed migrations as applied.
+For SQL failures, preserve diagnostics and use a fixed image; restoring the pre-update backup
+first is the conservative recovery procedure on every dialect.
 
-Restore the backup with the container stopped, then start the older image
-([Backups and restore](#backups-and-restore)). Then write down what failed, and wait for the fixed
-release before trying again.
+**Precise rollback rule:** restoring is required if the target image does not understand any
+committed schema migration or stored-data conversion from the newer image. Restore also whenever
+you cannot establish compatibility, including a partially applied MySQL migration. A missing
+`migrations applied` log does not prove nothing changed. An image-only rollback is appropriate
+only when no incompatible database change committed (for example a connection failure before
+migration), and the target supports the stored data. A successful startup of an old image is
+not evidence of compatibility.
+
+Stop every app/worker instance, restore the pre-update database and original keys, select the
+previous image, then start and verify login, settings and a known crawl. Writes since the backup
+are lost. Dokploy's image rollback does not restore the database.
 
 ## Backups and restore
 
 Back up **the database and your secrets** (`BETTER_AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`, and the
-`.env` or the environment of the Dokploy application). Without the secrets a restored database
-signs everyone out and its saved SMTP/Resend settings cannot be read.
+`.env` or the environment of the Dokploy application). Keep a protected copy outside the container and outside the database backup.
+
+- Losing the SQLite volume or external database loses users, domains, rules, crawls and settings.
+- Changing/losing `BETTER_AUTH_SECRET` invalidates sessions. Unless an explicit
+  `SETTINGS_ENCRYPTION_KEY` was set, it also makes encrypted settings unreadable.
+- Losing/changing the effective encryption key makes saved SMTP/Resend credentials unreadable:
+  settings use AES-256-GCM with a key derived from that secret. A database restore cannot
+  recover the key. Re-enter credentials if the original key cannot be recovered.
+- If introducing `SETTINGS_ENCRYPTION_KEY` on an existing installation, initially set it to the
+  old effective key (usually `BETTER_AUTH_SECRET`); choosing a new random value does not
+  re-encrypt existing settings.
+
+For Compose, external database selection is `DATABASE_URL_DOCKER` in `.env`; direct Docker
+and Dokploy Docker applications use `DATABASE_URL`. The startup `database selected` log records
+only `sqlite`, `pg` or `mysql`. Verify it before relying on a backup procedure.
 
 ### SQLite (the default)
 
-SQLite keeps recent writes in `seotools.db-wal` next to `seotools.db`, and they stay there after a
-stop. **Copy the whole directory, never only `seotools.db`.** Stop the container first (or use
-`sqlite3 seotools.db ".backup 'copy.db'"`, which is safe while it runs):
+SQLite uses WAL mode. Copying only the main file while running can omit committed writes.
+The image has no `sqlite3` CLI; its installed `better-sqlite3` module provides an online backup.
+This command works while the app runs and produces a consistent snapshot including WAL writes.
+Use a new destination name for each backup:
+
+```bash
+docker compose exec -T seotools node --input-type=module -e '
+import Database from "/app/worker/node_modules/better-sqlite3/lib/index.js";
+const db = new Database("/data/seotools.db");
+try { await db.backup("/data/pre-update.db"); } finally { db.close(); }
+'
+docker compose cp seotools:/data/pre-update.db ./pre-update.db
+# Store this file off the application volume, together with a protected copy of the keys.
+```
+
+For a custom SQLite path, replace both paths. To back up by copying instead, stop **all**
+writers first and copy the whole directory, including any `-wal` and `-shm` files.
+For Dokploy, run the online command with `docker exec <container>` on the node hosting the volume,
+then `docker cp <container>:/data/pre-update.db ./pre-update.db`. Its Volume Backups can instead
+copy the stopped application's entire volume; verify the stop occurred and rehearse a restore.
+Also back up the application's Environment values securely.
+
+Restore into a fresh volume, with all writers stopped. Replace the volume name below with your
+Compose project's or Dokploy application's actual volume. Never overlay an old WAL:
 
 ```bash
 docker compose stop seotools
-docker run --rm -v seotools_seotools-data:/data -v "$PWD":/backup debian:trixie-slim \
-  cp -a /data /backup/seotools-data-$(date +%F)
-docker compose start seotools
+docker volume create seotools-restored
+docker run --rm -u 0 --entrypoint node \
+  -v seotools-restored:/data -v "$PWD":/backup \
+  seotools-recovery-image --input-type=module -e '
+import { copyFileSync, chownSync } from "node:fs";
+copyFileSync("/backup/pre-update.db", "/data/seotools.db");
+chownSync("/data/seotools.db", 1000, 1000);
+chownSync("/data", 1000, 1000);
+'
 ```
 
-(`seotools_seotools-data` is `<compose project>_seotools-data`: check with `docker volume ls`. On
-Dokploy, use the name of the volume of the application.)
-
-To restore, with the container stopped. The files must belong to the user the app runs as (`1000`),
-or the app starts and then fails with "attempt to write a readonly database":
-
-```bash
-docker compose stop seotools
-docker run --rm -v seotools_seotools-data:/data -v "$PWD":/backup debian:trixie-slim sh -c \
-  'find /data -mindepth 1 -delete && cp -a /backup/seotools-data-2026-11-04/. /data/ && chown -R 1000:1000 /data'
-# put the image you want back (SEOTOOLS_IMAGE in .env), then:
-docker compose up -d
-```
+Replace `seotools-recovery-image` with your saved image reference. Point the deployment's
+`/data` mount at `seotools-restored`, restore its original keys and select the previous image
+before starting. Keep the failed volume intact until recovery has been verified.
 
 ### PostgreSQL and MySQL
 
-Use `pg_dump` / `mysqldump` as usual, before updating, and keep the dump with the secrets. Restore
-into an empty database, with seotools stopped. If a migration fails on MySQL, its tables can be
-left half-changed (it cannot roll back schema changes): restore the dump.
+Use matching database client versions. The following examples run clients in database
+containers named `postgres` and `mysql`; adapt user/database/container names. Configure passwords
+through protected client credentials (`PGPASSFILE` / MySQL option file), never command arguments.
+Stop the app and worker for the update after the dump completes.
+
+```bash
+docker exec postgres pg_dump -U seotools -d seotools -Fc > pre-update.dump
+docker exec mysql mysqldump --defaults-extra-file=/run/secrets/mysql-backup.cnf \
+  --single-transaction --routines --triggers --events --no-tablespaces seotools > pre-update.sql
+```
+
+PostgreSQL dumps provide a consistent snapshot. MySQL's `--single-transaction` requires InnoDB
+(the application tables use it); do not run schema changes during either dump.
+Check the dump command's exit status before treating the file as a backup.
+
+Restore with seotools stopped, into a **new empty database**, not over existing tables:
+
+```bash
+docker exec postgres createdb -U seotools seotools_restored
+docker exec -i postgres pg_restore -U seotools -d seotools_restored --exit-on-error < pre-update.dump
+docker exec mysql mysql --defaults-extra-file=/run/secrets/mysql-backup.cnf \
+  -e 'CREATE DATABASE seotools_restored'
+docker exec -i mysql mysql --defaults-extra-file=/run/secrets/mysql-backup.cnf \
+  seotools_restored < pre-update.sql
+```
+
+Point the deployment at the restored database, preserve the original keys, select the previous
+image, start and verify. Dokploy's `/data` backup does not back up an external database; arrange
+a database dump separately.
+
+## History and evidence retention
+
+The default `retainCrawls` is **10 per crawl type per domain**, not permanent evidence storage.
+After a full crawl ends, pruning keeps the latest completed/incomplete runs up to that limit;
+ended failed/cancelled runs lose details too. Active crawls are not pruned. Older crawl rows
+retain their status, dates, totals and audit snapshot, and are marked pruned. Their URL records
+(including collected facts and samples), links, findings with evidence, URL audit records and
+sitemap hreflang declarations are deleted. History and comparisons cannot recover those details.
+“All” keeps usable crawl details indefinitely, but still prunes failed/cancelled runs.
+
+Rechecks independently keep the latest **50 ended rechecks per domain**, deleting both older
+recheck headers and their URL results/evidence; active rechecks remain. Priority URLs and audit
+rules are configuration and are not removed by crawl retention.
+
+Crawl files are a separate latest-response store, one row per URL, overwritten when fetched.
+A reachable daily refresh removes older rows not refreshed (a capped sitemap discovery preserves
+older sitemap rows); a wholly unreachable refresh preserves existing rows. A completed,
+uncapped full crawl also removes stale rows older than that crawl's start. These are not
+versioned file archives. Backups preserve only data that existed when taken, never evidence
+already pruned.
 
 ## What has been validated
 
-The procedure above was run on 2026-11-04 with two images built from this repository, on Docker
-Desktop and a SQLite volume: one from the commit that introduced this policy, and an older one
-whose database has two fewer migrations.
+Rehearsed on **2026-11-05**, Docker Desktop (Linux ARM64 containers on macOS), using a real
+image built from **a651c7a** and a second image built from this recovery branch. Neither was
+published. Both contain 14 schema migrations: this change adds no schema migration, so the
+ordinary update exercised migration startup with **no pending SQL**, not a schema upgrade
+between releases. A separate injected migration exercised failure after DDL.
 
-- **Update with data.** The old image created an admin, a company and a domain. A backup of the
-  volume was taken as above. The new image started on the same volume with the same secrets,
-  applied the two pending migrations by itself (12 → 14), reported `status: ok`, and every record
-  was there. The session of the administrator kept working.
-- **Rolling back the image only.** The old image started on the migrated database, said
-  `migrations applied` and reported `status: ok`, without noticing that the database was newer.
-- **Restoring.** Restoring the backup as above brought the old image back to its 12 migrations
-  and its data. Restoring without `chown` left a database the app could read but not write.
-- **The Updates page** in the container, for each situation (up to date, patch, minor/breaking,
-  failed with a known release, not checked, development build), manual check, the daily check by
-  the worker, and the sidebar and `/api/health` reporting the channel.
-- **A real failure.** GitHub answered "rate limit exceeded" to the check; the page stored and showed
-  a failure, not "up to date".
+- **Representative data on SQLite and PostgreSQL 17:** the previous image's code created the
+  first admin (with a password hash), a company/domain, an enabled audit condition rule and an
+  encrypted JSON setting. Its worker crawled a local HTTP fixture container on the same network
+  with private-network crawling explicitly enabled. Both full crawls completed with **19 URL
+  records and 48 findings**, including collected facts/evidence. Some guessed HTTPS/www requests
+  failed/timed out; the fixture serves HTTP. This was not a public-site or TLS test.
+- **Consistent backups:** the documented installed-module `better-sqlite3.backup()` command ran
+  against the live SQLite container and its result was copied off-volume. The image had no
+  `sqlite3` executable. PostgreSQL used `pg_dump -Fc` while the app was running. Test-only keys
+  were retained unchanged outside the database.
+- **Update:** replacing each old container with the new image logged its dialect and
+  `migrations applied`. Company/domain, completed crawl, rule and encrypted value survived.
+  SQLite's session issued before the update remained valid; PostgreSQL password login succeeded.
+- **Image-only rollback:** both old images started on the same database and the data was still
+  readable. This is expected here because there were no new schema migrations, and is **not**
+  evidence that the old image can safely consume a future schema.
+- **Future history:** an artificial future migration journal entry was inserted into disposable
+  SQLite and PostgreSQL copies. The new image exited at bootstrap with the newer-database/
+  restore-backup message. SQLite worker-only and migrations-disabled startup also refused it.
+  The three-dialect contract additionally checks an image journal missing the database's
+  migrations: both compatibility check and migrate refuse it without altering the database.
+- **Restore:** the SQLite backup was copied into a fresh volume with UID 1000 ownership;
+  PostgreSQL's archive was restored with `pg_restore --exit-on-error` into an empty database.
+  Each started with the old image and original keys. Both recovered **19 URLs, 48 findings,
+  14 migration entries**, the rule and decryptable setting; password login worked on both.
+- **Failed migration:** independent SQLite and PostgreSQL backup copies were given a scratch
+  migration consisting of `CREATE TABLE` followed by invalid SQL. Bootstrap exited nonzero
+  before starting the services. The probe table was absent afterwards and each journal still
+  had 14 entries, demonstrating rollback of the pending batch. Recovery used the pre-update
+  backup and old image rather than editing the journal.
+- **Checks:** the full formatting/lint/typecheck/migration-consistency/release-consistency/unit
+  test/production-build checklist passed. Unit run: **1,806 passed, 382 skipped** (external
+  database tests skip without URLs). A separate throwaway SQLite/PostgreSQL 17/MySQL 8.4
+  contract run with both URLs set passed **616 tests**, including migration compatibility.
+  The first contract attempt failed because two test files tried to migrate the same empty
+  external database concurrently; the compatibility test now runs inside the existing contract,
+  and the clean rerun passed.
+- All rehearsal containers, named volumes and locally built application images were removed.
 
-What has **not** been tested here, and is described from documentation and source code only:
-
-- Dokploy itself (no instance was available): how Deploy pulls, its API, its webhooks and its
-  rollbacks are from its documentation, its OpenAPI specification and its source code as of
-  2026-11-04. Check them on your version.
-- Updates of PostgreSQL and MySQL installations with data (the migrations run on both in the
-  project's tests, but this procedure was not rehearsed on them).
-- The published images and the tags in this guide, because no release has been published yet: the
-  release workflow runs for the first time with the first tag.
+**Not exercised live:** Dokploy (no instance available), representative-data MySQL update/restore
+or MySQL dump commands, published images/tags, and a real release-to-release schema upgrade.
+MySQL's failure guidance follows the installed migrator's transaction code and MySQL DDL's
+implicit commits; passing its contract does not constitute a recovery rehearsal. The earlier
+2026-11-04 validation of the Updates page and release-channel checks is separate from this run.

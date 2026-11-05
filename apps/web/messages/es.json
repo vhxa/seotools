@@ -1379,10 +1379,10 @@
       "hints": {
         "latest": "Permite comparar rastreos, con un tamaño de base de datos acotado.",
         "current": "La opción más ligera. No se podrán comparar rastreos URL a URL.",
-        "all": "Nunca se borra nada, así que la base de datos crece sin límite."
+        "all": "Conserva los resultados de todos los rastreos completados e incompletos; la base de datos crece sin límite."
       },
       "countLabel": "Cuántos de cada tipo",
-      "countHint": "Los anteriores conservan su resumen, pero pierden los resultados por URL."
+      "countHint": "Los rastreos antiguos solo conservan totales; se eliminan sus resultados por URL, enlaces y evidencias."
     },
     "optionalFiles": {
       "label": "Otros archivos de rastreo",

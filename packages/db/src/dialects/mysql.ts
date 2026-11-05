@@ -1,3 +1,4 @@
+import { assertKnownMigrations } from '../migration-guard'
 import { randomUUID } from 'node:crypto'
 import {
   and,
@@ -186,6 +187,18 @@ export function createMysqlDatabase(options: {
 }): Database {
   const pool = mysql.createPool({ uri: options.url, connectionLimit: 10 })
   const db = drizzle(pool, { schema, mode: 'default' })
+
+  async function checkMigrations(dir = options.defaultMigrationsDir()) {
+    const [tables] = await pool.query<mysql.RowDataPacket[]>(
+      "select table_name from information_schema.tables where table_schema = database() and table_name = '__drizzle_migrations'",
+    )
+    const [rows] = tables.length
+      ? await pool.query<(mysql.RowDataPacket & { hash: string; created_at: number })[]>(
+          'select hash, created_at from __drizzle_migrations',
+        )
+      : [[]]
+    assertKnownMigrations(dir, rows)
+  }
 
   /** The hashes of the URLs of a crawl that have an issue, and of those a filter on the audit keeps. */
   const subqueries = (crawlId: string) => ({
@@ -454,7 +467,10 @@ export function createMysqlDatabase(options: {
       await db.execute(sql`select 1`)
     },
 
+    checkMigrations,
+
     async migrate(dir) {
+      await checkMigrations(dir)
       await migrate(db, { migrationsFolder: dir ?? options.defaultMigrationsDir() })
       await upgradeAuditSemantics()
     },

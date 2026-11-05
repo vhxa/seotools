@@ -1004,6 +1004,7 @@ export interface Database {
   /** Rejects if the database is unreachable. */
   ping(): Promise<void>
   /** Applies pending migrations from `migrationsDir` (default: the bundled ones). */
+  checkMigrations(migrationsDir?: string): Promise<void>
   migrate(migrationsDir?: string): Promise<void>
   close(): Promise<void>
 }

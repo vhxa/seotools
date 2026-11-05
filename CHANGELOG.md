@@ -20,6 +20,29 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Breaking
+
+- Startup refuses a database with migrations unknown to the image, reversing the previous
+  documented behaviour of allowing older images to start on newer databases. This also applies
+  with migrations disabled and in worker-only containers.
+
+### Upgrade notes
+
+- Keep the pre-update database backup and both secret keys. To go back after any schema or
+  stored-data conversion, stop the app and restore that backup with the previous image.
+  Older images predating this guard still allow unsafe downgrades; their starting successfully
+  does not mean the database is compatible.
+- Docker Compose uses `DATABASE_URL_DOCKER` in `.env`; `DATABASE_URL` is for local development,
+  direct Docker runs and Dokploy Docker applications. If you followed the previous README and
+  set only `DATABASE_URL` for Compose, the installation used SQLite. Back up that SQLite volume
+  before changing configuration: pointing at another database does not transfer your data.
+
+### Fixed
+
+- The README and example environment now document Compose's existing database override
+  accurately, preserving `DATABASE_URL_DOCKER`. Startup logs the selected dialect without the URL.
+- Crawl retention settings explain that older crawls lose URL results, links and evidence.
+
 ### Added
 
 - **Updates** page (System → Updates) for administrators: the installed version and kind of build,

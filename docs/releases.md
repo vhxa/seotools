@@ -84,7 +84,8 @@ When in doubt, it is breaking. A breaking entry **must** be followed by an `### 
 section with the steps; `check` fails without it.
 
 **Migrations are not breaking by themselves, but they are never silent.** Every migration moves
-the database forward only, and an older image does not refuse a newer database
+the database forward only, and images with the migration compatibility guard refuse unknown migration journal entries
+(older images predating the guard do not)
 ([updating.md](updating.md#what-an-update-does)). When a release adds migrations, its upgrade
 notes say so and say that going back needs the backup. A release that converts data or analyses
 earlier crawls again says that too.

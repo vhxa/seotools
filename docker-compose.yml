@@ -20,7 +20,8 @@ services:
     environment:
       # The container always listens on 3000; PORT above only picks the host port.
       PORT: 3000
-      # Overrides the value from .env, which is meant for running outside Docker.
+      # Compose database setting: set DATABASE_URL_DOCKER in .env for an external database.
+      # DATABASE_URL in .env is for local development and is deliberately overridden.
       DATABASE_URL: ${DATABASE_URL_DOCKER:-file:/data/seotools.db}
     volumes:
       - seotools-data:/data

@@ -1,3 +1,4 @@
+import { assertKnownMigrations } from '../migration-guard'
 import { randomUUID } from 'node:crypto'
 import {
   and,
@@ -183,6 +184,16 @@ export function createPgDatabase(options: {
 }): Database {
   const client = postgres(options.url, { max: 10, onnotice: () => {} })
   const db = drizzle(client, { schema })
+
+  async function checkMigrations(dir = options.defaultMigrationsDir()) {
+    const [table] = await client`select to_regclass('drizzle.__drizzle_migrations') as name`
+    const rows = table?.name
+      ? await client<
+          { hash: string; created_at: string }[]
+        >`select hash, created_at from drizzle.__drizzle_migrations`
+      : []
+    assertKnownMigrations(dir, rows)
+  }
 
   /** The hashes of the URLs of a crawl that have an issue, and of those a filter on the audit keeps. */
   const subqueries = (crawlId: string) => ({
@@ -451,7 +462,10 @@ export function createPgDatabase(options: {
       await db.execute(sql`select 1`)
     },
 
+    checkMigrations,
+
     async migrate(dir) {
+      await checkMigrations(dir)
       await migrate(db, { migrationsFolder: dir ?? options.defaultMigrationsDir() })
       await upgradeAuditSemantics()
     },

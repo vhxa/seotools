@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   AUDIT_LIMITS,
   AUDIT_SEMANTICS,
@@ -60,6 +63,21 @@ export function describeDatabaseContract(
 
     it('answers ping', async () => {
       await expect(db.ping()).resolves.toBeUndefined()
+    })
+
+    it('refuses unknown migration history before applying DDL', async () => {
+      const folder = mkdtempSync(join(tmpdir(), 'seotools-migrations-'))
+      mkdirSync(join(folder, 'meta'))
+      writeFileSync(join(folder, 'meta/_journal.json'), JSON.stringify({ entries: [] }))
+      try {
+        await expect(db.checkMigrations(folder)).rejects.toThrow(
+          /database is newer.*restoring the backup/,
+        )
+        await expect(db.migrate(folder)).rejects.toThrow(/database is newer/)
+        await expect(db.checkMigrations()).resolves.toBeUndefined()
+      } finally {
+        rmSync(folder, { recursive: true, force: true })
+      }
     })
 
     describe('jobs', () => {

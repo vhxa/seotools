@@ -1,3 +1,4 @@
+import { assertKnownMigrations } from '../migration-guard'
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -195,6 +196,21 @@ export function createSqliteDatabase(options: {
   sqlite.pragma('synchronous = NORMAL')
 
   const db = drizzle(sqlite, { schema })
+
+  async function checkMigrations(dir = options.defaultMigrationsDir()) {
+    const exists = sqlite
+      .prepare(
+        "select name from sqlite_master where type = 'table' and name = '__drizzle_migrations'",
+      )
+      .get()
+    const rows = exists
+      ? (sqlite.prepare('select hash, created_at from __drizzle_migrations').all() as {
+          hash: string
+          created_at: number
+        }[])
+      : []
+    assertKnownMigrations(dir, rows)
+  }
 
   /** The hashes of the URLs of a crawl that have an issue, and of those a filter on the audit keeps. */
   const subqueries = (crawlId: string) => ({
@@ -453,7 +469,10 @@ export function createSqliteDatabase(options: {
       sqlite.prepare('select 1').get()
     },
 
+    checkMigrations,
+
     async migrate(dir) {
+      await checkMigrations(dir)
       migrate(db, { migrationsFolder: dir ?? options.defaultMigrationsDir() })
       await upgradeAuditSemantics()
     },

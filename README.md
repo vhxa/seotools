@@ -150,14 +150,18 @@ the right choice here. Keep the volume on reliable storage (an SSD, or a good SD
 
 ### PostgreSQL or MySQL
 
-Set `DATABASE_URL` in `.env` and Compose will use it instead of SQLite:
+Set `DATABASE_URL_DOCKER` in `.env` for Docker Compose. Compose overrides
+`DATABASE_URL` (reserved here for local development) with this value, defaulting to SQLite.
 
 ```bash
 # PostgreSQL (tested on 17)
-DATABASE_URL=postgres://seotools:secret@db:5432/seotools
+DATABASE_URL_DOCKER=postgres://seotools:secret@db:5432/seotools
 # MySQL (tested on 8.4). Needs FOR UPDATE SKIP LOCKED: MySQL 8+, MariaDB 10.6+ (untested)
-DATABASE_URL=mysql://seotools:secret@db:3306/seotools
+DATABASE_URL_DOCKER=mysql://seotools:secret@db:3306/seotools
 ```
+
+For direct `docker run` or a Dokploy Docker application, use the same URL in `DATABASE_URL`
+instead.
 
 Create the (empty) database first; migrations create the tables. The `/data` volume is then unused.
 
