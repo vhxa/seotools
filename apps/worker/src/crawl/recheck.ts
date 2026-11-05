@@ -13,7 +13,7 @@ import {
 } from '@seotools/core'
 import type { CrawlUrl, CrawlUrlResult } from '@seotools/db'
 import { conditionStatesOf } from './conditions'
-import { CHECKS, applyAuditPolicy, type Finding } from './issue-checks'
+import { CHECKS, applyAuditPolicyKeeping, type Finding } from './issue-checks'
 import { SiteContextError } from './site-context'
 import { auditUrl, type AuditedUrl, type RobotsFile, type Site } from './site-audit'
 
@@ -211,6 +211,7 @@ export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): V
     }
   }
 
+  const { kept, accepted } = applyAuditPolicyKeeping(url, found)
   return {
     audit: {
       participation: url.participation,
@@ -222,7 +223,14 @@ export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): V
       indexability: url.indexability.state,
       blockers: url.indexability.blockers,
     },
-    findings: applyAuditPolicy(url, found),
+    findings: kept,
+    // Only what a rule says of this URL's own findings: what other URLs declare of it is relations,
+    // which need the site and are not a recheck's to say.
+    accepted: accepted.map(({ issue, details, acceptance }) => ({
+      issue,
+      ...(details ? { details } : {}),
+      acceptance,
+    })),
     unchecked,
   }
 }

@@ -1,4 +1,11 @@
+import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
+  AccessGrant,
+  AlertKind,
+  AlertLocale,
+  MailKind,
+  MailStatus,
+  UserRole,
   AuditCondition,
   AuditRule,
   AuditSelector,
@@ -107,6 +114,125 @@ export interface AdminRepository {
   create(input: { id: string; email: string; name: string; passwordHash: string }): Promise<void>
 }
 
+/** An account, as the people who manage them see it. */
+export interface UserRecord {
+  id: string
+  name: string
+  email: string
+  role: UserRole
+  disabledAt: Date | null
+  /** It has a password: `false` is someone invited who has not accepted yet. */
+  hasPassword: boolean
+  resetRequestedAt: Date | null
+  createdAt: Date
+}
+
+export const USER_TOKEN_KINDS = ['invite', 'reset'] as const
+export type UserTokenKind = (typeof USER_TOKEN_KINDS)[number]
+
+/** What refuses a change that would leave nobody able to administer the instance. */
+export type UserChange = 'ok' | 'not-found' | 'last-admin'
+
+export interface UserRepository {
+  /** Every account, by name. */
+  list(): Promise<UserRecord[]>
+  get(id: string): Promise<UserRecord | null>
+  findByEmail(email: string): Promise<UserRecord | null>
+  /** Creates an account with no password. Rejects if the email is taken. */
+  create(input: { email: string; name: string; role: UserRole }): Promise<UserRecord>
+  /** Refuses to leave no administrator who is active and can sign in. */
+  setRole(id: string, role: UserRole): Promise<UserChange>
+  /** Disabling removes the sessions and links of the account, and refuses like `setRole`. */
+  setDisabled(id: string, disabled: boolean): Promise<UserChange>
+  /** What a member was given. An administrator keeps theirs, unused, in case the role goes. */
+  grantsOf(userId: string): Promise<AccessGrant[]>
+  /** The grants of every account, for those who manage them. */
+  allGrants(): Promise<Map<string, AccessGrant[]>>
+  /** Replaces what a member was given. `false`: the account, a company or a domain do not exist. */
+  setGrants(userId: string, grants: readonly AccessGrant[]): Promise<boolean>
+  addToken(input: {
+    tokenHash: string
+    userId: string
+    kind: UserTokenKind
+    expiresAt: Date
+  }): Promise<void>
+  /** Whose a link is while it works: not expired, and the account not disabled. */
+  findToken(tokenHash: string, now: Date): Promise<{ kind: UserTokenKind; user: UserRecord } | null>
+  /**
+   * Uses a link: sets the password, verifies the email, and removes every link and session of the
+   * account, all or nothing. `false`: the link does not work (any more), and nothing changed.
+   */
+  redeemToken(input: { tokenHash: string; passwordHash: string; now: Date }): Promise<boolean>
+  markResetRequested(id: string, at: Date): Promise<void>
+}
+
+/** One attempt to send an email. No subject, body or link is ever kept. */
+export interface MailDelivery {
+  id: string
+  kind: MailKind
+  recipient: string
+  status: MailStatus
+  /** What the provider answered, bounded. `null` when it was sent. */
+  error: string | null
+  createdAt: Date
+}
+
+export interface MailRepository {
+  /** Records an attempt. `error` is cut to `MAX_DELIVERY_ERROR_LENGTH`. */
+  record(input: {
+    kind: MailKind
+    recipient: string
+    status: MailStatus
+    error?: string | null
+  }): Promise<void>
+  /** Newest first. `problems`: only the attempts that did not send. */
+  recent(options: { limit: number; outcome?: 'sent' | 'problems' }): Promise<MailDelivery[]>
+  /**
+   * Removes attempts older than `before`, and all but the newest `keep` of the rest. Returns how
+   * many went.
+   */
+  prune(input: { before: Date; keep: number }): Promise<number>
+}
+
+/** What a person asked to be told about a domain. */
+export interface AlertSubscription {
+  userId: string
+  domainId: string
+  /** At least one: a person who wants none has no subscription. */
+  kinds: AlertKind[]
+  /** The language of the emails, as the person had it when they saved. */
+  locale: AlertLocale
+  updatedAt: Date
+}
+
+export interface AlertRepository {
+  /** Everything a person asked for. */
+  forUser(userId: string): Promise<AlertSubscription[]>
+  /** Everyone who asked for something about a domain: not yet checked for access or an active account. */
+  forDomain(domainId: string): Promise<AlertSubscription[]>
+  /**
+   * Replaces what a person asked for in these domains, all or nothing. A domain with no kinds loses
+   * its subscription. Domains not listed are left as they are.
+   */
+  save(input: {
+    userId: string
+    locale: AlertLocale
+    domains: { domainId: string; kinds: readonly AlertKind[] }[]
+  }): Promise<void>
+  /**
+   * Takes the right to send these kinds of a crawl to a person. Returns the ones this call took:
+   * a kind already taken, by anyone, is not returned, so that two attempts never send the same
+   * notice. Taking is atomic per kind.
+   */
+  claim(input: {
+    crawlId: string
+    userId: string
+    kinds: readonly AlertKind[]
+  }): Promise<AlertKind[]>
+  /** Gives back what `claim` took when sending failed, so that a retry can send it. */
+  release(input: { crawlId: string; userId: string; kinds: readonly AlertKind[] }): Promise<void>
+}
+
 export interface Company {
   id: string
   name: string
@@ -119,6 +245,25 @@ export interface Domain {
   /** Normalized host, e.g. `example.com` (see `normalizeDomain` in @seotools/core). */
   host: string
   createdAt: Date
+  /**
+   * When the domain was archived, `null` while it is active. An archived domain keeps all its
+   * data and stays readable, but nothing automatic runs for it and nothing can be started or
+   * changed (`DomainArchivedError`).
+   */
+  archivedAt: Date | null
+}
+
+/** What deleting a domain removes, in rows a person can recognise. Counted by the database. */
+export interface DomainUsage {
+  crawls: number
+  /** URLs with their results, over the crawls that still keep them. */
+  urls: number
+  /** Audit rules and exceptions. */
+  rules: number
+  rechecks: number
+  schedules: number
+  priorityUrls: number
+  crawlFiles: number
 }
 
 export interface CompanyWithDomains extends Company {
@@ -135,6 +280,14 @@ export interface CompanyRepository {
   get(id: string): Promise<Company | null>
   /** Creates a company together with its first domain. Rejects if the host is already taken. */
   create(input: { name: string; host: string }): Promise<{ company: Company; domain: Domain }>
+  /** `null` when the company does not exist. */
+  rename(id: string, name: string): Promise<Company | null>
+  /**
+   * Deletes the company with its domains and everything stored for them (crawls, results, rules,
+   * rechecks, schedules, files, icons) and the queued or running jobs that work on them, in one
+   * transaction. `false` when the company does not exist.
+   */
+  delete(id: string): Promise<boolean>
 }
 
 export interface DomainRepository {
@@ -142,6 +295,29 @@ export interface DomainRepository {
   findByHost(host: string): Promise<DomainWithCompany | null>
   /** Rejects if the host is already taken or the company does not exist. */
   add(input: { companyId: string; host: string }): Promise<Domain>
+  /**
+   * Archives a domain, and in the same transaction cancels its active crawl and recheck: the jobs
+   * notice at their next check and stop requesting. Archiving twice keeps the first date. `null`
+   * when the domain does not exist.
+   */
+  archive(id: string): Promise<Domain | null>
+  /**
+   * Makes an archived domain active again. Its schedules move to their next run from now, so that
+   * coming back does not start a crawl for every run it missed. `null` when it does not exist.
+   */
+  unarchive(id: string): Promise<Domain | null>
+  /**
+   * Moves a domain to another company. Only `company_id` changes: the id is the same, so every
+   * result, rule and schedule stays with it. `null` when the domain or the company does not exist.
+   */
+  move(input: { id: string; companyId: string }): Promise<Domain | null>
+  /**
+   * Deletes the domain and everything stored for it, and the jobs that work on it, in one
+   * transaction. `false` when it does not exist.
+   */
+  delete(id: string): Promise<boolean>
+  /** What each domain would lose if deleted, by domain id. Domains with nothing are included. */
+  usage(): Promise<Map<string, DomainUsage>>
 }
 
 export interface Crawl {
@@ -255,6 +431,11 @@ export interface CrawlUrlQuery {
    */
   issue?: string
   /**
+   * Only URLs with a finding a rule accepts: this issue, or any (`ANY_ACCEPTED`). Like `issue`, the
+   * `view` is ignored.
+   */
+  accepted?: string
+  /**
    * Only URLs whose last request got a status of this class, or `none`: no status at all, because
    * the URL was never requested or the request failed. Within the `view`.
    */
@@ -325,6 +506,16 @@ export interface CrawlUrlIssue {
    * crawl cannot say, which is never filled in with guesses.
    */
   evidence?: IssueEvidence
+}
+
+/**
+ * A finding a rule accepts (see `@seotools/core/crawl/acceptance`): what the crawl saw, with its
+ * evidence, kept apart from what is pending.
+ */
+export interface CrawlUrlAcceptedIssue extends CrawlUrlIssue {
+  /** The URL whose declaration accepts it: this one, or the one the finding is about. */
+  acceptedBy: string
+  acceptance: FindingAcceptance
 }
 
 /** What an analysis concluded about a URL of a crawl. */
@@ -477,6 +668,8 @@ export interface CrawlRepository {
   saveAnalysis(input: {
     crawlId: string
     issues: CrawlUrlIssue[]
+    /** What rules accept, which is not in `issues` and so counts for nothing that is pending. */
+    accepted?: CrawlUrlAcceptedIssue[]
     /** Audited pages by the worst type of finding they have. */
     pages: PagesByWorstIssue
     withType: PagesWithType
@@ -493,6 +686,19 @@ export interface CrawlRepository {
   issueCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
+  /** For each issue a rule accepts in a crawl, how many URLs it accepts it on. */
+  acceptedCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
+  /** The findings rules accept on these URLs of a crawl. */
+  acceptedOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlAcceptedIssue[]>
+  /**
+   * The findings of other URLs that what is declared of this one accepts, in a stable order: what a
+   * rule of this URL does beyond it.
+   */
+  acceptedBecauseOf(
+    crawlId: string,
+    urlHash: string,
+    options: { limit: number },
+  ): Promise<{ total: number; findings: { urlHash: string; url: string; issue: string }[] }>
   /**
    * What the analysis of the crawl concluded about these URLs. Internal URLs of a crawl analysed
    * with this feature have an entry; the rest do not, and neither do the URLs of older analyses.
@@ -594,6 +800,8 @@ export interface CrawlUrlTrace {
   url: string
   snapshot: UrlSnapshot
   issues: CrawlUrlIssue[]
+  /** Ids of the issues a rule accepts on the URL in this crawl. */
+  accepted?: string[]
   /** `null`: the crawl was analysed before the audit state per URL was kept, or not analysed. */
   audit: CrawlUrlAudit | null
 }
@@ -957,6 +1165,9 @@ export interface Database {
   readonly heartbeats: HeartbeatRepository
   readonly settings: SettingsStore
   readonly admin: AdminRepository
+  readonly users: UserRepository
+  readonly mail: MailRepository
+  readonly alerts: AlertRepository
   readonly companies: CompanyRepository
   readonly domains: DomainRepository
   readonly crawls: CrawlRepository
@@ -970,6 +1181,8 @@ export interface Database {
   readonly orm: { db: unknown; schema: Record<string, unknown> }
   /** Rejects if the database is unreachable. */
   ping(): Promise<void>
+  /** Rejects if the database has a migration `migrationsDir` does not know (default: the bundled ones). */
+  checkMigrations(migrationsDir?: string): Promise<void>
   /** Applies pending migrations from `migrationsDir` (default: the bundled ones). */
   migrate(migrationsDir?: string): Promise<void>
   close(): Promise<void>

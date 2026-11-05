@@ -1,6 +1,7 @@
 import type { Crawl } from '@seotools/db'
 import { getTranslations } from 'next-intl/server'
 import { cancelCrawlAction } from '@/app/(protected)/domains/[host]/actions'
+import { EditorsOnly } from '@/components/domain-access'
 import { AutoRefresh } from '@/components/auto-refresh'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { Button } from '@/components/ui/button'
@@ -20,11 +21,13 @@ export async function ActiveCrawl({ host, crawl }: { host: string; crawl: Crawl 
           {t(`type.${crawl.type}`)}
           <CrawlStatusBadge status={crawl.status} />
         </CardTitle>
-        <form action={cancelCrawlAction.bind(null, host, crawl.id)}>
-          <Button type="submit" variant="outline" size="sm">
-            {t('cancel')}
-          </Button>
-        </form>
+        <EditorsOnly>
+          <form action={cancelCrawlAction.bind(null, host, crawl.id)}>
+            <Button type="submit" variant="outline" size="sm">
+              {t('cancel')}
+            </Button>
+          </form>
+        </EditorsOnly>
       </CardHeader>
       <CardContent className="grid gap-2">
         <Progress value={percent} aria-label={t('progressLabel')} />

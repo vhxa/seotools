@@ -90,6 +90,7 @@ export function viewRecheck(input: {
           crawl: input.crawlIssues,
           recheck: verified.outcome.findings.map((finding) => finding.issue),
           unchecked: verified.outcome.unchecked,
+          accepted: (verified.outcome.accepted ?? []).map((finding) => finding.issue),
         })
       : null,
     notComparable: comparable ? null : analysed ? 'rules-changed' : 'not-analysed',

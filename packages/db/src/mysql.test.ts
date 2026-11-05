@@ -26,13 +26,23 @@ describeDatabaseContract(
           ])
         },
       },
+      countRows: async (table: string) => {
+        const [rows] = await conn.query(`select count(*) as n from \`${table}\``)
+        return Number((rows as { n: number | string }[])[0]?.n)
+      },
       reset: async () => {
         for (const table of [
           'jobs',
+          'alert_notices',
+          'alert_subscriptions',
+          'mail_deliveries',
           'worker_heartbeats',
           'settings',
+          'user_tokens',
+          'user_access',
           'user',
           'crawl_url_audit',
+          'crawl_url_accepted_issues',
           'crawl_url_issues',
           'crawl_sitemap_hreflang',
           'crawl_links',

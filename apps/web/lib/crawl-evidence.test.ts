@@ -72,6 +72,7 @@ describe('urlEvidenceOf', () => {
       intent: 'indexable',
       conditions: '',
       issues: new Set(['noindex']),
+      accepted: new Set(),
     })
   })
 

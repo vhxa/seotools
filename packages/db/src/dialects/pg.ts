@@ -1,10 +1,13 @@
+import { assertKnownMigrations } from '../migration-guard'
 import { randomUUID } from 'node:crypto'
 import {
   and,
   asc,
+  countDistinct,
   desc,
   eq,
   exists,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -23,6 +26,10 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import postgres from 'postgres'
 import {
   CREDENTIAL_PROVIDER,
+  accessRows,
+  foldGrants,
+  removesLastAdmin,
+  toUserRecord,
   EMPTY_COUNTS,
   byUrl,
   changeCondition,
@@ -40,6 +47,7 @@ import {
   crawlJobValues,
   crawlResultColumns,
   crawlRobotsColumn,
+  crawlAcceptedRows,
   crawlIssueRows,
   crawlAnalysisColumns,
   crawlAuditRows,
@@ -48,6 +56,7 @@ import {
   supersedes,
   toCrawlUrlAudit,
   sitemapHreflangRow,
+  toCrawlUrlAcceptedIssue,
   toCrawlUrlIssue,
   crawlUrlOrder,
   crawlUrlWhere,
@@ -63,6 +72,7 @@ import {
   expiredVerifications,
   faviconRow,
   foldCrawlCounts,
+  foldUsage,
   foldViewCounts,
   groupDomains,
   newCrawlLinkRow,
@@ -90,6 +100,7 @@ import {
   AUDIT_SEMANTICS,
   DEFAULT_CRAWL_SETTINGS,
   JOB_TYPES,
+  nextScheduledRun,
   type CrawlLinkKind,
 } from '@seotools/core'
 import {
@@ -117,12 +128,25 @@ import {
   type AuditRuleRow,
   type PlanContext,
 } from '../audit'
+import {
+  alertColumns,
+  alertJobId,
+  alertJobValues,
+  knownAlertKinds,
+  mailDeliveryRow,
+  toAlertSubscription,
+  toMailDelivery,
+} from '../mapping'
+import type { AlertKind } from '@seotools/core'
 import * as schema from '../schema/pg'
+import { DomainArchivedError } from '../archive'
 import type {
   CrawlLink,
   CrawlUrlAudit,
   CrawlUrlBrief,
+  CrawlUrlAcceptedIssue,
   CrawlUrlIssue,
+  UserTokenKind,
   Database,
   NewCrawlUrl,
   NewVerificationUrl,
@@ -132,10 +156,15 @@ import type {
 
 const {
   jobs,
+  mailDeliveries,
+  alertSubscriptions,
+  alertNotices,
   workerHeartbeats,
   settings,
   user,
   account,
+  userAccess,
+  userTokens,
   companies,
   domains,
   domainFavicons,
@@ -145,6 +174,7 @@ const {
   crawlSchedules,
   crawls,
   crawlUrls,
+  crawlUrlAcceptedIssues,
   crawlUrlIssues,
   crawlUrlAudit,
   crawlSitemapHreflang,
@@ -179,6 +209,33 @@ export function createPgDatabase(options: {
   const client = postgres(options.url, { max: 10, onnotice: () => {} })
   const db = drizzle(client, { schema })
 
+  async function checkMigrations(dir = options.defaultMigrationsDir()) {
+    const [table] = await client`select to_regclass('drizzle.__drizzle_migrations') as name`
+    const rows = table?.name
+      ? await client<
+          { hash: string; created_at: string }[]
+        >`select hash, created_at from drizzle.__drizzle_migrations`
+      : []
+    assertKnownMigrations(dir, rows)
+  }
+
+  /** Who can administer the instance right now, locked so that two changes cannot both pass. */
+  const lockActiveAdmins = async (tx: Pick<typeof db, 'select'>) =>
+    (
+      await tx
+        .select({ id: user.id })
+        .from(user)
+        .innerJoin(account, eq(account.userId, user.id))
+        .where(
+          and(
+            eq(user.role, 'admin'),
+            isNull(user.disabledAt),
+            eq(account.providerId, CREDENTIAL_PROVIDER),
+          ),
+        )
+        .for('update')
+    ).map(({ id }) => id)
+
   /** The hashes of the URLs of a crawl that have an issue, and of those a filter on the audit keeps. */
   const subqueries = (crawlId: string) => ({
     withIssue: (issue: string) =>
@@ -186,6 +243,16 @@ export function createPgDatabase(options: {
         .select({ urlHash: crawlUrlIssues.urlHash })
         .from(crawlUrlIssues)
         .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue))),
+    withAccepted: (issue: string | null) =>
+      db
+        .select({ urlHash: crawlUrlAcceptedIssues.urlHash })
+        .from(crawlUrlAcceptedIssues)
+        .where(
+          and(
+            eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+            issue === null ? undefined : eq(crawlUrlAcceptedIssues.issue, issue),
+          ),
+        ),
     withAudit: (filter: Parameters<typeof crawlAuditWhere>[2]) =>
       db
         .select({ urlHash: crawlUrlAudit.urlHash })
@@ -425,6 +492,41 @@ export function createPgDatabase(options: {
       .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt } })
   }
 
+  /** Refuses, inside the transaction that would create something, a domain that is archived. */
+  const assertNotArchived = async (tx: Pick<typeof db, 'select'>, domainId: string) => {
+    // Shared lock: archiving a domain waits for a start in flight, and a start sees it archived.
+    const [row] = await tx
+      .select({ archivedAt: domains.archivedAt })
+      .from(domains)
+      .where(eq(domains.id, domainId))
+      .for('share')
+    if (row?.archivedAt) throw new DomainArchivedError(domainId)
+  }
+
+  /**
+   * Removes the jobs that work on these domains: their crawls' and rechecks'. The domain's rows
+   * go by cascade, and a job that finds its crawl gone has nothing left to do; deleting the job
+   * too means a running one is not retried, and a queued one never starts.
+   */
+  const removeJobsOf = async (tx: Pick<typeof db, 'select' | 'delete'>, domainIds: string[]) => {
+    if (domainIds.length === 0) return
+    const ids = [
+      ...(
+        await tx
+          .select({ id: crawls.jobId, crawlId: crawls.id })
+          .from(crawls)
+          .where(inArray(crawls.domainId, domainIds))
+      ).flatMap((row) => [row.id, alertJobId(row.crawlId)]),
+      ...(
+        await tx
+          .select({ id: urlVerifications.jobId })
+          .from(urlVerifications)
+          .where(inArray(urlVerifications.domainId, domainIds))
+      ).map((row) => row.id),
+    ]
+    for (const batch of chunk(ids)) await tx.delete(jobs).where(inArray(jobs.id, batch))
+  }
+
   return {
     dialect: 'pg',
     orm: {
@@ -436,7 +538,10 @@ export function createPgDatabase(options: {
       await db.execute(sql`select 1`)
     },
 
+    checkMigrations,
+
     async migrate(dir) {
+      await checkMigrations(dir)
       await migrate(db, { migrationsFolder: dir ?? options.defaultMigrationsDir() })
       await upgradeAuditSemantics()
     },
@@ -645,7 +750,7 @@ export function createPgDatabase(options: {
       },
       async create({ id, email, name, passwordHash }) {
         await db.transaction(async (tx) => {
-          await tx.insert(user).values({ id, email, name, emailVerified: true })
+          await tx.insert(user).values({ id, email, name, role: 'admin', emailVerified: true })
           await tx.insert(account).values({
             id: randomUUID(),
             accountId: id,
@@ -658,6 +763,273 @@ export function createPgDatabase(options: {
       async exists() {
         const rows = await db.select({ id: user.id }).from(user).limit(1)
         return rows.length > 0
+      },
+    },
+
+    users: {
+      async list() {
+        const [rows, withPassword] = await Promise.all([
+          db.select().from(user).orderBy(asc(user.name), asc(user.email)),
+          db
+            .select({ userId: account.userId })
+            .from(account)
+            .where(eq(account.providerId, CREDENTIAL_PROVIDER)),
+        ])
+        const known = new Set(withPassword.map(({ userId }) => userId))
+        return rows.map((row) => toUserRecord(row, known.has(row.id)))
+      },
+      async get(id) {
+        const [row] = await db.select().from(user).where(eq(user.id, id))
+        if (!row) return null
+        const [cred] = await db
+          .select({ id: account.id })
+          .from(account)
+          .where(and(eq(account.userId, id), eq(account.providerId, CREDENTIAL_PROVIDER)))
+        return toUserRecord(row, cred !== undefined)
+      },
+      async findByEmail(email) {
+        const [row] = await db.select({ id: user.id }).from(user).where(eq(user.email, email))
+        return row ? this.get(row.id) : null
+      },
+      async create({ email, name, role }) {
+        const id = randomUUID()
+        await db.insert(user).values({ id, email, name, role, emailVerified: false })
+        const created = await this.get(id)
+        if (!created) throw new Error(`User ${id} not found after creating it`)
+        return created
+      },
+      async setRole(id, role) {
+        return db.transaction(async (tx) => {
+          const admins = await lockActiveAdmins(tx)
+          const [found] = await tx.select({ id: user.id }).from(user).where(eq(user.id, id))
+          if (!found) return 'not-found'
+          if (role !== 'admin' && removesLastAdmin(admins, id)) return 'last-admin'
+          await tx.update(user).set({ role }).where(eq(user.id, id))
+          return 'ok'
+        })
+      },
+      async setDisabled(id, disabled) {
+        return db.transaction(async (tx) => {
+          const admins = await lockActiveAdmins(tx)
+          const [found] = await tx.select({ id: user.id }).from(user).where(eq(user.id, id))
+          if (!found) return 'not-found'
+          if (disabled && removesLastAdmin(admins, id)) return 'last-admin'
+          await tx
+            .update(user)
+            .set({ disabledAt: disabled ? new Date() : null })
+            .where(eq(user.id, id))
+          if (disabled) {
+            await tx.delete(schema.session).where(eq(schema.session.userId, id))
+            await tx.delete(userTokens).where(eq(userTokens.userId, id))
+          }
+          return 'ok'
+        })
+      },
+      async grantsOf(userId) {
+        const rows = await db.select().from(userAccess).where(eq(userAccess.userId, userId))
+        return foldGrants(rows).get(userId) ?? []
+      },
+      async allGrants() {
+        return foldGrants(await db.select().from(userAccess))
+      },
+      async setGrants(userId, grants) {
+        return db.transaction(async (tx) => {
+          const [found] = await tx.select({ id: user.id }).from(user).where(eq(user.id, userId))
+          if (!found) return false
+          for (const { companyId, domainId } of grants) {
+            const [target] = companyId
+              ? await tx
+                  .select({ id: companies.id })
+                  .from(companies)
+                  .where(eq(companies.id, companyId))
+              : await tx.select({ id: domains.id }).from(domains).where(eq(domains.id, domainId!))
+            if (!target) return false
+          }
+          await tx.delete(userAccess).where(eq(userAccess.userId, userId))
+          for (const batch of chunk(accessRows(userId, grants))) {
+            await tx.insert(userAccess).values(batch)
+          }
+          return true
+        })
+      },
+      async addToken(input) {
+        await db.insert(userTokens).values(input)
+      },
+      async findToken(tokenHash, now) {
+        const [row] = await db
+          .select({ kind: userTokens.kind, userId: userTokens.userId })
+          .from(userTokens)
+          .innerJoin(user, eq(user.id, userTokens.userId))
+          .where(
+            and(
+              eq(userTokens.tokenHash, tokenHash),
+              gt(userTokens.expiresAt, now),
+              isNull(user.disabledAt),
+            ),
+          )
+        if (!row) return null
+        const found = await this.get(row.userId)
+        return found ? { kind: row.kind as UserTokenKind, user: found } : null
+      },
+      async redeemToken({ tokenHash, passwordHash, now }) {
+        return db.transaction(async (tx) => {
+          // Locked: of two uses of one link at once, the second finds it gone.
+          const [token] = await tx
+            .select({ userId: userTokens.userId })
+            .from(userTokens)
+            .innerJoin(user, eq(user.id, userTokens.userId))
+            .where(
+              and(
+                eq(userTokens.tokenHash, tokenHash),
+                gt(userTokens.expiresAt, now),
+                isNull(user.disabledAt),
+              ),
+            )
+            .for('update')
+          if (!token) return false
+          const { userId } = token
+          const credential = and(
+            eq(account.userId, userId),
+            eq(account.providerId, CREDENTIAL_PROVIDER),
+          )
+          const [existing] = await tx.select({ id: account.id }).from(account).where(credential)
+          if (existing) {
+            await tx.update(account).set({ password: passwordHash }).where(credential)
+          } else {
+            await tx.insert(account).values({
+              id: randomUUID(),
+              accountId: userId,
+              providerId: CREDENTIAL_PROVIDER,
+              userId,
+              password: passwordHash,
+            })
+          }
+          await tx.update(user).set({ emailVerified: true }).where(eq(user.id, userId))
+          await tx.delete(userTokens).where(eq(userTokens.userId, userId))
+          await tx.delete(schema.session).where(eq(schema.session.userId, userId))
+          return true
+        })
+      },
+      async markResetRequested(id, at) {
+        await db.update(user).set({ resetRequestedAt: at }).where(eq(user.id, id))
+      },
+    },
+
+    mail: {
+      async record(input) {
+        await db.insert(mailDeliveries).values(mailDeliveryRow(input))
+      },
+      async recent({ limit, outcome }) {
+        const rows = await db
+          .select()
+          .from(mailDeliveries)
+          .where(
+            outcome === 'sent'
+              ? eq(mailDeliveries.status, 'sent')
+              : outcome === 'problems'
+                ? ne(mailDeliveries.status, 'sent')
+                : undefined,
+          )
+          .orderBy(desc(mailDeliveries.createdAt))
+          .limit(limit)
+        return rows.map(toMailDelivery)
+      },
+      async prune({ before, keep }) {
+        let removed = (
+          await db
+            .delete(mailDeliveries)
+            .where(lt(mailDeliveries.createdAt, before))
+            .returning({ id: mailDeliveries.id })
+        ).length
+        const edge = (
+          await db
+            .select({ createdAt: mailDeliveries.createdAt })
+            .from(mailDeliveries)
+            .orderBy(desc(mailDeliveries.createdAt))
+            .limit(1)
+            .offset(Math.max(1, keep) - 1)
+        )[0]
+        if (edge) {
+          removed += (
+            await db
+              .delete(mailDeliveries)
+              .where(lt(mailDeliveries.createdAt, edge.createdAt))
+              .returning({ id: mailDeliveries.id })
+          ).length
+        }
+        return removed
+      },
+    },
+
+    alerts: {
+      async forUser(userId) {
+        const rows = await db
+          .select()
+          .from(alertSubscriptions)
+          .where(eq(alertSubscriptions.userId, userId))
+          .orderBy(asc(alertSubscriptions.domainId))
+        return rows.map(toAlertSubscription)
+      },
+      async forDomain(domainId) {
+        const rows = await db
+          .select()
+          .from(alertSubscriptions)
+          .where(eq(alertSubscriptions.domainId, domainId))
+          .orderBy(asc(alertSubscriptions.userId))
+        return rows.map(toAlertSubscription)
+      },
+      async save({ userId, locale, domains: entries }) {
+        await db.transaction(async (tx) => {
+          for (const { domainId, kinds } of entries) {
+            const known = knownAlertKinds(kinds)
+            if (known.length === 0) {
+              await tx
+                .delete(alertSubscriptions)
+                .where(
+                  and(
+                    eq(alertSubscriptions.userId, userId),
+                    eq(alertSubscriptions.domainId, domainId),
+                  ),
+                )
+              continue
+            }
+            const columns = alertColumns(known, locale)
+            await tx
+              .insert(alertSubscriptions)
+              .values({ userId, domainId, ...columns })
+              .onConflictDoUpdate({
+                target: [alertSubscriptions.userId, alertSubscriptions.domainId],
+                set: columns,
+              })
+          }
+          await tx
+            .update(alertSubscriptions)
+            .set({ locale })
+            .where(eq(alertSubscriptions.userId, userId))
+        })
+      },
+      async claim({ crawlId, userId, kinds }) {
+        const taken: AlertKind[] = []
+        for (const kind of knownAlertKinds(kinds)) {
+          const inserted = await db
+            .insert(alertNotices)
+            .values({ crawlId, userId, kind })
+            .onConflictDoNothing()
+            .returning({ kind: alertNotices.kind })
+          if (inserted.length > 0) taken.push(kind)
+        }
+        return taken
+      },
+      async release({ crawlId, userId, kinds }) {
+        await db
+          .delete(alertNotices)
+          .where(
+            and(
+              eq(alertNotices.crawlId, crawlId),
+              eq(alertNotices.userId, userId),
+              inArray(alertNotices.kind, knownAlertKinds(kinds)),
+            ),
+          )
       },
     },
 
@@ -675,12 +1047,35 @@ export function createPgDatabase(options: {
       async create({ name, host }) {
         const now = new Date()
         const company = { id: randomUUID(), name, createdAt: now }
-        const domain = { id: randomUUID(), companyId: company.id, host, createdAt: now }
+        const domain = {
+          id: randomUUID(),
+          companyId: company.id,
+          host,
+          createdAt: now,
+          archivedAt: null,
+        }
         await db.transaction(async (tx) => {
           await tx.insert(companies).values(company)
           await tx.insert(domains).values(domain)
         })
         return { company, domain }
+      },
+      async rename(id, name) {
+        await db.update(companies).set({ name }).where(eq(companies.id, id))
+        const [row] = await db.select().from(companies).where(eq(companies.id, id))
+        return row ?? null
+      },
+      async delete(id) {
+        return db.transaction(async (tx) => {
+          const [company] = await tx.select().from(companies).where(eq(companies.id, id))
+          if (!company) return false
+          const ids = (
+            await tx.select({ id: domains.id }).from(domains).where(eq(domains.companyId, id))
+          ).map((row) => row.id)
+          await removeJobsOf(tx, ids)
+          await tx.delete(companies).where(eq(companies.id, id))
+          return true
+        })
       },
     },
 
@@ -698,9 +1093,109 @@ export function createPgDatabase(options: {
         return row ? { ...row.domain, company: row.company } : null
       },
       async add({ companyId, host }) {
-        const domain = { id: randomUUID(), companyId, host, createdAt: new Date() }
+        const domain = {
+          id: randomUUID(),
+          companyId,
+          host,
+          createdAt: new Date(),
+          archivedAt: null,
+        }
         await db.insert(domains).values(domain)
         return domain
+      },
+      async archive(id) {
+        return db.transaction(async (tx) => {
+          const [found] = await tx.select().from(domains).where(eq(domains.id, id))
+          if (!found) return null
+          const now = new Date()
+          if (!found.archivedAt) {
+            await tx.update(domains).set({ archivedAt: now }).where(eq(domains.id, id))
+          }
+          // The same statements as `crawls.cancel` and `verifications.cancel`: the jobs notice
+          // at their next check that the crawl is no longer running, and stop requesting.
+          const ended = { status: 'cancelled', activeKey: null, finishedAt: now } as const
+          await tx
+            .update(crawls)
+            .set(ended)
+            .where(and(eq(crawls.domainId, id), isNotNull(crawls.activeKey)))
+          await tx
+            .update(urlVerifications)
+            .set(ended)
+            .where(and(eq(urlVerifications.domainId, id), isNotNull(urlVerifications.activeKey)))
+          const [archived] = await tx.select().from(domains).where(eq(domains.id, id))
+          return archived ?? null
+        })
+      },
+      async unarchive(id) {
+        return db.transaction(async (tx) => {
+          const [found] = await tx.select().from(domains).where(eq(domains.id, id))
+          if (!found) return null
+          const now = new Date()
+          await tx.update(domains).set({ archivedAt: null }).where(eq(domains.id, id))
+          const schedules = await tx
+            .select()
+            .from(crawlSchedules)
+            .where(and(eq(crawlSchedules.domainId, id), eq(crawlSchedules.enabled, true)))
+          for (const row of schedules) {
+            await tx
+              .update(crawlSchedules)
+              .set({ nextRunAt: nextScheduledRun(toCrawlSchedule(row), now) })
+              .where(eq(crawlSchedules.id, row.id))
+          }
+          const [active] = await tx.select().from(domains).where(eq(domains.id, id))
+          return active ?? null
+        })
+      },
+      async move({ id, companyId }) {
+        return db.transaction(async (tx) => {
+          const [company] = await tx.select().from(companies).where(eq(companies.id, companyId))
+          if (!company) return null
+          await tx.update(domains).set({ companyId }).where(eq(domains.id, id))
+          const [moved] = await tx.select().from(domains).where(eq(domains.id, id))
+          return moved ?? null
+        })
+      },
+      async delete(id) {
+        return db.transaction(async (tx) => {
+          const [found] = await tx.select().from(domains).where(eq(domains.id, id))
+          if (!found) return false
+          await removeJobsOf(tx, [id])
+          await tx.delete(domains).where(eq(domains.id, id))
+          return true
+        })
+      },
+      async usage() {
+        return foldUsage(await db.select({ id: domains.id }).from(domains), {
+          crawls: await db
+            .select({ domainId: crawls.domainId, n: sql<number>`count(*)` })
+            .from(crawls)
+            .groupBy(crawls.domainId),
+          urls: await db
+            .select({ domainId: crawls.domainId, n: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .innerJoin(crawls, eq(crawlUrls.crawlId, crawls.id))
+            .groupBy(crawls.domainId),
+          rules: await db
+            .select({ domainId: auditRules.domainId, n: sql<number>`count(*)` })
+            .from(auditRules)
+            .groupBy(auditRules.domainId),
+          rechecks: await db
+            .select({ domainId: urlVerifications.domainId, n: sql<number>`count(*)` })
+            .from(urlVerifications)
+            .groupBy(urlVerifications.domainId),
+          schedules: await db
+            .select({ domainId: crawlSchedules.domainId, n: sql<number>`count(*)` })
+            .from(crawlSchedules)
+            .groupBy(crawlSchedules.domainId),
+          priorityUrls: await db
+            .select({ domainId: priorityUrls.domainId, n: sql<number>`count(*)` })
+            .from(priorityUrls)
+            .groupBy(priorityUrls.domainId),
+          crawlFiles: await db
+            .select({ domainId: crawlFiles.domainId, n: sql<number>`count(*)` })
+            .from(crawlFiles)
+            .groupBy(crawlFiles.domainId),
+        })
       },
     },
 
@@ -732,12 +1227,14 @@ export function createPgDatabase(options: {
         const jobId = randomUUID()
         try {
           await db.transaction(async (tx) => {
+            await assertNotArchived(tx, domainId)
             await tx.insert(jobs).values(crawlJobValues(id, jobId, now))
             await tx
               .insert(crawls)
               .values({ id, domainId, type, trigger, jobId, activeKey: domainId, createdAt: now })
           })
         } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
           // Lost the race on the unique `active_key`: some other crawl of this domain is active.
           if (await this.active(domainId)) return null
           throw error
@@ -841,17 +1338,27 @@ export function createPgDatabase(options: {
 
       async finish(id, { status, error }) {
         const counts = await this.countUrls(id)
-        const result = await db
-          .update(crawls)
-          .set({
-            ...counts,
-            status,
-            error: error === undefined ? null : truncateError(error),
-            activeKey: null,
-            finishedAt: new Date(),
-          })
-          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
-        return result.count > 0
+        return db.transaction(async (tx) => {
+          const crawl = (
+            await tx.select({ type: crawls.type }).from(crawls).where(eq(crawls.id, id))
+          )[0]
+          const result = await tx
+            .update(crawls)
+            .set({
+              ...counts,
+              status,
+              error: error === undefined ? null : truncateError(error),
+              activeKey: null,
+              finishedAt: new Date(),
+            })
+            .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
+          if (result.count === 0) return false
+          // The one place a crawl ends: whoever asked to be told hears of a full crawl from here.
+          if (crawl?.type === 'full') {
+            await tx.insert(jobs).values(alertJobValues(id, new Date())).onConflictDoNothing()
+          }
+          return true
+        })
       },
 
       async cancel(id) {
@@ -904,6 +1411,9 @@ export function createPgDatabase(options: {
         await db.transaction(async (tx) => {
           await tx.delete(crawlLinks).where(inArray(crawlLinks.crawlId, expired))
           await tx.delete(crawlUrlIssues).where(inArray(crawlUrlIssues.crawlId, expired))
+          await tx
+            .delete(crawlUrlAcceptedIssues)
+            .where(inArray(crawlUrlAcceptedIssues.crawlId, expired))
           await tx.delete(crawlUrlAudit).where(inArray(crawlUrlAudit.crawlId, expired))
           await tx
             .delete(crawlSitemapHreflang)
@@ -1185,8 +1695,9 @@ export function createPgDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveAnalysis({ crawlId, issues, pages, withType, catalog, audit }) {
+      async saveAnalysis({ crawlId, issues, accepted = [], pages, withType, catalog, audit }) {
         const issueRows = crawlIssueRows(crawlId, issues)
+        const acceptedRows = crawlAcceptedRows(crawlId, accepted)
         const auditRows = crawlAuditRows(crawlId, audit.urls)
         return db.transaction(async (tx) => {
           // Locked: of two analyses of one crawl at once, the second reads what the first saved.
@@ -1202,6 +1713,10 @@ export function createPgDatabase(options: {
           }
           await tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId))
           for (const batch of chunk(issueRows)) await tx.insert(crawlUrlIssues).values(batch)
+          await tx.delete(crawlUrlAcceptedIssues).where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
+          for (const batch of chunk(acceptedRows)) {
+            await tx.insert(crawlUrlAcceptedIssues).values(batch)
+          }
           await tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId))
           for (const batch of chunk(auditRows)) await tx.insert(crawlUrlAudit).values(batch)
           await tx
@@ -1243,6 +1758,68 @@ export function createPgDatabase(options: {
           found.push(...rows.map(toCrawlUrlIssue))
         }
         return found
+      },
+
+      async acceptedCounts(crawlId) {
+        const rows = await db
+          .select({
+            issue: crawlUrlAcceptedIssues.issue,
+            pages: countDistinct(crawlUrlAcceptedIssues.urlHash),
+          })
+          .from(crawlUrlAcceptedIssues)
+          .where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
+          .groupBy(crawlUrlAcceptedIssues.issue)
+        return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
+      },
+
+      async acceptedOf(crawlId, urlHashes) {
+        const found: CrawlUrlAcceptedIssue[] = []
+        for (const batch of chunk(urlHashes)) {
+          const rows = await db
+            .select()
+            .from(crawlUrlAcceptedIssues)
+            .where(
+              and(
+                eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+                inArray(crawlUrlAcceptedIssues.urlHash, batch),
+              ),
+            )
+          for (const row of rows) {
+            const finding = toCrawlUrlAcceptedIssue(row)
+            if (finding) found.push(finding)
+          }
+        }
+        return found
+      },
+
+      async acceptedBecauseOf(crawlId, urlHash, { limit }) {
+        const where = and(
+          eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+          eq(crawlUrlAcceptedIssues.acceptedBy, urlHash),
+          ne(crawlUrlAcceptedIssues.urlHash, urlHash),
+        )
+        const [counted] = await db
+          .select({ total: sql<number>`count(*)` })
+          .from(crawlUrlAcceptedIssues)
+          .where(where)
+        const findings = await db
+          .select({
+            urlHash: crawlUrlAcceptedIssues.urlHash,
+            url: crawlUrls.url,
+            issue: crawlUrlAcceptedIssues.issue,
+          })
+          .from(crawlUrlAcceptedIssues)
+          .innerJoin(
+            crawlUrls,
+            and(
+              eq(crawlUrls.crawlId, crawlUrlAcceptedIssues.crawlId),
+              eq(crawlUrls.urlHash, crawlUrlAcceptedIssues.urlHash),
+            ),
+          )
+          .where(where)
+          .orderBy(asc(crawlUrls.url), asc(crawlUrlAcceptedIssues.issue))
+          .limit(limit)
+        return { total: Number(counted?.total ?? 0), findings }
       },
 
       async auditOf(crawlId, urlHashes) {
@@ -1463,6 +2040,7 @@ export function createPgDatabase(options: {
         const urls: Parameters<typeof foldTraces>[0] = []
         const issues: Parameters<typeof foldTraces>[1] = []
         const audits: Parameters<typeof foldTraces>[2] = []
+        const accepted: NonNullable<Parameters<typeof foldTraces>[3]> = []
         for (const ids of chunk(owned, HISTORY_BATCH)) {
           for (const hashes of chunk(urlHashes, HISTORY_BATCH)) {
             urls.push(
@@ -1500,6 +2078,21 @@ export function createPgDatabase(options: {
                   )
               ).map((row) => ({ crawlId: row.crawlId, ...toCrawlUrlIssue(row) })),
             )
+            accepted.push(
+              ...(await db
+                .select({
+                  crawlId: crawlUrlAcceptedIssues.crawlId,
+                  urlHash: crawlUrlAcceptedIssues.urlHash,
+                  issue: crawlUrlAcceptedIssues.issue,
+                })
+                .from(crawlUrlAcceptedIssues)
+                .where(
+                  and(
+                    inArray(crawlUrlAcceptedIssues.crawlId, ids),
+                    inArray(crawlUrlAcceptedIssues.urlHash, hashes),
+                  ),
+                )),
+            )
             audits.push(
               ...(
                 await db
@@ -1515,7 +2108,7 @@ export function createPgDatabase(options: {
             )
           }
         }
-        return foldTraces(urls, issues, audits)
+        return foldTraces(urls, issues, audits, accepted)
       },
     },
 
@@ -1622,6 +2215,7 @@ export function createPgDatabase(options: {
         const jobId = randomUUID()
         try {
           await db.transaction(async (tx) => {
+            await assertNotArchived(tx, domainId)
             await tx.insert(jobs).values(verificationJobValues(id, jobId, now))
             await tx.insert(urlVerifications).values({
               id,
@@ -1635,6 +2229,7 @@ export function createPgDatabase(options: {
             await tx.insert(urlVerificationUrls).values(newVerificationUrlRows(id, urls))
           })
         } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
           // Lost the race on the unique `active_key`: some other recheck of this domain is active.
           if (await this.active(domainId)) return null
           throw error
@@ -1890,7 +2485,21 @@ export function createPgDatabase(options: {
         const rows = await db
           .select()
           .from(crawlSchedules)
-          .where(and(eq(crawlSchedules.enabled, true), lte(crawlSchedules.nextRunAt, now)))
+          .where(
+            and(
+              eq(crawlSchedules.enabled, true),
+              lte(crawlSchedules.nextRunAt, now),
+              // An archived domain keeps its schedules but nothing runs for it.
+              notExists(
+                db
+                  .select({ one: sql`1` })
+                  .from(domains)
+                  .where(
+                    and(eq(domains.id, crawlSchedules.domainId), isNotNull(domains.archivedAt)),
+                  ),
+              ),
+            ),
+          )
           .orderBy(asc(crawlSchedules.nextRunAt))
           .limit(limit)
         return rows.map(toCrawlSchedule)
@@ -1965,7 +2574,12 @@ export function createPgDatabase(options: {
           .select({ id: domains.id, host: domains.host })
           .from(domains)
           .leftJoin(crawlFileChecks, eq(crawlFileChecks.domainId, domains.id))
-          .where(or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)))
+          .where(
+            and(
+              isNull(domains.archivedAt),
+              or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)),
+            ),
+          )
           .orderBy(asc(domains.createdAt), asc(domains.id))
           .limit(limit)
       },
@@ -2016,7 +2630,12 @@ export function createPgDatabase(options: {
           .select({ id: domains.id, host: domains.host })
           .from(domains)
           .leftJoin(domainFavicons, eq(domainFavicons.domainId, domains.id))
-          .where(or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)))
+          .where(
+            and(
+              isNull(domains.archivedAt),
+              or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)),
+            ),
+          )
           .orderBy(asc(domains.createdAt), asc(domains.id))
           .limit(limit)
       },

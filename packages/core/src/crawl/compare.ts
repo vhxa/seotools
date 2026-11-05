@@ -16,11 +16,13 @@ import {
   EMPTY_AUDIT_SNAPSHOT,
   NO_LANGUAGES,
   canonicalLanguages,
+  conditionsKey,
   reachesRelations,
   selectorKey,
   semanticsOf,
   type AuditParticipation,
   type AuditSnapshot,
+  type ConditionStates,
   type RecordedIntent,
 } from './audit'
 import { compareIssueSeverity, isPageIssueId, type PageIssueId } from './issues'
@@ -406,6 +408,8 @@ export interface UrlEvidence {
   conditions: string
   /** Ids of the issues reported for it. */
   issues: ReadonlySet<string>
+  /** Ids of the issues the crawl saw and a rule accepts: not reported, and not fixed either. */
+  accepted?: ReadonlySet<string>
 }
 
 /** A crawl and what it has of one URL (`null`: nothing). */
@@ -472,6 +476,8 @@ function incomparable(issue: string, a: Basis, b: Basis): UnknownReason | null {
  *   Needs the crawl in which it was not reported: it is never inferred from two crawls alone.
  * - `excluded`: reported earlier, and the later crawl no longer audits the URL. Removed by policy, not
  *   resolved in the site.
+ * - `accepted`: reported earlier, and the later crawl still sees it but a rule takes it as expected.
+ *   Not resolved in the site.
  * - `audited`: reported by the later crawl for a URL the earlier one left out of the audit. Not new.
  * - `unverified`: the findings differ but the evidence does not say why (see `reasons`).
  */
@@ -479,6 +485,7 @@ export const FINDING_CHANGES = [
   'new',
   'reappeared',
   'resolved',
+  'accepted',
   'excluded',
   'audited',
   'unverified',
@@ -539,6 +546,8 @@ export function classifyFinding(
 
   if (a.presence === 'present') {
     if (b.presence === 'absent') {
+      // The later crawl says outright that it is still there, whatever else changed around it.
+      if (input.target.url?.accepted?.has(issue)) return change('accepted', 'base')
       const why = incomparable(issue, a.basis, b.basis)
       return why ? change('unverified', 'base', [why]) : change('resolved', 'base')
     }
@@ -634,3 +643,75 @@ export function reportedIssues(entries: Evidence[]): Set<string> {
 
 /** The issues that only depend on the URL's own answer. */
 export const PAGE_LOCAL_ISSUES: readonly PageIssueId[] = PAGE_LOCAL_LIST
+
+// --- evidence from what the crawls stored ----------------------------------------------------------
+
+/** What a stored trace of a URL in a crawl has, for the part that findings are judged by. */
+export interface TraceLike {
+  crawlId: string
+  urlHash: string
+  snapshot: { state: string }
+  issues: readonly { issue: string }[]
+  accepted?: readonly string[] | undefined
+  audit: {
+    participation: AuditParticipation
+    intent: RecordedIntent
+    conditions: ConditionStates
+  } | null
+}
+
+/** What a trace says about a URL, in the terms findings are judged by. */
+export function urlEvidenceOf(trace: TraceLike): UrlEvidence {
+  return {
+    requested: trace.snapshot.state === 'done',
+    participation: trace.audit?.participation ?? null,
+    intent: trace.audit?.intent ?? null,
+    conditions: conditionsKey(trace.audit?.conditions ?? {}),
+    issues: new Set(trace.issues.map(({ issue }) => issue)),
+    accepted: new Set(trace.accepted ?? []),
+  }
+}
+
+/** The traces by crawl and URL. */
+export function indexTraces<T extends TraceLike>(traces: readonly T[]): Map<string, T> {
+  return new Map(traces.map((trace) => [`${trace.crawlId}:${trace.urlHash}`, trace]))
+}
+
+/**
+ * What each crawl, oldest first, has of one URL: the crawls that do not have it say so (`url: null`)
+ * instead of being left out, because "not there" and "not known" are different things.
+ */
+export function evidenceOf(
+  crawls: readonly CrawlLike[],
+  traces: ReadonlyMap<string, TraceLike>,
+  urlHash: string,
+): Evidence[] {
+  return crawls.map((crawl) => {
+    const trace = traces.get(`${crawl.id}:${urlHash}`)
+    return { crawl: crawlFactsOf(crawl), url: trace ? urlEvidenceOf(trace) : null }
+  })
+}
+
+/**
+ * How the findings of a URL changed between two of the crawls, with the ones before and between as
+ * the history that can make a finding "reappeared". `crawls` is oldest first and `evidence` goes with
+ * it. `null` when one of the two is not among the crawls.
+ */
+export function findingChangesBetween(
+  crawls: readonly Pick<CrawlLike, 'id'>[],
+  evidence: readonly Evidence[],
+  baseId: string,
+  targetId: string,
+): FindingChange[] | null {
+  const baseIndex = crawls.findIndex((crawl) => crawl.id === baseId)
+  const targetIndex = crawls.findIndex((crawl) => crawl.id === targetId)
+  const base = evidence[baseIndex]
+  const target = evidence[targetIndex]
+  if (!base || !target || baseIndex >= targetIndex) return null
+  return classifyFindings({
+    base,
+    target,
+    earlier: evidence.slice(0, baseIndex),
+    between: evidence.slice(baseIndex + 1, targetIndex),
+  })
+}

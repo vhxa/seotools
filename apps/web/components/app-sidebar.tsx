@@ -2,12 +2,16 @@
 
 import {
   ActivityIcon,
+  ArrowUpCircleIcon,
+  BuildingIcon,
   CalendarClockIcon,
   ChevronRightIcon,
   FileCode2Icon,
   FileTextIcon,
   LayoutDashboardIcon,
+  MailIcon,
   SettingsIcon,
+  UsersIcon,
   type LucideIcon,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -159,13 +163,18 @@ function NavGroup({
  * user at the bottom. Domain options only show while a tracked domain is open (`/domains/[host]`).
  */
 export function AppSidebar({
+  isAdmin,
   companies,
   user,
   version,
+  development = false,
 }: {
+  isAdmin: boolean
   companies: SwitcherCompany[]
   user: NavUserData
   version?: string
+  /** The build is not a release: say so next to the version, so it is never taken for one. */
+  development?: boolean
 }) {
   const t = useTranslations('Sidebar')
   const tFiles = useTranslations('CrawlFiles.extra.kinds')
@@ -213,7 +222,13 @@ export function AppSidebar({
         { label: t('settings'), href: `/domains/${activeHost}/settings`, icon: SettingsIcon },
       ]
     : []
-  const instanceItems: NavLink[] = [{ label: t('system'), href: '/system', icon: ActivityIcon }]
+  const instanceItems: NavLink[] = [
+    { label: t('companies'), href: '/companies', icon: BuildingIcon },
+    { label: t('users'), href: '/system/users', icon: UsersIcon },
+    { label: t('system'), href: '/system', icon: ActivityIcon, exact: true },
+    { label: t('email'), href: '/system/email', icon: MailIcon },
+    { label: t('updates'), href: '/system/updates', icon: ArrowUpCircleIcon },
+  ]
 
   return (
     <Sidebar collapsible="icon">
@@ -226,17 +241,19 @@ export function AppSidebar({
               <span className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">seotools</span>
                 {version && (
-                  <span className="truncate text-xs text-muted-foreground">v{version}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {t(development ? 'versionDevelopment' : 'versionRelease', { version })}
+                  </span>
                 )}
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <DomainSwitcher companies={companies} />
+        <DomainSwitcher canManage={isAdmin} companies={companies} />
       </SidebarHeader>
       <SidebarContent>
         {activeHost && <NavGroup label={activeHost} items={domainItems} pathname={pathname} />}
-        <NavGroup label={t('instance')} items={instanceItems} pathname={pathname} />
+        {isAdmin && <NavGroup label={t('instance')} items={instanceItems} pathname={pathname} />}
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={user} />

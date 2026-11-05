@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { withArchiveGuard } from './archive'
 import { detectDialect } from './dialect'
 import type { Database, Dialect } from './types'
 
@@ -28,10 +29,10 @@ export async function createDatabase(options: CreateDatabaseOptions): Promise<Da
   const config = { url: options.url, defaultMigrationsDir: migrationsDirFor(dialect) }
   switch (dialect) {
     case 'sqlite':
-      return (await import('./dialects/sqlite')).createSqliteDatabase(config)
+      return withArchiveGuard((await import('./dialects/sqlite')).createSqliteDatabase(config))
     case 'pg':
-      return (await import('./dialects/pg')).createPgDatabase(config)
+      return withArchiveGuard((await import('./dialects/pg')).createPgDatabase(config))
     case 'mysql':
-      return (await import('./dialects/mysql')).createMysqlDatabase(config)
+      return withArchiveGuard((await import('./dialects/mysql')).createMysqlDatabase(config))
   }
 }

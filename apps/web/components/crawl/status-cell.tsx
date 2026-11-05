@@ -25,6 +25,7 @@ export function StatusCell({
   return (
     <Badge
       variant={httpStatusVariant(row.statusCode, automaticCheck)}
+      className={automaticCheck ? 'h-5 min-w-10 tabular-nums' : 'h-5 w-10 tabular-nums'}
       title={automaticCheck ? t('automaticCheck') : undefined}
     >
       {row.statusCode}

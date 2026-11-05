@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { CompanyForm } from '@/components/company-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { requireSession } from '@/lib/session'
+import { requireAdmin } from '@/lib/session'
 import { hasDomains } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
@@ -17,7 +17,7 @@ export async function generateMetadata() {
  * the (protected) layout, which sends everyone here until a domain exists.
  */
 export default async function OnboardingPage() {
-  await requireSession()
+  await requireAdmin()
   if (await hasDomains()) redirect('/')
   const t = await getTranslations('Onboarding')
 

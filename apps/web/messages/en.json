@@ -6,7 +6,8 @@
     "status": {
       "failed": "The request failed",
       "noResponse": "No response"
-    }
+    },
+    "account": "Account"
   },
   "NotFound": {
     "title": "Page not found",
@@ -21,7 +22,9 @@
     "submit": "Sign in",
     "submitting": "Signing in…",
     "invalidCredentials": "Invalid email or password",
-    "genericError": "Something went wrong. Please try again."
+    "genericError": "Something went wrong. Please try again.",
+    "forgot": "Forgot your password?",
+    "passwordSet": "Your password is set. Sign in with it."
   },
   "Setup": {
     "metaTitle": "Set up · seotools",
@@ -80,7 +83,9 @@
     "placeholder": "Select a domain",
     "label": "Switch domain",
     "addDomain": "Add domain",
-    "addCompany": "Add company"
+    "addCompany": "Add company",
+    "archived": "Archived",
+    "manageCompanies": "Manage companies"
   },
   "Sidebar": {
     "toggle": "Toggle sidebar",
@@ -99,7 +104,13 @@
     "pagesOverview": "Overview",
     "pagesDetails": "Details",
     "pagesHistory": "History",
-    "pagesCompare": "Compare"
+    "pagesCompare": "Compare",
+    "updates": "Updates",
+    "versionRelease": "v{version}",
+    "versionDevelopment": "v{version} · development",
+    "companies": "Companies",
+    "users": "Users",
+    "email": "Email"
   },
   "ProtectedShell": {
     "skipToContent": "Skip to main content"
@@ -156,6 +167,86 @@
       "running": "running",
       "completed": "completed",
       "failed": "failed"
+    }
+  },
+  "Updates": {
+    "metaTitle": "Updates · seotools",
+    "title": "Updates",
+    "description": "Which version is installed and whether a newer release exists. Looking for updates does not install them.",
+    "status": {
+      "upToDate": {
+        "title": "You are up to date",
+        "description": "{latest} is the latest stable release, as seen {when}.",
+        "ahead": "You are running {installed}, which is newer than the latest stable release ({latest}), as seen {when}."
+      },
+      "updateAvailable": {
+        "title": "Version {latest} is available",
+        "description": "You are running {installed}.",
+        "compatible": "A compatible update. Take a backup before updating anyway.",
+        "mayBreak": "This update can include breaking changes. Read the release notes and take a backup before updating.",
+        "candidate": "You are running a release candidate of this version. The stable release is available."
+      },
+      "checkFailed": {
+        "title": "Could not check for updates",
+        "description": "{reason} That does not mean you are up to date: it means nobody knows.",
+        "known": "Last stable release seen: {latest}, {when}."
+      },
+      "notChecked": {
+        "title": "Not checked yet",
+        "description": "seotools has not looked for new releases yet. Check now, or turn on periodic checks."
+      },
+      "development": {
+        "title": "Development build",
+        "description": "This build does not come from a release. {version} is the last release it descends from, so it is not compared with new ones."
+      }
+    },
+    "failures": {
+      "network": "seotools could not reach GitHub.",
+      "timeout": "GitHub did not answer in time.",
+      "rate-limited": "GitHub is limiting the requests of this server. Try again later.",
+      "not-found": "The release feed was not found; the repository may have moved.",
+      "http": "GitHub answered with an error.",
+      "invalid-response": "The answer from GitHub was not understood."
+    },
+    "details": {
+      "title": "This installation",
+      "installed": "Installed version",
+      "build": "Build",
+      "builds": {
+        "release": "Release",
+        "candidate": "Release candidate",
+        "development": "Development build"
+      },
+      "commit": "Commit",
+      "latest": "Latest stable release",
+      "latestValue": "{version}, published {when}",
+      "latestUnknown": "Unknown",
+      "lastCheck": "Last check",
+      "lastCheckValue": "{when}, {trigger}",
+      "lastCheckFailed": "{when}, {trigger}: failed",
+      "lastSuccess": "Last successful check",
+      "triggers": {
+        "manual": "by hand",
+        "periodic": "periodic"
+      },
+      "never": "Never"
+    },
+    "checkNow": "Check now",
+    "checking": "Checking…",
+    "releaseNotes": "Release notes",
+    "allReleases": "All releases",
+    "updateGuide": "How to update",
+    "periodic": {
+      "title": "Periodic checks",
+      "description": "Off by default: an installation does not contact anyone it was not told to.",
+      "label": "Look for new releases once a day",
+      "hint": "A check asks GitHub for the latest release of seotools. It sends nothing about your domains, your data or this installation; GitHub only sees the address your server connects from. It never changes anything by itself.",
+      "save": "Save",
+      "saved": "Saved"
+    },
+    "installing": {
+      "title": "Installing an update",
+      "description": "seotools never replaces its own container or asks for access to Docker. Docker or Dokploy does that, with the version you choose. Take a backup first: going back to an older image can require restoring it."
     }
   },
   "Crawl": {
@@ -262,6 +353,11 @@
         "title": "No longer found",
         "note": "The crawl of {when} found these at this URL; the recheck does not."
       },
+      "accepted": {
+        "title": "Seen, and accepted by a rule ({count})",
+        "note": "The recheck still sees these at this URL, but a rule takes them as expected, so they are not pending. They are not fixed.",
+        "wasPending": "The crawl reported it as pending"
+      },
       "notComparable": {
         "rules-changed": "Not compared with the last full crawl: it was analysed under other audit rules, so a finding could appear or go away only because the rules moved.",
         "not-analysed": "Not compared with the last full crawl: it has not been analysed for issues."
@@ -274,7 +370,9 @@
         "none": "The last full crawl found nothing at this URL that only a full crawl can settle.",
         "note": "These depend on other pages or on links. They stay as the crawl of {when} found them: a recheck does not say whether they remain.",
         "badge": "Needs a full crawl"
-      }
+      },
+      "checkedScope": "Checked again: the HTTP response, page data, robots.txt and checks that depend only on this URL. Links from other pages, duplicates and sitemap membership still require a full crawl.",
+      "evidenceNote": "The response fields above and the recorded details below are from this recheck. Evidence samples from the full crawl are not reused here."
     },
     "results": {
       "metaTitle": "Recheck · {host} · seotools",
@@ -363,20 +461,19 @@
       "pages": "{count, plural, one {# URL} other {# URLs}}"
     },
     "findings": {
-      "issue": {
-        "title": "Issues"
-      },
-      "warning": {
-        "title": "Warnings"
-      },
-      "opportunity": {
-        "title": "Opportunities"
-      },
-      "empty": "Nothing of this kind was found."
+      "high": "High importance",
+      "medium": "Medium importance",
+      "low": "Low importance",
+      "empty": "Nothing of this importance was found."
     },
     "priority": {
       "mark": "Mark as priority",
       "unmark": "Remove from priority"
+    },
+    "accepted": {
+      "title": "Accepted by a rule",
+      "help": "The crawl still sees these, and a rule says they are expected. They are not pending, and they are not fixed: remove the rule and they count again.",
+      "viewAll": "View every URL with an accepted finding"
     }
   },
   "PagesDetails": {
@@ -407,7 +504,7 @@
     },
     "columnsMenu": {
       "label": "Columns",
-      "reset": "Show the default columns"
+      "reset": "Reset columns and widths"
     },
     "columns": {
       "url": "URL",
@@ -440,7 +537,10 @@
     "empty": "No URLs match.",
     "responseTime": "{value, number} ms",
     "issueList": {
-      "all": "All pages"
+      "all": "All pages",
+      "units": "Each issue counts affected URLs. Category totals count findings; one URL can contribute several.",
+      "findings": "{count, number} findings",
+      "urls": "{count, number} URLs"
     },
     "actionsMenu": {
       "label": "Actions"
@@ -523,8 +623,73 @@
         "indexability": "Technical state: {value}",
         "participation": "Audit: {value}",
         "intent": "{value}",
-        "rule": "Decided by one rule"
-      }
+        "rule": "Decided by one rule",
+        "accepted": "Accepted by a rule: {value}"
+      },
+      "anyFinding": "any finding"
+    },
+    "advancedFilters": "Advanced filters and issues",
+    "filtersMenu": "Filters",
+    "issuesMenu": "Issues",
+    "rowsShown": "{shown, number} of {matching, number} URLs shown"
+  },
+  "Export": {
+    "menu": {
+      "label": "Export",
+      "heading": "Download as CSV",
+      "pages": "Pages",
+      "pagesHint": "One row per URL, with its state and how many findings it has.",
+      "findings": "Findings",
+      "findingsHint": "One row per finding, with its importance and what backs it.",
+      "notAnalysed": "This crawl has not been checked for findings.",
+      "scope": "Everything the filters leave, not only this page."
+    },
+    "errors": {
+      "missing": "This crawl does not exist in this domain.",
+      "noCrawl": "This domain has no crawl with results to export yet.",
+      "pruned": "The results of this crawl were removed by the retention setting, so only its totals remain and there is nothing to export.",
+      "notAnalysed": "This crawl has not been checked for findings, so there are none to export."
+    },
+    "columns": {
+      "domain": "Domain",
+      "crawlDate": "Crawl date (UTC)",
+      "crawlId": "Crawl ID",
+      "filters": "Filters",
+      "url": "URL",
+      "site": "Site",
+      "kind": "Type",
+      "status": "HTTP status",
+      "error": "Request error",
+      "indexability": "Technical state",
+      "blockers": "Blockers",
+      "audit": "Audit",
+      "expectation": "Expected indexing",
+      "title": "Title",
+      "issues": "Number of issues",
+      "warnings": "Number of warnings",
+      "opportunities": "Number of opportunities",
+      "finding": "Finding ID",
+      "findingName": "Finding",
+      "category": "Category",
+      "type": "Finding type",
+      "importance": "Importance",
+      "details": "Details",
+      "evidenceTotal": "Evidence found",
+      "evidenceSamples": "Evidence samples",
+      "findingState": "State",
+      "acceptedBecause": "Accepted because",
+      "acceptedFindings": "Accepted by a rule"
+    },
+    "values": {
+      "internal": "This site",
+      "external": "External",
+      "atLeast": "At least {total, number}",
+      "evidenceNotStored": "Not stored in this crawl",
+      "pending": "Pending",
+      "accepted": "Accepted by a rule"
+    },
+    "filters": {
+      "view": "View: {value}"
     }
   },
   "UrlDetail": {
@@ -580,7 +745,8 @@
       "pendingNote": "The audit configuration changed after this crawl was analysed. What is shown here may not reflect it yet.",
       "notAnalysed": "This crawl was analysed before audit rules existed, or has not been analysed: the audit state of this URL is not known.",
       "configure": "Configure audit…",
-      "conditions": "Conditions"
+      "conditions": "Conditions",
+      "noExplicitRules": "No explicit rules apply to this URL."
     },
     "noFindings": "No findings.",
     "excludedFindings": "Excluded from the audit: it has no findings of its own.",
@@ -592,6 +758,22 @@
       "medium": "Medium importance ({count, number})",
       "low": "Low importance ({count, number})",
       "unknown": "Other findings ({count, number})"
+    },
+    "observedAt": "Full crawl · {when}",
+    "crawlFindingsNote": "These findings belong to the selected full crawl. A recheck is shown separately below and does not replace them.",
+    "recheckAvailable": "Rechecked {when} · view separate results",
+    "noPendingIssues": "Nothing pending on this URL.",
+    "accepted": {
+      "title": "Accepted by a rule ({count, number})",
+      "note": "The crawl still sees these. A rule says they are expected, so they are not pending, and they are not fixed.",
+      "condition": "A rule states {condition}: {requirement}.",
+      "expectation": "A rule expects this URL not to be indexable.",
+      "origin": "A rule expects this URL not to be indexable, so what it points at or what links to it is not news.",
+      "destination": "A rule of the URL this one points at accepts it: {blockers}.",
+      "ruleRemoved": "The rule no longer exists.",
+      "related": "{total, plural, one {# URL it points at} other {# URLs it points at}}",
+      "elsewhereTitle": "Rules of this URL act on other URLs ({total, number})",
+      "elsewhereNote": "What a rule declares of this URL accepts these findings of the URLs that point at it. The first ones:"
     }
   },
   "UrlLinks": {
@@ -1219,7 +1401,8 @@
     "sections": {
       "crawl": "Crawling",
       "priority": "Priority pages",
-      "audit": "Audit"
+      "audit": "Audit",
+      "alerts": "Alerts"
     }
   },
   "CrawlSettings": {
@@ -1269,10 +1452,10 @@
       "hints": {
         "latest": "Allows comparing crawls, with a bounded database size.",
         "current": "The lightest option. Comparing crawls URL by URL will not be possible.",
-        "all": "Nothing is ever deleted, so the database grows without limit."
+        "all": "Keeps all completed and incomplete crawl results; the database grows without limit."
       },
       "countLabel": "How many of each type",
-      "countHint": "Older ones keep their summary but lose their results per URL."
+      "countHint": "Older crawls keep totals only; their URL results, links and evidence are removed."
     },
     "optionalFiles": {
       "label": "Other crawl files",
@@ -1667,7 +1850,8 @@
           "description": "It has to hold exactly the key, or search engines will refuse what is announced with it."
         }
       }
-    }
+    },
+    "aboutFile": "About this file"
   },
   "Pagination": {
     "summary": "Page {page, number} of {pages, number}",
@@ -2020,12 +2204,16 @@
     },
     "picker": {
       "label": "Crawl",
-      "option": "{when} · {status}{coverage, select, pruned { · results pruned} other {}}{latest, select, yes { · latest} other {}}"
+      "option": "{when} · {status}{coverage, select, pruned { · results pruned} other {}}{latest, select, yes { · latest} other {}}",
+      "latestCompact": "Latest analysis · {when}",
+      "historicalCompact": "Historical analysis · {when}"
     },
     "banner": {
       "viewing": "You are viewing the crawl of {when}, not the latest one.",
       "backToLatest": "Back to the latest crawl",
-      "configBehind": "Analysed under: {config}. In force now: {current}. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated."
+      "configBehind": "Analysed under: {config}. In force now: {current}. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated.",
+      "details": "Analysis details",
+      "incomplete": "Partial coverage: this crawl did not complete. Findings may be missing."
     },
     "details": {
       "detailsDescription": "Every URL of the chosen full crawl, as that crawl saw it. Select some to act on them together.",
@@ -2204,7 +2392,9 @@
       },
       "unverifiedHint": "The findings differ, but this is not shown as new or resolved because: {reasons}.",
       "persistent": "Still reported",
-      "persistentHint": "Reported by both crawls."
+      "persistentHint": "Reported by both crawls.",
+      "accepted": "Accepted by a rule",
+      "acceptedHint": "The later crawl still sees it, and a rule says it is expected. It was not fixed."
     },
     "reasons": {
       "pruned": "a crawl was pruned",
@@ -2258,7 +2448,8 @@
         },
         "description": "URLs it did not reach are not missing, and findings that look at other pages (duplicates, inbound links, redirects) are not called new or resolved for it."
       }
-    }
+    },
+    "rowsShown": "{shown, number} of {matching, number} URLs shown"
   },
   "HttpStatus": {
     "automaticCheck": "Automatic check",
@@ -2337,6 +2528,378 @@
         "indexable": "The crawl is checked for what stands in the way of indexing the URL.",
         "not-indexable": "A noindex is fine; being indexable is not. It is not the same as requiring a noindex. Pages that point at it are not told about its noindex or a canonical elsewhere; a robots.txt block is still reported."
       }
+    },
+    "relationsNote": "This also accepts findings of the URLs that point here (canonical, hreflang). Accepted findings are not fixed: they stay visible as accepted by a rule."
+  },
+  "Help": {
+    "about": "About {subject}",
+    "close": "Close help",
+    "documentation": "About these results",
+    "diagnostics": "Diagnostic tools"
+  },
+  "ResultsTable": {
+    "rows": "Results table. Scroll to explore rows and columns.",
+    "resize": "Resize {column}. Use arrow keys; Home resets the width."
+  },
+  "FindingHelp": {
+    "title": "Edit the page template to provide one descriptive title in the head. Make it specific to this page and review its length and any duplicates.",
+    "response-codes": "Inspect the response and redirect destination. Fix unintended server errors, broken URLs or redirect chains at the server, then check the URL again.",
+    "indexing-intent": "Compare the observed blockers with the intended indexing policy. Adjust the relevant directive or sitemap entry; change the rule only if the declared expectation is wrong.",
+    "directives": "Review both the HTTP X-Robots-Tag header and the robots meta tags. Make them consistent with the intended policy and place HTML directives in the head.",
+    "canonicals": "Review the canonical declarations and their destination. Use a consistent absolute URL without a fragment, and confirm that the chosen destination is the intended canonical page.",
+    "sitemaps": "Review the sitemap file and the affected entries. Align listed URLs with your sitemap policy, fix invalid or oversized files, then run a full crawl to check site-wide findings.",
+    "hreflang": "Review the affected language cluster. Correct language codes and destinations, use consistent canonical URLs and return links, then run a full crawl.",
+    "meta-description": "Provide one useful description in the head that reflects the page content. Review its length and avoid reusing the same description on different pages.",
+    "headings": "Review the heading hierarchy in the page template. Use descriptive, nonempty headings that reflect the structure of the content.",
+    "content": "Review the rendered content and any related pages in the evidence. Replace placeholders, add useful original content, or consolidate pages that serve the same purpose.",
+    "images": "Inspect the affected images in the page template. Add useful alt text for informative images, keep decorative images empty, and review dimensions and file weight.",
+    "structured-data": "Review the page’s JSON-LD. Fix syntax errors and use structured data appropriate to the visible content; validate it after editing.",
+    "links": "Review the affected links and their source pages. Use reachable HTTP(S) destinations and descriptive anchors, and add useful internal navigation where needed. Run a full crawl for findings about incoming links.",
+    "urls": "Review URL generation and internal links. Choose a stable, readable URL format and, if an address must change, update links and configure the appropriate redirect.",
+    "security": "Review the affected resources, forms, links or HTTP headers. Use HTTPS destinations and apply the relevant browser security protections, checking that the change preserves site functionality.",
+    "html": "Inspect the returned HTML and its template. Correct the document structure, keep metadata inside a valid head and reduce excessive document size where relevant.",
+    "robots-blocked": "If this URL should be crawlable, edit the matching robots.txt rule for the audited bot. If the block is intentional, declare it in the audit rules; a block does not prove that the URL is absent from search results.",
+    "no-response": "Check DNS, TLS, server availability and timeout settings. Restore access for the configured crawler User-Agent, then recheck the URL.",
+    "client-error": "Restore the intended resource or correct the links pointing to it. If it moved, redirect to the relevant replacement; if the error is intentional, review the audit policy.",
+    "soft-404-confirmed": "Check whether the page is actually missing. Return a real 404/410 for removed content, or restore useful content and remove misleading error signals.",
+    "soft-404-possible": "Inspect the page manually to confirm whether it is an error page. If so, return an appropriate error status; otherwise review the content that resembles an error message.",
+    "broken-external-link": "Check the linked external destination and update or remove the broken link on its source pages. Run a full crawl to check external links again.",
+    "refresh-redirect": "Review the refresh declaration. If the move is permanent, prefer an HTTP redirect to the final destination and update internal links.",
+    "noindex": "If the page should be indexable, remove the noindex directive from the HTML and HTTP headers. If it is intentional, declare the intended policy in the audit rules.",
+    "canonicalised": "Confirm that the declared canonical is the intended preferred URL. If this page should stand on its own, correct the canonical; otherwise align internal links and the audit expectation with the preferred page.",
+    "noindex-required-missing": "Add a noindex directive in the page head or X-Robots-Tag header if this requirement is correct. Otherwise edit the rule that requires it, then recheck.",
+    "nofollow-required-missing": "Add the required nofollow directive in the page head or HTTP header, or correct the rule if links should be followed. Nofollow does not prevent indexing.",
+    "robots-block-required-missing": "Add the intended block in robots.txt for the audited bot, or correct the rule that requires it. A robots.txt block does not guarantee removal from the index.",
+    "sitemap-required-missing": "Include this URL as an entry in a sitemap that the crawler can read, or correct the rule requiring it. Run a full crawl to verify membership.",
+    "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change."
+  },
+  "Companies": {
+    "metaTitle": "Companies · seotools",
+    "title": "Companies",
+    "addCompany": "Add company",
+    "empty": "There are no companies yet.",
+    "domainCount": "{count, plural, one {# domain} other {# domains}}",
+    "noDomains": "No domains",
+    "archivedBadge": "Archived",
+    "actionsLabel": "Actions for {name}",
+    "company": {
+      "rename": "Rename",
+      "addDomain": "Add domain",
+      "delete": "Delete company…"
+    },
+    "domain": {
+      "open": "Open",
+      "archive": "Archive…",
+      "restore": "Restore",
+      "move": "Move to another company…",
+      "changeSite": "Change site…",
+      "delete": "Delete domain…"
+    },
+    "rename": {
+      "title": "Rename company",
+      "label": "Name",
+      "submit": "Save",
+      "submitting": "Saving…"
+    },
+    "archive": {
+      "title": "Archive {host}?",
+      "description": "Its data is kept and stays readable. Scheduled crawls and refreshes of its icon and files stop, a crawl or recheck in progress is cancelled, and its settings cannot change until you restore it.",
+      "submit": "Archive",
+      "submitting": "Archiving…"
+    },
+    "move": {
+      "title": "Move {host}",
+      "label": "New company",
+      "results": "Its crawls, results, rules and schedules move with it unchanged.",
+      "access": {
+        "unchanged": "Nobody gains or loses access: the people who can see it are the same before and after.",
+        "gain": "They gain access: {names}.",
+        "lose": "They lose access: {names}."
+      },
+      "submit": "Move domain",
+      "submitting": "Moving…"
+    },
+    "changeSite": {
+      "title": "Change site",
+      "description": "A domain's address cannot be edited, because its results belong to that site. To track a new site, add a new domain and archive this one.",
+      "addDomain": "Add domain"
+    },
+    "delete": {
+      "close": "Cancel",
+      "domainTitle": "Delete {host}?",
+      "domainLead": "This permanently deletes {host} and:",
+      "companyTitle": "Delete {name}?",
+      "companyLead": "This permanently deletes the company with {domains}: {hosts}, and:",
+      "companyLeadEmpty": "This permanently deletes the company, which has no domains.",
+      "nothingStored": "No crawls, results, rules or schedules are stored for it.",
+      "keepHistory": "To keep its history, archive it instead.",
+      "confirmLabel": "Type {value} to confirm",
+      "domainSubmit": "Delete domain",
+      "companySubmit": "Delete company",
+      "submitting": "Deleting…",
+      "usage": {
+        "crawls": "{count, plural, one {# crawl} other {# crawls}}",
+        "urls": "{count, plural, one {# retained URL result} other {# retained URL results}}",
+        "rules": "{count, plural, one {# audit rule or exception} other {# audit rules and exceptions}}",
+        "rechecks": "{count, plural, one {# recheck} other {# rechecks}}",
+        "schedules": "{count, plural, one {# schedule} other {# schedules}}",
+        "priorityUrls": "{count, plural, one {# priority URL} other {# priority URLs}}",
+        "crawlFiles": "{count, plural, one {# crawl file} other {# crawl files}}"
+      }
+    },
+    "errors": {
+      "invalidName": "Enter a company name of up to {max} characters.",
+      "domainNotFound": "That domain no longer exists.",
+      "companyNotFound": "That company no longer exists.",
+      "sameCompany": "The domain already belongs to that company.",
+      "confirmMismatch": "What you typed does not match.",
+      "invalidRequest": "The request is not valid."
     }
+  },
+  "Archive": {
+    "notice": "This domain is archived. Its data is kept, but nothing runs automatically and it cannot be changed.",
+    "manage": "Manage",
+    "refused": "This domain is archived. Restore it to make changes."
+  },
+  "NoAccess": {
+    "title": "Nothing to show yet",
+    "description": "Your account has no company or domain. Ask an administrator to give you access."
+  },
+  "Users": {
+    "title": "Users",
+    "close": "Close",
+    "actions": "Actions for {name}",
+    "enable": "Enable",
+    "disable": "Disable",
+    "columns": {
+      "user": "User",
+      "role": "Role",
+      "access": "Access",
+      "state": "State"
+    },
+    "roles": {
+      "admin": "Administrator",
+      "member": "Member",
+      "editor": "Editor",
+      "viewer": "Viewer"
+    },
+    "roleHelp": {
+      "admin": "Sees everything, and manages users, companies and the instance.",
+      "member": "Only reaches what you give them below."
+    },
+    "state": {
+      "active": "Active",
+      "invited": "Invited",
+      "disabled": "Disabled {when}"
+    },
+    "access": {
+      "everything": "Every company and domain",
+      "nothing": "Nothing yet: they cannot see any domain.",
+      "row": "{target}: {role}",
+      "companyTarget": "{name} (whole company)",
+      "target": "Company or domain",
+      "add": "Add",
+      "remove": "Remove",
+      "help": "A company covers all its domains, also future ones. A role on a domain replaces the company's there. An editor can run crawls and change rules and settings; a viewer can read and export."
+    },
+    "invite": {
+      "button": "Invite user",
+      "title": "Invite a user",
+      "description": "They get a link to choose their password. Registration stays closed.",
+      "name": "Name",
+      "email": "Email",
+      "submit": "Create and get link",
+      "submitting": "Creating…"
+    },
+    "edit": {
+      "menu": "Edit role and access",
+      "title": "Role and access of {name}",
+      "submit": "Save",
+      "submitting": "Saving…"
+    },
+    "link": {
+      "label": "Link",
+      "copy": "Copy link",
+      "copied": "Copied",
+      "emailed": "An email with a link is on its way. If it does not arrive, send them this one:",
+      "handOver": "Send them this link:",
+      "once": "It is shown only now, and works once.",
+      "inviteMenu": "Get invitation link",
+      "recoveryMenu": "Get recovery link"
+    },
+    "errors": {
+      "invalidRequest": "That request is not valid.",
+      "invalidName": "Enter a name of up to 100 characters.",
+      "invalidEmail": "Enter a valid email address.",
+      "emailTaken": "There is already an account with that email.",
+      "invalidAccess": "A company or domain of that access no longer exists.",
+      "lastAdmin": "This would leave nobody who can administer the instance. Make someone else an active administrator first.",
+      "userNotFound": "That account no longer exists.",
+      "userDisabled": "Enable the account first."
+    }
+  },
+  "Account": {
+    "title": "Account",
+    "password": "Password",
+    "current": "Current password",
+    "next": "New password",
+    "othersSignedOut": "Your other devices will be signed out.",
+    "submit": "Change password",
+    "submitting": "Changing…",
+    "changed": "Your password has changed.",
+    "errors": {
+      "length": "Use between {min, number} and {max, number} characters.",
+      "wrongPassword": "The current password is not correct."
+    },
+    "alerts": {
+      "title": "Alerts",
+      "description": "Choose what you want to be emailed about each domain. Nothing is sent until you choose it, and only for domains you can see.",
+      "language": "Emails are written in the language you are using when you save.",
+      "empty": "You cannot see any domain yet.",
+      "archived": "Archived: no alerts are sent.",
+      "kinds": {
+        "crawl-problem": {
+          "label": "Crawl problems",
+          "hint": "A crawl failed or stopped before it reached the whole site."
+        },
+        "important-findings": {
+          "label": "New important findings",
+          "hint": "Findings of high importance that appeared or came back since the previous crawl. Changes that only come from audit rules are left out."
+        },
+        "change-summary": {
+          "label": "Change summary",
+          "hint": "One email for each finished crawl, with what changed."
+        }
+      },
+      "save": "Save alerts",
+      "saving": "Saving…",
+      "saved": "Your alerts are saved.",
+      "errors": {
+        "failed": "The alerts could not be saved."
+      }
+    }
+  },
+  "PasswordRecovery": {
+    "title": "Recover your password",
+    "description": "Enter the email of your account.",
+    "email": "Email",
+    "submit": "Send me a link",
+    "submitting": "Sending…",
+    "sent": "If that email has an account and this installation can send email, a link is on its way. If nothing arrives, ask an administrator for a recovery link.",
+    "backToLogin": "Back to sign in"
+  },
+  "SetPassword": {
+    "metaTitle": "Set your password",
+    "titles": {
+      "invite": "Choose your password",
+      "reset": "Choose a new password"
+    },
+    "password": "Password",
+    "confirm": "Repeat the password",
+    "submit": "Save password",
+    "submitting": "Saving…",
+    "invalid": {
+      "title": "This link does not work",
+      "description": "It may have expired or been used already.",
+      "again": "Ask for a new one"
+    },
+    "errors": {
+      "length": "Use between {min, number} and {max, number} characters.",
+      "mismatch": "The two passwords are not the same.",
+      "expired": "This link no longer works. Ask for a new one."
+    }
+  },
+  "Email": {
+    "metaTitle": "Email · seotools",
+    "title": "Email",
+    "description": "How the app sends email: invitations, password links and crawl alerts.",
+    "health": {
+      "unconfigured": {
+        "title": "Email is not set up",
+        "description": "Something tried to send an email and there is no provider. Set one up below: what is waiting is sent when it works.",
+        "open": "Set it up"
+      },
+      "failing": {
+        "title": "The last email was not delivered",
+        "description": "Check the settings, send a test email and read the recent problems.",
+        "open": "See what failed"
+      }
+    },
+    "provider": {
+      "title": "Provider",
+      "description": "Where emails are sent from. A password or API key is stored encrypted and is never shown again.",
+      "label": "Provider",
+      "smtp": "SMTP",
+      "resend": "Resend",
+      "host": "Server",
+      "port": "Port",
+      "secure": "Use TLS from the start",
+      "secureHint": "Turn it on for port 465. Leave it off for 587: the connection is upgraded when the server offers it.",
+      "user": "Username",
+      "userHint": "Leave it empty for a server that asks for none.",
+      "pass": "Password",
+      "apiKey": "API key",
+      "secretSaved": "One is saved. Leave this empty to keep it.",
+      "secretNone": "None saved yet.",
+      "from": "Sender",
+      "fromHint": "The address emails come from, for example seo@example.com.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved."
+    },
+    "test": {
+      "title": "Send a test email",
+      "description": "Sends a short message with the saved settings and shows right here what the provider answers.",
+      "to": "Send to",
+      "send": "Send test",
+      "sending": "Sending…",
+      "sent": "Sent to {address}. Check that it arrived.",
+      "failed": "The provider did not accept it: {error}"
+    },
+    "recent": {
+      "problemsTitle": "Recent problems",
+      "problemsDescription": "Attempts that were not sent. Old ones are removed.",
+      "problemsEmpty": "Nothing has failed.",
+      "sentTitle": "Recent emails",
+      "sentDescription": "Who an email went to and what kind it was. The text is never kept.",
+      "sentEmpty": "Nothing has been sent yet.",
+      "columns": {
+        "when": "When",
+        "kind": "Kind",
+        "recipient": "To",
+        "status": "Result",
+        "error": "What the provider said"
+      }
+    },
+    "kinds": {
+      "invite": "Invitation",
+      "reset": "Password reset",
+      "alert": "Crawl alert",
+      "test": "Test",
+      "other": "Other"
+    },
+    "status": {
+      "sent": "Sent",
+      "failed": "Failed",
+      "unconfigured": "Not set up"
+    },
+    "errors": {
+      "provider": "Choose a provider.",
+      "host": "Enter the address of the server, without a scheme or a path.",
+      "port": "The port is a number between 1 and 65535.",
+      "from": "Enter the address emails come from.",
+      "apiKey": "Enter the API key.",
+      "address": "Enter a valid email address.",
+      "notConfigured": "Save the settings first."
+    }
+  },
+  "AlertsSettings": {
+    "metaTitle": "Alerts · {host}",
+    "title": "Alerts",
+    "description": "Alerts are personal: each person chooses what they are emailed about {host} in their account.",
+    "current": "You are emailed about: {kinds}.",
+    "none": "You are not emailed about this domain.",
+    "archived": "This domain is archived: no alerts are sent.",
+    "manage": "Choose your alerts"
   }
 }

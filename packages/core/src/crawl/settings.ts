@@ -79,7 +79,7 @@ export const crawlSettingsSchema = z.object({
   indexNowKey: z.string().regex(INDEXNOW_KEY).nullable(),
 })
 
-const CRAWLER_HOMEPAGE = 'https://github.com/botaroikawa/seotools'
+const CRAWLER_HOMEPAGE = 'https://github.com/vhxa/seotools'
 
 /** The User-Agent a domain crawls with unless its settings override it. */
 export function defaultCrawlerUserAgent(version?: string): string {

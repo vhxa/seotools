@@ -4,7 +4,7 @@ import {
   createLogger,
   crawlUrlHash,
 } from '@seotools/core'
-import { createCompany } from '@seotools/db'
+import { createCompany, deleteDomain } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { JobInterruptedError } from '../types'
@@ -736,6 +736,57 @@ describe('interruptions', () => {
     expect(site.requests.length).toBeLessThan(2000)
     expect(await db.crawls.get(started!.id)).toMatchObject({ status: 'cancelled', pruned: true })
     expect(await db.crawls.knownUrls(started!.id)).toEqual([])
+    expect(site.closed()).toBe(1)
+  }, 15_000)
+
+  it('stops when its domain is archived, as when it is cancelled', async () => {
+    const links = Array.from({ length: 2000 }, (_, i) => `<a href="/p${i}">x</a>`).join('')
+    const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    const site = fakeSite({ 'https://example.com/': html(links) })
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      requestsPerSecond: 50,
+    })
+    setTimeout(() => void db.domains.archive(domainId), 200)
+
+    const summary = await runCrawl(started!.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+    })
+
+    expect(summary?.status).toBe('cancelled')
+    expect(site.requests.length).toBeLessThan(2000)
+    expect(await db.crawls.get(started!.id)).toMatchObject({ status: 'cancelled' })
+    expect(await db.crawls.active(domainId)).toBeNull()
+    expect((await db.domains.get(domainId))?.archivedAt).toBeInstanceOf(Date)
+    expect(site.closed()).toBe(1)
+  }, 15_000)
+
+  it('stops without failing when its domain is deleted under it', async () => {
+    const links = Array.from({ length: 2000 }, (_, i) => `<a href="/p${i}">x</a>`).join('')
+    const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    const site = fakeSite({ 'https://example.com/': html(links) })
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      requestsPerSecond: 50,
+    })
+    setTimeout(() => void deleteDomain(db, { domainId, confirm: 'example.com' }), 200)
+
+    await expect(
+      runCrawl(started!.id, {
+        db,
+        log,
+        signal: new AbortController().signal,
+        createFetcher: site.createFetcher,
+      }),
+    ).resolves.not.toThrow()
+
+    expect(site.requests.length).toBeLessThan(2000)
+    expect(await db.crawls.get(started!.id)).toBeNull()
+    expect(await db.domains.get(domainId)).toBeNull()
+    expect(await db.jobs.get(started!.jobId)).toBeNull()
     expect(site.closed()).toBe(1)
   }, 15_000)
 

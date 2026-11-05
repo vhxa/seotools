@@ -789,6 +789,18 @@ describe('a recheck of a URL', () => {
     })
   })
 
+  it('returns what a rule accepts apart from the findings, so it is not read as clean', () => {
+    const context = contextWith([asking(prefix('/'), 'noindex', 'allowed')])
+    const outcome = evaluateRecheck(answerOf('/x', { head: meta('noindex') }), context)
+    expect(outcome.findings.map((f) => f.issue)).not.toContain('noindex')
+    expect(outcome.accepted).toEqual([
+      {
+        issue: 'noindex',
+        acceptance: { kind: 'condition', condition: 'noindex', requirement: 'allowed', rule: 'r0' },
+      },
+    ])
+  })
+
   it('takes a robots.txt that it could not read for nothing', () => {
     const context = contextWith([asking(prefix('/'), 'robots', 'required')], {
       [SITE]: { status: 503, text: null },

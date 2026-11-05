@@ -3,6 +3,7 @@ import { isPageIssueId } from '@seotools/core/crawl/issues'
 import type { Crawl, CrawlComparisonCounts } from '@seotools/db'
 import { XIcon } from 'lucide-react'
 import Link from 'next/link'
+import Form from 'next/form'
 import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { CompareTable } from '@/components/history/compare-table'
@@ -173,7 +174,7 @@ export default async function ComparePage({
   }
 
   return (
-    <main className="grid gap-6">
+    <main data-wide className="grid gap-6">
       {header}
 
       <PairPicker
@@ -209,7 +210,7 @@ export default async function ComparePage({
           <CardTitle>{t('totals.title')}</CardTitle>
           <CardDescription>{t('totals.description')}</CardDescription>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
@@ -236,13 +237,14 @@ export default async function ComparePage({
       </Card>
 
       {counts && (
-        <Card>
-          <CardHeader className="gap-3">
+        <Card className="flex h-[calc(100svh-5rem)] min-h-[32rem] flex-col">
+          <CardHeader className="shrink-0 gap-3">
             <nav aria-label={t('changesLabel')} className="flex flex-wrap gap-1">
               {CRAWL_CHANGES.map((change) => (
                 <Link
                   key={change}
                   href={href({ change, page: 1, issue: null })}
+                  scroll={false}
                   aria-current={change === query.change ? 'page' : undefined}
                   className={buttonVariants({
                     variant: change === query.change ? 'secondary' : 'ghost',
@@ -263,6 +265,7 @@ export default async function ComparePage({
                   <Link
                     key={view}
                     href={href({ view, page: 1 })}
+                    scroll={false}
                     aria-current={view === query.view ? 'page' : undefined}
                     className={buttonVariants({
                       variant: view === query.view ? 'secondary' : 'outline',
@@ -273,11 +276,11 @@ export default async function ComparePage({
                   </Link>
                 ))}
               </nav>
-              <form
+              <Form
                 action={`/domains/${domain.host}/pages/compare`}
-                method="get"
+                scroll={false}
                 role="search"
-                className="flex items-center gap-2"
+                className="flex min-w-0 items-center gap-2"
               >
                 <input type="hidden" name="from" value={base.id} />
                 <input type="hidden" name="to" value={target.id} />
@@ -292,12 +295,12 @@ export default async function ComparePage({
                   defaultValue={query.search}
                   placeholder={t('search.placeholder')}
                   aria-label={t('search.label')}
-                  className="h-7 w-64"
+                  className="h-7 w-full min-w-0 sm:w-64"
                 />
                 <Button type="submit" variant="outline" size="sm">
                   {t('search.submit')}
                 </Button>
-              </form>
+              </Form>
               {query.issue && isFindingChange(query.change) && isPageIssueId(query.issue) && (
                 <Button
                   variant="secondary"
@@ -316,7 +319,7 @@ export default async function ComparePage({
               </p>
             )}
           </CardHeader>
-          <CardContent className="grid gap-4">
+          <CardContent className="flex min-h-0 flex-1 flex-col">
             <CompareTable
               host={domain.host}
               query={{ ...query, ...pinned }}
@@ -324,12 +327,16 @@ export default async function ComparePage({
               rows={data.rows}
               baseId={base.id}
               targetId={target.id}
-            />
-            <p className="text-xs text-muted-foreground">{t('total', { count: data.total })}</p>
-            <Pagination
-              page={data.page}
-              pageCount={data.pageCount}
-              href={(page) => href({ page })}
+              footer={
+                <Pagination
+                  page={data.page}
+                  pageCount={data.pageCount}
+                  href={(page) => href({ page })}
+                  details={
+                    <span>{t('rowsShown', { shown: data.rows.length, matching: data.total })}</span>
+                  }
+                />
+              }
             />
           </CardContent>
         </Card>

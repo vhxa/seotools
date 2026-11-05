@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto'
 import {
   EnvError,
   JOB_TYPES,
+  MAIL_DELIVERIES_KEEP,
+  MAIL_DELIVERIES_MAX_AGE_MS,
   WORKER_HEARTBEAT_INTERVAL_MS,
   createLogger,
   createSettings,
@@ -17,14 +19,20 @@ import { createHttpFetcher } from './crawl/fetcher'
 import { reanalyseOutdatedCrawls } from './crawl/reanalysis'
 import { createFaviconRefresher } from './favicon/refresh'
 import { handlers } from './handlers'
+import { createAccessEmailHandler } from './handlers/access-email'
 import { createAuditRecomputeHandler } from './handlers/audit-recompute'
+import { createCrawlAlertsHandler } from './handlers/crawl-alerts'
+import { createMailSendHandler } from './handlers/mail-send'
 import { createCrawlRunHandler } from './handlers/crawl-run'
 import { createUrlVerifyHandler } from './handlers/url-verify'
 import { createRunner } from './runner'
 import { runDueSchedules } from './scheduler'
+import { createUpdateChecker } from './updates/update-checker'
 
 /** How often due schedules, favicon and crawl file checks are looked for. Nothing is to the second. */
 const SCHEDULER_INTERVAL_MS = 30_000
+/** How often the record of sent email is trimmed. */
+const PRUNE_INTERVAL_MS = 60 * 60_000
 
 async function main() {
   const env = parseWorkerEnv()
@@ -53,7 +61,13 @@ async function main() {
   const runner = createRunner({
     ...shared,
     log,
-    handlers: { ...handlers, [JOB_TYPES.auditRecompute]: createAuditRecomputeHandler({ db }) },
+    handlers: {
+      ...handlers,
+      [JOB_TYPES.auditRecompute]: createAuditRecomputeHandler({ db }),
+      [JOB_TYPES.accessEmail]: createAccessEmailHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
+      [JOB_TYPES.crawlAlerts]: createCrawlAlertsHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
+      [JOB_TYPES.mailSend]: createMailSendHandler({ db }),
+    },
     concurrency: env.WORKER_CONCURRENCY,
     excludeTypes: crawlTypes,
   })
@@ -81,6 +95,16 @@ async function main() {
 
   const tickScheduler = () =>
     runDueSchedules(db, log).catch((err) => log.error({ err }, 'crawl scheduler failed'))
+  // The record of sent email is capped by count and age, so it cannot grow forever.
+  const pruneDeliveries = () =>
+    db.mail
+      .prune({
+        before: new Date(Date.now() - MAIL_DELIVERIES_MAX_AGE_MS),
+        keep: MAIL_DELIVERIES_KEEP,
+      })
+      .catch((err) => log.error({ err }, 'could not prune the record of sent email'))
+  void pruneDeliveries()
+  const deliveriesTimer = setInterval(() => void pruneDeliveries(), PRUNE_INTERVAL_MS)
   void tickScheduler()
   const scheduler = setInterval(tickScheduler, SCHEDULER_INTERVAL_MS)
 
@@ -105,6 +129,11 @@ async function main() {
   void crawlFiles.tick()
   const crawlFilesTimer = setInterval(() => void crawlFiles.tick(), SCHEDULER_INTERVAL_MS)
 
+  // Only if an administrator asked for it: otherwise this reads one setting and returns.
+  const updates = createUpdateChecker({ settings, log: log.child({ lane: 'updates' }) })
+  void updates.tick()
+  const updatesTimer = setInterval(() => void updates.tick(), SCHEDULER_INTERVAL_MS)
+
   // After an update that changes the issues, earlier crawls show their old totals until this is done.
   let stopping = false
   const reanalysis = reanalyseOutdatedCrawls({
@@ -119,14 +148,17 @@ async function main() {
     log.info({ signal }, 'shutting down')
     clearInterval(heartbeat)
     clearInterval(scheduler)
+    clearInterval(deliveriesTimer)
     clearInterval(faviconTimer)
     clearInterval(crawlFilesTimer)
+    clearInterval(updatesTimer)
     // Crawls resume from their stored queue, so they don't need the grace period to finish.
     await Promise.all([
       runner.stop(),
       crawlRunner.stop(0),
       favicons.stop(),
       crawlFiles.stop(),
+      updates.stop(),
       reanalysis,
     ])
     await db.close()

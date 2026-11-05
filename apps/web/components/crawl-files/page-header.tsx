@@ -1,6 +1,7 @@
 import type { Crawl } from '@seotools/db'
 import type { CrawlFile, CrawlFileCheck } from '@seotools/db'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { HelpDisclosure } from '@/components/help'
 import { AutoRefresh } from '@/components/auto-refresh'
 import { RefreshCrawlFilesButton } from '@/components/crawl-files/refresh-button'
 import { Finding } from '@/components/crawl-files/parts'
@@ -33,7 +34,7 @@ export async function CrawlFilesHeader({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="grid gap-1">
           <h1 className="text-2xl font-semibold">{title}</h1>
-          <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>
+          <HelpDisclosure title={t('aboutFile')}>{description}</HelpDisclosure>
           <p className="text-sm text-muted-foreground">
             {newest
               ? t(newest.via === 'crawl' ? 'fetchedByCrawl' : 'fetchedByRefresh', {

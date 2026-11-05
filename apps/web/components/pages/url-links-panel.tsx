@@ -125,7 +125,10 @@ export function UrlLinksPanel({
         : t(`groupEmpty.${asked.group}`)
 
   return (
-    <section className="grid gap-3" aria-labelledby={`links-${direction}-title`}>
+    <section
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3"
+      aria-labelledby={`links-${direction}-title`}
+    >
       <div className="grid gap-1">
         <h3
           id={`links-${direction}-title`}
@@ -139,14 +142,18 @@ export function UrlLinksPanel({
       </div>
 
       <Tabs
+        className="min-w-0"
         value={asked.group}
         onValueChange={(group) =>
           load({ group: group as LinkGroupChoice, kind: null, search: searchText.trim() }, 1)
         }
       >
-        <TabsList aria-label={t('groupsLabel')} className="max-w-full overflow-x-auto">
+        <TabsList
+          aria-label={t('groupsLabel')}
+          className="max-w-full flex-wrap justify-start gap-y-1 group-data-horizontal/tabs:h-auto"
+        >
           {LINK_GROUP_CHOICES.map((group) => (
-            <TabsTrigger key={group} value={group}>
+            <TabsTrigger key={group} value={group} className="h-auto flex-none whitespace-normal">
               {t(`groups.${group}`)}
               <span className="text-muted-foreground tabular-nums">
                 {format.number(groupCounts[group])}
@@ -164,7 +171,7 @@ export function UrlLinksPanel({
             onChange={(event) => setSearchText(event.target.value)}
             placeholder={t('searchPlaceholder')}
             aria-label={t('search')}
-            className="h-7 min-w-40 flex-1"
+            className="h-7 min-w-0 flex-1 basis-40"
           />
           <Select
             items={[
@@ -184,7 +191,7 @@ export function UrlLinksPanel({
               )
             }
           >
-            <SelectTrigger size="sm" className="w-44" aria-label={t('kind.label')}>
+            <SelectTrigger size="sm" className="w-44 max-w-full" aria-label={t('kind.label')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
@@ -201,7 +208,7 @@ export function UrlLinksPanel({
           </Select>
         </div>
 
-        <TabsContent value={asked.group} className="grid gap-2">
+        <TabsContent value={asked.group} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
           {failure && (
             <p role="alert" className="text-sm text-destructive">
               {t(`errors.${failure}`)}
@@ -218,9 +225,9 @@ export function UrlLinksPanel({
                 {shown.items.map((link) => (
                   <li
                     key={`${link.urlHash}:${link.kind}`}
-                    className="flex items-center justify-between gap-3"
+                    className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)_max-content] items-center gap-2 whitespace-nowrap"
                   >
-                    <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex min-w-0 items-center overflow-hidden [&>*]:max-w-full [&>*]:truncate">
                       {link.statusCode === null && !link.error ? (
                         // Never answered because it was never requested: unknown, not a failure.
                         <Badge variant="outline" title={t('notRequested')}>
@@ -229,20 +236,30 @@ export function UrlLinksPanel({
                       ) : (
                         <StatusCell row={link} />
                       )}
-                      <OpenUrlLink
-                        target={{ hash: link.urlHash, url: link.url }}
-                        href={applyHref(hrefs, link.urlHash)}
-                        className="min-w-0 truncate font-mono text-xs hover:underline"
-                        title={link.url}
-                      >
-                        {link.url}
-                      </OpenUrlLink>
                     </span>
-                    <span className="flex shrink-0 items-center gap-1">
+                    <OpenUrlLink
+                      target={{ hash: link.urlHash, url: link.url }}
+                      href={applyHref(hrefs, link.urlHash)}
+                      className="block min-w-0 truncate font-mono text-xs hover:underline"
+                      title={link.url}
+                    >
+                      {link.url}
+                    </OpenUrlLink>
+                    <span className="flex flex-nowrap items-center justify-end gap-1">
                       {link.scope === 'external' && (
-                        <Badge variant="outline">{t('external')}</Badge>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 whitespace-nowrap"
+                          title={t('external')}
+                        >
+                          {t('external')}
+                        </Badge>
                       )}
-                      <Badge variant="outline">
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 whitespace-nowrap"
+                        title={tKinds(isLinkKind(link.kind) ? link.kind : 'other')}
+                      >
                         {tKinds(isLinkKind(link.kind) ? link.kind : 'other')}
                       </Badge>
                     </span>
@@ -253,12 +270,12 @@ export function UrlLinksPanel({
           </div>
 
           {!failure && shown.total > 0 && (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground tabular-nums">
                 {t('showing', { from: first, to: last, total: shown.total })}
               </p>
               {shown.pageCount > 1 && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"

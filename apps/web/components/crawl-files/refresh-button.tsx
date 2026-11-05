@@ -1,5 +1,6 @@
 'use client'
 
+import { useCanEdit } from '@/components/domain-access'
 import { RefreshCwIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useActionState } from 'react'
@@ -17,12 +18,14 @@ export function RefreshCrawlFilesButton({
   /** A refresh is already on its way. */
   pending: boolean
 }) {
+  const canEdit = useCanEdit()
   const t = useTranslations('CrawlFiles.refresh')
   const [state, formAction, submitting] = useActionState<ActionState, FormData>(
     refreshCrawlFilesAction.bind(null, host),
     {},
   )
   const busy = pending || submitting
+  if (!canEdit) return null
   return (
     <form action={formAction} className="grid shrink-0 justify-items-end gap-1">
       <Button

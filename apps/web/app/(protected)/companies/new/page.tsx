@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server'
 import { CompanyForm } from '@/components/company-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { requireSession } from '@/lib/session'
+import { requireAdmin } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +11,7 @@ export async function generateMetadata() {
 }
 
 export default async function NewCompanyPage() {
-  await requireSession()
+  await requireAdmin()
   const t = await getTranslations('NewCompany')
 
   return (

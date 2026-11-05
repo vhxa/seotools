@@ -68,7 +68,7 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
 
 export default async function JobsPage({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
-  const { domain } = await requireDomain(host)
+  const { domain, canEdit } = await requireDomain(host)
   const [t, tCrawl, tRecheck, format, locale] = await Promise.all([
     getTranslations('Jobs'),
     getTranslations('Crawl'),
@@ -88,7 +88,6 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
     <main className="grid gap-6">
       <div className="grid gap-1">
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 
       {active && <ActiveCrawl host={domain.host} crawl={active} />}
@@ -107,10 +106,11 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
                 host={domain.host}
                 type={type}
                 variant="outline"
-                disabled={active !== null}
+                disabled={active !== null || domain.archivedAt !== null}
               />
             </CardHeader>
-            <CardContent className="grid gap-3">
+            {/* Inert while archived. Who only reads sees the values, disabled (`useCanEdit`). */}
+            <CardContent className="grid gap-3" inert={domain.archivedAt !== null}>
               <ScheduleForm
                 host={domain.host}
                 type={type}
@@ -183,7 +183,7 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
                     {format.number(crawl.externalCount)}
                   </TableCell>
                   <TableCell>
-                    {(crawl.status === 'pending' || crawl.status === 'running') && (
+                    {canEdit && (crawl.status === 'pending' || crawl.status === 'running') && (
                       <form action={cancelCrawlAction.bind(null, domain.host, crawl.id)}>
                         <Button type="submit" variant="ghost" size="sm">
                           {tCrawl('cancel')}

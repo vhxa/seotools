@@ -1,4 +1,4 @@
-import { createFirstAdmin } from '@seotools/db'
+import { createFirstAdmin, inviteUser, issueUserToken, redeemUserToken } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createAuth, type Auth } from './auth'
@@ -39,6 +39,48 @@ describe('admin auth (better-auth)', () => {
     ).rejects.toThrow()
     await expect(
       auth.api.signInEmail({ body: { email: 'nobody@example.com', password: admin.password } }),
+    ).rejects.toThrow()
+  })
+
+  it('refuses a disabled account like a wrong password, and has it back when enabled', async () => {
+    const second = await inviteUser(db, {
+      name: 'Second',
+      email: 'second@example.com',
+      role: 'member',
+      grants: [],
+    })
+    if (!second.ok) throw new Error(second.reason)
+    const password = 'a-long-member-password'
+    const signIn = () => auth.api.signInEmail({ body: { email: second.user.email, password } })
+
+    // Invited, with no password yet: nothing to sign in with.
+    await expect(signIn()).rejects.toThrow()
+    await redeemUserToken(db, { token: second.token, password })
+    expect((await signIn()).user.email).toBe(second.user.email)
+
+    await db.users.setDisabled(second.user.id, true)
+    await expect(signIn()).rejects.toMatchObject({
+      body: { code: 'INVALID_EMAIL_OR_PASSWORD' },
+    })
+    await db.users.setDisabled(second.user.id, false)
+    expect((await signIn()).token).toBeTruthy()
+  })
+
+  it('signs in with a password set through a link, and not with the old one', async () => {
+    const found = await db.users.findByEmail(admin.email)
+    const token = await issueUserToken(db, { userId: found!.id, kind: 'reset' })
+    const { token: session } = await auth.api.signInEmail({
+      body: { email: admin.email, password: admin.password },
+    })
+    expect(session).toBeTruthy()
+
+    const password = 'the-new-long-password'
+    expect(await redeemUserToken(db, { token, password })).toBe(true)
+    expect(
+      (await auth.api.signInEmail({ body: { email: admin.email, password } })).token,
+    ).toBeTruthy()
+    await expect(
+      auth.api.signInEmail({ body: { email: admin.email, password: admin.password } }),
     ).rejects.toThrow()
   })
 

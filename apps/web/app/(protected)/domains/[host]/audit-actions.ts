@@ -16,7 +16,7 @@ import {
 } from '@/lib/audit-forms'
 import { previewRule, type AuditPreview } from '@/lib/audit-preview'
 import { getDb } from '@/lib/db'
-import { requireDomain } from '@/lib/workspace'
+import { archivedMessage, requireDomainEditor } from '@/lib/workspace'
 
 export interface RuleFormState {
   error?: string
@@ -52,7 +52,8 @@ export async function saveAuditRuleAction(
   _previous: RuleFormState,
   formData: FormData,
 ): Promise<RuleFormState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const parsed = parseRuleForm(formData, domain.host)
   if (!parsed.ok) return { error: ruleError(t, parsed.error) }
@@ -85,7 +86,8 @@ export async function setAuditRulesEnabledAction(
   ids: unknown,
   enabled: boolean,
 ): Promise<RuleFormState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const rules = parseRuleIds(ids)
   if (!rules || typeof enabled !== 'boolean') return { error: t('notFound') }
@@ -98,7 +100,8 @@ export async function setAuditRulesEnabledAction(
 }
 
 export async function deleteAuditRulesAction(host: string, ids: unknown): Promise<RuleFormState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const rules = parseRuleIds(ids)
   if (!rules) return { error: t('notFound') }
@@ -118,7 +121,7 @@ export async function previewAuditRuleAction(
   host: string,
   input: RuleInput & { id?: unknown },
 ): Promise<PreviewState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   const t = await errorMessages()
   // Whatever arrives from a client is checked, including that it is an object at all.
   if (typeof input !== 'object' || input === null) return { status: 'error', error: t('value') }
@@ -157,7 +160,8 @@ export async function previewAuditRuleAction(
  * contradict each other. A statement left out of the request is "no change"; `inherit` removes it.
  */
 export async function setUrlAuditAction(host: string, input: unknown): Promise<RuleFormState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const parsed = parseUrlConfig(input, domain.host)
   if (!parsed.ok) return { error: urlError(t, parsed.error) }
@@ -185,7 +189,8 @@ export async function saveAuditLanguagesAction(
   _previous: LanguagesFormState,
   formData: FormData,
 ): Promise<LanguagesFormState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const parsed = parseLanguagesForm(formData)
   if (!parsed.ok) return { error: languagesError(t, parsed.error) }
@@ -199,7 +204,7 @@ export async function saveAuditLanguagesAction(
 
 /** Asks the worker again to analyse the latest crawl, after a recalculation that failed. */
 export async function retryAuditRecomputeAction(host: string): Promise<void> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   await (await getDb()).audit.retryRecompute(domain.id)
   revalidateAudit(host)
 }

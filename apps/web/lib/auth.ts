@@ -2,6 +2,7 @@ import type { WebEnv } from '@seotools/core'
 import type { Database } from '@seotools/db'
 import { betterAuth, type BetterAuthPlugin } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { APIError } from 'better-auth/api'
 import { nextCookies } from 'better-auth/next-js'
 import { getDb } from './db'
 import { getEnv } from './env'
@@ -28,6 +29,22 @@ export function createAuth(db: Database, env: WebEnv, plugins: BetterAuthPlugin[
       maxPasswordLength: MAX_PASSWORD_LENGTH,
     },
     session: { expiresIn: 60 * 60 * 24 * 7 },
+    databaseHooks: {
+      session: {
+        create: {
+          // A disabled account is told what anyone with a wrong password is told.
+          before: async (session) => {
+            const account = await db.users.get(session.userId)
+            if (!account || account.disabledAt) {
+              throw new APIError('UNAUTHORIZED', {
+                code: 'INVALID_EMAIL_OR_PASSWORD',
+                message: 'Invalid email or password',
+              })
+            }
+          },
+        },
+      },
+    },
     plugins,
   })
 }

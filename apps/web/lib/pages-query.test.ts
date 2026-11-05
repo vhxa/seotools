@@ -19,6 +19,7 @@ const base: DetailQuery = {
   direction: 'asc',
   search: '',
   issue: null,
+  accepted: null,
   status: null,
   type: null,
   indexability: null,
@@ -60,6 +61,7 @@ describe('parseDetailQuery', () => {
       direction: 'desc',
       search: 'blog',
       issue: 'title-missing',
+      accepted: null,
       status: '4xx',
       type: 'redirect',
       indexability: 'unknown',
@@ -188,6 +190,7 @@ describe('detailHref', () => {
       direction: 'desc',
       search: '50% off & more',
       issue: 'description-missing',
+      accepted: null,
       status: '5xx',
       type: 'unknown',
       indexability: 'not-indexable',
@@ -391,6 +394,37 @@ describe('the filters that cannot apply', () => {
       issue: 'client-error',
       status: 'none',
     })
+  })
+
+  it('send what rules accept on its own too, and never next to an issue', () => {
+    const accepted = parseDetailQuery({ accepted: 'noindex', view: 'resources' })
+    expect(accepted.view).toBe('all')
+    expect(listingOf(accepted, unappliedFilters(accepted, { auditData: true }))).toEqual({
+      view: 'all',
+      accepted: 'noindex',
+    })
+    expect(parseDetailQuery({ accepted: 'all' }).accepted).toBe('all')
+    expect(parseDetailQuery({ accepted: 'retired' }).accepted).toBeNull()
+    expect(parseDetailQuery({ accepted: 'noindex', issue: 'noindex' })).toMatchObject({
+      issue: 'noindex',
+      accepted: null,
+    })
+  })
+})
+
+describe('the link to what rules accept', () => {
+  it('leaves the issue, and is left by choosing an issue or a view', () => {
+    const issue = parseDetailQuery({ issue: 'noindex' })
+    expect(detailHref('acme.com', issue, { accepted: 'all' })).toBe(
+      '/domains/acme.com/pages/details?accepted=all',
+    )
+    const accepted = parseDetailQuery({ accepted: 'all' })
+    expect(detailHref('acme.com', accepted, { issue: 'noindex' })).toBe(
+      '/domains/acme.com/pages/details?issue=noindex',
+    )
+    expect(detailHref('acme.com', accepted, { view: 'pages' })).toBe(
+      '/domains/acme.com/pages/details',
+    )
   })
 })
 

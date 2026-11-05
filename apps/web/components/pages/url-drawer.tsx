@@ -183,8 +183,8 @@ export function UrlDrawer({
           }
         }}
       >
-        <DrawerContent className="data-[swipe-axis=x]:sm:[--drawer-content-width:36rem]">
-          <DrawerHeader className="gap-2 border-b pr-14 pb-4">
+        <DrawerContent className="max-w-dvw data-[swipe-axis=x]:[--drawer-content-width:100%] data-[swipe-axis=x]:sm:[--drawer-content-width:36rem] [&_[data-slot=drawer-content]]:min-w-0">
+          <DrawerHeader className="min-w-0 shrink-0 gap-2 border-b pr-14 pb-4">
             <DrawerTitle className="font-mono text-sm break-all">{target?.url}</DrawerTitle>
             <DrawerDescription>{t('drawerDescription')}</DrawerDescription>
             <div>
@@ -205,7 +205,7 @@ export function UrlDrawer({
               <span className="sr-only">{t('close')}</span>
             </DrawerClose>
           </DrawerHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{body}</div>
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-4">{body}</div>
         </DrawerContent>
       </Drawer>
     </OpenUrlContext.Provider>

@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   AUDIT_LIMITS,
   AUDIT_SEMANTICS,
@@ -23,6 +26,9 @@ import type {
   VerificationAnswer,
 } from '../types'
 import { addDomain, createCompany } from '../workspace'
+import { describeLifecycle } from './lifecycle'
+import { describeMailAndAlerts } from './mail-alerts'
+import { describeUsers } from './users'
 
 const minutes = (n: number) => n * 60_000
 
@@ -40,16 +46,23 @@ export interface LegacyWrites {
 
 export function describeDatabaseContract(
   name: string,
-  setup: () => Promise<{ db: Database; reset: () => Promise<void>; legacy: LegacyWrites }>,
+  setup: () => Promise<{
+    db: Database
+    reset: () => Promise<void>
+    legacy: LegacyWrites
+    /** Rows in a table, by its name: for proving that nothing is left behind. */
+    countRows: (table: string) => Promise<number>
+  }>,
   options: { skip?: boolean } = {},
 ) {
   describe.skipIf(options.skip)(`database contract: ${name}`, () => {
     let db: Database
     let reset: () => Promise<void>
     let legacy: LegacyWrites
+    let countRows: (table: string) => Promise<number>
 
     beforeAll(async () => {
-      ;({ db, reset, legacy } = await setup())
+      ;({ db, reset, legacy, countRows } = await setup())
     })
     afterAll(async () => {
       await db?.close()
@@ -60,6 +73,21 @@ export function describeDatabaseContract(
 
     it('answers ping', async () => {
       await expect(db.ping()).resolves.toBeUndefined()
+    })
+
+    it('refuses unknown migration history before applying DDL', async () => {
+      const folder = mkdtempSync(join(tmpdir(), 'seotools-migrations-'))
+      mkdirSync(join(folder, 'meta'))
+      writeFileSync(join(folder, 'meta/_journal.json'), JSON.stringify({ entries: [] }))
+      try {
+        await expect(db.checkMigrations(folder)).rejects.toThrow(
+          /database is newer.*restoring the backup/,
+        )
+        await expect(db.migrate(folder)).rejects.toThrow(/database is newer/)
+        await expect(db.checkMigrations()).resolves.toBeUndefined()
+      } finally {
+        rmSync(folder, { recursive: true, force: true })
+      }
     })
 
     describe('jobs', () => {
@@ -250,6 +278,13 @@ export function describeDatabaseContract(
         expect(await db.settings.get('k')).toBeNull()
       })
     })
+
+    describeLifecycle(
+      () => db,
+      (table) => countRows(table),
+    )
+    describeUsers(() => db)
+    describeMailAndAlerts(() => db)
 
     describe('companies and domains', () => {
       it('creates a company with its first domain, normalized', async () => {
@@ -720,6 +755,68 @@ export function describeDatabaseContract(
         expect(await page(0)).toEqual(urls.slice(0, 2))
         expect(await page(2)).toEqual(urls.slice(2, 4))
         expect(await page(4)).toEqual(urls.slice(4))
+      })
+
+      it('pages through a filtered list without skipping or repeating a URL, whatever the order', async () => {
+        // What an export does: walk every URL the filters leave, in batches. Many URLs tie on
+        // depth, status, title and size, and two of them differ only in case, which a dialect's
+        // collation may take for the same address: the order still has to be total.
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const urls = [
+          ...Array.from({ length: 23 }, (_, i) => `https://acme.com/p${i}`),
+          'https://acme.com/Case',
+          'https://acme.com/case',
+        ]
+        await db.crawls.addUrls(
+          id,
+          urls.map((url) => newUrl(url)),
+        )
+        for (const [index, url] of urls.entries()) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(url),
+            result: result('page', {
+              statusCode: index % 5 === 0 ? 404 : 200,
+              title: index % 3 === 0 ? null : 'Same title',
+              bytes: 100,
+            }),
+          })
+        }
+        const everything = async (
+          filter: Partial<Parameters<typeof db.crawls.listUrls>[0]>,
+          size: number,
+        ) => {
+          const found: string[] = []
+          for (let offset = 0; ; offset += size) {
+            const batch = await db.crawls.listUrls({
+              crawlId: id,
+              view: 'pages',
+              ...filter,
+              limit: size,
+              offset,
+            })
+            found.push(...batch.map((row) => row.urlHash))
+            if (batch.length < size) return found
+          }
+        }
+        for (const sort of [undefined, 'url', 'title', 'status', 'bytes', 'depth'] as const) {
+          for (const direction of ['asc', 'desc'] as const) {
+            const filter = { ...(sort ? { sort, direction } : {}) }
+            const all = await everything(filter, 100)
+            expect(new Set(all).size).toBe(urls.length)
+            // Any batch size walks the same list.
+            expect(await everything(filter, 4)).toEqual(all)
+            expect(await everything(filter, 7)).toEqual(all)
+          }
+        }
+        // Narrowed by a filter, the walk holds exactly what the count says.
+        const narrowed = { status: '4xx' as const }
+        const walked = await everything({ ...narrowed, sort: 'title' }, 3)
+        expect(walked).toHaveLength(
+          await db.crawls.countListed({ crawlId: id, view: 'pages', ...narrowed }),
+        )
+        expect(new Set(walked).size).toBe(walked.length)
       })
 
       describe('lists of URLs', () => {
@@ -1661,6 +1758,117 @@ export function describeDatabaseContract(
           expect(await db.crawls.issueCounts(id)).toEqual([])
         })
 
+        it('keeps what rules accept apart from what is pending, and lists it', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const [urlA, urlB, urlC] = ['a', 'b', 'c'].map((path) => `https://acme.com/${path}`) as [
+            string,
+            string,
+            string,
+          ]
+          await db.crawls.addUrls(id, [newUrl(urlA), newUrl(urlB), newUrl(urlC)])
+          for (const url of [urlA, urlB, urlC]) {
+            await db.crawls.recordResult({
+              crawlId: id,
+              urlHash: crawlUrlHash(url),
+              result: result('page'),
+            })
+          }
+          const a = crawlUrlHash(urlA)
+          const b = crawlUrlHash(urlB)
+          const c = crawlUrlHash(urlC)
+          const finding = (urlHash: string, issue: string, acceptedBy: string) => ({
+            urlHash,
+            issue,
+            acceptedBy,
+            acceptance: {
+              kind: 'relation' as const,
+              end: 'destination' as const,
+              blockers: ['noindex' as const],
+              rules: ['rule-1'],
+            },
+            evidence: { kind: 'related-urls' as const, total: 1, urls: ['https://acme.com/c'] },
+          })
+          await saveIssues({
+            crawlId: id,
+            issues: [{ urlHash: a, issue: 'title-missing' }],
+            accepted: [
+              finding(a, 'hreflang-noindex', c),
+              finding(b, 'hreflang-noindex', c),
+              finding(b, 'canonical-not-indexable', c),
+              {
+                urlHash: c,
+                issue: 'noindex',
+                acceptedBy: c,
+                acceptance: {
+                  kind: 'condition',
+                  condition: 'noindex',
+                  requirement: 'allowed',
+                  rule: 'rule-1',
+                },
+              },
+            ],
+            pages: { issue: 0, warning: 1, opportunity: 0 },
+            withType: { issue: 0, warning: 1, opportunity: 0 },
+            catalog: 'v1',
+          })
+
+          // What is pending knows nothing of them.
+          expect(await db.crawls.issueCounts(id)).toEqual([{ issue: 'title-missing', pages: 1 }])
+          expect((await db.crawls.issuesOf(id, [b, c])).length).toBe(0)
+          expect(
+            (await db.crawls.acceptedCounts(id)).sort((x, y) => x.issue.localeCompare(y.issue)),
+          ).toEqual([
+            { issue: 'canonical-not-indexable', pages: 1 },
+            { issue: 'hreflang-noindex', pages: 2 },
+            { issue: 'noindex', pages: 1 },
+          ])
+          expect(await db.crawls.acceptedOf(id, [a])).toEqual([finding(a, 'hreflang-noindex', c)])
+
+          // Lists: any finding or one, whatever the view; and a URL with several is listed once.
+          const listed = async (accepted: string) =>
+            (
+              await db.crawls.listUrls({
+                crawlId: id,
+                view: 'pages',
+                accepted,
+                limit: 10,
+                offset: 0,
+              })
+            )
+              .map(({ urlHash }) => urlHash)
+              .sort()
+          expect(await listed('all')).toEqual([a, b, c].sort())
+          expect(await listed('noindex')).toEqual([c])
+          expect(await db.crawls.countListed({ crawlId: id, view: 'pages', accepted: 'all' })).toBe(
+            3,
+          )
+
+          // What a rule of a URL does beyond it: the URL's own finding is not one of them.
+          expect(await db.crawls.acceptedBecauseOf(id, c, { limit: 2 })).toEqual({
+            total: 3,
+            findings: [
+              { urlHash: a, url: urlA, issue: 'hreflang-noindex' },
+              { urlHash: b, url: urlB, issue: 'canonical-not-indexable' },
+            ],
+          })
+          expect((await db.crawls.acceptedBecauseOf(id, a, { limit: 2 })).total).toBe(0)
+
+          // A history tells them apart from what the crawl reported.
+          const [trace] = await db.crawls.urlHistory({ domainId, crawlIds: [id], urlHashes: [c] })
+          expect(trace).toMatchObject({ issues: [], accepted: ['noindex'] })
+
+          // Analysing again replaces them.
+          await saveIssues({
+            crawlId: id,
+            issues: [],
+            pages: { issue: 0, warning: 0, opportunity: 0 },
+            withType: { issue: 0, warning: 0, opportunity: 0 },
+            catalog: 'v1',
+          })
+          expect(await db.crawls.acceptedCounts(id)).toEqual([])
+        })
+
         it('keeps the evidence of a finding next to what it details', async () => {
           const domainId = await domain()
           const { id } = await startCrawl(domainId)
@@ -1720,6 +1928,14 @@ export function describeDatabaseContract(
             await saveIssues({
               crawlId: crawl.id,
               issues: [{ urlHash: crawlUrlHash('https://acme.com/'), issue: 'missing-title' }],
+              accepted: [
+                {
+                  urlHash: crawlUrlHash('https://acme.com/'),
+                  issue: 'noindex',
+                  acceptedBy: crawlUrlHash('https://acme.com/'),
+                  acceptance: { kind: 'expectation', rule: null },
+                },
+              ],
               pages: { issue: 1, warning: 0, opportunity: 0 },
               withType: { issue: 1, warning: 0, opportunity: 0 },
               catalog: 'v1',
@@ -1732,6 +1948,10 @@ export function describeDatabaseContract(
             pagesByWorstIssue: { issue: 1, warning: 0, opportunity: 0 },
           })
           expect(await db.crawls.issueCounts(oldest.id)).toEqual([])
+          expect(await db.crawls.acceptedCounts(oldest.id)).toEqual([])
+          expect(await db.crawls.acceptedCounts(newest.id)).toEqual([
+            { issue: 'noindex', pages: 1 },
+          ])
           expect(await db.crawls.issueCounts(newest.id)).toEqual([
             { issue: 'missing-title', pages: 1 },
           ])
@@ -4507,12 +4727,23 @@ export function describeDatabaseContract(
         const verification = await startVerification(domainId, [a, b])
         await db.verifications.markRunning(verification.id)
 
+        const accepted = [
+          {
+            issue: 'noindex',
+            acceptance: {
+              kind: 'condition' as const,
+              condition: 'noindex' as const,
+              requirement: 'allowed' as const,
+              rule: 'r1',
+            },
+          },
+        ]
         const first = {
           verificationId: verification.id,
           urlHash: a.urlHash,
           answer: answer({ title: 'Fresh title', statusCode: 200 }),
           auditVersion: 4,
-          outcome: outcome(['title-too-short'], { unchecked: ['noindex'] }),
+          outcome: outcome(['title-too-short'], { unchecked: ['noindex'], accepted }),
         }
         expect(await db.verifications.recordResult(first)).toBe(true)
         // Idempotent: a retried job writes the same result again, and the count does not grow.
@@ -4528,7 +4759,7 @@ export function describeDatabaseContract(
           statusCode: 200,
           title: 'Fresh title',
           auditVersion: 4,
-          outcome: outcome(['title-too-short'], { unchecked: ['noindex'] }),
+          outcome: outcome(['title-too-short'], { unchecked: ['noindex'], accepted }),
         })
         expect(stored?.fetchedAt).toBeInstanceOf(Date)
       })
@@ -4555,6 +4786,8 @@ export function describeDatabaseContract(
           nofollow: { requirement: 'allowed', rule: 'r1', observed: null },
         })
         expect(stored?.outcome?.audit).not.toHaveProperty('acceptNofollow')
+        // Nothing was kept of what a rule accepts: absent, never an empty list.
+        expect(stored?.outcome).not.toHaveProperty('accepted')
       })
 
       it('stores a failed request as an answer of its own', async () => {

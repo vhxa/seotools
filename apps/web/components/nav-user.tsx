@@ -1,6 +1,7 @@
 'use client'
 
-import { ChevronsUpDownIcon, LogOutIcon } from 'lucide-react'
+import { ChevronsUpDownIcon, LogOutIcon, UserIcon } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -78,6 +79,10 @@ export function NavUser({ user }: { user: NavUserData }) {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
+              <DropdownMenuItem render={<Link href="/account" />}>
+                <UserIcon />
+                {t('account')}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
                   await authClient.signOut()

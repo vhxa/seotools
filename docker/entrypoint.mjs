@@ -3,7 +3,7 @@
 //
 //   SEOTOOLS_MODE=all      (default) migrate, then web + worker in this one container
 //   SEOTOOLS_MODE=web      migrate, then web only
-//   SEOTOOLS_MODE=worker   worker only (does not migrate; start it after `web`)
+//   SEOTOOLS_MODE=worker   check migration compatibility, then worker (start it after `web`)
 //   SEOTOOLS_MODE=migrate  run migrations and exit
 //
 // If any process exits, the others are stopped and the container exits, so the orchestrator
@@ -68,15 +68,18 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
   })
 }
 
-function run(file) {
+function run(file, env = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [file], { stdio: 'inherit' })
+    const child = spawn(process.execPath, [file], {
+      stdio: 'inherit',
+      env: { ...process.env, ...env },
+    })
     child.on('exit', (code) => resolve(code ?? 1))
   })
 }
 
-if (mode !== 'worker') {
-  const code = await run(programs.bootstrap)
+{
+  const code = await run(programs.bootstrap, mode === 'worker' ? { RUN_MIGRATIONS: 'false' } : {})
   if (code !== 0) {
     log('bootstrap failed')
     process.exit(code)

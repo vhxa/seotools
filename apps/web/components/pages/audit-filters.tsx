@@ -23,9 +23,11 @@ import {
 export function AuditFilters({
   host,
   query,
+  stacked = false,
   unavailable,
   rulesHref,
 }: {
+  stacked?: boolean
   host: string
   query: DetailQuery
   /** Why none of these can apply to the list, if that is so: external URLs, or a crawl without audit data. */
@@ -42,8 +44,13 @@ export function AuditFilters({
   const reason = unavailable ? t(`unavailable.${unavailable}`) : undefined
 
   return (
-    <div role="group" aria-label={t('label')} className="flex flex-wrap items-center gap-2">
+    <div
+      role="group"
+      aria-label={t('label')}
+      className={stacked ? 'grid w-full gap-4' : 'flex flex-wrap items-center gap-2'}
+    >
       <FilterSelect
+        showLabel={stacked}
         label={t('indexability.label')}
         anyLabel={t('indexability.all')}
         value={query.indexability}
@@ -56,6 +63,7 @@ export function AuditFilters({
         className="w-52"
       />
       <FilterSelect
+        showLabel={stacked}
         label={t('audit.label')}
         anyLabel={t('audit.all')}
         value={query.participation}
@@ -64,6 +72,7 @@ export function AuditFilters({
         unavailable={reason}
       />
       <FilterSelect
+        showLabel={stacked}
         label={t('intent.label')}
         anyLabel={t('intent.all')}
         value={query.intent}

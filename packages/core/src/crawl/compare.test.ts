@@ -668,3 +668,46 @@ describe('issueTimelines', () => {
     ).toEqual(['a', 'b', 'd'])
   })
 })
+
+describe('a finding a rule accepts in the later crawl', () => {
+  const crawl: Evidence['crawl'] = {
+    retained: true,
+    analysed: true,
+    complete: true,
+    catalog: 'v1',
+    scope: 's1',
+    perUrlAudit: true,
+  }
+  const url = (issues: string[], accepted: string[] = [], conditions = 'none'): UrlEvidence => ({
+    requested: true,
+    participation: 'audited',
+    intent: 'indexable',
+    conditions,
+    issues: new Set(issues),
+    accepted: new Set(accepted),
+  })
+
+  it('is accepted, never resolved, whatever else changed around it', () => {
+    const change = classifyFinding('noindex', {
+      base: { crawl, url: url(['noindex']) },
+      target: { crawl: { ...crawl, scope: 's2' }, url: url([], ['noindex'], 'noindex:allowed') },
+    })
+    expect(change).toMatchObject({ kind: 'accepted', reportedBy: 'base' })
+  })
+
+  it('is resolved only when the later crawl no longer sees it', () => {
+    const change = classifyFinding('noindex', {
+      base: { crawl, url: url(['noindex']) },
+      target: { crawl, url: url([]) },
+    })
+    expect(change).toMatchObject({ kind: 'resolved' })
+  })
+
+  it('is not told as new when the rule goes away: the configuration changed, not the site', () => {
+    const change = classifyFinding('noindex', {
+      base: { crawl, url: url([], ['noindex'], 'noindex:allowed') },
+      target: { crawl: { ...crawl, scope: 's2' }, url: url(['noindex']) },
+    })
+    expect(change).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+  })
+})

@@ -49,6 +49,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      - name: Versions and CHANGELOG.md agree
+        run: pnpm release:check
+
       - run: pnpm install --frozen-lockfile
 
       - name: Format

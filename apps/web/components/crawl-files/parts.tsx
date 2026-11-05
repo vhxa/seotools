@@ -33,6 +33,13 @@ export async function FileStateBadge({
   statusCode: number | null
 }) {
   const t = await getTranslations('CrawlFiles.states')
+  if (state === 'ok') {
+    return (
+      <span className="text-sm tabular-nums">
+        {t(state)} {statusCode}
+      </span>
+    )
+  }
   return (
     <Badge variant={STATE_VARIANTS[state]}>
       {t(state)}

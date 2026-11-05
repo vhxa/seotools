@@ -1,4 +1,5 @@
 import { needsSetup } from '@seotools/db'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,11 +14,16 @@ export async function generateMetadata() {
   return { title: t('metaTitle') }
 }
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ password?: string }>
+}) {
   // A fresh install has no admin yet: send the visitor to register one.
   if (await needsSetup(await getDb())) redirect('/setup')
   if (await getSession()) redirect('/')
   const t = await getTranslations('Login')
+  const { password } = await searchParams
 
   return (
     <main className="flex min-h-svh items-center justify-center p-4">
@@ -26,8 +32,16 @@ export default async function LoginPage() {
           <CardTitle>seotools</CardTitle>
           <CardDescription>{t('description')}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="grid gap-4">
+          {password === 'set' && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t('passwordSet')}
+            </p>
+          )}
           <LoginForm />
+          <Link href="/forgot-password" className="text-sm underline-offset-4 hover:underline">
+            {t('forgot')}
+          </Link>
         </CardContent>
       </Card>
     </main>

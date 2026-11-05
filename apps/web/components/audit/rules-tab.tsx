@@ -6,8 +6,9 @@ import { getTranslations } from 'next-intl/server'
 import { CreateRuleButton } from '@/components/audit/create-rule-button'
 import { RuleRowActions, RuleToggle } from '@/components/audit/rule-actions'
 import { SelectorLabel } from '@/components/audit/selector-label'
+import { InfoHelp } from '@/components/help'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -53,8 +54,10 @@ export async function RulesTab({
     <Card>
       <CardHeader className="gap-3 sm:grid-cols-[1fr_auto]">
         <div className="grid gap-1.5">
-          <CardTitle>{t('sections.rules.title')}</CardTitle>
-          <CardDescription>{t('sections.rules.description')}</CardDescription>
+          <CardTitle className="flex items-center gap-1">
+            {t('sections.rules.title')}
+            <InfoHelp label={t('sections.rules.title')}>{t('sections.rules.description')}</InfoHelp>
+          </CardTitle>
           <p className="text-sm font-medium">{t('sections.rules.default')}</p>
         </div>
         {groups.length > 0 && (

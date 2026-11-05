@@ -9,7 +9,8 @@ import { CrawlBanner } from '@/components/history/crawl-banner'
 import { CrawlSwitcher } from '@/components/history/crawl-switcher'
 import { Pagination } from '@/components/pagination'
 import { AuditFilters } from '@/components/pages/audit-filters'
-import { IssueLabel } from '@/components/pages/issue-mark'
+import { HelpDisclosure } from '@/components/help'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import { IssuesFilter } from '@/components/pages/issues-filter'
 import { ListStatus } from '@/components/pages/list-status'
 import { PagesTable, type PageRow } from '@/components/pages/pages-table'
@@ -18,13 +19,14 @@ import { RecheckBanner } from '@/components/verification/recheck-banner'
 import { UrlDetail } from '@/components/pages/url-detail'
 import { UrlDrawer } from '@/components/pages/url-drawer'
 import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
+import { Card, CardDescription, CardHeader } from '@/components/ui/card'
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { auditTabHref } from '@/lib/audit-tabs'
 import { browsableCrawls, selectCrawl } from '@/lib/crawl-history'
 import { automaticFileChecks } from '@/lib/automatic-checks'
 import { getDb } from '@/lib/db'
 import {
+  activeFilters,
   DETAIL_VIEWS,
   PAGES_PAGE_SIZE,
   detailHref,
@@ -87,10 +89,11 @@ export default async function PagesDetailsPage({
   const { host } = await params
   const query = parseDetailQuery(await searchParams)
   const { domain } = await requireDomain(host)
-  const [t, tIssues, tHistory, format] = await Promise.all([
+  const [t, tIssues, tHistory, tPages, format] = await Promise.all([
     getTranslations('PagesDetails'),
     getTranslations('PageIssues'),
     getTranslations('CrawlHistory.details'),
+    getTranslations('Pages'),
     getFormatter(),
   ])
   const db = await getDb()
@@ -118,6 +121,7 @@ export default async function PagesDetailsPage({
 
   let rows: PageRow[] = []
   let issueCounts: { issue: string; pages: number }[] = []
+  let hasAccepted = false
   let viewCounts: Awaited<ReturnType<typeof db.crawls.viewCounts>> | null = null
   let total = 0
   let page = 1
@@ -126,6 +130,7 @@ export default async function PagesDetailsPage({
     const listing = { crawlId: browsable.id, ...listingOf(query, unapplied) }
     if (browsable.pagesByWorstIssue !== null)
       issueCounts = await db.crawls.issueCounts(browsable.id)
+    hasAccepted = (await db.crawls.acceptedCounts(browsable.id)).length > 0
     viewCounts = await db.crawls.viewCounts(browsable.id)
     total = await db.crawls.countListed(listing)
     pageCount = Math.max(1, Math.ceil(total / PAGES_PAGE_SIZE))
@@ -182,35 +187,41 @@ export default async function PagesDetailsPage({
     detailHref(host, query, { crawl: id === latestId ? null : id, page: 1, url: null })
 
   return (
-    <main data-wide className="grid gap-6">
-      <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
-        <p className="text-sm text-muted-foreground">
-          {selected
-            ? historical
-              ? tHistory('detailsDescription')
-              : t('description')
-            : t('neverCrawled')}
-        </p>
+    <main
+      data-wide
+      className={
+        browsable
+          ? 'flex h-[calc(100svh-5rem)] min-h-0 flex-col gap-4 md:h-[calc(100svh-7rem)]'
+          : 'grid gap-6'
+      }
+    >
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <h1 className="text-2xl font-semibold">{t('title')}</h1>
+          {!selected && <p className="text-sm text-muted-foreground">{t('neverCrawled')}</p>}
+        </div>
       </div>
-
       {selected && (
-        <CrawlBanner
-          crawl={selected}
-          historical={historical}
-          currentVersion={config.version}
-          latestHref={
-            historical ? detailHref(host, query, { crawl: null, page: 1, url: null }) : null
-          }
-          picker={
-            <CrawlSwitcher
-              crawls={history}
-              selected={selected}
-              latestId={latestId}
-              hrefFor={(crawl) => hrefForCrawl(crawl.id)}
-            />
-          }
-        />
+        <>
+          <CrawlBanner
+            crawl={selected}
+            historical={historical}
+            currentVersion={config.version}
+            latestHref={
+              historical ? detailHref(host, query, { crawl: null, page: 1, url: null }) : null
+            }
+            picker={
+              browsable ? null : (
+                <CrawlSwitcher
+                  crawls={history}
+                  selected={selected}
+                  latestId={latestId}
+                  hrefFor={(crawl) => hrefForCrawl(crawl.id)}
+                />
+              )
+            }
+          />
+        </>
       )}
 
       <AuditResultsNotice host={domain.host} state={results} />
@@ -233,117 +244,163 @@ export default async function PagesDetailsPage({
       )}
 
       {browsable && (
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <Card>
-            <CardHeader className="gap-3">
-              <nav aria-label={t('viewsLabel')} className="flex flex-wrap gap-1">
-                {/* Addresses made when "other" was a view of its own still open it, and it shows. */}
-                {[...DETAIL_VIEWS, ...(query.view === 'other' ? (['other'] as const) : [])].map(
-                  (view) => (
-                    <Link
-                      key={view}
-                      href={detailHref(host, query, { view, page: 1, url: null })}
-                      aria-current={view === query.view ? 'page' : undefined}
-                      className={buttonVariants({
-                        variant: view === query.view ? 'secondary' : 'ghost',
-                        size: 'sm',
-                      })}
+        <>
+          <TooltipProvider delay={1200} timeout={800}>
+            <nav aria-label={t('viewsLabel')} className="flex shrink-0 flex-wrap gap-1">
+              {/* Addresses made when "other" was a view of its own still open it, and it shows. */}
+              {[...DETAIL_VIEWS, ...(query.view === 'other' ? (['other'] as const) : [])].map(
+                (view) => (
+                  <Tooltip key={view}>
+                    <TooltipTrigger
+                      render={
+                        <Link
+                          href={detailHref(host, query, { view, page: 1, url: null })}
+                          scroll={false}
+                          aria-current={view === query.view ? 'page' : undefined}
+                          className={buttonVariants({
+                            variant: view === query.view ? 'secondary' : 'ghost',
+                            size: 'sm',
+                          })}
+                        />
+                      }
                     >
                       {t(`views.${view}`)}
                       <span className="text-muted-foreground tabular-nums">
                         {format.number(viewCounts?.[view] ?? 0)}
                       </span>
-                    </Link>
-                  ),
-                )}
-              </nav>
-              <CardDescription>
-                {query.issue && isPageIssueId(query.issue) ? (
-                  <>
-                    <span className="font-medium text-foreground">
-                      <IssueLabel issue={query.issue} />.
-                    </span>{' '}
-                    {tIssues(`${query.issue}.description`)} {t('issueScope')}
-                  </>
-                ) : (
-                  t(`viewHints.${query.view}`)
-                )}
-              </CardDescription>
-              <div className="flex flex-wrap items-center gap-2">
-                <UrlFilters
-                  host={domain.host}
-                  query={{ ...query, page: 1 }}
-                  typeUnavailable={available.type ?? undefined}
-                />
-                <AuditFilters
-                  host={domain.host}
-                  query={{ ...query, page: 1 }}
-                  unavailable={available.audit ?? undefined}
-                  {...(ruleOfList ? { rulesHref: auditTabHref(domain.host, 'rules') } : {})}
-                />
-              </div>
-              <ListStatus
-                host={domain.host}
-                query={{ ...query, page: 1 }}
-                unapplied={unapplied}
-                matching={total}
-                inView={viewCounts?.[query.view] ?? 0}
-                inCrawl={viewCounts?.all ?? 0}
-              />
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              <UrlDrawer
-                host={domain.host}
-                query={{ ...query, page }}
-                current={open ? { hash: open.url.urlHash, url: open.url.url } : null}
-                detail={
-                  open ? (
-                    <UrlDetail
-                      host={domain.host}
-                      data={open}
-                      hrefFor={(urlHash) => detailHref(host, query, { url: urlHash })}
-                    />
-                  ) : null
-                }
-              >
-                <PagesTable
-                  key={[
-                    browsable.id,
-                    query.view,
-                    page,
-                    query.sort,
-                    query.direction,
-                    query.search,
-                    query.issue,
-                    query.status,
-                    query.type,
-                    query.indexability,
-                    query.participation,
-                    query.intent,
-                    query.rule,
-                  ].join('|')}
-                  host={domain.host}
-                  rows={rows}
-                  query={{ ...query, page }}
-                  analysed={browsable.pagesByWorstIssue !== null}
-                />
-              </UrlDrawer>
-              <Pagination
-                page={page}
-                pageCount={pageCount}
-                href={(next) => detailHref(host, query, { page: next, url: null })}
-              />
-            </CardContent>
-          </Card>
-          <IssuesFilter
+                    </TooltipTrigger>
+                    <TooltipContent>{t(`viewHints.${view}`)}</TooltipContent>
+                  </Tooltip>
+                ),
+              )}
+            </nav>
+          </TooltipProvider>
+          <UrlDrawer
             host={domain.host}
             query={{ ...query, page }}
-            pages={browsable.pagesCount}
-            counts={issueCounts}
-            checked={browsable.pagesByWorstIssue !== null}
-            className="max-xl:order-first xl:sticky xl:top-16 xl:max-h-[calc(100svh-5rem)] xl:overflow-y-auto"
-          />
-        </div>
+            current={open ? { hash: open.url.urlHash, url: open.url.url } : null}
+            detail={
+              open ? (
+                <UrlDetail
+                  host={domain.host}
+                  data={open}
+                  context={
+                    <CrawlBanner
+                      crawl={browsable}
+                      historical={historical}
+                      currentVersion={config.version}
+                      latestHref={
+                        historical ? detailHref(host, query, { crawl: null, page: 1 }) : null
+                      }
+                      picker={
+                        <CrawlSwitcher
+                          crawls={history}
+                          selected={browsable}
+                          latestId={latestId}
+                          hrefFor={(crawl) =>
+                            detailHref(host, query, {
+                              crawl: crawl.id === latestId ? null : crawl.id,
+                              page: 1,
+                            })
+                          }
+                        />
+                      }
+                    />
+                  }
+                  hrefFor={(urlHash) => detailHref(host, query, { url: urlHash })}
+                />
+              ) : null
+            }
+          >
+            <PagesTable
+              key={[
+                browsable.id,
+                query.view,
+                page,
+                query.sort,
+                query.direction,
+                query.search,
+                query.issue,
+                query.accepted,
+                query.status,
+                query.type,
+                query.indexability,
+                query.participation,
+                query.intent,
+                query.rule,
+              ].join('|')}
+              host={domain.host}
+              rows={rows}
+              query={{ ...query, page }}
+              analysed={browsable.pagesByWorstIssue !== null}
+              analysis={
+                <CrawlSwitcher
+                  crawls={history}
+                  selected={browsable}
+                  latestId={latestId}
+                  hrefFor={(crawl) => hrefForCrawl(crawl.id)}
+                />
+              }
+              filters={
+                <>
+                  <UrlFilters
+                    stacked
+                    host={domain.host}
+                    query={{ ...query, page: 1 }}
+                    typeUnavailable={available.type ?? undefined}
+                  />
+                  <AuditFilters
+                    stacked
+                    host={domain.host}
+                    query={{ ...query, page: 1 }}
+                    unavailable={available.audit ?? undefined}
+                    {...(ruleOfList ? { rulesHref: auditTabHref(domain.host, 'rules') } : {})}
+                  />
+                  {query.accepted && (
+                    <HelpDisclosure title={tPages('accepted.title')}>
+                      {tPages('accepted.help')}
+                    </HelpDisclosure>
+                  )}
+                  {query.issue && isPageIssueId(query.issue) && (
+                    <HelpDisclosure title={tIssues(`${query.issue}.name`)}>
+                      {tIssues(`${query.issue}.description`)} {t('issueScope')}
+                    </HelpDisclosure>
+                  )}
+                </>
+              }
+              status={
+                activeFilters(query).length > 0 ? (
+                  <ListStatus
+                    host={domain.host}
+                    query={{ ...query, page: 1 }}
+                    unapplied={unapplied}
+                    matching={total}
+                    inView={viewCounts?.[query.view] ?? 0}
+                    inCrawl={viewCounts?.all ?? 0}
+                  />
+                ) : null
+              }
+              issues={
+                <IssuesFilter
+                  host={domain.host}
+                  query={{ ...query, page }}
+                  pages={browsable.pagesCount}
+                  counts={issueCounts}
+                  hasAccepted={hasAccepted}
+                  checked={browsable.pagesByWorstIssue !== null}
+                />
+              }
+              footer={
+                <Pagination
+                  page={page}
+                  pageCount={pageCount}
+                  href={(next) => detailHref(host, query, { page: next, url: null })}
+                  details={<span>{t('rowsShown', { shown: rows.length, matching: total })}</span>}
+                />
+              }
+            />
+          </UrlDrawer>
+        </>
       )}
     </main>
   )

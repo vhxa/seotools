@@ -5,6 +5,7 @@ import { CRAWL_FREQUENCIES, type CrawlFrequency } from '@seotools/core/crawl/sch
 import { useTranslations } from 'next-intl'
 import { useState, useSyncExternalStore } from 'react'
 import { saveScheduleAction, type ActionState } from '@/app/(protected)/domains/[host]/actions'
+import { useCanEdit } from '@/components/domain-access'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -47,18 +48,21 @@ function FormSelect({
   items,
   value,
   onChange,
+  disabled,
 }: {
   id: string
   name: string
   items: { value: string; label: string }[]
   value: string
   onChange: (value: string) => void
+  disabled: boolean
 }) {
   return (
     <Select
       name={name}
       items={items}
       value={value}
+      disabled={disabled}
       onValueChange={(next) => next !== null && onChange(next)}
     >
       <SelectTrigger id={id} className="w-full">
@@ -87,6 +91,7 @@ export function ScheduleForm({
   values: ScheduleFormValues
 }) {
   const t = useTranslations('Jobs.schedule')
+  const canEdit = useCanEdit()
   const [state, onSubmit, pending] = useFormActionState<ActionState>(
     saveScheduleAction.bind(null, host, type),
     {},
@@ -104,7 +109,13 @@ export function ScheduleForm({
   return (
     <form onSubmit={onSubmit} className="grid gap-4">
       <div className="flex items-center gap-2">
-        <Switch id={id('enabled')} name="enabled" checked={enabled} onCheckedChange={setEnabled} />
+        <Switch
+          id={id('enabled')}
+          name="enabled"
+          checked={enabled}
+          disabled={!canEdit}
+          onCheckedChange={setEnabled}
+        />
         <Label htmlFor={id('enabled')}>{t('enabled')}</Label>
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
@@ -114,6 +125,7 @@ export function ScheduleForm({
             id={id('frequency')}
             name="frequency"
             value={frequency}
+            disabled={!canEdit}
             onChange={setFrequency}
             items={CRAWL_FREQUENCIES.map((value) => ({
               value,
@@ -128,6 +140,7 @@ export function ScheduleForm({
               id={id('dayOfWeek')}
               name="dayOfWeek"
               value={dayOfWeek}
+              disabled={!canEdit}
               onChange={setDayOfWeek}
               items={weekdayNames(locale).map((label, day) => ({ value: String(day), label }))}
             />
@@ -140,6 +153,7 @@ export function ScheduleForm({
               id={id('dayOfMonth')}
               name="dayOfMonth"
               value={dayOfMonth}
+              disabled={!canEdit}
               onChange={setDayOfMonth}
               items={Array.from({ length: 28 }, (_, i) => ({
                 value: String(i + 1),
@@ -156,6 +170,7 @@ export function ScheduleForm({
             type="time"
             value={time}
             onChange={(event) => setTime(event.target.value)}
+            disabled={!canEdit}
             required
           />
         </div>
@@ -172,16 +187,18 @@ export function ScheduleForm({
           {state.error}
         </p>
       )}
-      <div className="flex items-center gap-3">
-        <Button type="submit" variant="outline" disabled={pending}>
-          {t('save')}
-        </Button>
-        {state.saved && !pending && (
-          <p role="status" className="text-sm text-muted-foreground">
-            {t('saved')}
-          </p>
-        )}
-      </div>
+      {canEdit && (
+        <div className="flex items-center gap-3">
+          <Button type="submit" variant="outline" disabled={pending}>
+            {t('save')}
+          </Button>
+          {state.saved && !pending && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t('saved')}
+            </p>
+          )}
+        </div>
+      )}
     </form>
   )
 }

@@ -40,7 +40,7 @@ export default async function RecheckPage({
   params: Promise<{ host: string; id: string }>
 }) {
   const { host, id } = await params
-  const { domain } = await requireDomain(host)
+  const { domain, canEdit } = await requireDomain(host)
   const db = await getDb()
   const verification = await db.verifications.get(id)
   // The id is in the address: it has to be a recheck of the domain being looked at.
@@ -107,7 +107,7 @@ export default async function RecheckPage({
             {t('title', { count: verification.urlsCount })}
           </h1>
           <RecheckStatusBadge status={verification.status} />
-          {active && (
+          {active && canEdit && (
             <form action={cancelRecheckAction.bind(null, domain.host, verification.id)}>
               <Button type="submit" variant="outline" size="sm">
                 {t('cancel')}

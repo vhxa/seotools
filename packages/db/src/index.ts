@@ -1,6 +1,8 @@
 export * from './admin'
+export { DomainArchivedError } from './archive'
 export * from './bootstrap'
 export * from './client'
 export * from './dialect'
 export * from './types'
+export * from './users'
 export * from './workspace'

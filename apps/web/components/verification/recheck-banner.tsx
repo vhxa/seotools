@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { cancelRecheckAction } from '@/app/(protected)/domains/[host]/verify-actions'
 import { AutoRefresh } from '@/components/auto-refresh'
+import { EditorsOnly } from '@/components/domain-access'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -52,11 +53,13 @@ export async function RecheckBanner({ host, domainId }: { host: string; domainId
           >
             {t('viewResults')}
           </Link>
-          <form action={cancelRecheckAction.bind(null, host, verification.id)}>
-            <Button type="submit" variant="outline" size="sm">
-              {t('cancel')}
-            </Button>
-          </form>
+          <EditorsOnly>
+            <form action={cancelRecheckAction.bind(null, host, verification.id)}>
+              <Button type="submit" variant="outline" size="sm">
+                {t('cancel')}
+              </Button>
+            </form>
+          </EditorsOnly>
         </AlertAction>
       </Alert>
     )

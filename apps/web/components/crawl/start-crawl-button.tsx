@@ -1,5 +1,6 @@
 'use client'
 
+import { useCanEdit } from '@/components/domain-access'
 import type { CrawlType } from '@seotools/core'
 import { PlayIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -19,11 +20,13 @@ export function StartCrawlButton({
   disabled?: boolean
   variant?: 'default' | 'outline'
 }) {
+  const canEdit = useCanEdit()
   const t = useTranslations('Crawl')
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     startCrawlAction.bind(null, host, type),
     {},
   )
+  if (!canEdit) return null
   return (
     <form action={formAction} className="grid shrink-0 justify-items-end gap-1">
       <Button type="submit" variant={variant} disabled={disabled || pending}>

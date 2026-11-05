@@ -13,8 +13,10 @@ import { detailHref, type DetailQuery, type NotApplied } from '@/lib/pages-query
 export function UrlFilters({
   host,
   query,
+  stacked = false,
   typeUnavailable,
 }: {
+  stacked?: boolean
   host: string
   query: DetailQuery
   /** Why the type cannot be picked in this view, if it cannot. */
@@ -27,8 +29,13 @@ export function UrlFilters({
     router.push(detailHref(host, query, { ...changes, page: 1, url: null }), { scroll: false })
 
   return (
-    <div role="group" aria-label={t('label')} className="flex flex-wrap items-center gap-2">
+    <div
+      role="group"
+      aria-label={t('label')}
+      className={stacked ? 'grid w-full gap-4' : 'flex flex-wrap items-center gap-2'}
+    >
       <FilterSelect
+        showLabel={stacked}
         label={t('status.label')}
         anyLabel={t('status.all')}
         value={query.status}
@@ -37,6 +44,7 @@ export function UrlFilters({
         className="w-48"
       />
       <FilterSelect
+        showLabel={stacked}
         label={t('type.label')}
         anyLabel={t('type.all')}
         value={query.type}

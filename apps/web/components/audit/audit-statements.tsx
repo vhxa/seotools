@@ -13,6 +13,7 @@ import {
 import { ChevronDownIcon, PlusIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
+import { InfoHelp } from '@/components/help'
 import { EffectiveNote } from '@/components/audit/effective-note'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -71,6 +72,7 @@ function StatementSelect({
   disabled,
   children,
   action,
+  help,
 }: {
   id: string
   label: string
@@ -79,12 +81,16 @@ function StatementSelect({
   onValueChange: (value: string) => void
   disabled?: boolean
   children?: ReactNode
+  help?: ReactNode
   action?: ReactNode
 }) {
   return (
     <div className="grid gap-1.5">
       <div className="flex items-center justify-between gap-2">
-        <Label htmlFor={id}>{label}</Label>
+        <div className="flex items-center gap-1">
+          <Label htmlFor={id}>{label}</Label>
+          {help && <InfoHelp label={label}>{help}</InfoHelp>}
+        </div>
         {action}
       </div>
       <Select
@@ -178,17 +184,24 @@ export function AuditStatements({
   }
   const changedFrom = (pick: string, base: string | undefined) =>
     base !== undefined && pick !== base
+  // What a URL declares can accept findings of the URLs that point at it (`relations.ts`).
+  const reachesOthers =
+    picks.intent === 'not-indexable' ||
+    (['noindex', 'robots'] as const).some(
+      (condition) =>
+        picks.conditions[condition] === 'required' || picks.conditions[condition] === 'allowed',
+    )
 
   return (
     <div className="grid gap-5">
       <StatementSelect
         id={`${idBase}-audit`}
         label={t('audit.label')}
+        help={t('audit.help')}
         items={participation}
         value={picks.audit}
         onValueChange={(value) => onChange({ ...picks, audit: value as StatementPicks['audit'] })}
       >
-        <p className="text-xs text-muted-foreground">{t('audit.help')}</p>
         {noteFor(
           'audit',
           changedFrom(picks.audit, current && (current.explicit.audit ?? 'inherit')),
@@ -228,6 +241,11 @@ export function AuditStatements({
                 key={condition}
                 id={`${idBase}-${condition}`}
                 label={tConditions(`${condition}.label`)}
+                help={
+                  stated
+                    ? tConditions(`${condition}.help.${pick as Requirement}`)
+                    : tConditions(`${condition}.default`)
+                }
                 items={requirements}
                 value={pick}
                 onValueChange={(value) =>
@@ -260,17 +278,13 @@ export function AuditStatements({
                   ) : undefined
                 }
               >
-                <p className="text-xs text-muted-foreground">
-                  {stated
-                    ? tConditions(`${condition}.help.${pick as Requirement}`)
-                    : tConditions(`${condition}.default`)}
-                </p>
                 {noteFor(condition, changedFrom(pick, current && (started ?? 'inherit')))}
               </StatementSelect>
             )
           })
         )}
         <p className="text-xs text-muted-foreground">{t('conditions.unknown')}</p>
+        {reachesOthers && <p className="text-xs text-muted-foreground">{t('relationsNote')}</p>}
       </div>
 
       <Collapsible defaultOpen={advancedOpen} className="grid gap-3">

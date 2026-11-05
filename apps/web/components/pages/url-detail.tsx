@@ -1,6 +1,6 @@
 import { AUDIT_CONDITIONS, intentOutcome } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
-import { ChevronDownIcon, CircleHelpIcon, ExternalLinkIcon } from 'lucide-react'
+import { CircleHelpIcon, ExternalLinkIcon } from 'lucide-react'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
 import {
@@ -12,7 +12,13 @@ import {
   ParticipationBadge,
   RuleOrigin,
 } from '@/components/audit/state-badges'
+import { AuditResultsNotice } from '@/components/audit/audit-notice'
+import { AcceptedFindings } from '@/components/pages/accepted-findings'
+import { Disclosure } from '@/components/pages/disclosure'
+import { FindingHelp } from '@/components/pages/finding-help'
+import { RecheckButton } from '@/components/verification/recheck-button'
 import { UrlAuditActions } from '@/components/audit/url-audit-actions'
+import { InfoHelp } from '@/components/help'
 import { PriorityToggle, UrlLink } from '@/components/crawl/url-cells'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueEvidenceView } from '@/components/pages/issue-evidence'
@@ -20,7 +26,6 @@ import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-ma
 import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Badge } from '@/components/ui/badge'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { groupDetailFindings } from '@/lib/url-detail-findings'
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { formatBytes } from '@/lib/format'
@@ -28,31 +33,16 @@ import type { UrlDetailData } from '@/lib/url-detail'
 
 function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
-    <section id={id} className="grid scroll-mt-4 gap-3">
+    <section id={id} className="grid min-w-0 scroll-mt-4 grid-cols-[minmax(0,1fr)] gap-3">
       <h3 className="text-sm font-medium">{title}</h3>
       {children}
     </section>
   )
 }
 
-/** Keep the heading/name visible while explanations remain available to keyboard users. */
-function Disclosure({ title, children }: { title: ReactNode; children: ReactNode }) {
-  return (
-    <Collapsible className="min-w-0 rounded-lg border">
-      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 rounded-lg p-3 text-left text-sm font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&[aria-expanded=true]>svg]:rotate-180">
-        <span className="min-w-0">{title}</span>
-        <ChevronDownIcon aria-hidden className="size-4 shrink-0 transition-transform" />
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="grid gap-3 px-3 pb-3">{children}</div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
 function Fields({ children }: { children: ReactNode }) {
   return (
-    <dl className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+    <dl className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-x-4 gap-y-2 text-sm @min-[24rem]/url-detail:grid-cols-[minmax(0,8rem)_minmax(0,1fr)]">
       {children}
     </dl>
   )
@@ -75,8 +65,10 @@ export async function UrlDetail({
   host,
   data,
   hrefFor,
+  context,
 }: {
   host: string
+  context?: ReactNode
   data: UrlDetailData
   hrefFor: (urlHash: string) => string
 }) {
@@ -98,9 +90,16 @@ export async function UrlDetail({
   const text = (value: string | null | undefined) => (value ? value : notSet)
 
   return (
-    <div className="grid gap-6">
+    <div className="@container/url-detail grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 [overflow-wrap:anywhere] [&_[data-slot=badge]]:max-w-full [&_[data-slot=select-trigger]]:max-w-full [&_[data-slot=select-trigger]]:min-w-0 [&_[data-slot=select-value]]:min-w-0">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">{t(`kinds.${url.kind}`)}</Badge>
+        <span className="text-sm text-muted-foreground">{t(`kinds.${url.kind}`)}</span>
+        {data.recheck.available && (
+          <RecheckButton
+            host={host}
+            urls={[url.url]}
+            disabled={data.recheck.busy || data.recheck.archived}
+          />
+        )}
         {isPage && <PriorityToggle host={host} url={url.url} marked={data.priority} />}
         {url.scope === 'internal' && (
           <UrlAuditActions host={host} url={url.url} current={data.current} />
@@ -116,16 +115,25 @@ export async function UrlDetail({
         </a>
       </div>
 
+      {context}
+      <AuditResultsNotice host={host} state={data.results} />
       <Section title={t('sections.summary')}>
         <p className="text-xs text-muted-foreground">
-          {t('crawlContext', {
+          {t('observedAt', {
             when: format.dateTime(crawl.finishedAt ?? crawl.createdAt, {
               dateStyle: 'medium',
               timeStyle: 'short',
             }),
-            version: crawl.auditVersion === null ? t('notSet') : format.number(crawl.auditVersion),
           })}
         </p>
+        {data.recheck.available && data.recheck.view && (
+          <a
+            href={`#url-recheck-${crawl.id}-${url.urlHash}`}
+            className="w-fit text-sm underline underline-offset-4"
+          >
+            {t('recheckAvailable', { when: format.relativeTime(data.recheck.view.verifiedAt) })}
+          </a>
+        )}
         <Fields>
           <Field label={t('fields.http')}>
             {url.statusCode === null && !url.error ? (
@@ -137,6 +145,17 @@ export async function UrlDetail({
               <StatusCell row={url} automaticCheck={data.automaticCheck} />
             )}
           </Field>
+          {audit && (
+            <Field label={tAudit('technical')}>
+              <div className="grid gap-1.5">
+                <div className="flex flex-wrap items-center gap-1">
+                  <IndexabilityBadge state={audit.indexability} />
+                  <InfoHelp label={tAudit('technical')}>{tState('technicalNote')}</InfoHelp>
+                </div>
+                <BlockerList blockers={audit.blockers} />
+              </div>
+            </Field>
+          )}
           {url.error && <Field label={t('fields.error')}>{url.error}</Field>}
           {url.redirectTo && (
             <Field label={t('fields.redirectTo')}>
@@ -160,108 +179,16 @@ export async function UrlDetail({
           )}
       </Section>
 
-      {url.scope === 'internal' && (
-        <Section title={t('sections.audit')}>
-          {data.results.kind === 'pending' || data.results.kind === 'failed' ? (
-            <p className="text-sm text-muted-foreground">{tAudit('pendingNote')}</p>
-          ) : null}
-          {audit === null ? (
-            <p className="text-sm text-muted-foreground">{tAudit('notAnalysed')}</p>
-          ) : (
-            <>
-              <Fields>
-                <Field label={tAudit('participation')}>
-                  <ParticipationBadge participation={audit.participation} />
-                </Field>
-                <Field label={tAudit('intent')}>
-                  {isPage ? (
-                    <div className="grid gap-1">
-                      <div className="flex flex-wrap gap-1">
-                        <IntentBadge intent={audit.intent} isDefault={audit.intentRule === null} />
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">{tState('intent.notApplicable')}</span>
-                  )}
-                </Field>
-                {AUDIT_CONDITIONS.some((condition) => audit.conditions[condition]) && (
-                  <Field label={tAudit('conditions')}>
-                    <div className="grid gap-2">
-                      {AUDIT_CONDITIONS.map((condition) => {
-                        const state = audit.conditions[condition]
-                        return state ? (
-                          <div key={condition} className="grid gap-1">
-                            <div className="flex flex-wrap gap-1">
-                              <ConditionBadges conditions={{ [condition]: state }} />
-                            </div>
-                            <RuleOrigin rule={refOf(state.rule)} />
-                          </div>
-                        ) : null
-                      })}
-                    </div>
-                  </Field>
-                )}
-                <Field label={tAudit('technical')}>
-                  <div className="grid gap-1.5">
-                    <IndexabilityBadge state={audit.indexability} />
-                    <BlockerList blockers={audit.blockers} />
-                  </div>
-                </Field>
-              </Fields>
-              {isPage && (
-                <IntentOutcomeText
-                  outcome={intentOutcome(audit.intent, audit.indexability, audit.blockers)}
-                />
-              )}
-              {audit.participation === 'excluded' && (
-                <p className="text-sm text-muted-foreground">{tAudit('excludedNote')}</p>
-              )}
-              <p className="text-xs text-muted-foreground">{tState('technicalNote')}</p>
-              <Disclosure title={t('sections.ruleOrigins')}>
-                <Fields>
-                  <Field label={tAudit('participation')}>
-                    <RuleOrigin rule={refOf(audit.participationRule)} />
-                  </Field>
-                  {isPage && (
-                    <Field label={tAudit('intent')}>
-                      <RuleOrigin rule={refOf(audit.intentRule)} />
-                    </Field>
-                  )}
-                </Fields>
-              </Disclosure>
-            </>
-          )}
-        </Section>
-      )}
-
-      {isPage && (
-        <Section title={t('sections.page')}>
-          <Fields>
-            <Field label={t('fields.title')}>{text(url.title)}</Field>
-            <Field label={t('fields.description')}>{text(url.data?.description)}</Field>
-            <Field label={t('fields.h1')}>
-              {url.data?.h1?.length ? (
-                <ul className="grid gap-1">
-                  {url.data.h1.map((heading, index) => (
-                    <li key={index}>{heading}</li>
-                  ))}
-                </ul>
-              ) : (
-                notSet
-              )}
-            </Field>
-            <Field label={t('fields.canonical')}>{text(url.canonical)}</Field>
-          </Fields>
-        </Section>
-      )}
-
       <Section id={findingsId} title={t('sections.issues')}>
+        <p className="text-xs text-muted-foreground">{t('crawlFindingsNote')}</p>
         {crawl.pagesByWorstIssue === null ? (
           <p className="text-sm text-muted-foreground">{t('notChecked')}</p>
         ) : audit?.participation === 'excluded' ? (
           <p className="text-sm text-muted-foreground">{t('excludedFindings')}</p>
         ) : data.issues.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('noIssues')}</p>
+          <p className="text-sm text-muted-foreground">
+            {data.accepted.length > 0 ? t('noPendingIssues') : t('noIssues')}
+          </p>
         ) : (
           <div className="grid gap-4">
             {findingGroups.map(({ importance, findings }) => (
@@ -273,6 +200,7 @@ export async function UrlDetail({
                   {findings.map(({ issue: id, details, evidence }) => (
                     <li key={id}>
                       <Disclosure
+                        defaultOpen={importance === 'high'}
                         title={
                           <span className="flex flex-wrap items-center gap-2">
                             {isPageIssueId(id) && <IssueMark issue={id} />}
@@ -290,6 +218,7 @@ export async function UrlDetail({
                           known={data.evidenceUrls}
                           hrefFor={hrefFor}
                         />
+                        <FindingHelp issue={id} />
                       </Disclosure>
                     </li>
                   ))}
@@ -300,7 +229,115 @@ export async function UrlDetail({
         )}
       </Section>
 
-      <UrlRecheck host={host} data={data} />
+      <AcceptedFindings data={data} hrefFor={hrefFor} />
+
+      <UrlRecheck data={data} />
+
+      {url.scope === 'internal' && (
+        <Disclosure title={t('sections.audit')}>
+          {audit === null ? (
+            <p className="text-sm text-muted-foreground">{tAudit('notAnalysed')}</p>
+          ) : (
+            <>
+              <Fields>
+                {audit.participation === 'excluded' && (
+                  <Field label={tAudit('participation')}>
+                    <ParticipationBadge participation={audit.participation} />
+                  </Field>
+                )}
+                {audit.intentRule !== null && (
+                  <Field label={tAudit('intent')}>
+                    {isPage ? (
+                      <div className="grid gap-1">
+                        <div className="flex flex-wrap gap-1">
+                          <IntentBadge
+                            intent={audit.intent}
+                            isDefault={audit.intentRule === null}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {tState('intent.notApplicable')}
+                      </span>
+                    )}
+                  </Field>
+                )}
+                {AUDIT_CONDITIONS.some((condition) => audit.conditions[condition]) && (
+                  <Field label={tAudit('conditions')}>
+                    <div className="grid gap-2">
+                      {AUDIT_CONDITIONS.map((condition) => {
+                        const state = audit.conditions[condition]
+                        return state ? (
+                          <div key={condition} className="grid gap-1">
+                            <div className="flex flex-wrap gap-1">
+                              <ConditionBadges
+                                conditions={{ [condition]: state }}
+                                className="h-auto max-w-full whitespace-normal"
+                              />
+                            </div>
+                            <RuleOrigin rule={refOf(state.rule)} />
+                          </div>
+                        ) : null
+                      })}
+                    </div>
+                  </Field>
+                )}
+              </Fields>
+              {isPage && audit.intentRule !== null && (
+                <IntentOutcomeText
+                  outcome={intentOutcome(audit.intent, audit.indexability, audit.blockers)}
+                />
+              )}
+              {audit.participation === 'excluded' && (
+                <p className="text-sm text-muted-foreground">{tAudit('excludedNote')}</p>
+              )}
+              {(audit.participationRule !== null || audit.intentRule !== null) && (
+                <Disclosure title={t('sections.ruleOrigins')}>
+                  <Fields>
+                    {audit.participationRule !== null && (
+                      <Field label={tAudit('participation')}>
+                        <RuleOrigin rule={refOf(audit.participationRule)} />
+                      </Field>
+                    )}
+                    {isPage && audit.intentRule !== null && (
+                      <Field label={tAudit('intent')}>
+                        <RuleOrigin rule={refOf(audit.intentRule)} />
+                      </Field>
+                    )}
+                  </Fields>
+                </Disclosure>
+              )}
+              {audit.participationRule === null &&
+                audit.intentRule === null &&
+                !AUDIT_CONDITIONS.some((condition) => audit.conditions[condition]) && (
+                  <p className="text-sm text-muted-foreground">{tAudit('noExplicitRules')}</p>
+                )}
+            </>
+          )}
+        </Disclosure>
+      )}
+
+      {isPage && (
+        <Disclosure title={t('sections.page')}>
+          <Fields>
+            <Field label={t('fields.title')}>{text(url.title)}</Field>
+            <Field label={t('fields.description')}>{text(url.data?.description)}</Field>
+            <Field label={t('fields.h1')}>
+              {url.data?.h1?.length ? (
+                <ul className="grid gap-1">
+                  {url.data.h1.map((heading, index) => (
+                    <li key={index}>{heading}</li>
+                  ))}
+                </ul>
+              ) : (
+                notSet
+              )}
+            </Field>
+            <Field label={t('fields.canonical')}>{text(url.canonical)}</Field>
+          </Fields>
+        </Disclosure>
+      )}
 
       <Disclosure title={t('sections.technical')}>
         <Fields>

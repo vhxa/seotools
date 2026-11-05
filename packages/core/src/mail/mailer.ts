@@ -2,6 +2,8 @@ import nodemailer from 'nodemailer'
 import { Resend } from 'resend'
 import type { MailConfig, MailMessage, Mailer, ResendConfig, SmtpConfig } from './types'
 
+const SMTP_TIMEOUT_MS = 15_000
+
 function assertBody(message: MailMessage) {
   if (!message.text && !message.html) throw new Error('Mail message needs `text` or `html`')
 }
@@ -12,6 +14,10 @@ export function createSmtpMailer(config: SmtpConfig): Mailer {
     port: config.port,
     secure: config.secure,
     auth: config.user ? { user: config.user, pass: config.pass ?? '' } : undefined,
+    // A server that does not answer must end as an error someone can read, not hang a job or a page.
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: 2 * SMTP_TIMEOUT_MS,
   })
   return {
     async send(message) {

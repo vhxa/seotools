@@ -1,3 +1,4 @@
+import { EditorsOnly } from '@/components/domain-access'
 import type { CrawlUrl } from '@seotools/db'
 import { StarIcon } from 'lucide-react'
 import { getTranslations } from 'next-intl/server'
@@ -37,9 +38,11 @@ export function PriorityToggle({
   marked: boolean
 }) {
   return (
-    <form action={setPriorityUrlAction.bind(null, host, url, !marked)}>
-      <PriorityButton marked={marked} />
-    </form>
+    <EditorsOnly>
+      <form action={setPriorityUrlAction.bind(null, host, url, !marked)}>
+        <PriorityButton marked={marked} />
+      </form>
+    </EditorsOnly>
   )
 }
 

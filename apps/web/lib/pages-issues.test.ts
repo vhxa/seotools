@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { rankIssueCounts, summariseIssues, zeroFindingState } from './pages-issues'
 
 describe('rankIssueCounts', () => {
-  it('puts the worst type first, then the most important, then the most widespread', () => {
+  it('puts the most important first, then the worst type, then the most widespread', () => {
     expect(
       rankIssueCounts([
         { issue: 'title-too-long', pages: 40 },

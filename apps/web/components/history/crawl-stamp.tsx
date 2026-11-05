@@ -42,13 +42,14 @@ export function CrawlStamp({ crawl }: { crawl: Crawl }) {
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="font-medium">{t('at', { when: when(crawl) })}</span>
       <CrawlStatusBadge status={crawl.status} />
-      <Badge
-        variant={crawl.pruned ? 'secondary' : 'outline'}
-        title={crawl.pruned ? t('prunedHint') : undefined}
-      >
-        {crawl.pruned ? t('pruned') : t('retained')}
-      </Badge>
-      <Badge variant="outline">{configLabel(crawlConfigVersion(crawl))}</Badge>
+      {crawl.pruned ? (
+        <Badge variant="secondary" title={t('prunedHint')}>
+          {t('pruned')}
+        </Badge>
+      ) : (
+        <span className="text-muted-foreground">{t('retained')}</span>
+      )}
+      <span className="text-muted-foreground">{configLabel(crawlConfigVersion(crawl))}</span>
       {olderCatalog && (
         <Badge variant="secondary" title={t('catalogOlderHint')}>
           {t('catalogOlder')}

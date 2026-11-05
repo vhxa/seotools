@@ -58,3 +58,72 @@ export async function addDomain(
     throw error
   }
 }
+
+export type RenameCompanyResult =
+  { ok: true; company: Company } | { ok: false; reason: 'invalid-name' | 'company-not-found' }
+
+/** Renames a company. Names are normalized like when it was created. */
+export async function renameCompany(
+  db: Database,
+  input: { id: string; name: string },
+): Promise<RenameCompanyResult> {
+  const name = normalizeCompanyName(input.name)
+  if (!name) return { ok: false, reason: 'invalid-name' }
+  const company = await db.companies.rename(input.id, name)
+  return company ? { ok: true, company } : { ok: false, reason: 'company-not-found' }
+}
+
+export type MoveDomainResult =
+  | { ok: true; domain: Domain }
+  | { ok: false; reason: 'domain-not-found' | 'company-not-found' | 'same-company' }
+
+/**
+ * Moves a domain to another company. The domain keeps its id, so every result, rule and schedule
+ * stays with it: only the company it is listed under changes.
+ */
+export async function moveDomain(
+  db: Database,
+  input: { domainId: string; companyId: string },
+): Promise<MoveDomainResult> {
+  const domain = await db.domains.get(input.domainId)
+  if (!domain) return { ok: false, reason: 'domain-not-found' }
+  if (domain.companyId === input.companyId) return { ok: false, reason: 'same-company' }
+  const moved = await db.domains.move({ id: domain.id, companyId: input.companyId })
+  return moved ? { ok: true, domain: moved } : { ok: false, reason: 'company-not-found' }
+}
+
+export type DeleteResult =
+  { ok: true } | { ok: false; reason: 'not-found' | 'confirmation-mismatch' }
+
+/**
+ * Deletes a domain and everything stored for it. `confirm` is what the person typed and must be
+ * the host itself (ignoring case and surrounding spaces); it is checked here against the stored
+ * host, never against anything the client sent.
+ */
+export async function deleteDomain(
+  db: Database,
+  input: { domainId: string; confirm: string },
+): Promise<DeleteResult> {
+  const domain = await db.domains.get(input.domainId)
+  if (!domain) return { ok: false, reason: 'not-found' }
+  if (input.confirm.trim().toLowerCase() !== domain.host) {
+    return { ok: false, reason: 'confirmation-mismatch' }
+  }
+  return (await db.domains.delete(domain.id)) ? { ok: true } : { ok: false, reason: 'not-found' }
+}
+
+/**
+ * Deletes a company with its domains and everything stored for them. `confirm` must be the name of
+ * the company (spaces normalized like names are, case sensitive), checked against the stored one.
+ */
+export async function deleteCompany(
+  db: Database,
+  input: { id: string; confirm: string },
+): Promise<DeleteResult> {
+  const company = await db.companies.get(input.id)
+  if (!company) return { ok: false, reason: 'not-found' }
+  if (normalizeCompanyName(input.confirm) !== company.name) {
+    return { ok: false, reason: 'confirmation-mismatch' }
+  }
+  return (await db.companies.delete(company.id)) ? { ok: true } : { ok: false, reason: 'not-found' }
+}

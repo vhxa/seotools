@@ -9,9 +9,15 @@ import {
   type PagesByWorstIssue,
   type PagesWithType,
 } from '@seotools/core'
-import type { Crawl, CrawlUrlAudit, CrawlUrlIssue, Database } from '@seotools/db'
+import type {
+  Crawl,
+  CrawlUrlAcceptedIssue,
+  CrawlUrlAudit,
+  CrawlUrlIssue,
+  Database,
+} from '@seotools/db'
 import { conditionStatesOf } from './conditions'
-import { detectIssues } from './issue-checks'
+import { detectFindings } from './issue-checks'
 import { loadSite } from './site-audit'
 
 export interface CrawlAnalysis {
@@ -60,6 +66,7 @@ export async function analyseCrawl(
 
   const site = await loadSite(db, crawl, config)
   const issues: CrawlUrlIssue[] = []
+  const acceptedIssues: CrawlUrlAcceptedIssue[] = []
   const urls: CrawlUrlAudit[] = []
   const pagesByWorstIssue: PagesByWorstIssue = { issue: 0, warning: 0, opportunity: 0 }
   const pagesWithType: PagesWithType = { issue: 0, warning: 0, opportunity: 0 }
@@ -72,7 +79,17 @@ export async function analyseCrawl(
   }
   for (const url of site.urls) {
     // Nothing for a URL left out: it has none of its own, and the other URLs were checked above it.
-    const found = detectIssues(url, site)
+    const { found, accepted } = detectFindings(url, site)
+    for (const { issue, details, evidence, by, acceptance } of accepted) {
+      acceptedIssues.push({
+        urlHash: url.url.urlHash,
+        issue,
+        acceptedBy: by.url.urlHash,
+        acceptance,
+        ...(details ? { details } : {}),
+        ...(evidence ? { evidence } : {}),
+      })
+    }
     for (const { issue, details, evidence } of found) {
       issues.push({
         urlHash: url.url.urlHash,
@@ -113,6 +130,7 @@ export async function analyseCrawl(
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,
+    accepted: acceptedIssues,
     pages: pagesByWorstIssue,
     withType: pagesWithType,
     catalog: ISSUE_CATALOG_VERSION,

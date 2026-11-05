@@ -6,7 +6,8 @@
     "status": {
       "failed": "La petición falló",
       "noResponse": "Sin respuesta"
-    }
+    },
+    "account": "Cuenta"
   },
   "NotFound": {
     "title": "Página no encontrada",
@@ -21,7 +22,9 @@
     "submit": "Iniciar sesión",
     "submitting": "Iniciando sesión…",
     "invalidCredentials": "Correo o contraseña incorrectos",
-    "genericError": "Algo salió mal. Inténtalo de nuevo."
+    "genericError": "Algo salió mal. Inténtalo de nuevo.",
+    "forgot": "¿Has olvidado tu contraseña?",
+    "passwordSet": "Tu contraseña está lista. Entra con ella."
   },
   "Setup": {
     "metaTitle": "Configuración · seotools",
@@ -80,7 +83,9 @@
     "placeholder": "Selecciona un dominio",
     "label": "Cambiar de dominio",
     "addDomain": "Añadir dominio",
-    "addCompany": "Añadir empresa"
+    "addCompany": "Añadir empresa",
+    "archived": "Archivados",
+    "manageCompanies": "Gestionar empresas"
   },
   "Sidebar": {
     "toggle": "Alternar barra lateral",
@@ -99,7 +104,13 @@
     "pagesOverview": "Resumen",
     "pagesDetails": "Detalle",
     "pagesHistory": "Historial",
-    "pagesCompare": "Comparar"
+    "pagesCompare": "Comparar",
+    "updates": "Actualizaciones",
+    "versionRelease": "v{version}",
+    "versionDevelopment": "v{version} · desarrollo",
+    "companies": "Empresas",
+    "users": "Usuarios",
+    "email": "Correo"
   },
   "ProtectedShell": {
     "skipToContent": "Saltar al contenido principal"
@@ -156,6 +167,86 @@
       "running": "en curso",
       "completed": "completado",
       "failed": "fallido"
+    }
+  },
+  "Updates": {
+    "metaTitle": "Actualizaciones · seotools",
+    "title": "Actualizaciones",
+    "description": "Qué versión está instalada y si existe una versión más reciente. Buscar actualizaciones no las instala.",
+    "status": {
+      "upToDate": {
+        "title": "Está al día",
+        "description": "{latest} es la última versión estable, según se vio {when}.",
+        "ahead": "Ejecuta la {installed}, más reciente que la última versión estable ({latest}), según se vio {when}."
+      },
+      "updateAvailable": {
+        "title": "Hay una versión nueva: {latest}",
+        "description": "Ejecuta la {installed}.",
+        "compatible": "Es una actualización compatible. Haga una copia de seguridad antes de actualizar de todos modos.",
+        "mayBreak": "Esta actualización puede incluir cambios incompatibles. Lea las notas de la versión y haga una copia de seguridad antes de actualizar.",
+        "candidate": "Ejecuta una candidata de esta versión. Ya está disponible la versión estable."
+      },
+      "checkFailed": {
+        "title": "No se pudo comprobar si hay actualizaciones",
+        "description": "{reason} Eso no significa que esté al día: significa que no se sabe.",
+        "known": "Última versión estable vista: {latest}, {when}."
+      },
+      "notChecked": {
+        "title": "Aún sin comprobar",
+        "description": "seotools todavía no ha buscado versiones nuevas. Compruébelo ahora o active las comprobaciones periódicas."
+      },
+      "development": {
+        "title": "Compilación de desarrollo",
+        "description": "Esta compilación no procede de una versión publicada. {version} es la última versión de la que desciende, así que no se compara con las nuevas."
+      }
+    },
+    "failures": {
+      "network": "seotools no pudo conectar con GitHub.",
+      "timeout": "GitHub no respondió a tiempo.",
+      "rate-limited": "GitHub está limitando las peticiones de este servidor. Inténtelo más tarde.",
+      "not-found": "No se encontró el canal de versiones; puede que el repositorio se haya movido.",
+      "http": "GitHub respondió con un error.",
+      "invalid-response": "No se entendió la respuesta de GitHub."
+    },
+    "details": {
+      "title": "Esta instalación",
+      "installed": "Versión instalada",
+      "build": "Compilación",
+      "builds": {
+        "release": "Versión publicada",
+        "candidate": "Candidata a versión",
+        "development": "Compilación de desarrollo"
+      },
+      "commit": "Commit",
+      "latest": "Última versión estable",
+      "latestValue": "{version}, publicada {when}",
+      "latestUnknown": "Desconocida",
+      "lastCheck": "Última comprobación",
+      "lastCheckValue": "{when}, {trigger}",
+      "lastCheckFailed": "{when}, {trigger}: falló",
+      "lastSuccess": "Última comprobación correcta",
+      "triggers": {
+        "manual": "manual",
+        "periodic": "periódica"
+      },
+      "never": "Nunca"
+    },
+    "checkNow": "Comprobar ahora",
+    "checking": "Comprobando…",
+    "releaseNotes": "Notas de la versión",
+    "allReleases": "Todas las versiones",
+    "updateGuide": "Cómo actualizar",
+    "periodic": {
+      "title": "Comprobaciones periódicas",
+      "description": "Desactivadas por defecto: una instalación no contacta con nadie sin que se lo pidan.",
+      "label": "Buscar versiones nuevas una vez al día",
+      "hint": "Una comprobación pregunta a GitHub por la última versión de seotools. No envía nada sobre sus dominios, sus datos ni esta instalación; GitHub solo ve la dirección desde la que se conecta su servidor. Nunca cambia nada por sí misma.",
+      "save": "Guardar",
+      "saved": "Guardado"
+    },
+    "installing": {
+      "title": "Instalar una actualización",
+      "description": "seotools nunca reemplaza su propio contenedor ni pide acceso a Docker. Eso lo hace Docker o Dokploy, con la versión que usted elija. Haga antes una copia de seguridad: volver a una imagen anterior puede exigir restaurarla."
     }
   },
   "Crawl": {
@@ -262,6 +353,11 @@
         "title": "Ya no se encuentra",
         "note": "El rastreo del {when} encontró esto en esta URL; la recomprobación no."
       },
+      "accepted": {
+        "title": "Vistos y aceptados por una regla ({count})",
+        "note": "La reverificación sigue viéndolos en esta URL, pero una regla los da por esperados, así que no están pendientes. No están corregidos.",
+        "wasPending": "El rastreo lo informó como pendiente"
+      },
       "notComparable": {
         "rules-changed": "No se ha comparado con el último rastreo completo: se analizó con otras reglas de auditoría, así que un hallazgo podría aparecer o desaparecer solo porque las reglas cambiaron.",
         "not-analysed": "No se ha comparado con el último rastreo completo: no se ha analizado en busca de problemas."
@@ -274,7 +370,9 @@
         "none": "El último rastreo completo no encontró en esta URL nada que solo un rastreo completo pueda determinar.",
         "note": "Dependen de otras páginas o de enlaces. Quedan como los dejó el rastreo del {when}: una recomprobación no dice si siguen ahí.",
         "badge": "Necesita un rastreo completo"
-      }
+      },
+      "checkedScope": "Comprobado de nuevo: la respuesta HTTP, los datos de página, robots.txt y las comprobaciones que dependen solo de esta URL. Los enlaces de otras páginas, los duplicados y la presencia en sitemaps siguen requiriendo un rastreo completo.",
+      "evidenceNote": "Los campos de respuesta de arriba y los detalles registrados debajo proceden de esta reverificación. Aquí no se reutilizan muestras de evidencia del rastreo completo."
     },
     "results": {
       "metaTitle": "Recomprobación · {host} · seotools",
@@ -363,20 +461,19 @@
       "pages": "{count, plural, one {# URL} other {# URLs}}"
     },
     "findings": {
-      "issue": {
-        "title": "Issues"
-      },
-      "warning": {
-        "title": "Warnings"
-      },
-      "opportunity": {
-        "title": "Oportunidades"
-      },
-      "empty": "No se ha encontrado nada de este tipo."
+      "high": "Importancia alta",
+      "medium": "Importancia media",
+      "low": "Importancia baja",
+      "empty": "No se ha encontrado nada de esta importancia."
     },
     "priority": {
       "mark": "Marcar como prioritaria",
       "unmark": "Quitar de prioritarias"
+    },
+    "accepted": {
+      "title": "Aceptado por una regla",
+      "help": "El rastreo los sigue viendo y una regla dice que son lo esperado. No están pendientes, y tampoco corregidos: si quitas la regla, vuelven a contar.",
+      "viewAll": "Ver todas las URLs con algún hallazgo aceptado"
     }
   },
   "PagesDetails": {
@@ -407,7 +504,7 @@
     },
     "columnsMenu": {
       "label": "Columnas",
-      "reset": "Mostrar las columnas por defecto"
+      "reset": "Restablecer columnas y anchuras"
     },
     "columns": {
       "url": "URL",
@@ -440,7 +537,10 @@
     "empty": "Ninguna URL coincide.",
     "responseTime": "{value, number} ms",
     "issueList": {
-      "all": "Todas las páginas"
+      "all": "Todas las páginas",
+      "units": "Cada incidencia cuenta las URLs afectadas. Los totales de categoría cuentan hallazgos; una URL puede aportar varios.",
+      "findings": "{count, number} hallazgos",
+      "urls": "{count, number} URLs"
     },
     "actionsMenu": {
       "label": "Acciones"
@@ -523,8 +623,73 @@
         "indexability": "Estado técnico: {value}",
         "participation": "Auditoría: {value}",
         "intent": "{value}",
-        "rule": "Decididas por una regla"
-      }
+        "rule": "Decididas por una regla",
+        "accepted": "Aceptado por una regla: {value}"
+      },
+      "anyFinding": "cualquier hallazgo"
+    },
+    "advancedFilters": "Filtros avanzados e incidencias",
+    "filtersMenu": "Filtros",
+    "issuesMenu": "Incidencias",
+    "rowsShown": "{shown, number} de {matching, number} URLs mostradas"
+  },
+  "Export": {
+    "menu": {
+      "label": "Exportar",
+      "heading": "Descargar como CSV",
+      "pages": "Páginas",
+      "pagesHint": "Una fila por URL, con su estado y cuántos hallazgos tiene.",
+      "findings": "Hallazgos",
+      "findingsHint": "Una fila por hallazgo, con su importancia y lo que lo respalda.",
+      "notAnalysed": "Este rastreo no se ha revisado en busca de hallazgos.",
+      "scope": "Todo lo que dejan los filtros, no solo esta página."
+    },
+    "errors": {
+      "missing": "Este rastreo no existe en este dominio.",
+      "noCrawl": "Este dominio todavía no tiene ningún rastreo con resultados que exportar.",
+      "pruned": "Los resultados de este rastreo se eliminaron por el ajuste de retención, así que solo quedan sus totales y no hay nada que exportar.",
+      "notAnalysed": "Este rastreo no se ha revisado en busca de hallazgos, así que no hay ninguno que exportar."
+    },
+    "columns": {
+      "domain": "Dominio",
+      "crawlDate": "Fecha del rastreo (UTC)",
+      "crawlId": "ID del rastreo",
+      "filters": "Filtros",
+      "url": "URL",
+      "site": "Sitio",
+      "kind": "Tipo",
+      "status": "Estado HTTP",
+      "error": "Error de la petición",
+      "indexability": "Estado técnico",
+      "blockers": "Bloqueos",
+      "audit": "Auditoría",
+      "expectation": "Indexación esperada",
+      "title": "Título",
+      "issues": "Número de issues",
+      "warnings": "Número de warnings",
+      "opportunities": "Número de opportunities",
+      "finding": "ID del hallazgo",
+      "findingName": "Hallazgo",
+      "category": "Categoría",
+      "type": "Tipo de hallazgo",
+      "importance": "Importancia",
+      "details": "Detalles",
+      "evidenceTotal": "Evidencias encontradas",
+      "evidenceSamples": "Ejemplos de evidencia",
+      "findingState": "Estado",
+      "acceptedBecause": "Motivo de la aceptación",
+      "acceptedFindings": "Aceptados por una regla"
+    },
+    "values": {
+      "internal": "Este sitio",
+      "external": "Externa",
+      "atLeast": "Al menos {total, number}",
+      "evidenceNotStored": "No guardada en este rastreo",
+      "pending": "Pendiente",
+      "accepted": "Aceptado por una regla"
+    },
+    "filters": {
+      "view": "Vista: {value}"
     }
   },
   "UrlDetail": {
@@ -580,7 +745,8 @@
       "pendingNote": "La configuración de auditoría cambió después de analizar este crawl. Lo que se muestra aquí puede no reflejarla todavía.",
       "notAnalysed": "Este crawl se analizó antes de que existieran las reglas de auditoría, o no se ha analizado: el estado de auditoría de esta URL no se conoce.",
       "configure": "Configurar auditoría…",
-      "conditions": "Condiciones"
+      "conditions": "Condiciones",
+      "noExplicitRules": "No hay reglas explícitas para esta URL."
     },
     "noFindings": "Sin hallazgos.",
     "excludedFindings": "Excluida de la auditoría: no tiene hallazgos propios.",
@@ -592,6 +758,22 @@
       "medium": "Importancia media ({count, number})",
       "low": "Importancia baja ({count, number})",
       "unknown": "Otros hallazgos ({count, number})"
+    },
+    "observedAt": "Rastreo completo · {when}",
+    "crawlFindingsNote": "Estos hallazgos pertenecen al rastreo completo seleccionado. La reverificación se muestra por separado debajo y no los sustituye.",
+    "recheckAvailable": "Reverificada {when} · ver resultados separados",
+    "noPendingIssues": "Nada pendiente en esta URL.",
+    "accepted": {
+      "title": "Aceptado por una regla ({count, number})",
+      "note": "El rastreo los sigue viendo. Una regla dice que son lo esperado, así que no están pendientes, y tampoco corregidos.",
+      "condition": "Una regla indica {condition}: {requirement}.",
+      "expectation": "Una regla espera que esta URL no sea indexable.",
+      "origin": "Una regla espera que esta URL no sea indexable, así que lo que enlaza o a lo que apunta no aporta nada nuevo.",
+      "destination": "Lo acepta una regla de la URL a la que apunta esta: {blockers}.",
+      "ruleRemoved": "La regla ya no existe.",
+      "related": "{total, plural, one {# URL a la que apunta} other {# URLs a las que apunta}}",
+      "elsewhereTitle": "Las reglas de esta URL afectan a otras URLs ({total, number})",
+      "elsewhereNote": "Lo que una regla declara de esta URL acepta estos hallazgos de las URLs que apuntan a ella. Los primeros:"
     }
   },
   "UrlLinks": {
@@ -1219,7 +1401,8 @@
     "sections": {
       "crawl": "Rastreo",
       "priority": "Páginas prioritarias",
-      "audit": "Auditoría"
+      "audit": "Auditoría",
+      "alerts": "Alertas"
     }
   },
   "CrawlSettings": {
@@ -1269,10 +1452,10 @@
       "hints": {
         "latest": "Permite comparar rastreos, con un tamaño de base de datos acotado.",
         "current": "La opción más ligera. No se podrán comparar rastreos URL a URL.",
-        "all": "Nunca se borra nada, así que la base de datos crece sin límite."
+        "all": "Conserva los resultados de todos los rastreos completados e incompletos; la base de datos crece sin límite."
       },
       "countLabel": "Cuántos de cada tipo",
-      "countHint": "Los anteriores conservan su resumen, pero pierden los resultados por URL."
+      "countHint": "Los rastreos antiguos solo conservan totales; se eliminan sus resultados por URL, enlaces y evidencias."
     },
     "optionalFiles": {
       "label": "Otros archivos de rastreo",
@@ -1667,7 +1850,8 @@
           "description": "Debe contener exactamente la clave, o los buscadores rechazarán lo que se anuncie con ella."
         }
       }
-    }
+    },
+    "aboutFile": "Acerca de este archivo"
   },
   "Pagination": {
     "summary": "Página {page, number} de {pages, number}",
@@ -2020,12 +2204,16 @@
     },
     "picker": {
       "label": "Rastreo",
-      "option": "{when} · {status}{coverage, select, pruned { · resultados podados} other {}}{latest, select, yes { · último} other {}}"
+      "option": "{when} · {status}{coverage, select, pruned { · resultados podados} other {}}{latest, select, yes { · último} other {}}",
+      "latestCompact": "Último análisis · {when}",
+      "historicalCompact": "Análisis histórico · {when}"
     },
     "banner": {
       "viewing": "Estás viendo el rastreo del {when}, no el último.",
       "backToLatest": "Volver al último rastreo",
-      "configBehind": "Analizado con: {config}. Vigente ahora: {current}. Un rastreo anterior conserva las reglas con las que se analizó, así que sus resultados no se recalculan."
+      "configBehind": "Analizado con: {config}. Vigente ahora: {current}. Un rastreo anterior conserva las reglas con las que se analizó, así que sus resultados no se recalculan.",
+      "details": "Detalles del análisis",
+      "incomplete": "Cobertura parcial: este rastreo no se completó. Pueden faltar hallazgos."
     },
     "details": {
       "detailsDescription": "Todas las URL del rastreo completo elegido, tal como las vio ese rastreo. Selecciona algunas para actuar sobre ellas a la vez.",
@@ -2204,7 +2392,9 @@
       },
       "unverifiedHint": "Los hallazgos difieren, pero no se muestra como nuevo ni resuelto porque: {reasons}.",
       "persistent": "Sigue detectado",
-      "persistentHint": "Detectado por ambos rastreos."
+      "persistentHint": "Detectado por ambos rastreos.",
+      "accepted": "Aceptado por una regla",
+      "acceptedHint": "El rastreo posterior lo sigue viendo y una regla dice que es lo esperado. No se ha corregido."
     },
     "reasons": {
       "pruned": "un rastreo fue podado",
@@ -2258,7 +2448,8 @@
         },
         "description": "Las URL a las que no llegó no están ausentes, y los hallazgos que miran otras páginas (duplicados, enlaces entrantes, redirecciones) no se llaman nuevos ni resueltos para él."
       }
-    }
+    },
+    "rowsShown": "{shown, number} de {matching, number} URLs mostradas"
   },
   "HttpStatus": {
     "automaticCheck": "Comprobación automática",
@@ -2337,6 +2528,378 @@
         "indexable": "Se comprueba en el crawl qué impide indexar la URL.",
         "not-indexable": "Un noindex está bien; ser indexable no. No es lo mismo que exigir un noindex. Las páginas que apuntan a ella no reciben aviso por su noindex ni por un canonical a otra URL; un bloqueo de robots.txt se sigue señalando."
       }
+    },
+    "relationsNote": "Esto también acepta hallazgos de las URLs que apuntan aquí (canonical, hreflang). Los hallazgos aceptados no están corregidos: siguen visibles como aceptados por una regla."
+  },
+  "Help": {
+    "about": "Información sobre {subject}",
+    "close": "Cerrar ayuda",
+    "documentation": "Acerca de estos resultados",
+    "diagnostics": "Herramientas de diagnóstico"
+  },
+  "ResultsTable": {
+    "rows": "Tabla de resultados. Desplázate para explorar filas y columnas.",
+    "resize": "Cambiar anchura de {column}. Usa las flechas; Inicio restablece la anchura."
+  },
+  "FindingHelp": {
+    "title": "Edita la plantilla para incluir un título descriptivo en el head. Hazlo específico de esta página y revisa su longitud y los posibles duplicados.",
+    "response-codes": "Revisa la respuesta y el destino de la redirección. Corrige los errores del servidor, las URL rotas o las cadenas de redirección involuntarios y vuelve a comprobar la URL.",
+    "indexing-intent": "Compara los bloqueos observados con la política de indexación deseada. Ajusta la directiva o la entrada del sitemap correspondiente; cambia la regla solo si la expectativa declarada es incorrecta.",
+    "directives": "Revisa la cabecera HTTP X-Robots-Tag y las etiquetas meta robots. Haz que coincidan con la política deseada y sitúa las directivas HTML en el head.",
+    "canonicals": "Revisa las declaraciones canonical y su destino. Usa una URL absoluta coherente, sin fragmento, y confirma que el destino sea la página canónica deseada.",
+    "sitemaps": "Revisa el sitemap y las entradas afectadas. Ajusta las URL incluidas a tu política, corrige los archivos inválidos o demasiado grandes y ejecuta un rastreo completo para comprobar los hallazgos del sitio.",
+    "hreflang": "Revisa el conjunto de páginas de idiomas afectado. Corrige los códigos de idioma y los destinos, usa URL canónicas y enlaces de retorno coherentes y ejecuta un rastreo completo.",
+    "meta-description": "Incluye una descripción útil en el head que refleje el contenido. Revisa su longitud y evita reutilizarla en páginas diferentes.",
+    "headings": "Revisa la jerarquía de encabezados de la plantilla. Usa encabezados descriptivos, no vacíos, que reflejen la estructura del contenido.",
+    "content": "Revisa el contenido y las páginas relacionadas de la evidencia. Sustituye el texto de relleno, añade contenido original útil o unifica páginas con el mismo propósito.",
+    "images": "Inspecciona las imágenes afectadas en la plantilla. Añade texto alternativo útil para imágenes informativas, déjalo vacío en las decorativas y revisa las dimensiones y el peso.",
+    "structured-data": "Revisa el JSON-LD de la página. Corrige los errores de sintaxis y usa datos estructurados adecuados al contenido visible; valídalos después de editarlos.",
+    "links": "Revisa los enlaces afectados y sus páginas de origen. Usa destinos HTTP(S) accesibles y textos descriptivos, y añade navegación interna útil donde haga falta. Ejecuta un rastreo completo para los hallazgos sobre enlaces entrantes.",
+    "urls": "Revisa cómo se generan las URL y los enlaces internos. Elige un formato estable y legible y, si una dirección debe cambiar, actualiza los enlaces y configura la redirección adecuada.",
+    "security": "Revisa los recursos, formularios, enlaces o cabeceras HTTP afectados. Usa destinos HTTPS y aplica las protecciones del navegador correspondientes, comprobando que el sitio siga funcionando.",
+    "html": "Inspecciona el HTML recibido y su plantilla. Corrige la estructura del documento, mantén los metadatos en un head válido y reduce el tamaño excesivo cuando corresponda.",
+    "robots-blocked": "Si esta URL debe poder rastrearse, edita la regla de robots.txt que coincide para el bot auditado. Si el bloqueo es intencional, decláralo en las reglas de auditoría; un bloqueo no demuestra que la URL no aparezca en los resultados de búsqueda.",
+    "no-response": "Comprueba DNS, TLS, la disponibilidad del servidor y los tiempos de espera. Restablece el acceso para el User-Agent del rastreador configurado y reverifica la URL.",
+    "client-error": "Restablece el recurso previsto o corrige los enlaces que apuntan a él. Si se movió, redirige al sustituto adecuado; si el error es intencional, revisa la política de auditoría.",
+    "soft-404-confirmed": "Comprueba si la página realmente falta. Devuelve un 404/410 para contenido eliminado o restablece contenido útil y elimina las señales de error engañosas.",
+    "soft-404-possible": "Inspecciona la página para confirmar si es una página de error. Si lo es, devuelve el estado de error adecuado; si no, revisa el contenido que parece un mensaje de error.",
+    "broken-external-link": "Comprueba el destino externo y actualiza o elimina el enlace roto en sus páginas de origen. Ejecuta un rastreo completo para comprobar de nuevo los enlaces externos.",
+    "refresh-redirect": "Revisa la declaración refresh. Si el traslado es permanente, prioriza una redirección HTTP al destino final y actualiza los enlaces internos.",
+    "noindex": "Si la página debe ser indexable, elimina la directiva noindex del HTML y las cabeceras HTTP. Si es intencional, declara la política deseada en las reglas de auditoría.",
+    "canonicalised": "Confirma que la canónica declarada sea la URL preferida deseada. Si esta página debe ser independiente, corrige la canónica; en caso contrario, alinea los enlaces internos y la expectativa de auditoría con la página preferida.",
+    "noindex-required-missing": "Añade una directiva noindex en el head o en la cabecera X-Robots-Tag si el requisito es correcto. En caso contrario, edita la regla que la exige y reverifica.",
+    "nofollow-required-missing": "Añade la directiva nofollow exigida en el head o la cabecera HTTP, o corrige la regla si deben seguirse los enlaces. Nofollow no impide la indexación.",
+    "robots-block-required-missing": "Añade el bloqueo previsto en robots.txt para el bot auditado o corrige la regla que lo exige. Un bloqueo en robots.txt no garantiza la eliminación del índice.",
+    "sitemap-required-missing": "Incluye esta URL como entrada en un sitemap que el rastreador pueda leer o corrige la regla que lo exige. Ejecuta un rastreo completo para verificar su presencia.",
+    "sitemap-forbidden-present": "Elimina la entrada de la URL de los sitemaps afectados o corrige la regla si debe figurar en ellos. Ejecuta un rastreo completo para verificar el cambio."
+  },
+  "Companies": {
+    "metaTitle": "Empresas · seotools",
+    "title": "Empresas",
+    "addCompany": "Añadir empresa",
+    "empty": "Todavía no hay empresas.",
+    "domainCount": "{count, plural, one {# dominio} other {# dominios}}",
+    "noDomains": "Sin dominios",
+    "archivedBadge": "Archivado",
+    "actionsLabel": "Acciones de {name}",
+    "company": {
+      "rename": "Renombrar",
+      "addDomain": "Añadir dominio",
+      "delete": "Eliminar empresa…"
+    },
+    "domain": {
+      "open": "Abrir",
+      "archive": "Archivar…",
+      "restore": "Restaurar",
+      "move": "Mover a otra empresa…",
+      "changeSite": "Cambiar de sitio…",
+      "delete": "Eliminar dominio…"
+    },
+    "rename": {
+      "title": "Renombrar empresa",
+      "label": "Nombre",
+      "submit": "Guardar",
+      "submitting": "Guardando…"
+    },
+    "archive": {
+      "title": "¿Archivar {host}?",
+      "description": "Sus datos se conservan y siguen siendo legibles. Se detienen los rastreos programados y las actualizaciones de su icono y archivos, se cancela cualquier rastreo o verificación en curso y sus ajustes no podrán cambiar hasta que lo restaures.",
+      "submit": "Archivar",
+      "submitting": "Archivando…"
+    },
+    "move": {
+      "title": "Mover {host}",
+      "label": "Nueva empresa",
+      "results": "Sus rastreos, resultados, reglas y programaciones se mueven con él sin cambios.",
+      "access": {
+        "unchanged": "Nadie gana ni pierde acceso: quienes lo ven son los mismos antes y después.",
+        "gain": "Ganan acceso: {names}.",
+        "lose": "Pierden acceso: {names}."
+      },
+      "submit": "Mover dominio",
+      "submitting": "Moviendo…"
+    },
+    "changeSite": {
+      "title": "Cambiar de sitio",
+      "description": "La dirección de un dominio no se puede editar, porque sus resultados pertenecen a ese sitio. Para seguir un sitio nuevo, añade un dominio nuevo y archiva este.",
+      "addDomain": "Añadir dominio"
+    },
+    "delete": {
+      "close": "Cancelar",
+      "domainTitle": "¿Eliminar {host}?",
+      "domainLead": "Esto elimina de forma permanente {host} y:",
+      "companyTitle": "¿Eliminar {name}?",
+      "companyLead": "Esto elimina de forma permanente la empresa con {domains}: {hosts}, y:",
+      "companyLeadEmpty": "Esto elimina de forma permanente la empresa, que no tiene dominios.",
+      "nothingStored": "No tiene rastreos, resultados, reglas ni programaciones guardados.",
+      "keepHistory": "Para conservar su historial, archívalo en su lugar.",
+      "confirmLabel": "Escribe {value} para confirmar",
+      "domainSubmit": "Eliminar dominio",
+      "companySubmit": "Eliminar empresa",
+      "submitting": "Eliminando…",
+      "usage": {
+        "crawls": "{count, plural, one {# rastreo} other {# rastreos}}",
+        "urls": "{count, plural, one {# resultado de URL conservado} other {# resultados de URL conservados}}",
+        "rules": "{count, plural, one {# regla o excepción de auditoría} other {# reglas y excepciones de auditoría}}",
+        "rechecks": "{count, plural, one {# verificación} other {# verificaciones}}",
+        "schedules": "{count, plural, one {# programación} other {# programaciones}}",
+        "priorityUrls": "{count, plural, one {# URL prioritaria} other {# URLs prioritarias}}",
+        "crawlFiles": "{count, plural, one {# archivo de rastreo} other {# archivos de rastreo}}"
+      }
+    },
+    "errors": {
+      "invalidName": "Introduce un nombre de empresa de hasta {max} caracteres.",
+      "domainNotFound": "Ese dominio ya no existe.",
+      "companyNotFound": "Esa empresa ya no existe.",
+      "sameCompany": "El dominio ya pertenece a esa empresa.",
+      "confirmMismatch": "Lo que has escrito no coincide.",
+      "invalidRequest": "La solicitud no es válida."
     }
+  },
+  "Archive": {
+    "notice": "Este dominio está archivado. Sus datos se conservan, pero nada se ejecuta automáticamente y no se puede modificar.",
+    "manage": "Gestionar",
+    "refused": "Este dominio está archivado. Restáuralo para hacer cambios."
+  },
+  "NoAccess": {
+    "title": "Todavía no hay nada que mostrar",
+    "description": "Tu cuenta no tiene ninguna empresa ni dominio. Pide acceso a un administrador."
+  },
+  "Users": {
+    "title": "Usuarios",
+    "close": "Cerrar",
+    "actions": "Acciones de {name}",
+    "enable": "Activar",
+    "disable": "Desactivar",
+    "columns": {
+      "user": "Usuario",
+      "role": "Rol",
+      "access": "Acceso",
+      "state": "Estado"
+    },
+    "roles": {
+      "admin": "Administrador",
+      "member": "Miembro",
+      "editor": "Editor",
+      "viewer": "Lector"
+    },
+    "roleHelp": {
+      "admin": "Lo ve todo y gestiona usuarios, empresas y la instancia.",
+      "member": "Solo llega a lo que le des aquí abajo."
+    },
+    "state": {
+      "active": "Activa",
+      "invited": "Invitación pendiente",
+      "disabled": "Desactivada {when}"
+    },
+    "access": {
+      "everything": "Todas las empresas y dominios",
+      "nothing": "Nada todavía: no puede ver ningún dominio.",
+      "row": "{target}: {role}",
+      "companyTarget": "{name} (toda la empresa)",
+      "target": "Empresa o dominio",
+      "add": "Añadir",
+      "remove": "Quitar",
+      "help": "Una empresa cubre todos sus dominios, también los futuros. El rol en un dominio sustituye allí al de la empresa. Un editor puede lanzar rastreos y cambiar reglas y ajustes; un lector puede consultar y exportar."
+    },
+    "invite": {
+      "button": "Invitar usuario",
+      "title": "Invitar a un usuario",
+      "description": "Recibe un enlace para elegir su contraseña. El registro sigue cerrado.",
+      "name": "Nombre",
+      "email": "Correo",
+      "submit": "Crear y obtener enlace",
+      "submitting": "Creando…"
+    },
+    "edit": {
+      "menu": "Editar rol y acceso",
+      "title": "Rol y acceso de {name}",
+      "submit": "Guardar",
+      "submitting": "Guardando…"
+    },
+    "link": {
+      "label": "Enlace",
+      "copy": "Copiar enlace",
+      "copied": "Copiado",
+      "emailed": "Va de camino un correo con un enlace. Si no llega, envíale este:",
+      "handOver": "Envíale este enlace:",
+      "once": "Solo se muestra ahora y funciona una vez.",
+      "inviteMenu": "Obtener enlace de invitación",
+      "recoveryMenu": "Obtener enlace de recuperación"
+    },
+    "errors": {
+      "invalidRequest": "Esa petición no es válida.",
+      "invalidName": "Escribe un nombre de hasta 100 caracteres.",
+      "invalidEmail": "Escribe un correo válido.",
+      "emailTaken": "Ya hay una cuenta con ese correo.",
+      "invalidAccess": "Una empresa o un dominio de ese acceso ya no existe.",
+      "lastAdmin": "Así no quedaría nadie que pueda administrar la instancia. Haz antes a otra persona administrador activo.",
+      "userNotFound": "Esa cuenta ya no existe.",
+      "userDisabled": "Activa antes la cuenta."
+    }
+  },
+  "Account": {
+    "title": "Cuenta",
+    "password": "Contraseña",
+    "current": "Contraseña actual",
+    "next": "Contraseña nueva",
+    "othersSignedOut": "Se cerrará la sesión en tus otros dispositivos.",
+    "submit": "Cambiar contraseña",
+    "submitting": "Cambiando…",
+    "changed": "Tu contraseña ha cambiado.",
+    "errors": {
+      "length": "Usa entre {min, number} y {max, number} caracteres.",
+      "wrongPassword": "La contraseña actual no es correcta."
+    },
+    "alerts": {
+      "title": "Alertas",
+      "description": "Elige de qué quieres recibir correo en cada dominio. No se envía nada hasta que lo elijas, y solo de los dominios que puedes ver.",
+      "language": "Los correos se escriben en el idioma que estés usando al guardar.",
+      "empty": "Todavía no puedes ver ningún dominio.",
+      "archived": "Archivado: no se envían alertas.",
+      "kinds": {
+        "crawl-problem": {
+          "label": "Problemas de rastreo",
+          "hint": "Un rastreo falló o se detuvo antes de llegar a todo el sitio."
+        },
+        "important-findings": {
+          "label": "Nuevos hallazgos importantes",
+          "hint": "Hallazgos de importancia alta que han aparecido o vuelto desde el rastreo anterior. No se incluyen los cambios que solo vienen de las reglas de auditoría."
+        },
+        "change-summary": {
+          "label": "Resumen de cambios",
+          "hint": "Un correo por cada rastreo terminado, con lo que ha cambiado."
+        }
+      },
+      "save": "Guardar alertas",
+      "saving": "Guardando…",
+      "saved": "Tus alertas están guardadas.",
+      "errors": {
+        "failed": "No se pudieron guardar las alertas."
+      }
+    }
+  },
+  "PasswordRecovery": {
+    "title": "Recupera tu contraseña",
+    "description": "Escribe el correo de tu cuenta.",
+    "email": "Correo",
+    "submit": "Enviarme un enlace",
+    "submitting": "Enviando…",
+    "sent": "Si ese correo tiene cuenta y esta instalación puede enviar correo, va de camino un enlace. Si no llega nada, pide a un administrador un enlace de recuperación.",
+    "backToLogin": "Volver a entrar"
+  },
+  "SetPassword": {
+    "metaTitle": "Elige tu contraseña",
+    "titles": {
+      "invite": "Elige tu contraseña",
+      "reset": "Elige una contraseña nueva"
+    },
+    "password": "Contraseña",
+    "confirm": "Repite la contraseña",
+    "submit": "Guardar contraseña",
+    "submitting": "Guardando…",
+    "invalid": {
+      "title": "Este enlace no funciona",
+      "description": "Puede que haya caducado o que ya se haya usado.",
+      "again": "Pide uno nuevo"
+    },
+    "errors": {
+      "length": "Usa entre {min, number} y {max, number} caracteres.",
+      "mismatch": "Las dos contraseñas no coinciden.",
+      "expired": "Este enlace ya no funciona. Pide uno nuevo."
+    }
+  },
+  "Email": {
+    "metaTitle": "Correo · seotools",
+    "title": "Correo",
+    "description": "Cómo envía correo la aplicación: invitaciones, enlaces de contraseña y alertas de rastreo.",
+    "health": {
+      "unconfigured": {
+        "title": "El correo no está configurado",
+        "description": "Algo ha intentado enviar un correo y no hay proveedor. Configúralo abajo: lo que espera se envía cuando funcione.",
+        "open": "Configurarlo"
+      },
+      "failing": {
+        "title": "El último correo no se entregó",
+        "description": "Revisa los ajustes, envía un correo de prueba y mira los problemas recientes.",
+        "open": "Ver qué ha fallado"
+      }
+    },
+    "provider": {
+      "title": "Proveedor",
+      "description": "Desde dónde se envían los correos. Una contraseña o clave de API se guarda cifrada y no se vuelve a mostrar.",
+      "label": "Proveedor",
+      "smtp": "SMTP",
+      "resend": "Resend",
+      "host": "Servidor",
+      "port": "Puerto",
+      "secure": "Usar TLS desde el principio",
+      "secureHint": "Actívalo para el puerto 465. Déjalo desactivado para el 587: la conexión se cifra cuando el servidor lo ofrece.",
+      "user": "Usuario",
+      "userHint": "Déjalo vacío si el servidor no pide ninguno.",
+      "pass": "Contraseña",
+      "apiKey": "Clave de API",
+      "secretSaved": "Hay una guardada. Déjalo vacío para conservarla.",
+      "secretNone": "Aún no hay ninguna guardada.",
+      "from": "Remitente",
+      "fromHint": "La dirección desde la que salen los correos, por ejemplo seo@example.com.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "saved": "Guardado."
+    },
+    "test": {
+      "title": "Enviar un correo de prueba",
+      "description": "Envía un mensaje corto con los ajustes guardados y muestra aquí mismo lo que responde el proveedor.",
+      "to": "Enviar a",
+      "send": "Enviar prueba",
+      "sending": "Enviando…",
+      "sent": "Enviado a {address}. Comprueba que ha llegado.",
+      "failed": "El proveedor no lo aceptó: {error}"
+    },
+    "recent": {
+      "problemsTitle": "Problemas recientes",
+      "problemsDescription": "Intentos que no se enviaron. Los antiguos se eliminan.",
+      "problemsEmpty": "No ha fallado nada.",
+      "sentTitle": "Correos recientes",
+      "sentDescription": "A quién fue un correo y de qué tipo. Nunca se guarda el texto.",
+      "sentEmpty": "Aún no se ha enviado nada.",
+      "columns": {
+        "when": "Cuándo",
+        "kind": "Tipo",
+        "recipient": "Para",
+        "status": "Resultado",
+        "error": "Lo que dijo el proveedor"
+      }
+    },
+    "kinds": {
+      "invite": "Invitación",
+      "reset": "Restablecer contraseña",
+      "alert": "Alerta de rastreo",
+      "test": "Prueba",
+      "other": "Otro"
+    },
+    "status": {
+      "sent": "Enviado",
+      "failed": "Fallido",
+      "unconfigured": "Sin configurar"
+    },
+    "errors": {
+      "provider": "Elige un proveedor.",
+      "host": "Escribe la dirección del servidor, sin esquema ni ruta.",
+      "port": "El puerto es un número entre 1 y 65535.",
+      "from": "Escribe la dirección desde la que salen los correos.",
+      "apiKey": "Escribe la clave de API.",
+      "address": "Escribe una dirección de correo válida.",
+      "notConfigured": "Guarda primero los ajustes."
+    }
+  },
+  "AlertsSettings": {
+    "metaTitle": "Alertas · {host}",
+    "title": "Alertas",
+    "description": "Las alertas son personales: cada persona elige en su cuenta de qué se le avisa por correo sobre {host}.",
+    "current": "Recibes correo sobre: {kinds}.",
+    "none": "No recibes correo sobre este dominio.",
+    "archived": "Este dominio está archivado: no se envían alertas.",
+    "manage": "Elegir mis alertas"
   }
 }

@@ -89,27 +89,29 @@ export default async function UrlPage({
         </Link>
         <h1 className="font-mono text-lg font-semibold break-all">{data.url.url}</h1>
       </div>
-      <CrawlBanner
-        crawl={selected}
-        historical={historical}
-        currentVersion={config.version}
-        latestHref={historical ? `/domains/${domain.host}/pages/details/${hash}` : null}
-        picker={
-          <CrawlSwitcher
-            crawls={history}
-            selected={selected}
-            latestId={latestId}
-            hrefFor={(crawl) =>
-              `/domains/${domain.host}/pages/details/${hash}${crawlParam(crawl.id)}`
-            }
-          />
-        }
-      />
       <Card>
         <CardContent>
           <UrlDetail
             host={domain.host}
             data={data}
+            context={
+              <CrawlBanner
+                crawl={selected}
+                historical={historical}
+                currentVersion={config.version}
+                latestHref={historical ? `/domains/${domain.host}/pages/details/${hash}` : null}
+                picker={
+                  <CrawlSwitcher
+                    crawls={history}
+                    selected={selected}
+                    latestId={latestId}
+                    hrefFor={(crawl) =>
+                      `/domains/${domain.host}/pages/details/${hash}${crawlParam(crawl.id)}`
+                    }
+                  />
+                }
+              />
+            }
             hrefFor={(urlHash) =>
               `/domains/${domain.host}/pages/details/${urlHash}${crawlParam(selected.id)}`
             }

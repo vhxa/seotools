@@ -18,10 +18,10 @@ export default async function DomainSettingsLayout({
     <main className="grid gap-6">
       <div className="grid gap-1">
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('description', { host: domain.host })}</p>
       </div>
       <div className="grid items-start gap-6 md:grid-cols-[12rem_minmax(0,1fr)]">
         <SettingsNav host={domain.host} />
+        {/* What changes the domain is inert while archived: see `(config)/layout.tsx`. */}
         <div className="grid min-w-0 gap-6">{children}</div>
       </div>
     </main>

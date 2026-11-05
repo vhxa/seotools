@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   and,
   asc,
@@ -15,16 +15,26 @@ import {
   type SQL,
   type SQLWrapper,
 } from 'drizzle-orm'
+import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/acceptance'
 import {
+  ALERT_KINDS,
   JOB_TYPES,
+  MAX_DELIVERY_ERROR_LENGTH,
   MAX_VERIFICATION_URLS,
+  alertLocaleOf,
   crawlUrlHash,
   enabledExtraFiles,
   parseAuditSnapshot,
   parseIssueEvidence,
   readUrlAuditState,
   serializeAuditSnapshot,
+  sortedAlertKinds,
   statusRange,
+  type AccessGrant,
+  type AlertKind,
+  type AlertLocale,
+  type MailKind,
+  type MailStatus,
   type AuditCondition,
   type AuditSnapshot,
   type ConditionObservation,
@@ -46,8 +56,12 @@ import {
   type VerificationOutcome,
 } from '@seotools/core'
 import type {
+  AlertSubscription,
+  MailDelivery,
   Company,
   CompanyWithDomains,
+  UserRecord,
+  CrawlUrlAcceptedIssue,
   Crawl,
   CrawlCounts,
   CrawlFile,
@@ -69,6 +83,7 @@ import type {
   CrawlViewCounts,
   Domain,
   DomainFavicon,
+  DomainUsage,
   FaviconImage,
   NewCrawlFile,
   NewCrawlUrl,
@@ -120,6 +135,74 @@ export const EMPTY_COUNTS: Record<JobStatus, number> = {
 
 export const CREDENTIAL_PROVIDER = 'credential'
 
+// --- users ---------------------------------------------------------------
+/** An account as a repository returns it. A role that is not known gives nothing extra. */
+export function toUserRecord(
+  row: {
+    id: string
+    name: string
+    email: string
+    role: string
+    disabledAt: Date | null
+    resetRequestedAt: Date | null
+    createdAt: Date
+  },
+  hasPassword: boolean,
+): UserRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role === 'admin' ? 'admin' : 'member',
+    disabledAt: row.disabledAt,
+    hasPassword,
+    resetRequestedAt: row.resetRequestedAt,
+    createdAt: row.createdAt,
+  }
+}
+
+/** A grant as stored. A role that is not known reads only. `null`: it says nothing it can act on. */
+export function toAccessGrant(row: {
+  role: string
+  companyId: string | null
+  domainId: string | null
+}): AccessGrant | null {
+  const role = row.role === 'editor' ? 'editor' : 'viewer'
+  if (row.domainId) return { role, companyId: null, domainId: row.domainId }
+  return row.companyId ? { role, companyId: row.companyId, domainId: null } : null
+}
+
+/** The grants of each user. */
+export function foldGrants(
+  rows: readonly {
+    userId: string
+    role: string
+    companyId: string | null
+    domainId: string | null
+  }[],
+): Map<string, AccessGrant[]> {
+  const byUser = new Map<string, AccessGrant[]>()
+  for (const row of rows) {
+    const grant = toAccessGrant(row)
+    if (grant) byUser.set(row.userId, [...(byUser.get(row.userId) ?? []), grant])
+  }
+  return byUser
+}
+
+export const accessRows = (userId: string, grants: readonly AccessGrant[]) =>
+  grants.map(({ role, companyId, domainId }) => ({
+    id: randomUUID(),
+    userId,
+    role,
+    companyId,
+    domainId,
+  }))
+
+/** Whether a change takes away the only administrator left, out of those who can sign in. */
+export function removesLastAdmin(activeAdmins: readonly string[], id: string): boolean {
+  return activeAdmins.length === 1 && activeAdmins[0] === id
+}
+
 const byName = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 
 /**
@@ -142,6 +225,37 @@ export function groupDomains(companies: Company[], domains: Domain[]): CompanyWi
       ),
     }))
     .sort((a, b) => byName.compare(a.name, b.name) || a.createdAt.getTime() - b.createdAt.getTime())
+}
+
+export type UsageCounts = Record<keyof DomainUsage, { domainId: string; n: number | string }[]>
+
+/**
+ * Puts the grouped counts of each kind of data into one `DomainUsage` per domain. Domains with
+ * no rows of a kind have `0` of it; counts that arrive as strings (bigint drivers) are converted.
+ */
+export function foldUsage(
+  domains: { id: string }[],
+  counts: UsageCounts,
+): Map<string, DomainUsage> {
+  const usage = new Map<string, DomainUsage>()
+  for (const { id } of domains) {
+    usage.set(id, {
+      crawls: 0,
+      urls: 0,
+      rules: 0,
+      rechecks: 0,
+      schedules: 0,
+      priorityUrls: 0,
+      crawlFiles: 0,
+    })
+  }
+  for (const kind of Object.keys(counts) as (keyof DomainUsage)[]) {
+    for (const { domainId, n } of counts[kind]) {
+      const entry = usage.get(domainId)
+      if (entry) entry[kind] = Number(n)
+    }
+  }
+  return usage
 }
 
 // --- crawls --------------------------------------------------------------
@@ -259,6 +373,98 @@ export function crawlJobValues(crawlId: string, jobId: string, now: Date) {
     updatedAt: now,
   }
 }
+
+/**
+ * The job that tells people about a full crawl that ended. Its id comes from the crawl, so a crawl has
+ * one at most, and whatever removes the jobs of a crawl can find it without storing it.
+ */
+export function alertJobId(crawlId: string): string {
+  const hex = createHash('sha256').update(`crawl.alerts:${crawlId}`, 'utf8').digest('hex')
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-')
+}
+
+export function alertJobValues(crawlId: string, now: Date) {
+  return {
+    id: alertJobId(crawlId),
+    type: JOB_TYPES.crawlAlerts,
+    payload: JSON.stringify({ crawlId }),
+    runAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+// --- email and alerts ----------------------------------------------------
+export const toMailDelivery = (row: {
+  id: string
+  kind: string
+  recipient: string
+  status: string
+  error: string | null
+  createdAt: Date
+}): MailDelivery => ({ ...row, kind: row.kind as MailKind, status: row.status as MailStatus })
+
+/** Attempts recorded in the same millisecond still have an order: the newest is the latest. */
+let lastDeliveryAt = 0
+const nextDeliveryAt = () => {
+  lastDeliveryAt = Math.max(Date.now(), lastDeliveryAt + 1)
+  return new Date(lastDeliveryAt)
+}
+
+export const mailDeliveryRow = (input: {
+  kind: MailKind
+  recipient: string
+  status: MailStatus
+  error?: string | null
+}) => ({
+  id: randomUUID(),
+  kind: input.kind,
+  recipient: cleanText(input.recipient, 254),
+  status: input.status,
+  error: input.error ? cleanText(input.error, MAX_DELIVERY_ERROR_LENGTH) : null,
+  createdAt: nextDeliveryAt(),
+})
+
+interface AlertRow {
+  userId: string
+  domainId: string
+  crawlProblem: boolean
+  importantFindings: boolean
+  changeSummary: boolean
+  locale: string
+  updatedAt: Date
+}
+
+export const toAlertSubscription = (row: AlertRow): AlertSubscription => ({
+  userId: row.userId,
+  domainId: row.domainId,
+  kinds: sortedAlertKinds([
+    ...(row.crawlProblem ? (['crawl-problem'] as const) : []),
+    ...(row.importantFindings ? (['important-findings'] as const) : []),
+    ...(row.changeSummary ? (['change-summary'] as const) : []),
+  ]),
+  locale: alertLocaleOf(row.locale),
+  updatedAt: row.updatedAt,
+})
+
+/** The columns of a subscription for the kinds asked for. */
+export const alertColumns = (kinds: readonly AlertKind[], locale: AlertLocale) => ({
+  crawlProblem: kinds.includes('crawl-problem'),
+  importantFindings: kinds.includes('important-findings'),
+  changeSummary: kinds.includes('change-summary'),
+  locale,
+  updatedAt: new Date(),
+})
+
+/** Only kinds that exist, once each. */
+export const knownAlertKinds = (kinds: readonly AlertKind[]) =>
+  ALERT_KINDS.filter((kind) => kinds.includes(kind))
 
 const MAX_TEXT_LENGTH = 2048
 const MAX_CONTENT_TYPE_LENGTH = 255
@@ -461,6 +667,8 @@ export function crawlUrlWhere(
   query: CrawlUrlQuery,
   subqueries: {
     withIssue: (issue: string) => SQLWrapper
+    /** The hashes of the URLs with an accepted finding: this issue, or any when it is `null`. */
+    withAccepted: (issue: string | null) => SQLWrapper
     withAudit: (filter: AuditFilter) => SQLWrapper
   },
 ): SQL | undefined {
@@ -468,7 +676,7 @@ export function crawlUrlWhere(
   return and(
     eq(columns.crawlId, query.crawlId),
     // An issue picks its URLs wherever they are: a redirect or a broken link is not a page.
-    query.issue ? undefined : crawlViewWhere(columns, query.view),
+    query.issue || query.accepted ? undefined : crawlViewWhere(columns, query.view),
     query.status ? crawlStatusWhere(columns, query.status) : undefined,
     // A type is a fact about the URLs of the site: external ones are recorded, never typed.
     query.type ? and(eq(columns.scope, 'internal'), eq(columns.kind, query.type)) : undefined,
@@ -476,6 +684,12 @@ export function crawlUrlWhere(
       ? sql`(lower(${columns.url}) like ${pattern} escape '!' or lower(${columns.title}) like ${pattern} escape '!')`
       : undefined,
     query.issue ? inArray(columns.urlHash, subqueries.withIssue(query.issue)) : undefined,
+    query.accepted
+      ? inArray(
+          columns.urlHash,
+          subqueries.withAccepted(query.accepted === ANY_ACCEPTED ? null : query.accepted),
+        )
+      : undefined,
     hasAuditFilter(query) ? inArray(columns.urlHash, subqueries.withAudit(query)) : undefined,
   )
 }
@@ -483,6 +697,10 @@ export function crawlUrlWhere(
 /**
  * Shallowest first by default. URLs without a value (a title that is missing, a request that never
  * answered) go last whatever the direction, since each dialect sorts NULLs differently.
+ *
+ * The order is total: the hash decides between two addresses that a dialect's collation may
+ * consider the same (`/A` and `/a`), so that pages of a list, and an export that walks all of
+ * them, never repeat or skip a URL.
  */
 export function crawlUrlOrder(
   columns: CrawlUrlColumns,
@@ -494,6 +712,7 @@ export function crawlUrlOrder(
     asc(sql`${column} is null`),
     (direction === 'desc' ? desc : asc)(column),
     asc(columns.url),
+    asc(columns.urlHash),
   ]
 }
 
@@ -615,6 +834,46 @@ export const toCrawlUrlIssue = (row: {
   issue: row.issue,
   ...parseIssueDetails(row.details),
 })
+
+/** One row per URL, issue and URL that accepts it. */
+export function crawlAcceptedRows(crawlId: string, accepted: readonly CrawlUrlAcceptedIssue[]) {
+  const unique = new Map<string, CrawlUrlAcceptedIssue>()
+  for (const finding of accepted) {
+    unique.set(`${finding.urlHash}:${finding.issue}:${finding.acceptedBy}`, finding)
+  }
+  return [...unique.values()].map(
+    ({ urlHash, issue, acceptedBy, acceptance, details, evidence }) => ({
+      crawlId,
+      urlHash,
+      issue,
+      acceptedBy,
+      details: JSON.stringify({
+        acceptance,
+        ...(details?.length ? { details } : {}),
+        ...(evidence ? { evidence } : {}),
+      }),
+    }),
+  )
+}
+
+/** The inverse of `crawlAcceptedRows`. `null`: what is stored does not say what accepted it. */
+export function toCrawlUrlAcceptedIssue(row: {
+  urlHash: string
+  issue: string
+  acceptedBy: string
+  details: string
+}): CrawlUrlAcceptedIssue | null {
+  const stored = parseJson(row.details) as { acceptance?: unknown } | null
+  const acceptance = parseFindingAcceptance(stored?.acceptance)
+  if (!acceptance) return null
+  return {
+    urlHash: row.urlHash,
+    issue: row.issue,
+    acceptedBy: row.acceptedBy,
+    acceptance,
+    ...parseIssueDetails(row.details),
+  }
+}
 
 /** One row per internal URL of an analysis. */
 export function crawlAuditRows(crawlId: string, urls: CrawlUrlAudit[]) {
@@ -1067,6 +1326,7 @@ export function foldTraces(
   urls: (SnapshotRow & { crawlId: string; urlHash: string; url: string })[],
   issues: (CrawlUrlIssue & { crawlId: string })[],
   audits: (CrawlUrlAudit & { crawlId: string })[],
+  accepted: { crawlId: string; urlHash: string; issue: string }[] = [],
 ): CrawlUrlTrace[] {
   const key = (crawlId: string, urlHash: string) => `${crawlId}:${urlHash}`
   const issuesBy = new Map<string, CrawlUrlIssue[]>()
@@ -1077,6 +1337,11 @@ export function foldTraces(
   const auditBy = new Map(
     audits.map(({ crawlId, ...audit }) => [key(crawlId, audit.urlHash), audit]),
   )
+  const acceptedBy = new Map<string, string[]>()
+  for (const { crawlId, urlHash, issue } of accepted) {
+    const k = key(crawlId, urlHash)
+    acceptedBy.set(k, [...(acceptedBy.get(k) ?? []), issue])
+  }
   return urls.flatMap(({ crawlId, urlHash, url, ...row }) => {
     const snapshot = toUrlSnapshot(row)
     if (!snapshot) return []
@@ -1088,6 +1353,7 @@ export function foldTraces(
         url,
         snapshot,
         issues: issuesBy.get(k) ?? [],
+        accepted: acceptedBy.get(k) ?? [],
         audit: auditBy.get(k) ?? null,
       },
     ]
@@ -1143,10 +1409,22 @@ type VerifiedUrlRow = Omit<VerifiedUrl, 'outcome' | 'source'> & {
 
 /** What a recheck stored, read like a newer one: rechecks from before conditions have none. */
 function readOutcome(stored: string): VerificationOutcome {
-  const outcome = parseJson(stored) as Omit<VerificationOutcome, 'audit'> & {
+  const { accepted, ...outcome } = parseJson(stored) as Omit<VerificationOutcome, 'audit'> & {
     audit: Parameters<typeof readUrlAuditState>[0]
   }
-  return { ...outcome, audit: readUrlAuditState(outcome.audit) }
+  return {
+    ...outcome,
+    audit: readUrlAuditState(outcome.audit),
+    // Absent in rechecks from before it was kept: that stays absent, never an empty list.
+    ...(Array.isArray(accepted)
+      ? {
+          accepted: accepted.flatMap((finding) => {
+            const acceptance = parseFindingAcceptance(finding.acceptance)
+            return acceptance ? [{ ...finding, acceptance }] : []
+          }),
+        }
+      : {}),
+  }
 }
 
 export const toVerifiedUrl = ({ outcome, source, ...row }: VerifiedUrlRow): VerifiedUrl => ({

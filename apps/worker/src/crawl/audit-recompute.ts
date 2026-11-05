@@ -48,6 +48,8 @@ export async function recomputeAudit(options: {
   let last: { crawlId: string | null; version: number } = { crawlId: null, version: 0 }
   for (let round = 0; round < MAX_ROUNDS; round++) {
     if (signal?.aborted) throw new JobInterruptedError()
+    // Deleted since the change that queued this job: there is nothing left to analyse.
+    if (!(await db.domains.get(domainId))) return { ...last, analysed }
     const config = await db.audit.config(domainId)
     const snapshot = auditSnapshotOf(config.version, config.rules, config.languages)
     const crawl = await db.crawls.latestWithResults(domainId, 'full')

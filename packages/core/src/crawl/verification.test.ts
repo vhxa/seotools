@@ -66,8 +66,19 @@ describe('compareWithCrawl', () => {
       fixed: ['noindex', 'title-missing'],
       remaining: ['h1-missing'],
       appeared: ['description-missing'],
+      nowAccepted: [],
       pendingFullCrawl: [],
     })
+  })
+
+  it('puts what a rule now accepts apart from fixed', () => {
+    const result = compareWithCrawl({
+      crawl: ['noindex', 'title-missing'],
+      recheck: [],
+      accepted: ['noindex'],
+    })
+    expect(result.fixed).toEqual(['title-missing'])
+    expect(result.nowAccepted).toEqual(['noindex'])
   })
 
   it('never calls a site-wide finding fixed or new: it waits for a full crawl', () => {
@@ -101,6 +112,7 @@ describe('compareWithCrawl', () => {
       fixed: [],
       remaining: [],
       appeared: [],
+      nowAccepted: [],
       pendingFullCrawl: [],
     })
   })

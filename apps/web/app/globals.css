@@ -128,3 +128,16 @@
     @apply font-sans;
   }
 }
+
+/* Pin the identifying column only when it leaves room to work with the remaining columns. */
+.results-table {
+  container-type: inline-size;
+}
+@container (min-width: 48rem) {
+  [data-pin-url='true'] .results-url {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    box-shadow: 1px 0 var(--border);
+  }
+}

@@ -1,5 +1,11 @@
 import { auditResultsState } from '@seotools/core/crawl/audit'
-import { ISSUE_TYPES, PAGE_ISSUES } from '@seotools/core/crawl/issues'
+import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
+import {
+  ISSUE_IMPORTANCES,
+  ISSUE_TYPES,
+  PAGE_ISSUES,
+  type PageIssueId,
+} from '@seotools/core/crawl/issues'
 import type { Crawl } from '@seotools/db'
 import { ChevronRightIcon, TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -7,12 +13,13 @@ import { getFormatter, getTranslations } from 'next-intl/server'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
-import { IssueLabel, IssueMark, ISSUE_TYPE_STYLES } from '@/components/pages/issue-mark'
+import { HelpDisclosure, InfoHelp } from '@/components/help'
+import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { PagesChart, type PagesPoint } from '@/components/pages/pages-chart'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
-import { rankIssueCounts } from '@/lib/pages-issues'
+import { rankIssueCounts, type IssueCount } from '@/lib/pages-issues'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
 
@@ -27,14 +34,53 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   return { title: t('metaTitle', { host }) }
 }
 
+/** Findings with how many URLs have each, each row leading to those URLs. */
+function IssueRows({
+  rows,
+  hrefOf,
+  describe,
+  documentation,
+  count,
+}: {
+  rows: IssueCount[]
+  hrefOf: (issue: PageIssueId) => string
+  describe: (issue: PageIssueId) => string
+  documentation: string
+  count: (pages: number) => string
+}) {
+  return (
+    <ul className="-mx-2 grid divide-y">
+      {rows.map(({ issue, pages }) => (
+        <li key={issue}>
+          <div className="flex flex-wrap items-center gap-x-4 px-2 py-2">
+            <Link
+              href={hrefOf(issue)}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <IssueLabel issue={issue} />
+              <IssueMark issue={issue} />
+              <span className="ml-auto font-normal whitespace-nowrap tabular-nums">
+                {count(pages)}
+              </span>
+              <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+            <HelpDisclosure title={documentation}>{describe(issue)}</HelpDisclosure>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default async function PagesOverviewPage({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
   const { domain } = await requireDomain(host)
-  const [t, tIssues, tCatalog, format] = await Promise.all([
+  const [t, tIssues, tCatalog, format, tHelp] = await Promise.all([
     getTranslations('Pages'),
     getTranslations('PageIssues'),
     getTranslations('IssueCatalog'),
     getFormatter(),
+    getTranslations('Help'),
   ])
   const db = await getDb()
 
@@ -76,7 +122,11 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
     opportunities: null,
   }
 
-  const counts = latest && checked ? await db.crawls.issueCounts(latest.id) : []
+  const [counts, acceptedCounts] =
+    latest && checked
+      ? await Promise.all([db.crawls.issueCounts(latest.id), db.crawls.acceptedCounts(latest.id)])
+      : [[], []]
+  const accepted = rankIssueCounts(acceptedCounts)
   const issues = rankIssueCounts(counts)
   const defaultQuery = parseDetailQuery({})
 
@@ -106,7 +156,11 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
               <span className="text-xs text-muted-foreground">{t(`stats.${key}`)}</span>
             </div>
           ))}
-          <StartCrawlButton host={domain.host} type="full" disabled={active !== null} />
+          <StartCrawlButton
+            host={domain.host}
+            type="full"
+            disabled={active !== null || domain.archivedAt !== null}
+          />
         </div>
       </div>
 
@@ -142,61 +196,63 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
       )}
 
       {!latest || !checked ? (
-        <Card>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              {!latest ? t('issues.noCrawl') : t('issues.notChecked')}
-            </p>
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground">
+          {!latest ? t('issues.noCrawl') : t('issues.notChecked')}
+        </p>
       ) : (
         <>
-          {ISSUE_TYPES.map((type) => {
-            const { icon: Icon, text } = ISSUE_TYPE_STYLES[type]
-            const found = issues.filter(({ issue }) => PAGE_ISSUES[issue].type === type)
+          {ISSUE_IMPORTANCES.map((importance) => {
+            const found = issues.filter(({ issue }) => PAGE_ISSUES[issue].importance === importance)
             return (
-              <Card key={type}>
+              <Card key={importance}>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Icon aria-hidden className={`size-4 shrink-0 ${text}`} />
-                    {t(`findings.${type}.title`)}
-                  </CardTitle>
-                  <CardDescription>{tCatalog(`typeHelp.${type}`)}</CardDescription>
+                  <CardTitle>{t(`findings.${importance}`)}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {found.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{t('findings.empty')}</p>
                   ) : (
-                    <ul className="-mx-2 grid divide-y">
-                      {found.map(({ issue, pages }) => (
-                        <li key={issue}>
-                          <Link
-                            href={detailHref(domain.host, defaultQuery, { issue })}
-                            className="flex items-center gap-4 rounded-md px-2 py-3 outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
-                          >
-                            <div className="grid min-w-0 flex-1 gap-0.5">
-                              <span className="flex items-center gap-2 text-sm font-medium">
-                                <IssueLabel issue={issue} />
-                                <IssueMark issue={issue} />
-                              </span>
-                              <span className="text-sm text-muted-foreground">
-                                {tIssues(`${issue}.description`)}
-                              </span>
-                            </div>
-                            <span className="text-sm whitespace-nowrap tabular-nums">
-                              {t('issues.pages', { count: pages })}
-                            </span>
-                            <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
+                    <IssueRows
+                      rows={found}
+                      hrefOf={(issue) => detailHref(domain.host, defaultQuery, { issue })}
+                      describe={(issue) => tIssues(`${issue}.description`)}
+                      documentation={tHelp('documentation')}
+                      count={(pages) => t('issues.pages', { count: pages })}
+                    />
                   )}
                 </CardContent>
               </Card>
             )
           })}
-          <p className="text-xs text-muted-foreground">{tCatalog('importanceHelp')}</p>
+          {accepted.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1">
+                  {t('accepted.title')}
+                  <InfoHelp label={t('accepted.title')}>{t('accepted.help')}</InfoHelp>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <IssueRows
+                  rows={accepted}
+                  hrefOf={(issue) => detailHref(domain.host, defaultQuery, { accepted: issue })}
+                  describe={(issue) => tIssues(`${issue}.description`)}
+                  documentation={tHelp('documentation')}
+                  count={(pages) => t('issues.pages', { count: pages })}
+                />
+                <Link
+                  href={detailHref(domain.host, defaultQuery, { accepted: ANY_ACCEPTED })}
+                  className="text-sm underline-offset-4 hover:underline"
+                >
+                  {t('accepted.viewAll')}
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+          <HelpDisclosure title={tHelp('documentation')}>
+            {tCatalog('importanceHelp')}{' '}
+            {ISSUE_TYPES.map((type) => tCatalog(`typeHelp.${type}`)).join(' ')}
+          </HelpDisclosure>
         </>
       )}
     </main>

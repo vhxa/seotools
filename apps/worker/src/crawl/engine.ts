@@ -354,7 +354,14 @@ export async function runCrawl(
     fetcher.close()
   }
 
-  if (fatal) throw fatal
+  if (fatal) {
+    // The domain was deleted while it ran: its crawl is gone with it, and so is any reason to fail.
+    if (!(await db.crawls.get(crawlId))) {
+      log.info('the crawl was removed while it ran')
+      return null
+    }
+    throw fatal
+  }
   if (signal.aborted) {
     await saveProgress()
     throw new JobInterruptedError()

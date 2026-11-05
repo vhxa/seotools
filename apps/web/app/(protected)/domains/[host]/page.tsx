@@ -48,7 +48,11 @@ export default async function DomainPage({ params }: { params: Promise<{ host: s
           <h1 className="text-2xl font-semibold">{domain.host}</h1>
           <p className="text-sm text-muted-foreground">{t('company', { company: company.name })}</p>
         </div>
-        <StartCrawlButton host={domain.host} type="full" disabled={active !== null} />
+        <StartCrawlButton
+          host={domain.host}
+          type="full"
+          disabled={active !== null || domain.archivedAt !== null}
+        />
       </div>
 
       {active && <ActiveCrawl host={domain.host} crawl={active} />}

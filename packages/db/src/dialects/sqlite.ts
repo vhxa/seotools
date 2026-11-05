@@ -1,3 +1,4 @@
+import { assertKnownMigrations } from '../migration-guard'
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -5,9 +6,11 @@ import BetterSqlite3 from 'better-sqlite3'
 import {
   and,
   asc,
+  countDistinct,
   desc,
   eq,
   exists,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -20,12 +23,16 @@ import {
   or,
   sql,
 } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/sqlite-core'
+import { alias, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { sqlitePathFromUrl } from '../dialect'
 import {
   CREDENTIAL_PROVIDER,
+  accessRows,
+  foldGrants,
+  removesLastAdmin,
+  toUserRecord,
   EMPTY_COUNTS,
   byUrl,
   changeCondition,
@@ -43,6 +50,7 @@ import {
   crawlJobValues,
   crawlResultColumns,
   crawlRobotsColumn,
+  crawlAcceptedRows,
   crawlIssueRows,
   crawlAnalysisColumns,
   crawlAuditRows,
@@ -51,6 +59,7 @@ import {
   supersedes,
   toCrawlUrlAudit,
   sitemapHreflangRow,
+  toCrawlUrlAcceptedIssue,
   toCrawlUrlIssue,
   crawlUrlOrder,
   crawlUrlWhere,
@@ -66,6 +75,7 @@ import {
   expiredVerifications,
   faviconRow,
   foldCrawlCounts,
+  foldUsage,
   foldViewCounts,
   groupDomains,
   newCrawlLinkRow,
@@ -93,6 +103,7 @@ import {
   AUDIT_SEMANTICS,
   DEFAULT_CRAWL_SETTINGS,
   JOB_TYPES,
+  nextScheduledRun,
   type CrawlLinkKind,
 } from '@seotools/core'
 import {
@@ -120,12 +131,26 @@ import {
   type AuditRuleRow,
   type PlanContext,
 } from '../audit'
+import {
+  alertColumns,
+  alertJobId,
+  alertJobValues,
+  knownAlertKinds,
+  mailDeliveryRow,
+  toAlertSubscription,
+  toMailDelivery,
+} from '../mapping'
+import type { AlertKind } from '@seotools/core'
 import * as schema from '../schema/sqlite'
+import { DomainArchivedError } from '../archive'
 import type {
   CrawlLink,
   CrawlUrlAudit,
   CrawlUrlBrief,
+  CrawlUrlAcceptedIssue,
   CrawlUrlIssue,
+  UserChange,
+  UserTokenKind,
   Database,
   NewCrawlUrl,
   NewVerificationUrl,
@@ -135,10 +160,15 @@ import type {
 
 const {
   jobs,
+  mailDeliveries,
+  alertSubscriptions,
+  alertNotices,
   workerHeartbeats,
   settings,
   user,
   account,
+  userAccess,
+  userTokens,
   companies,
   domains,
   domainFavicons,
@@ -148,6 +178,7 @@ const {
   crawlSchedules,
   crawls,
   crawlUrls,
+  crawlUrlAcceptedIssues,
   crawlUrlIssues,
   crawlUrlAudit,
   crawlSitemapHreflang,
@@ -191,6 +222,37 @@ export function createSqliteDatabase(options: {
 
   const db = drizzle(sqlite, { schema })
 
+  async function checkMigrations(dir = options.defaultMigrationsDir()) {
+    const exists = sqlite
+      .prepare(
+        "select name from sqlite_master where type = 'table' and name = '__drizzle_migrations'",
+      )
+      .get()
+    const rows = exists
+      ? (sqlite.prepare('select hash, created_at from __drizzle_migrations').all() as {
+          hash: string
+          created_at: number
+        }[])
+      : []
+    assertKnownMigrations(dir, rows)
+  }
+
+  /** Who can administer the instance right now. Read inside an immediate transaction. */
+  const activeAdmins = (tx: Pick<typeof db, 'select'>) =>
+    tx
+      .select({ id: user.id })
+      .from(user)
+      .innerJoin(account, eq(account.userId, user.id))
+      .where(
+        and(
+          eq(user.role, 'admin'),
+          isNull(user.disabledAt),
+          eq(account.providerId, CREDENTIAL_PROVIDER),
+        ),
+      )
+      .all()
+      .map(({ id }) => id)
+
   /** The hashes of the URLs of a crawl that have an issue, and of those a filter on the audit keeps. */
   const subqueries = (crawlId: string) => ({
     withIssue: (issue: string) =>
@@ -198,6 +260,16 @@ export function createSqliteDatabase(options: {
         .select({ urlHash: crawlUrlIssues.urlHash })
         .from(crawlUrlIssues)
         .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue))),
+    withAccepted: (issue: string | null) =>
+      db
+        .select({ urlHash: crawlUrlAcceptedIssues.urlHash })
+        .from(crawlUrlAcceptedIssues)
+        .where(
+          and(
+            eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+            issue === null ? undefined : eq(crawlUrlAcceptedIssues.issue, issue),
+          ),
+        ),
     withAudit: (filter: Parameters<typeof crawlAuditWhere>[2]) =>
       db
         .select({ urlHash: crawlUrlAudit.urlHash })
@@ -427,6 +499,40 @@ export function createSqliteDatabase(options: {
       .run()
   }
 
+  /** Refuses, inside the transaction that would create something, a domain that is archived. */
+  const assertNotArchived = (tx: Pick<typeof db, 'select'>, domainId: string) => {
+    const row = tx
+      .select({ archivedAt: domains.archivedAt })
+      .from(domains)
+      .where(eq(domains.id, domainId))
+      .get()
+    if (row?.archivedAt) throw new DomainArchivedError(domainId)
+  }
+
+  /**
+   * Removes the jobs that work on these domains: their crawls' and rechecks'. The domain's rows
+   * go by cascade, and a job that finds its crawl gone has nothing left to do; deleting the job
+   * too means a running one is not retried, and a queued one never starts.
+   */
+  const removeJobsOf = (tx: Pick<typeof db, 'select' | 'delete'>, domainIds: string[]) => {
+    if (domainIds.length === 0) return
+    const ids = [
+      ...tx
+        .select({ id: crawls.jobId, crawlId: crawls.id })
+        .from(crawls)
+        .where(inArray(crawls.domainId, domainIds))
+        .all()
+        .flatMap((row) => [row.id, alertJobId(row.crawlId)]),
+      ...tx
+        .select({ id: urlVerifications.jobId })
+        .from(urlVerifications)
+        .where(inArray(urlVerifications.domainId, domainIds))
+        .all()
+        .map((row) => row.id),
+    ]
+    for (const batch of chunk(ids)) tx.delete(jobs).where(inArray(jobs.id, batch)).run()
+  }
+
   return {
     dialect: 'sqlite',
     orm: {
@@ -438,7 +544,10 @@ export function createSqliteDatabase(options: {
       sqlite.prepare('select 1').get()
     },
 
+    checkMigrations,
+
     async migrate(dir) {
+      await checkMigrations(dir)
       migrate(db, { migrationsFolder: dir ?? options.defaultMigrationsDir() })
       await upgradeAuditSemantics()
     },
@@ -654,7 +763,7 @@ export function createSqliteDatabase(options: {
       },
       async create({ id, email, name, passwordHash }) {
         db.transaction((tx) => {
-          tx.insert(user).values({ id, email, name, emailVerified: true }).run()
+          tx.insert(user).values({ id, email, name, role: 'admin', emailVerified: true }).run()
           tx.insert(account)
             .values({
               id: randomUUID(),
@@ -671,6 +780,287 @@ export function createSqliteDatabase(options: {
       },
     },
 
+    users: {
+      async list() {
+        const known = new Set(
+          db
+            .select({ userId: account.userId })
+            .from(account)
+            .where(eq(account.providerId, CREDENTIAL_PROVIDER))
+            .all()
+            .map(({ userId }) => userId),
+        )
+        return db
+          .select()
+          .from(user)
+          .orderBy(asc(user.name), asc(user.email))
+          .all()
+          .map((row) => toUserRecord(row, known.has(row.id)))
+      },
+      async get(id) {
+        const row = db.select().from(user).where(eq(user.id, id)).get()
+        if (!row) return null
+        const cred = db
+          .select({ id: account.id })
+          .from(account)
+          .where(and(eq(account.userId, id), eq(account.providerId, CREDENTIAL_PROVIDER)))
+          .get()
+        return toUserRecord(row, cred !== undefined)
+      },
+      async findByEmail(email) {
+        const row = db.select({ id: user.id }).from(user).where(eq(user.email, email)).get()
+        return row ? this.get(row.id) : null
+      },
+      async create({ email, name, role }) {
+        const id = randomUUID()
+        db.insert(user).values({ id, email, name, role, emailVerified: false }).run()
+        const created = await this.get(id)
+        if (!created) throw new Error(`User ${id} not found after creating it`)
+        return created
+      },
+      async setRole(id, role) {
+        return db.transaction(
+          (tx): UserChange => {
+            if (!tx.select({ id: user.id }).from(user).where(eq(user.id, id)).get()) {
+              return 'not-found'
+            }
+            if (role !== 'admin' && removesLastAdmin(activeAdmins(tx), id)) return 'last-admin'
+            tx.update(user).set({ role }).where(eq(user.id, id)).run()
+            return 'ok'
+          },
+          { behavior: 'immediate' },
+        )
+      },
+      async setDisabled(id, disabled) {
+        return db.transaction(
+          (tx): UserChange => {
+            if (!tx.select({ id: user.id }).from(user).where(eq(user.id, id)).get()) {
+              return 'not-found'
+            }
+            if (disabled && removesLastAdmin(activeAdmins(tx), id)) return 'last-admin'
+            tx.update(user)
+              .set({ disabledAt: disabled ? new Date() : null })
+              .where(eq(user.id, id))
+              .run()
+            if (disabled) {
+              tx.delete(schema.session).where(eq(schema.session.userId, id)).run()
+              tx.delete(userTokens).where(eq(userTokens.userId, id)).run()
+            }
+            return 'ok'
+          },
+          { behavior: 'immediate' },
+        )
+      },
+      async grantsOf(userId) {
+        const rows = db.select().from(userAccess).where(eq(userAccess.userId, userId)).all()
+        return foldGrants(rows).get(userId) ?? []
+      },
+      async allGrants() {
+        return foldGrants(db.select().from(userAccess).all())
+      },
+      async setGrants(userId, grants) {
+        return db.transaction((tx) => {
+          if (!tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).get()) return false
+          for (const { companyId, domainId } of grants) {
+            const target = companyId
+              ? tx
+                  .select({ id: companies.id })
+                  .from(companies)
+                  .where(eq(companies.id, companyId))
+                  .get()
+              : tx.select({ id: domains.id }).from(domains).where(eq(domains.id, domainId!)).get()
+            if (!target) return false
+          }
+          tx.delete(userAccess).where(eq(userAccess.userId, userId)).run()
+          for (const batch of chunk(accessRows(userId, grants))) {
+            tx.insert(userAccess).values(batch).run()
+          }
+          return true
+        })
+      },
+      async addToken(input) {
+        db.insert(userTokens).values(input).run()
+      },
+      async findToken(tokenHash, now) {
+        const row = db
+          .select({ kind: userTokens.kind, userId: userTokens.userId })
+          .from(userTokens)
+          .innerJoin(user, eq(user.id, userTokens.userId))
+          .where(
+            and(
+              eq(userTokens.tokenHash, tokenHash),
+              gt(userTokens.expiresAt, now),
+              isNull(user.disabledAt),
+            ),
+          )
+          .get()
+        if (!row) return null
+        const found = await this.get(row.userId)
+        return found ? { kind: row.kind as UserTokenKind, user: found } : null
+      },
+      async redeemToken({ tokenHash, passwordHash, now }) {
+        return db.transaction(
+          (tx) => {
+            const token = tx
+              .select({ userId: userTokens.userId })
+              .from(userTokens)
+              .innerJoin(user, eq(user.id, userTokens.userId))
+              .where(
+                and(
+                  eq(userTokens.tokenHash, tokenHash),
+                  gt(userTokens.expiresAt, now),
+                  isNull(user.disabledAt),
+                ),
+              )
+              .get()
+            if (!token) return false
+            const { userId } = token
+            const credential = and(
+              eq(account.userId, userId),
+              eq(account.providerId, CREDENTIAL_PROVIDER),
+            )
+            if (tx.select({ id: account.id }).from(account).where(credential).get()) {
+              tx.update(account).set({ password: passwordHash }).where(credential).run()
+            } else {
+              tx.insert(account)
+                .values({
+                  id: randomUUID(),
+                  accountId: userId,
+                  providerId: CREDENTIAL_PROVIDER,
+                  userId,
+                  password: passwordHash,
+                })
+                .run()
+            }
+            tx.update(user).set({ emailVerified: true }).where(eq(user.id, userId)).run()
+            tx.delete(userTokens).where(eq(userTokens.userId, userId)).run()
+            tx.delete(schema.session).where(eq(schema.session.userId, userId)).run()
+            return true
+          },
+          { behavior: 'immediate' },
+        )
+      },
+      async markResetRequested(id, at) {
+        db.update(user).set({ resetRequestedAt: at }).where(eq(user.id, id)).run()
+      },
+    },
+
+    mail: {
+      async record(input) {
+        db.insert(mailDeliveries).values(mailDeliveryRow(input)).run()
+      },
+      async recent({ limit, outcome }) {
+        return db
+          .select()
+          .from(mailDeliveries)
+          .where(
+            outcome === 'sent'
+              ? eq(mailDeliveries.status, 'sent')
+              : outcome === 'problems'
+                ? ne(mailDeliveries.status, 'sent')
+                : undefined,
+          )
+          .orderBy(desc(mailDeliveries.createdAt))
+          .limit(limit)
+          .all()
+          .map(toMailDelivery)
+      },
+      async prune({ before, keep }) {
+        let removed = db
+          .delete(mailDeliveries)
+          .where(lt(mailDeliveries.createdAt, before))
+          .run().changes
+        const edge = db
+          .select({ createdAt: mailDeliveries.createdAt })
+          .from(mailDeliveries)
+          .orderBy(desc(mailDeliveries.createdAt))
+          .limit(1)
+          .offset(Math.max(1, keep) - 1)
+          .get()
+        if (edge) {
+          removed += db
+            .delete(mailDeliveries)
+            .where(lt(mailDeliveries.createdAt, edge.createdAt))
+            .run().changes
+        }
+        return removed
+      },
+    },
+
+    alerts: {
+      async forUser(userId) {
+        return db
+          .select()
+          .from(alertSubscriptions)
+          .where(eq(alertSubscriptions.userId, userId))
+          .orderBy(asc(alertSubscriptions.domainId))
+          .all()
+          .map(toAlertSubscription)
+      },
+      async forDomain(domainId) {
+        return db
+          .select()
+          .from(alertSubscriptions)
+          .where(eq(alertSubscriptions.domainId, domainId))
+          .orderBy(asc(alertSubscriptions.userId))
+          .all()
+          .map(toAlertSubscription)
+      },
+      async save({ userId, locale, domains: entries }) {
+        db.transaction((tx) => {
+          for (const { domainId, kinds } of entries) {
+            const known = knownAlertKinds(kinds)
+            if (known.length === 0) {
+              tx.delete(alertSubscriptions)
+                .where(
+                  and(
+                    eq(alertSubscriptions.userId, userId),
+                    eq(alertSubscriptions.domainId, domainId),
+                  ),
+                )
+                .run()
+              continue
+            }
+            const columns = alertColumns(known, locale)
+            tx.insert(alertSubscriptions)
+              .values({ userId, domainId, ...columns })
+              .onConflictDoUpdate({
+                target: [alertSubscriptions.userId, alertSubscriptions.domainId],
+                set: columns,
+              })
+              .run()
+          }
+          tx.update(alertSubscriptions)
+            .set({ locale })
+            .where(eq(alertSubscriptions.userId, userId))
+            .run()
+        })
+      },
+      async claim({ crawlId, userId, kinds }) {
+        const taken: AlertKind[] = []
+        for (const kind of knownAlertKinds(kinds)) {
+          const result = db
+            .insert(alertNotices)
+            .values({ crawlId, userId, kind })
+            .onConflictDoNothing()
+            .run()
+          if (result.changes > 0) taken.push(kind)
+        }
+        return taken
+      },
+      async release({ crawlId, userId, kinds }) {
+        db.delete(alertNotices)
+          .where(
+            and(
+              eq(alertNotices.crawlId, crawlId),
+              eq(alertNotices.userId, userId),
+              inArray(alertNotices.kind, knownAlertKinds(kinds)),
+            ),
+          )
+          .run()
+      },
+    },
+
     companies: {
       async list() {
         // Domains first: every domain read has its company, so the second read can't miss one.
@@ -684,12 +1074,37 @@ export function createSqliteDatabase(options: {
       async create({ name, host }) {
         const now = new Date()
         const company = { id: randomUUID(), name, createdAt: now }
-        const domain = { id: randomUUID(), companyId: company.id, host, createdAt: now }
+        const domain = {
+          id: randomUUID(),
+          companyId: company.id,
+          host,
+          createdAt: now,
+          archivedAt: null,
+        }
         db.transaction((tx) => {
           tx.insert(companies).values(company).run()
           tx.insert(domains).values(domain).run()
         })
         return { company, domain }
+      },
+      async rename(id, name) {
+        db.update(companies).set({ name }).where(eq(companies.id, id)).run()
+        return db.select().from(companies).where(eq(companies.id, id)).get() ?? null
+      },
+      async delete(id) {
+        return db.transaction((tx) => {
+          const company = tx.select().from(companies).where(eq(companies.id, id)).get()
+          if (!company) return false
+          const ids = tx
+            .select({ id: domains.id })
+            .from(domains)
+            .where(eq(domains.companyId, id))
+            .all()
+            .map((row) => row.id)
+          removeJobsOf(tx, ids)
+          tx.delete(companies).where(eq(companies.id, id)).run()
+          return true
+        })
       },
     },
 
@@ -707,9 +1122,95 @@ export function createSqliteDatabase(options: {
         return row ? { ...row.domain, company: row.company } : null
       },
       async add({ companyId, host }) {
-        const domain = { id: randomUUID(), companyId, host, createdAt: new Date() }
+        const domain = {
+          id: randomUUID(),
+          companyId,
+          host,
+          createdAt: new Date(),
+          archivedAt: null,
+        }
         db.insert(domains).values(domain).run()
         return domain
+      },
+      async archive(id) {
+        return db.transaction((tx) => {
+          const found = tx.select().from(domains).where(eq(domains.id, id)).get()
+          if (!found) return null
+          const now = new Date()
+          if (!found.archivedAt) {
+            tx.update(domains).set({ archivedAt: now }).where(eq(domains.id, id)).run()
+          }
+          // The same statements as `crawls.cancel` and `verifications.cancel`: the jobs notice
+          // at their next check that the crawl is no longer running, and stop requesting.
+          const ended = { status: 'cancelled', activeKey: null, finishedAt: now } as const
+          tx.update(crawls)
+            .set(ended)
+            .where(and(eq(crawls.domainId, id), isNotNull(crawls.activeKey)))
+            .run()
+          tx.update(urlVerifications)
+            .set(ended)
+            .where(and(eq(urlVerifications.domainId, id), isNotNull(urlVerifications.activeKey)))
+            .run()
+          return tx.select().from(domains).where(eq(domains.id, id)).get() ?? null
+        })
+      },
+      async unarchive(id) {
+        return db.transaction((tx) => {
+          if (!tx.select().from(domains).where(eq(domains.id, id)).get()) return null
+          const now = new Date()
+          tx.update(domains).set({ archivedAt: null }).where(eq(domains.id, id)).run()
+          const schedules = tx
+            .select()
+            .from(crawlSchedules)
+            .where(and(eq(crawlSchedules.domainId, id), eq(crawlSchedules.enabled, true)))
+            .all()
+          for (const row of schedules) {
+            const schedule = toCrawlSchedule(row)
+            tx.update(crawlSchedules)
+              .set({ nextRunAt: nextScheduledRun(schedule, now) })
+              .where(eq(crawlSchedules.id, row.id))
+              .run()
+          }
+          return tx.select().from(domains).where(eq(domains.id, id)).get() ?? null
+        })
+      },
+      async move({ id, companyId }) {
+        return db.transaction((tx) => {
+          const company = tx.select().from(companies).where(eq(companies.id, companyId)).get()
+          if (!company) return null
+          tx.update(domains).set({ companyId }).where(eq(domains.id, id)).run()
+          return tx.select().from(domains).where(eq(domains.id, id)).get() ?? null
+        })
+      },
+      async delete(id) {
+        return db.transaction((tx) => {
+          if (!tx.select().from(domains).where(eq(domains.id, id)).get()) return false
+          removeJobsOf(tx, [id])
+          tx.delete(domains).where(eq(domains.id, id)).run()
+          return true
+        })
+      },
+      async usage() {
+        const group = <T extends SQLiteTable>(table: T, column: SQLiteColumn) =>
+          db
+            .select({ domainId: column, n: sql<number>`count(*)` })
+            .from(table)
+            .groupBy(column)
+            .all()
+        return foldUsage(db.select({ id: domains.id }).from(domains).all(), {
+          crawls: group(crawls, crawls.domainId),
+          urls: db
+            .select({ domainId: crawls.domainId, n: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .innerJoin(crawls, eq(crawlUrls.crawlId, crawls.id))
+            .groupBy(crawls.domainId)
+            .all(),
+          rules: group(auditRules, auditRules.domainId),
+          rechecks: group(urlVerifications, urlVerifications.domainId),
+          schedules: group(crawlSchedules, crawlSchedules.domainId),
+          priorityUrls: group(priorityUrls, priorityUrls.domainId),
+          crawlFiles: group(crawlFiles, crawlFiles.domainId),
+        })
       },
     },
 
@@ -743,6 +1244,7 @@ export function createSqliteDatabase(options: {
         const jobId = randomUUID()
         try {
           db.transaction((tx) => {
+            assertNotArchived(tx, domainId)
             tx.insert(jobs)
               .values(crawlJobValues(id, jobId, now))
               .run()
@@ -751,6 +1253,7 @@ export function createSqliteDatabase(options: {
               .run()
           })
         } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
           // Lost the race on the unique `active_key`: some other crawl of this domain is active.
           if (await this.active(domainId)) return null
           throw error
@@ -854,18 +1357,26 @@ export function createSqliteDatabase(options: {
 
       async finish(id, { status, error }) {
         const counts = await this.countUrls(id)
-        const result = db
-          .update(crawls)
-          .set({
-            ...counts,
-            status,
-            error: error === undefined ? null : truncateError(error),
-            activeKey: null,
-            finishedAt: new Date(),
-          })
-          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
-          .run()
-        return result.changes > 0
+        return db.transaction((tx) => {
+          const crawl = tx.select({ type: crawls.type }).from(crawls).where(eq(crawls.id, id)).get()
+          const result = tx
+            .update(crawls)
+            .set({
+              ...counts,
+              status,
+              error: error === undefined ? null : truncateError(error),
+              activeKey: null,
+              finishedAt: new Date(),
+            })
+            .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
+            .run()
+          if (result.changes === 0) return false
+          // The one place a crawl ends: whoever asked to be told hears of a full crawl from here.
+          if (crawl?.type === 'full') {
+            tx.insert(jobs).values(alertJobValues(id, new Date())).onConflictDoNothing().run()
+          }
+          return true
+        })
       },
 
       async cancel(id) {
@@ -921,6 +1432,9 @@ export function createSqliteDatabase(options: {
         db.transaction((tx) => {
           tx.delete(crawlLinks).where(inArray(crawlLinks.crawlId, expired)).run()
           tx.delete(crawlUrlIssues).where(inArray(crawlUrlIssues.crawlId, expired)).run()
+          tx.delete(crawlUrlAcceptedIssues)
+            .where(inArray(crawlUrlAcceptedIssues.crawlId, expired))
+            .run()
           tx.delete(crawlUrlAudit).where(inArray(crawlUrlAudit.crawlId, expired)).run()
           tx.delete(crawlSitemapHreflang)
             .where(inArray(crawlSitemapHreflang.crawlId, expired))
@@ -1211,8 +1725,9 @@ export function createSqliteDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveAnalysis({ crawlId, issues, pages, withType, catalog, audit }) {
+      async saveAnalysis({ crawlId, issues, accepted = [], pages, withType, catalog, audit }) {
         const issueRows = crawlIssueRows(crawlId, issues)
+        const acceptedRows = crawlAcceptedRows(crawlId, accepted)
         const auditRows = crawlAuditRows(crawlId, audit.urls)
         return db.transaction(
           (tx) => {
@@ -1226,6 +1741,12 @@ export function createSqliteDatabase(options: {
             }
             tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId)).run()
             for (const batch of chunk(issueRows)) tx.insert(crawlUrlIssues).values(batch).run()
+            tx.delete(crawlUrlAcceptedIssues)
+              .where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
+              .run()
+            for (const batch of chunk(acceptedRows)) {
+              tx.insert(crawlUrlAcceptedIssues).values(batch).run()
+            }
             tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId)).run()
             for (const batch of chunk(auditRows)) tx.insert(crawlUrlAudit).values(batch).run()
             tx.update(crawls)
@@ -1271,6 +1792,68 @@ export function createSqliteDatabase(options: {
           found.push(...rows.map(toCrawlUrlIssue))
         }
         return found
+      },
+
+      async acceptedCounts(crawlId) {
+        const rows = await db
+          .select({
+            issue: crawlUrlAcceptedIssues.issue,
+            pages: countDistinct(crawlUrlAcceptedIssues.urlHash),
+          })
+          .from(crawlUrlAcceptedIssues)
+          .where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
+          .groupBy(crawlUrlAcceptedIssues.issue)
+        return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
+      },
+
+      async acceptedOf(crawlId, urlHashes) {
+        const found: CrawlUrlAcceptedIssue[] = []
+        for (const batch of chunk(urlHashes)) {
+          const rows = await db
+            .select()
+            .from(crawlUrlAcceptedIssues)
+            .where(
+              and(
+                eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+                inArray(crawlUrlAcceptedIssues.urlHash, batch),
+              ),
+            )
+          for (const row of rows) {
+            const finding = toCrawlUrlAcceptedIssue(row)
+            if (finding) found.push(finding)
+          }
+        }
+        return found
+      },
+
+      async acceptedBecauseOf(crawlId, urlHash, { limit }) {
+        const where = and(
+          eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+          eq(crawlUrlAcceptedIssues.acceptedBy, urlHash),
+          ne(crawlUrlAcceptedIssues.urlHash, urlHash),
+        )
+        const [counted] = await db
+          .select({ total: sql<number>`count(*)` })
+          .from(crawlUrlAcceptedIssues)
+          .where(where)
+        const findings = await db
+          .select({
+            urlHash: crawlUrlAcceptedIssues.urlHash,
+            url: crawlUrls.url,
+            issue: crawlUrlAcceptedIssues.issue,
+          })
+          .from(crawlUrlAcceptedIssues)
+          .innerJoin(
+            crawlUrls,
+            and(
+              eq(crawlUrls.crawlId, crawlUrlAcceptedIssues.crawlId),
+              eq(crawlUrls.urlHash, crawlUrlAcceptedIssues.urlHash),
+            ),
+          )
+          .where(where)
+          .orderBy(asc(crawlUrls.url), asc(crawlUrlAcceptedIssues.issue))
+          .limit(limit)
+        return { total: Number(counted?.total ?? 0), findings }
       },
 
       async auditOf(crawlId, urlHashes) {
@@ -1490,6 +2073,7 @@ export function createSqliteDatabase(options: {
         const urls: Parameters<typeof foldTraces>[0] = []
         const issues: Parameters<typeof foldTraces>[1] = []
         const audits: Parameters<typeof foldTraces>[2] = []
+        const accepted: NonNullable<Parameters<typeof foldTraces>[3]> = []
         for (const ids of chunk(owned, HISTORY_BATCH)) {
           for (const hashes of chunk(urlHashes, HISTORY_BATCH)) {
             urls.push(
@@ -1528,6 +2112,22 @@ export function createSqliteDatabase(options: {
                 .all()
                 .map((row) => ({ crawlId: row.crawlId, ...toCrawlUrlIssue(row) })),
             )
+            accepted.push(
+              ...db
+                .select({
+                  crawlId: crawlUrlAcceptedIssues.crawlId,
+                  urlHash: crawlUrlAcceptedIssues.urlHash,
+                  issue: crawlUrlAcceptedIssues.issue,
+                })
+                .from(crawlUrlAcceptedIssues)
+                .where(
+                  and(
+                    inArray(crawlUrlAcceptedIssues.crawlId, ids),
+                    inArray(crawlUrlAcceptedIssues.urlHash, hashes),
+                  ),
+                )
+                .all(),
+            )
             audits.push(
               ...db
                 .select()
@@ -1540,7 +2140,7 @@ export function createSqliteDatabase(options: {
             )
           }
         }
-        return foldTraces(urls, issues, audits)
+        return foldTraces(urls, issues, audits, accepted)
       },
     },
 
@@ -1650,6 +2250,7 @@ export function createSqliteDatabase(options: {
         const jobId = randomUUID()
         try {
           db.transaction((tx) => {
+            assertNotArchived(tx, domainId)
             tx.insert(jobs)
               .values(verificationJobValues(id, jobId, now))
               .run()
@@ -1667,6 +2268,7 @@ export function createSqliteDatabase(options: {
             tx.insert(urlVerificationUrls).values(newVerificationUrlRows(id, urls)).run()
           })
         } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
           // Lost the race on the unique `active_key`: some other recheck of this domain is active.
           if (await this.active(domainId)) return null
           throw error
@@ -1928,7 +2530,21 @@ export function createSqliteDatabase(options: {
         const rows = db
           .select()
           .from(crawlSchedules)
-          .where(and(eq(crawlSchedules.enabled, true), lte(crawlSchedules.nextRunAt, now)))
+          .where(
+            and(
+              eq(crawlSchedules.enabled, true),
+              lte(crawlSchedules.nextRunAt, now),
+              // An archived domain keeps its schedules but nothing runs for it.
+              notExists(
+                db
+                  .select({ one: sql`1` })
+                  .from(domains)
+                  .where(
+                    and(eq(domains.id, crawlSchedules.domainId), isNotNull(domains.archivedAt)),
+                  ),
+              ),
+            ),
+          )
           .orderBy(asc(crawlSchedules.nextRunAt))
           .limit(limit)
           .all()
@@ -2008,7 +2624,12 @@ export function createSqliteDatabase(options: {
           .select({ id: domains.id, host: domains.host })
           .from(domains)
           .leftJoin(crawlFileChecks, eq(crawlFileChecks.domainId, domains.id))
-          .where(or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)))
+          .where(
+            and(
+              isNull(domains.archivedAt),
+              or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)),
+            ),
+          )
           .orderBy(asc(domains.createdAt), asc(domains.id))
           .limit(limit)
           .all()
@@ -2063,7 +2684,12 @@ export function createSqliteDatabase(options: {
           .select({ id: domains.id, host: domains.host })
           .from(domains)
           .leftJoin(domainFavicons, eq(domainFavicons.domainId, domains.id))
-          .where(or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)))
+          .where(
+            and(
+              isNull(domains.archivedAt),
+              or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)),
+            ),
+          )
           .orderBy(asc(domains.createdAt), asc(domains.id))
           .limit(limit)
           .all()

@@ -1,0 +1,1 @@
+ALTER TABLE `domains` ADD `archived_at` datetime(3);

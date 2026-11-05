@@ -26,7 +26,7 @@ Raspberry Pi to a VPS.
 ## Quick start (Docker Compose)
 
 ```bash
-git clone https://github.com/botaroikawa/seotools.git && cd seotools
+git clone https://github.com/vhxa/seotools.git && cd seotools
 cp .env.example .env
 ```
 
@@ -50,6 +50,13 @@ working.
 
 Data lives in the `seotools-data` volume (`/data` in the container). To build the image yourself
 instead of pulling it, use `docker compose up -d --build`.
+
+This pulls the newest **stable release**. For anything you rely on, pin a version
+(`SEOTOOLS_IMAGE` in `.env`) and update it on purpose: see [Updating](#updating).
+
+> **No release has been published yet**, so `latest` does not exist yet. Until the first one, build
+> the image from source (`docker compose up -d --build`) or run a development build of `main` with
+> `SEOTOOLS_IMAGE=ghcr.io/vhxa/seotools:edge` in `.env`.
 
 ## Configuration
 
@@ -96,8 +103,10 @@ the **old** secret first (or to any fixed 32+ char value from the start) to keep
 
 ## Deploying
 
-The image is `ghcr.io/botaroikawa/seotools`. Tags: `latest` (main), `edge`, `sha-<commit>` and, for
-releases, `1.2.3` / `1.2` / `1`.
+The image is `ghcr.io/vhxa/seotools`. `1.2.3` is one release, `1.2` follows its patches (and,
+from 1.0.0, `1` follows its minor versions), `latest` is the newest stable release, and `edge` and
+`sha-<commit>` are development builds of `main`, never releases. What each tag means and which one
+to use is in [docs/updating.md](docs/updating.md#image-tags). In production, pin one.
 
 > A package published to GHCR is **private** until you make it public (GitHub → Packages →
 > seotools → Package settings → Change visibility). Do that once so anyone can `docker pull`
@@ -120,14 +129,18 @@ seo.example.com {
 
 Both can deploy either the prebuilt image or this repository's `Dockerfile` (or `docker-compose.yml`).
 
-1. Create an application from the image `ghcr.io/botaroikawa/seotools:latest` (or from this Git repo).
+1. Create an application from the image `ghcr.io/vhxa/seotools:<version>` (or from this Git
+   repo), with a version or a patch channel such as `0.2`, not `latest`.
 2. Set the environment variables: `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` = the domain you
    assign to the app (with `https://`).
 3. Add a **persistent volume** mounted at `/data` (this is where SQLite lives — without it you lose
    your data on every redeploy).
 4. Expose container port **3000** and attach your domain.
 
-The image has a built-in health check (`/api/health`), which both platforms pick up.
+The image has a built-in health check (`/api/health`), which both platforms pick up. Dokploy
+re-pulls the image you saved when you press **Deploy**, so it does not move to a newer version
+unless the image reference points at one: [docs/updating.md](docs/updating.md#update-with-dokploy)
+says when Deploy is enough.
 
 ### Raspberry Pi (arm64)
 
@@ -137,14 +150,18 @@ the right choice here. Keep the volume on reliable storage (an SSD, or a good SD
 
 ### PostgreSQL or MySQL
 
-Set `DATABASE_URL` in `.env` and Compose will use it instead of SQLite:
+Set `DATABASE_URL_DOCKER` in `.env` for Docker Compose. Compose overrides
+`DATABASE_URL` (reserved here for local development) with this value, defaulting to SQLite.
 
 ```bash
 # PostgreSQL (tested on 17)
-DATABASE_URL=postgres://seotools:secret@db:5432/seotools
+DATABASE_URL_DOCKER=postgres://seotools:secret@db:5432/seotools
 # MySQL (tested on 8.4). Needs FOR UPDATE SKIP LOCKED: MySQL 8+, MariaDB 10.6+ (untested)
-DATABASE_URL=mysql://seotools:secret@db:3306/seotools
+DATABASE_URL_DOCKER=mysql://seotools:secret@db:3306/seotools
 ```
+
+For direct `docker run` or a Dokploy Docker application, use the same URL in `DATABASE_URL`
+instead.
 
 Create the (empty) database first; migrations create the tables. The `/data` volume is then unused.
 
@@ -158,12 +175,12 @@ With PostgreSQL or MySQL you can scale them independently using the same image:
 ```yaml
 services:
   web:
-    image: ghcr.io/botaroikawa/seotools:latest
+    image: ghcr.io/vhxa/seotools:latest
     environment: { SEOTOOLS_MODE: web } # migrates, then serves the UI
     env_file: .env
     ports: ['3000:3000']
   worker:
-    image: ghcr.io/botaroikawa/seotools:latest
+    image: ghcr.io/vhxa/seotools:latest
     environment: { SEOTOOLS_MODE: worker } # processes jobs; does not migrate
     env_file: .env
     depends_on: { web: { condition: service_healthy } }
@@ -171,14 +188,10 @@ services:
 
 ### Backups
 
-- **SQLite:** stop the container (or use `sqlite3 seotools.db ".backup 'copy.db'"`) and copy the file
-  from the volume. A plain `cp` while the app is writing can produce a corrupt copy.
-  ```bash
-  docker run --rm -v seotools_seotools-data:/data -v "$PWD":/backup debian:trixie-slim \
-    cp -a /data /backup/seotools-data-$(date +%F)
-  ```
-  (Volume name is `<compose project>_seotools-data`; check with `docker volume ls`.)
-- **PostgreSQL / MySQL:** use `pg_dump` / `mysqldump` as usual.
+A backup is the database plus your secrets (`BETTER_AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`). With
+SQLite, copy the **whole** `/data` directory with the container stopped, not only `seotools.db`: recent
+writes live in `seotools.db-wal`. With PostgreSQL or MySQL, use `pg_dump` / `mysqldump`. The
+commands, and how to restore, are in [docs/updating.md](docs/updating.md#backups-and-restore).
 
 ### Health check
 
@@ -188,14 +201,27 @@ services:
 {
   "status": "ok",
   "version": "0.1.0",
+  "channel": "release",
   "db": { "ok": true, "dialect": "sqlite" },
   "worker": { "ok": true, "lastSeen": "…" }
 }
 ```
 
-`status` is `ok`, `degraded` (database fine, worker hasn't checked in for 30 s; still HTTP 200) or
+`channel` is `release` for an image the release workflow published and `development` for anything
+else (`edge`, `sha-…`, a local build): the version of a development build is the last release it
+descends from. `status` is `ok`, `degraded` (database fine, worker hasn't checked in for 30 s; still HTTP 200) or
 `down` (database unreachable; HTTP 503). Add `?require=worker` to also get a 503 when the worker is
 missing — the Docker health check does this in `all` mode.
+
+## Updating
+
+seotools never replaces its own container, and needs no access to Docker to be updated. **System →
+Updates** (administrators) shows the installed version, the latest stable release, and when and how
+the last check ended; you check by hand or let the worker check once a day (off by default; it sends
+nothing about your domains). An update is then **your** decision: read the release notes, take a
+backup, change the image tag if needed and redeploy. Docker Compose, Dokploy (manual and
+automatic), migrations, keys, rollback and what has been validated are in
+[docs/updating.md](docs/updating.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Development
 
@@ -219,6 +245,7 @@ pnpm dev          # applies migrations, then runs web (:3000) and worker with ho
 | `pnpm test`                                                 | Vitest                                                 |
 | `pnpm --filter @seotools/db generate --name <what_changed>` | Generate Drizzle migrations for **all three** dialects |
 | `pnpm db:check`                                             | Verify the migration files are consistent              |
+| `pnpm release:check`                                        | Package versions and `CHANGELOG.md` agree              |
 
 PostgreSQL and MySQL tests are skipped unless you provide databases:
 
@@ -240,6 +267,8 @@ packages/
   core/       Env validation, logger, job types, settings encryption, mail (SMTP + Resend)
   db/         Drizzle schemas + migrations for sqlite/pg/mysql, repositories, first-run admin
 docker/       Container entrypoint and healthcheck
+docs/         Guides: updating an installation, making a release
+scripts/      Release tooling (`node scripts/release.mjs`)
 ```
 
 ### How it fits together
@@ -256,6 +285,13 @@ docker/       Container entrypoint and healthcheck
 - **Email settings** are stored as JSON in the `settings` table, encrypted with AES-256-GCM
   (`SETTINGS_ENCRYPTION_KEY`, or `BETTER_AUTH_SECRET`). `getMailer(settings)` in `@seotools/core`
   builds a nodemailer or Resend client from them; the `mail.send` job uses it.
+
+### Releases
+
+Versions follow `MAJOR.MINOR.PATCH`, and every change says in `CHANGELOG.md` what it does to the next
+one. Only a release pull request changes the version, and only a pushed `vX.Y.Z` tag publishes images
+and a GitHub release. How to classify a change, when to release and how to validate, publish and check
+a release: [docs/releases.md](docs/releases.md).
 
 ## License
 

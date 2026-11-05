@@ -1598,3 +1598,14 @@ describe('an analysis made before the default expectation', () => {
     expect((await db.crawls.get(id))!.auditSnapshot?.semantics).toBe(AUDIT_SEMANTICS)
   })
 })
+
+describe('recomputeAudit for a domain that was deleted', () => {
+  it('finds nothing to do instead of failing', async () => {
+    await db.domains.delete(domainId)
+    await expect(recomputeAudit({ db, domainId, log, finalAttempt: true })).resolves.toEqual({
+      crawlId: null,
+      version: 0,
+      analysed: 0,
+    })
+  })
+})

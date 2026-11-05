@@ -1,5 +1,5 @@
 import { createLogger, type CrawlRecurrence } from '@seotools/core'
-import { createCompany } from '@seotools/db'
+import { createCompany, DomainArchivedError } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runDueSchedules } from './scheduler'
@@ -134,5 +134,47 @@ describe('runDueSchedules', () => {
     })
     // The crawl's job is still waiting, so its crawl is still active.
     expect((await db.crawls.active(domainId))?.id).toBe(crawl!.id)
+  })
+
+  it('does not start the crawls of an archived domain, and picks them up again once restored', async () => {
+    await schedule('full')
+    await db.domains.archive(domainId)
+    await runDueSchedules(db, log, now)
+
+    expect(await db.crawls.list(domainId)).toEqual([])
+    // Not even looked at: it is as it was, and there is no record of a run that did not happen.
+    expect(await saved('full')).toMatchObject({ lastOutcome: null, nextRunAt: past })
+
+    await db.domains.unarchive(domainId)
+    // Restoring moves it to the next run rather than starting what was missed.
+    await runDueSchedules(db, log, now)
+    expect(await db.crawls.list(domainId)).toEqual([])
+    expect((await saved('full'))?.nextRunAt.getTime()).toBeGreaterThan(now.getTime())
+  })
+
+  it('does not fail when the domain is archived between choosing a schedule and firing it', async () => {
+    await schedule('full')
+    await db.domains.archive(domainId)
+    const stale = {
+      ...db,
+      crawlSchedules: {
+        ...db.crawlSchedules,
+        due: async () => db.crawlSchedules.list(domainId),
+      },
+    }
+    await expect(runDueSchedules(stale, log, now)).resolves.toBeUndefined()
+    expect(await db.crawls.list(domainId)).toEqual([])
+    await expect(
+      db.crawls.start({ domainId, type: 'full', trigger: 'schedule' }),
+    ).rejects.toBeInstanceOf(DomainArchivedError)
+  })
+
+  it('still frees the crawls of an archived domain whose job gave up', async () => {
+    const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    await db.jobs.claim({ workerId: 'w', limit: 1 })
+    await db.jobs.fail({ id: crawl!.jobId, workerId: 'w', error: 'out of attempts' })
+    await db.domains.archive(domainId)
+    await runDueSchedules(db, log, now)
+    expect(await db.crawls.active(domainId)).toBeNull()
   })
 })

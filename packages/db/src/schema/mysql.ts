@@ -22,6 +22,12 @@ export const user = mysqlTable('user', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
+  /** `admin` or `member`. A new user has what they are given, never more (`@seotools/core/access`). */
+  role: varchar('role', { length: 16 }).notNull().default('member'),
+  /** Set while the account cannot sign in. Its sessions are removed when that happens. */
+  disabledAt: ts('disabled_at'),
+  /** The last time a password email was asked for, to answer only one in a while. */
+  resetRequestedAt: ts('reset_requested_at'),
   createdAt: ts('created_at').notNull().$defaultFn(now),
   updatedAt: ts('updated_at').notNull().$defaultFn(now).$onUpdateFn(now),
 })
@@ -133,6 +139,11 @@ export const domains = mysqlTable(
     /** Normalized by `normalizeDomain` in @seotools/core: `example.com`, never a URL. */
     host: varchar('host', { length: 253 }).notNull().unique(),
     createdAt: ts('created_at').notNull().$defaultFn(now),
+    /**
+     * Set while the domain is archived: it keeps all its data and stays readable, but nothing
+     * automatic runs for it and nothing can start or change.
+     */
+    archivedAt: ts('archived_at'),
   },
   (t) => [index('domains_company_id_idx').on(t.companyId)],
 )
@@ -353,6 +364,31 @@ export const crawlUrlIssues = mysqlTable(
   (t) => [
     primaryKey({ columns: [t.crawlId, t.urlHash, t.issue] }),
     index('crawl_url_issues_issue_idx').on(t.crawlId, t.issue),
+  ],
+)
+
+/**
+ * Findings a rule accepts: the crawl saw them, and they are not pending, so nothing that reads
+ * `crawl_url_issues` counts them. One row per URL, issue and URL whose declaration accepts it, which
+ * is the URL itself or, for a finding about another URL, the one that says it is expected: that
+ * tells when a rule of one URL acts on the findings of others.
+ */
+export const crawlUrlAcceptedIssues = mysqlTable(
+  'crawl_url_accepted_issues',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    urlHash: varchar('url_hash', { length: 32 }).notNull(),
+    issue: varchar('issue', { length: 64 }).notNull(),
+    acceptedBy: varchar('accepted_by', { length: 32 }).notNull(),
+    /** As JSON: `{ acceptance, details?, evidence? }` (`crawlAcceptedRows`). */
+    details: longtext('details').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.urlHash, t.issue, t.acceptedBy] }),
+    index('crawl_url_accepted_issues_issue_idx').on(t.crawlId, t.issue),
+    index('crawl_url_accepted_issues_by_idx').on(t.crawlId, t.acceptedBy),
   ],
 )
 
@@ -667,4 +703,107 @@ export const crawlFileChecks = mysqlTable(
     outcome: varchar('outcome', { length: 16, enum: ['ok', 'unreachable'] }),
   },
   (t) => [index('crawl_file_checks_due_idx').on(t.nextCheckAt)],
+)
+
+/**
+ * What a member was given: a role on a company or on a domain, exactly one of the two
+ * (`AccessGrant` in `@seotools/core/access`). It goes with what it is about.
+ */
+export const userAccess = mysqlTable(
+  'user_access',
+  {
+    id: id('id').primaryKey(),
+    userId: varchar('user_id', { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: varchar('role', { length: 16 }).notNull(),
+    companyId: id('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+    domainId: id('domain_id').references(() => domains.id, { onDelete: 'cascade' }),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex('user_access_company_idx').on(t.userId, t.companyId),
+    uniqueIndex('user_access_domain_idx').on(t.userId, t.domainId),
+  ],
+)
+
+/**
+ * Links that let someone set a password: an invitation, or a recovery. Only the hash of the token is
+ * kept, so reading the database gives nobody a working link. All of a user's go when one is used.
+ */
+export const userTokens = mysqlTable(
+  'user_tokens',
+  {
+    tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
+    userId: varchar('user_id', { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 16 }).notNull(),
+    expiresAt: ts('expires_at').notNull(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [index('user_tokens_user_idx').on(t.userId)],
+)
+
+/**
+ * Every attempt to send an email, so that a failure can be seen (System → Email). Only that
+ * something was sent to someone and what the provider answered: never the subject, the body or a
+ * link. Kept for a while and capped (`MAIL_DELIVERIES_KEEP`).
+ */
+export const mailDeliveries = mysqlTable(
+  'mail_deliveries',
+  {
+    id: id('id').primaryKey(),
+    kind: varchar('kind', { length: 16 }).notNull(),
+    recipient: varchar('recipient', { length: 255 }).notNull(),
+    status: varchar('status', { length: 16 }).notNull(),
+    error: text('error'),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [index('mail_deliveries_created_idx').on(t.createdAt)],
+)
+
+/**
+ * The alerts a person asked for about a domain. No row, no alerts: nothing is sent to anyone who did
+ * not choose it. Access is checked again when sending, never trusted from here.
+ */
+export const alertSubscriptions = mysqlTable(
+  'alert_subscriptions',
+  {
+    userId: varchar('user_id', { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    domainId: id('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    crawlProblem: boolean('crawl_problem').notNull().default(false),
+    importantFindings: boolean('important_findings').notNull().default(false),
+    changeSummary: boolean('change_summary').notNull().default(false),
+    /** The language of the emails: the one the person used when they saved. */
+    locale: varchar('locale', { length: 8 }).notNull().default('en'),
+    updatedAt: ts('updated_at').notNull().$defaultFn(now),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.domainId] }),
+    index('alert_subscriptions_domain_idx').on(t.domainId),
+  ],
+)
+
+/**
+ * An alert of one kind about one crawl that was handed to a person (`crawl.alerts`). The primary key
+ * is what makes it at most one per person, per crawl and per kind, however often a job runs again.
+ */
+export const alertNotices = mysqlTable(
+  'alert_notices',
+  {
+    crawlId: id('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    userId: varchar('user_id', { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 16 }).notNull(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [primaryKey({ columns: [t.crawlId, t.userId, t.kind] })],
 )

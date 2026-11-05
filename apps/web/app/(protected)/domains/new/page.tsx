@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server'
 import { AddDomainForm } from '@/components/add-domain-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
-import { requireSession } from '@/lib/session'
+import { requireAdmin } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +17,7 @@ export default async function NewDomainPage({
 }: {
   searchParams: Promise<{ company?: string }>
 }) {
-  await requireSession()
+  await requireAdmin()
   const t = await getTranslations('NewDomain')
   const { company } = await searchParams
   const companies = await (await getDb()).companies.list()
