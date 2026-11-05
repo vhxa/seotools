@@ -425,53 +425,81 @@ already pruned.
 
 ## What has been validated
 
-Rehearsed on **2026-11-05**, Docker Desktop (Linux ARM64 containers on macOS), using a real
-image built from **a651c7a** and a second image built from this recovery branch. Neither was
-published. Both contain 14 schema migrations: this change adds no schema migration, so the
-ordinary update exercised migration startup with **no pending SQL**, not a schema upgrade
-between releases. A separate injected migration exercised failure after DDL.
+Rehearsed on **2026-11-05**, Docker Desktop (Linux ARM64 containers on macOS), with locally
+built images of **a651c7a** (14 migrations) and **3e67bc5c9b2bf5e4a5df65d1fc9d77982ef2dd98**
+(19 migrations). Neither image was published. This supersedes the earlier same-schema rehearsal:
+**real pending migrations 0014–0018 ran**, including the existing-users-to-administrators data
+migration. These are development builds, not published releases.
 
-- **Representative data on SQLite and PostgreSQL 17:** the previous image's code created the
-  first admin (with a password hash), a company/domain, an enabled audit condition rule and an
-  encrypted JSON setting. Its worker crawled a local HTTP fixture container on the same network
-  with private-network crawling explicitly enabled. Both full crawls completed with **19 URL
-  records and 48 findings**, including collected facts/evidence. Some guessed HTTPS/www requests
-  failed/timed out; the fixture serves HTTP. This was not a public-site or TLS test.
-- **Consistent backups:** the documented installed-module `better-sqlite3.backup()` command ran
-  against the live SQLite container and its result was copied off-volume. The image had no
-  `sqlite3` executable. PostgreSQL used `pg_dump -Fc` while the app was running. Test-only keys
-  were retained unchanged outside the database.
-- **Update:** replacing each old container with the new image logged its dialect and
-  `migrations applied`. Company/domain, completed crawl, rule and encrypted value survived.
-  SQLite's session issued before the update remained valid; PostgreSQL password login succeeded.
-- **Image-only rollback:** both old images started on the same database and the data was still
-  readable. This is expected here because there were no new schema migrations, and is **not**
-  evidence that the old image can safely consume a future schema.
-- **Future history:** an artificial future migration journal entry was inserted into disposable
-  SQLite and PostgreSQL copies. The new image exited at bootstrap with the newer-database/
-  restore-backup message. SQLite worker-only and migrations-disabled startup also refused it.
-  The three-dialect contract additionally checks an image journal missing the database's
-  migrations: both compatibility check and migrate refuse it without altering the database.
-- **Restore:** the SQLite backup was copied into a fresh volume with UID 1000 ownership;
-  PostgreSQL's archive was restored with `pg_restore --exit-on-error` into an empty database.
-  Each started with the old image and original keys. Both recovered **19 URLs, 48 findings,
-  14 migration entries**, the rule and decryptable setting; password login worked on both.
-- **Failed migration:** independent SQLite and PostgreSQL backup copies were given a scratch
-  migration consisting of `CREATE TABLE` followed by invalid SQL. Bootstrap exited nonzero
-  before starting the services. The probe table was absent afterwards and each journal still
-  had 14 entries, demonstrating rollback of the pending batch. Recovery used the pre-update
-  backup and old image rather than editing the journal.
-- **Checks:** the full formatting/lint/typecheck/migration-consistency/release-consistency/unit
-  test/production-build checklist passed. Unit run: **1,806 passed, 382 skipped** (external
-  database tests skip without URLs). A separate throwaway SQLite/PostgreSQL 17/MySQL 8.4
-  contract run with both URLs set passed **616 tests**, including migration compatibility.
-  The first contract attempt failed because two test files tried to migrate the same empty
-  external database concurrently; the compatibility test now runs inside the existing contract,
-  and the clean rerun passed.
-- All rehearsal containers, named volumes and locally built application images were removed.
+| Procedure                                                         | SQLite                                | PostgreSQL 17                         | MySQL 8.4                                 |
+| ----------------------------------------------------------------- | ------------------------------------- | ------------------------------------- | ----------------------------------------- |
+| Representative data and completed crawl in old image              | Passed                                | Passed                                | Passed                                    |
+| Consistent backup while app was running                           | Installed-module online backup        | `pg_dump -Fc`                         | `mysqldump --single-transaction`          |
+| Apply pending migrations, verify exact timestamp/hash pairs       | 14 → 19                               | 14 → 19                               | 14 → 19                                   |
+| Existing session, admin login and `/system/users`                 | Passed                                | Passed                                | Passed                                    |
+| Preserved rules, findings and decryptable setting                 | Passed                                | Passed                                | Passed                                    |
+| Startup reanalysis backfills accepted findings                    | 1 accepted finding                    | 1 accepted finding                    | 1 accepted finding                        |
+| New full crawl on upgraded data                                   | Completed                             | Completed                             | Completed                                 |
+| Member invitation, password link, login, ungranted-domain 404     | Passed                                | Passed                                | Passed                                    |
+| Real recovery CLI, password link and subsequent admin login       | Passed                                | Passed                                | Passed                                    |
+| Wrong-email CLI fails without changing table counts               | Passed                                | Passed                                | Passed                                    |
+| Worker sends `access.email` through local SMTP                    | Passed                                | Passed                                | Passed                                    |
+| Old image starts on migrated database (unsafe rollback)           | Yes                                   | Yes                                   | Yes                                       |
+| New image refuses artificial future history on a scratch copy     | Exit 1                                | Exit 1                                | Exit 1                                    |
+| Restore original backup into fresh volume/database with old image | Passed                                | Passed                                | Passed                                    |
+| Failed migration 0016 on independent old-data copy                | Batch rolled back; 14 journal entries | Batch rolled back; 14 journal entries | Partial DDL persisted; 16 journal entries |
+| Recover from that failure using untouched backup and old image    | Passed                                | Passed                                | Passed                                    |
 
-**Not exercised live:** Dokploy (no instance available), representative-data MySQL update/restore
-or MySQL dump commands, published images/tags, and a real release-to-release schema upgrade.
-MySQL's failure guidance follows the installed migrator's transaction code and MySQL DDL's
-implicit commits; passing its contract does not constitute a recovery rehearsal. The earlier
-2026-11-04 validation of the Updates page and release-channel checks is separate from this run.
+The old app's actual HTTP forms/server actions created the first administrator through `/setup`,
+a company/domain, an enabled rule allowing `noindex` on `/private`, and a full crawl. Its worker
+requested a small HTTP fixture container on the same Docker network, with
+`CRAWLER_ALLOW_PRIVATE_NETWORKS=true`. Each database held **19 URL records, 9 links and 19
+pending findings**, with collected facts/evidence, before updating. Guessed HTTPS/www requests
+failed: the fixture serves HTTP only. The old image has no email-settings UI; the encrypted
+test setting was written through its settings API in a separate probe, not through a UI form.
+The original `BETTER_AUTH_SECRET` and explicit `SETTINGS_ENCRYPTION_KEY` were kept unchanged.
+
+After updating, the original crawl, links and rule retained their counts and pending-finding
+distribution. The worker logged startup reanalysis and recorded the accepted `noindex` finding
+from the existing rule. A second full crawl completed on every dialect. Health answered
+successfully. The session issued before updating still opened `/system/users`; fresh password
+login also worked and the existing user's stored role was `admin`.
+
+On upgraded data, System → Users actions invited a member without grants. Both its invitation
+link and the exact documented `node /app/worker/dist/recover.mjs <email>` command's link were
+redeemed through the app, followed by successful password login. The member received 404 on the
+ungranted domain. Recovery invalidated the administrator's sessions and left unrelated table
+counts unchanged; a nonexistent email exited nonzero without changing counts. The recovery
+token was absent from container logs before and after redemption. Each worker delivered an
+invitation to a local SMTP capture server and recorded `invite/sent`, exercising its bundled
+mail dependencies, public URL and settings configuration. This was not delivery to an external
+email provider.
+
+The old image predates the migration guard: on **all three newer databases** it started, allowed
+login and displayed the domain's pages despite 19 journal entries. The rollback warning above
+therefore remains essential. On independent copies, the new image rejected an artificial future
+journal entry before starting services.
+
+The documented restore commands recovered the original 14-entry journal, all original table
+counts (apart from a new worker heartbeat), the original findings distribution, rule, decryptable
+setting and password login. SQLite used a fresh volume and UID 1000 ownership; PostgreSQL and
+MySQL used new empty databases. The post-update member and second crawl were gone, as expected.
+
+For the failure rehearsal, a scratch copy of each pre-update backup was given a conflicting
+`user_tokens` table before starting the new image in migration mode. Bootstrap exited 1 at 0016. SQLite and PostgreSQL rolled back 0014–0016: neither the accepted-findings table nor
+`user_access` remained, and the journal still had 14 entries. MySQL retained 0014–0015 (16
+entries), the accepted-findings table and the unjournaled `user_access` table from 0016.
+Following the runbook—preserve diagnostics, restore the untouched backup into another fresh
+volume/database, select the previous image and original keys—returned each to a working login
+and known crawl. No journal entries were deleted or manually marked applied.
+
+Per-table baseline counts and findings are recorded in the
+[rehearsal evidence](rehearsals/2026-11-05-pending-migrations.md). All rehearsal containers,
+including their anonymous volumes, named volumes, network and application images were removed.
+
+**Not exercised:** Dokploy (no instance available), published images/tags or a release-to-release
+deployment, public-site/TLS crawling, external email delivery, alert subscriptions/delivery,
+24-hour token expiry, a browser UI walkthrough, or every possible migration failure. App
+interactions used real HTTP endpoints and rendered forms/server actions rather than browser
+automation. The separate earlier worker-only/migrations-disabled compatibility tests were not
+repeated in this run. No owner database, port 3000, version fields, tags or releases were changed.
