@@ -21,7 +21,7 @@ export default async function DomainSettingsLayout({
       </div>
       <div className="grid items-start gap-6 md:grid-cols-[12rem_minmax(0,1fr)]">
         <SettingsNav host={domain.host} />
-        {/* What changes the domain is inert for who cannot change it: see `(config)/layout.tsx`. */}
+        {/* What changes the domain is inert while archived: see `(config)/layout.tsx`. */}
         <div className="grid min-w-0 gap-6">{children}</div>
       </div>
     </main>

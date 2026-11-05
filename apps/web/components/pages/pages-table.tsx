@@ -571,7 +571,8 @@ export function PagesTable({
     data: rows,
     getRowId: (row) => row.urlHash,
     state: {
-      columnVisibility: { ...columnVisibility, issueDetail: detail !== undefined },
+      // Selecting only leads to actions: who cannot take them is not offered the checkboxes.
+      columnVisibility: { ...columnVisibility, issueDetail: detail !== undefined, select: canEdit },
       rowSelection: selection,
     },
     onRowSelectionChange: (updater: Updater<Record<string, true>>) =>

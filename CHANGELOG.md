@@ -47,6 +47,9 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Fixed
 
+- A viewer no longer sees anything that writes: settings, schedules, rules, languages, priority URLs
+  and cancel buttons are not shown, and the fields that show a current value are disabled instead
+  of looking active. The pages table has no selection checkboxes for them; Export stays.
 - The README and example environment now document Compose's existing database override
   accurately, preserving `DATABASE_URL_DOCKER`. Startup logs the selected dialect without the URL.
 - Crawl retention settings explain that older crawls lose URL results, links and evidence.

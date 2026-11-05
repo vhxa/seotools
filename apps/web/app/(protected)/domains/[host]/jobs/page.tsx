@@ -109,8 +109,8 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
                 disabled={active !== null || domain.archivedAt !== null}
               />
             </CardHeader>
-            {/* Inert while archived, or for who only reads: it cannot be changed. */}
-            <CardContent className="grid gap-3" inert={domain.archivedAt !== null || !canEdit}>
+            {/* Inert while archived. Who only reads sees the values, disabled (`useCanEdit`). */}
+            <CardContent className="grid gap-3" inert={domain.archivedAt !== null}>
               <ScheduleForm
                 host={domain.host}
                 type={type}
@@ -183,7 +183,7 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
                     {format.number(crawl.externalCount)}
                   </TableCell>
                   <TableCell>
-                    {(crawl.status === 'pending' || crawl.status === 'running') && (
+                    {canEdit && (crawl.status === 'pending' || crawl.status === 'running') && (
                       <form action={cancelCrawlAction.bind(null, domain.host, crawl.id)}>
                         <Button type="submit" variant="ghost" size="sm">
                           {tCrawl('cancel')}

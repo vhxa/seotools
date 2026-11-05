@@ -3,8 +3,9 @@ import { cn } from '@/lib/utils'
 import { requireDomain } from '@/lib/workspace'
 
 /**
- * The sections that change the domain: inert for who cannot change them, or while it is archived
- * (the actions refuse either way). Alerts are not here: they are personal, and anyone who can see
+ * The sections that change the domain: inert while it is archived. Who cannot change them (a
+ * viewer) sees their values with the controls disabled or absent (`useCanEdit`); the actions refuse
+ * either way. Alerts are not here: they are personal, and anyone who can see
  * the domain can choose them. A layout does not protect what it wraps: each section still calls
  * `requireDomain` itself.
  */
@@ -16,10 +17,10 @@ export default async function DomainConfigLayout({
   children: ReactNode
 }) {
   const { host } = await params
-  const { domain, canEdit } = await requireDomain(host)
-  const readOnly = domain.archivedAt !== null || !canEdit
+  const { domain } = await requireDomain(host)
+  const archived = domain.archivedAt !== null
   return (
-    <div className={cn('grid min-w-0 gap-6', readOnly && 'opacity-60')} inert={readOnly}>
+    <div className={cn('grid min-w-0 gap-6', archived && 'opacity-60')} inert={archived}>
       {children}
     </div>
   )

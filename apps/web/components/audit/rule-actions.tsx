@@ -28,6 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useCanEdit } from '@/components/domain-access'
 import { Switch } from '@/components/ui/switch'
 import type { RuleGroup } from '@/lib/audit-rules'
 
@@ -48,6 +49,7 @@ export function RuleToggle({
   selector: AuditSelector
 }) {
   const t = useTranslations('AuditRules')
+  const canEdit = useCanEdit()
   const text = useSelectorText()
   const [, startTransition] = useTransition()
   const [enabled, setEnabled] = useOptimistic(saved)
@@ -57,6 +59,7 @@ export function RuleToggle({
       <Switch
         size="sm"
         checked={enabled}
+        disabled={!canEdit}
         aria-label={t('list.toggle', { rule: text(selector) })}
         onCheckedChange={(next) =>
           startTransition(async () => {
@@ -86,6 +89,7 @@ export function RuleRowActions({
   languagesDeclared: boolean
 }) {
   const t = useTranslations('AuditRules')
+  const canEdit = useCanEdit()
   const text = useSelectorText()
   const [, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -93,6 +97,7 @@ export function RuleRowActions({
   const [deleting, setDeleting] = useState(false)
   const label = text(rule.selector)
 
+  if (!canEdit) return null
   return (
     <div className="flex items-center justify-end gap-1">
       <Button

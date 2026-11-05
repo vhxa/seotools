@@ -14,6 +14,7 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { saveCrawlSettingsAction, type ActionState } from '@/app/(protected)/domains/[host]/actions'
 import { InfoHelp } from '@/components/help'
+import { useCanEdit } from '@/components/domain-access'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -40,6 +41,7 @@ function NumberField({
   min,
   max,
   required = true,
+  disabled,
 }: {
   name: string
   label: string
@@ -48,6 +50,7 @@ function NumberField({
   min: number
   max: number
   required?: boolean
+  disabled: boolean
 }) {
   return (
     <div className="grid content-start gap-2">
@@ -64,6 +67,7 @@ function NumberField({
         step={1}
         defaultValue={defaultValue}
         required={required}
+        disabled={disabled}
       />
     </div>
   )
@@ -79,6 +83,7 @@ export function CrawlSettingsForm({
   defaultUserAgent: string
 }) {
   const t = useTranslations('CrawlSettings')
+  const canEdit = useCanEdit()
   const [state, onSubmit, pending] = useFormActionState<ActionState>(
     saveCrawlSettingsAction.bind(null, host),
     {},
@@ -100,6 +105,7 @@ export function CrawlSettingsForm({
 
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
+      {/* Who cannot change the settings still reads them: inputs are disabled, not hidden. */}
       {modes.length > 1 ? (
         <div className="grid gap-2">
           <Label htmlFor="renderingMode">{t('rendering.label')}</Label>
@@ -107,6 +113,7 @@ export function CrawlSettingsForm({
             name="renderingMode"
             items={modes}
             value={mode}
+            disabled={!canEdit}
             onValueChange={(value) => value && setMode(value)}
           >
             <SelectTrigger id="renderingMode" className="w-full">
@@ -134,6 +141,7 @@ export function CrawlSettingsForm({
           defaultValue={settings.userAgent ?? ''}
           placeholder={defaultUserAgent}
           maxLength={limits.userAgentLength}
+          disabled={!canEdit}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -150,6 +158,7 @@ export function CrawlSettingsForm({
           label={t('concurrency.label')}
           hint={t('concurrency.hint')}
           defaultValue={settings.concurrency}
+          disabled={!canEdit}
           {...limits.concurrency}
         />
         <NumberField
@@ -157,6 +166,7 @@ export function CrawlSettingsForm({
           label={t('requestsPerSecond.label')}
           hint={t('requestsPerSecond.hint')}
           defaultValue={settings.requestsPerSecond}
+          disabled={!canEdit}
           {...limits.requestsPerSecond}
         />
         <NumberField
@@ -164,6 +174,7 @@ export function CrawlSettingsForm({
           label={t('timeout.label')}
           hint={t('timeout.hint')}
           defaultValue={settings.timeoutMs / 1000}
+          disabled={!canEdit}
           {...limits.timeoutSeconds}
         />
         <NumberField
@@ -171,6 +182,7 @@ export function CrawlSettingsForm({
           label={t('maxRetries.label')}
           hint={t('maxRetries.hint')}
           defaultValue={settings.maxRetries}
+          disabled={!canEdit}
           {...limits.maxRetries}
         />
       </div>
@@ -181,6 +193,7 @@ export function CrawlSettingsForm({
         hint={t('maxUrls.hint')}
         defaultValue={settings.maxUrls ?? ''}
         required={false}
+        disabled={!canEdit}
         {...limits.maxUrls}
       />
 
@@ -191,6 +204,7 @@ export function CrawlSettingsForm({
             name="retention"
             items={retentions}
             value={retention}
+            disabled={!canEdit}
             onValueChange={(value) => value && setRetention(value as Retention)}
           >
             <SelectTrigger id="retention" className="w-full">
@@ -212,6 +226,7 @@ export function CrawlSettingsForm({
             label={t('retention.countLabel')}
             hint={t('retention.countHint')}
             defaultValue={settings.retainCrawls ?? 10}
+            disabled={!canEdit}
             {...limits.retainCrawls}
           />
         )}
@@ -229,6 +244,7 @@ export function CrawlSettingsForm({
                 id={`file.${kind}`}
                 name={`file.${kind}`}
                 checked={files.includes(kind)}
+                disabled={!canEdit}
                 onCheckedChange={(checked) =>
                   setFiles((current) =>
                     checked ? [...current, kind] : current.filter((file) => file !== kind),
@@ -252,6 +268,7 @@ export function CrawlSettingsForm({
               name="indexNowKey"
               defaultValue={settings.indexNowKey ?? ''}
               maxLength={128}
+              disabled={!canEdit}
               required
               autoCapitalize="none"
               autoCorrect="off"
@@ -270,16 +287,18 @@ export function CrawlSettingsForm({
           {state.error}
         </p>
       )}
-      <div className="flex items-center gap-3">
-        <Button type="submit" disabled={pending}>
-          {t('save')}
-        </Button>
-        {state.saved && !pending && (
-          <p role="status" className="text-sm text-muted-foreground">
-            {t('saved')}
-          </p>
-        )}
-      </div>
+      {canEdit && (
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={pending}>
+            {t('save')}
+          </Button>
+          {state.saved && !pending && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t('saved')}
+            </p>
+          )}
+        </div>
+      )}
     </form>
   )
 }

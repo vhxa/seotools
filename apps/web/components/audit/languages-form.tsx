@@ -6,6 +6,7 @@ import {
   saveAuditLanguagesAction,
   type LanguagesFormState,
 } from '@/app/(protected)/domains/[host]/audit-actions'
+import { useCanEdit } from '@/components/domain-access'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -20,6 +21,7 @@ import { useState } from 'react'
  */
 export function LanguagesForm({ host, languages }: { host: string; languages: LanguageConfig }) {
   const t = useTranslations('AuditRules.languages')
+  const canEdit = useCanEdit()
   const [state, onSubmit, saving] = useFormActionState<LanguagesFormState>(
     saveAuditLanguagesAction.bind(null, host),
     {},
@@ -36,6 +38,7 @@ export function LanguagesForm({ host, languages }: { host: string; languages: La
           defaultValue={languages.prefixes.join('\n')}
           placeholder={t('prefixesPlaceholder')}
           rows={5}
+          disabled={!canEdit}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -51,6 +54,7 @@ export function LanguagesForm({ host, languages }: { host: string; languages: La
         <Switch
           id="language-unprefixed"
           checked={unprefixed}
+          disabled={!canEdit}
           onCheckedChange={setUnprefixed}
           aria-describedby="language-unprefixed-help"
         />
@@ -72,11 +76,13 @@ export function LanguagesForm({ host, languages }: { host: string; languages: La
           {t('saved')}
         </p>
       )}
-      <div>
-        <Button type="submit" disabled={saving}>
-          {saving ? t('saving') : t('save')}
-        </Button>
-      </div>
+      {canEdit && (
+        <div>
+          <Button type="submit" disabled={saving}>
+            {saving ? t('saving') : t('save')}
+          </Button>
+        </div>
+      )}
     </form>
   )
 }

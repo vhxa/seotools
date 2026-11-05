@@ -4,6 +4,7 @@ import { PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { RuleForm } from '@/components/audit/rule-form'
+import { useCanEdit } from '@/components/domain-access'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,7 +25,9 @@ export function CreateRuleButton({
   variant?: 'default' | 'outline'
 }) {
   const t = useTranslations('AuditRules')
+  const canEdit = useCanEdit()
   const [open, setOpen] = useState(false)
+  if (!canEdit) return null
   return (
     <>
       <Button variant={variant} onClick={() => setOpen(true)}>

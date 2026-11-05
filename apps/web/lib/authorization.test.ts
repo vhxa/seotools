@@ -90,3 +90,44 @@ describe('pages and routes', () => {
     }
   })
 })
+
+describe('what a viewer is offered', () => {
+  const sources = [...filesUnder(APP), ...filesUnder(join(APP, '..', 'components'))].filter(
+    (path) => /\.tsx$/.test(path),
+  )
+  /** Imports a value (not only a type) from the actions of a domain. */
+  const usesDomainActions = (source: string) =>
+    /import\s+(?!type\b)[^';]*?from\s+'@\/app\/\(protected\)\/domains\/\[host\]\/(actions|audit-actions|verify-actions|link-actions)'/s.test(
+      source,
+    )
+  /** Reads nothing but values: it does not change the domain, so a viewer may use it. */
+  const READ_ONLY = new Set(['components/pages/url-links-panel.tsx'])
+  /** Only rendered by what already checks, which is why it does not ask again. */
+  const INSIDE_GATED = new Set([
+    // Dialogs opened by `UrlAuditActions`, `CreateRuleButton`, `RuleRowActions` and the table's
+    // selection menu, none of which exist for a viewer.
+    'components/audit/audit-dialog.tsx',
+    'components/audit/rule-form.tsx',
+  ])
+  const candidates = sources.filter((path) => usesDomainActions(readFileSync(path, 'utf8')))
+  const relativeToWeb = (path: string) => relative(join(APP, '..'), path)
+
+  it('are found', () => {
+    expect(candidates.length).toBeGreaterThanOrEqual(15)
+  })
+
+  it.each(candidates.map((path) => [relativeToWeb(path), path] as const))(
+    '%s hides or disables what writes',
+    (file, path) => {
+      if (READ_ONLY.has(file) || INSIDE_GATED.has(file)) return
+      // A page knows from `requireDomain`; a component from the context of the domain.
+      expect(readFileSync(path, 'utf8'), file).toMatch(/useCanEdit\(|<EditorsOnly>|\bcanEdit\b/)
+    },
+  )
+
+  it('lists only components that exist', () => {
+    for (const file of [...READ_ONLY, ...INSIDE_GATED]) {
+      expect(candidates.map(relativeToWeb), file).toContain(file)
+    }
+  })
+})

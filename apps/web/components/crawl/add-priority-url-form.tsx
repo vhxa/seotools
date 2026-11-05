@@ -6,16 +6,19 @@ import {
   addPriorityUrlAction,
   type AddPriorityUrlState,
 } from '@/app/(protected)/domains/[host]/actions'
+import { useCanEdit } from '@/components/domain-access'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export function AddPriorityUrlForm({ host }: { host: string }) {
   const t = useTranslations('PrioritySettings')
+  const canEdit = useCanEdit()
   const [state, formAction, pending] = useActionState<AddPriorityUrlState, FormData>(
     addPriorityUrlAction.bind(null, host),
     {},
   )
+  if (!canEdit) return null
   return (
     <form action={formAction} className="grid gap-2">
       <Label htmlFor="priority-url">{t('addLabel')}</Label>
