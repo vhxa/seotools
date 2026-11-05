@@ -114,9 +114,7 @@ describe('fetchLatestRelease', () => {
   })
 
   it('links release notes to this repository, whatever the response says', () => {
-    expect(releaseNotesUrl('0.3.1')).toBe(
-      'https://github.com/botaroikawa/seotools/releases/tag/v0.3.1',
-    )
+    expect(releaseNotesUrl('0.3.1')).toBe('https://github.com/vhxa/seotools/releases/tag/v0.3.1')
   })
 })
 

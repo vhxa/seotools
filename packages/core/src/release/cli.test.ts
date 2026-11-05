@@ -243,7 +243,7 @@ describe('notes', () => {
     const { io, out } = fake()
     expect(await run(['notes', '0.1.0'], io)).toBe(0)
     expect(out[0]).toContain('### Added\n\n- First release.')
-    expect(out[0]).toContain('`ghcr.io/botaroikawa/seotools:0.1.0`')
+    expect(out[0]).toContain('`ghcr.io/vhxa/seotools:0.1.0`')
     expect(out[0]).toContain('docs/updating.md')
   })
 

@@ -1,7 +1,7 @@
 /** Where SEO Tools is published. Import-free, like `version.ts`: the release tooling reads it too. */
 
 /** The GitHub repository that holds the code, the tags and the release notes. */
-export const RELEASES_REPOSITORY = 'botaroikawa/seotools'
+export const RELEASES_REPOSITORY = 'vhxa/seotools'
 
 /** Every published release, with its notes. */
 export const RELEASES_URL = `https://github.com/${RELEASES_REPOSITORY}/releases`

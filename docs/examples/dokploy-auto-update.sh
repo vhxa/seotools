@@ -4,7 +4,7 @@
 # Run it from OUTSIDE the seotools container: a cron job, or a scheduled CI workflow. It redeploys
 # the Dokploy application when the image behind a compatibility-line tag (0.2, or 1 from 1.0.0 on)
 # changed, and only after the checks below. Dokploy pulls the image reference it has saved when it
-# deploys, so the application must be set to that same tag (for example ghcr.io/botaroikawa/seotools:0.2).
+# deploys, so the application must be set to that same tag (for example ghcr.io/vhxa/seotools:0.2).
 #
 # Required environment:
 #   DOKPLOY_URL             https://dokploy.example.com
@@ -14,7 +14,7 @@
 #   SEOTOOLS_TAG            the line to follow: 0.2, 1.4 or 1 (never latest, edge, sha-… or a candidate)
 # Optional:
 #   PRE_UPDATE_COMMAND      a command that takes a backup and fails if it could not
-#   SEOTOOLS_IMAGE_REPOSITORY  default botaroikawa/seotools (a public package on ghcr.io)
+#   SEOTOOLS_IMAGE_REPOSITORY  default vhxa/seotools (a public package on ghcr.io)
 #   STATE_DIR               where it remembers what it deployed (default ~/.local/state/seotools-auto-update)
 #   WAIT_SECONDS            how long to wait for the new version to be healthy (default 600)
 #
@@ -23,7 +23,7 @@
 set -euo pipefail
 
 : "${DOKPLOY_URL:?}" "${DOKPLOY_API_KEY:?}" "${DOKPLOY_APPLICATION_ID:?}" "${SEOTOOLS_URL:?}" "${SEOTOOLS_TAG:?}"
-repository="${SEOTOOLS_IMAGE_REPOSITORY:-botaroikawa/seotools}"
+repository="${SEOTOOLS_IMAGE_REPOSITORY:-vhxa/seotools}"
 state_dir="${STATE_DIR:-${HOME}/.local/state/seotools-auto-update}"
 wait_seconds="${WAIT_SECONDS:-600}"
 tag="$SEOTOOLS_TAG"

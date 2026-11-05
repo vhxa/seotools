@@ -43,7 +43,7 @@ version:
 
 **Checking** is done by hand with **Check now**, or once a day by the worker if you turn on
 **Periodic checks**. They are off by default. A check is one request to
-`api.github.com/repos/botaroikawa/seotools/releases/latest` with a fixed `User-Agent`. It sends
+`api.github.com/repos/vhxa/seotools/releases/latest` with a fixed `User-Agent`. It sends
 nothing about your domains, your data or your installation, not even the version you run; GitHub
 sees the address your server connects from, like any website would. Visiting the page never makes
 a request: it shows what was stored. A failed check is stored as a failure and retried after an
@@ -57,7 +57,7 @@ The same information is public without logging in: `GET /api/health` returns `ve
 
 ## Image tags
 
-The image is `ghcr.io/botaroikawa/seotools`, for `linux/amd64` and `linux/arm64`.
+The image is `ghcr.io/vhxa/seotools`, for `linux/amd64` and `linux/arm64`.
 
 | Tag           | What it is                                                                                | Moves?                     | Use it for                                        |
 | ------------- | ----------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------- |
@@ -87,7 +87,7 @@ release it descends from, not a release.
 ## Before updating
 
 1. **Read the release notes** of every version between yours and the target: the
-   [GitHub releases](https://github.com/botaroikawa/seotools/releases) or
+   [GitHub releases](https://github.com/vhxa/seotools/releases) or
    [`CHANGELOG.md`](../CHANGELOG.md). Look for **Breaking** and **Upgrade notes**. Say no to an
    update you have not read.
 2. **Take a backup** and check you can read it ([Backups and restore](#backups-and-restore)). It
@@ -128,8 +128,8 @@ release it descends from, not a release.
 
 ```bash
 # 1. Back up (see below). Then choose the version in .env:
-#    SEOTOOLS_IMAGE=ghcr.io/botaroikawa/seotools:0.2.1   # exactly this release
-#    SEOTOOLS_IMAGE=ghcr.io/botaroikawa/seotools:0.2     # the newest 0.2.x
+#    SEOTOOLS_IMAGE=ghcr.io/vhxa/seotools:0.2.1   # exactly this release
+#    SEOTOOLS_IMAGE=ghcr.io/vhxa/seotools:0.2     # the newest 0.2.x
 docker compose pull
 docker compose up -d          # recreates the container only if the image changed
 docker compose logs -f seotools   # look for: migrations applied, started in "all" mode
@@ -143,7 +143,7 @@ release, change the tag. With a channel tag (`0.2`) it brings the new patches.
 
 Dokploy runs the image as a Docker Swarm service. Set the application up once:
 
-- **Source**: Docker. **Docker Image**: `ghcr.io/botaroikawa/seotools:<tag>`. **Registry URL**:
+- **Source**: Docker. **Docker Image**: `ghcr.io/vhxa/seotools:<tag>`. **Registry URL**:
   `ghcr.io`. Username and password only if the package is private.
 - **Environment**: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (the public `https://` URL) and anything
   else from the README. They survive a Deploy; do not change the two keys.

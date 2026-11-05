@@ -6,12 +6,12 @@
 # To build the image from source instead of pulling it, run: docker compose up -d --build
 #
 # The image defaults to :latest, the newest stable release. To choose the version, set
-# SEOTOOLS_IMAGE in .env: ghcr.io/botaroikawa/seotools:0.2.1 (exactly that release) or :0.2 (its
+# SEOTOOLS_IMAGE in .env: ghcr.io/vhxa/seotools:0.2.1 (exactly that release) or :0.2 (its
 # patches). Update with: docker compose pull && docker compose up -d. Take a backup first:
 # docs/updating.md.
 services:
   seotools:
-    image: ${SEOTOOLS_IMAGE:-ghcr.io/botaroikawa/seotools:latest}
+    image: ${SEOTOOLS_IMAGE:-ghcr.io/vhxa/seotools:latest}
     build: .
     restart: unless-stopped
     ports:

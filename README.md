@@ -26,7 +26,7 @@ Raspberry Pi to a VPS.
 ## Quick start (Docker Compose)
 
 ```bash
-git clone https://github.com/botaroikawa/seotools.git && cd seotools
+git clone https://github.com/vhxa/seotools.git && cd seotools
 cp .env.example .env
 ```
 
@@ -56,7 +56,7 @@ This pulls the newest **stable release**. For anything you rely on, pin a versio
 
 > **No release has been published yet**, so `latest` does not exist yet. Until the first one, build
 > the image from source (`docker compose up -d --build`) or run a development build of `main` with
-> `SEOTOOLS_IMAGE=ghcr.io/botaroikawa/seotools:edge` in `.env`.
+> `SEOTOOLS_IMAGE=ghcr.io/vhxa/seotools:edge` in `.env`.
 
 ## Configuration
 
@@ -103,7 +103,7 @@ the **old** secret first (or to any fixed 32+ char value from the start) to keep
 
 ## Deploying
 
-The image is `ghcr.io/botaroikawa/seotools`. `1.2.3` is one release, `1.2` follows its patches (and,
+The image is `ghcr.io/vhxa/seotools`. `1.2.3` is one release, `1.2` follows its patches (and,
 from 1.0.0, `1` follows its minor versions), `latest` is the newest stable release, and `edge` and
 `sha-<commit>` are development builds of `main`, never releases. What each tag means and which one
 to use is in [docs/updating.md](docs/updating.md#image-tags). In production, pin one.
@@ -129,7 +129,7 @@ seo.example.com {
 
 Both can deploy either the prebuilt image or this repository's `Dockerfile` (or `docker-compose.yml`).
 
-1. Create an application from the image `ghcr.io/botaroikawa/seotools:<version>` (or from this Git
+1. Create an application from the image `ghcr.io/vhxa/seotools:<version>` (or from this Git
    repo), with a version or a patch channel such as `0.2`, not `latest`.
 2. Set the environment variables: `BETTER_AUTH_SECRET`, and `BETTER_AUTH_URL` = the domain you
    assign to the app (with `https://`).
@@ -175,12 +175,12 @@ With PostgreSQL or MySQL you can scale them independently using the same image:
 ```yaml
 services:
   web:
-    image: ghcr.io/botaroikawa/seotools:latest
+    image: ghcr.io/vhxa/seotools:latest
     environment: { SEOTOOLS_MODE: web } # migrates, then serves the UI
     env_file: .env
     ports: ['3000:3000']
   worker:
-    image: ghcr.io/botaroikawa/seotools:latest
+    image: ghcr.io/vhxa/seotools:latest
     environment: { SEOTOOLS_MODE: worker } # processes jobs; does not migrate
     env_file: .env
     depends_on: { web: { condition: service_healthy } }
