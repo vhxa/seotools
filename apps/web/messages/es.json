@@ -620,6 +620,65 @@
     "issuesMenu": "Incidencias",
     "rowsShown": "{shown, number} de {matching, number} URLs mostradas"
   },
+  "Export": {
+    "menu": {
+      "label": "Exportar",
+      "heading": "Descargar como CSV",
+      "pages": "Páginas",
+      "pagesHint": "Una fila por URL, con su estado y cuántos hallazgos tiene.",
+      "findings": "Hallazgos",
+      "findingsHint": "Una fila por hallazgo, con su importancia y lo que lo respalda.",
+      "notAnalysed": "Este rastreo no se ha revisado en busca de hallazgos.",
+      "scope": "Todo lo que dejan los filtros, no solo esta página."
+    },
+    "errors": {
+      "missing": "Este rastreo no existe en este dominio.",
+      "noCrawl": "Este dominio todavía no tiene ningún rastreo con resultados que exportar.",
+      "pruned": "Los resultados de este rastreo se eliminaron por el ajuste de retención, así que solo quedan sus totales y no hay nada que exportar.",
+      "notAnalysed": "Este rastreo no se ha revisado en busca de hallazgos, así que no hay ninguno que exportar."
+    },
+    "columns": {
+      "domain": "Dominio",
+      "crawlDate": "Fecha del rastreo (UTC)",
+      "crawlId": "ID del rastreo",
+      "filters": "Filtros",
+      "url": "URL",
+      "site": "Sitio",
+      "kind": "Tipo",
+      "status": "Estado HTTP",
+      "error": "Error de la petición",
+      "indexability": "Estado técnico",
+      "blockers": "Bloqueos",
+      "audit": "Auditoría",
+      "expectation": "Indexación esperada",
+      "title": "Título",
+      "issues": "Número de issues",
+      "warnings": "Número de warnings",
+      "opportunities": "Número de opportunities",
+      "finding": "ID del hallazgo",
+      "findingName": "Hallazgo",
+      "category": "Categoría",
+      "type": "Tipo de hallazgo",
+      "importance": "Importancia",
+      "details": "Detalles",
+      "evidenceTotal": "Evidencias encontradas",
+      "evidenceSamples": "Ejemplos de evidencia",
+      "findingState": "Estado",
+      "acceptedBecause": "Motivo de la aceptación",
+      "acceptedFindings": "Aceptados por una regla"
+    },
+    "values": {
+      "internal": "Este sitio",
+      "external": "Externa",
+      "atLeast": "Al menos {total, number}",
+      "evidenceNotStored": "No guardada en este rastreo",
+      "pending": "Pendiente",
+      "accepted": "Aceptado por una regla"
+    },
+    "filters": {
+      "view": "Vista: {value}"
+    }
+  },
   "UrlDetail": {
     "back": "Volver al detalle",
     "openFullScreen": "Abrir en pantalla completa",

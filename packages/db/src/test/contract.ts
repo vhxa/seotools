@@ -740,6 +740,68 @@ export function describeDatabaseContract(
         expect(await page(4)).toEqual(urls.slice(4))
       })
 
+      it('pages through a filtered list without skipping or repeating a URL, whatever the order', async () => {
+        // What an export does: walk every URL the filters leave, in batches. Many URLs tie on
+        // depth, status, title and size, and two of them differ only in case, which a dialect's
+        // collation may take for the same address: the order still has to be total.
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const urls = [
+          ...Array.from({ length: 23 }, (_, i) => `https://acme.com/p${i}`),
+          'https://acme.com/Case',
+          'https://acme.com/case',
+        ]
+        await db.crawls.addUrls(
+          id,
+          urls.map((url) => newUrl(url)),
+        )
+        for (const [index, url] of urls.entries()) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: crawlUrlHash(url),
+            result: result('page', {
+              statusCode: index % 5 === 0 ? 404 : 200,
+              title: index % 3 === 0 ? null : 'Same title',
+              bytes: 100,
+            }),
+          })
+        }
+        const everything = async (
+          filter: Partial<Parameters<typeof db.crawls.listUrls>[0]>,
+          size: number,
+        ) => {
+          const found: string[] = []
+          for (let offset = 0; ; offset += size) {
+            const batch = await db.crawls.listUrls({
+              crawlId: id,
+              view: 'pages',
+              ...filter,
+              limit: size,
+              offset,
+            })
+            found.push(...batch.map((row) => row.urlHash))
+            if (batch.length < size) return found
+          }
+        }
+        for (const sort of [undefined, 'url', 'title', 'status', 'bytes', 'depth'] as const) {
+          for (const direction of ['asc', 'desc'] as const) {
+            const filter = { ...(sort ? { sort, direction } : {}) }
+            const all = await everything(filter, 100)
+            expect(new Set(all).size).toBe(urls.length)
+            // Any batch size walks the same list.
+            expect(await everything(filter, 4)).toEqual(all)
+            expect(await everything(filter, 7)).toEqual(all)
+          }
+        }
+        // Narrowed by a filter, the walk holds exactly what the count says.
+        const narrowed = { status: '4xx' as const }
+        const walked = await everything({ ...narrowed, sort: 'title' }, 3)
+        expect(walked).toHaveLength(
+          await db.crawls.countListed({ crawlId: id, view: 'pages', ...narrowed }),
+        )
+        expect(new Set(walked).size).toBe(walked.length)
+      })
+
       describe('lists of URLs', () => {
         const site = 'https://acme.com'
         const pages = {

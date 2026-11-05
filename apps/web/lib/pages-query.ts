@@ -291,6 +291,16 @@ export function detailHref(
   return `/domains/${host}/pages/details${search ? `?${search}` : ''}`
 }
 
+/**
+ * The address of a CSV export of what the table lists for a query: the same view, filters, search,
+ * order and crawl as `detailHref` writes, without the page and the drawer, which are not part of
+ * what is listed. Read back with `parseDetailQuery`, so the file and the table never disagree.
+ */
+export function exportHref(host: string, query: DetailQuery, kind: 'pages' | 'findings'): string {
+  const search = detailHref(host, query, { page: 1, url: null }).split('?')[1]
+  return `/domains/${host}/pages/export/${kind}${search ? `?${search}` : ''}`
+}
+
 /** The direction a column header should sort in when clicked: asc, then desc, then back to default. */
 export function nextSort(
   query: Pick<DetailQuery, 'sort' | 'direction'>,

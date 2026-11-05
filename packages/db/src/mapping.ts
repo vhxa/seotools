@@ -493,6 +493,10 @@ export function crawlUrlWhere(
 /**
  * Shallowest first by default. URLs without a value (a title that is missing, a request that never
  * answered) go last whatever the direction, since each dialect sorts NULLs differently.
+ *
+ * The order is total: the hash decides between two addresses that a dialect's collation may
+ * consider the same (`/A` and `/a`), so that pages of a list, and an export that walks all of
+ * them, never repeat or skip a URL.
  */
 export function crawlUrlOrder(
   columns: CrawlUrlColumns,
@@ -504,6 +508,7 @@ export function crawlUrlOrder(
     asc(sql`${column} is null`),
     (direction === 'desc' ? desc : asc)(column),
     asc(columns.url),
+    asc(columns.urlHash),
   ]
 }
 

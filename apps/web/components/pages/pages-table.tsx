@@ -65,6 +65,7 @@ import {
 } from '@/components/audit/state-badges'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueBadge, IssueDetails, useIssueLabel } from '@/components/pages/issue-mark'
+import { ExportMenu } from '@/components/pages/export-menu'
 import { TableFilters } from '@/components/pages/table-filters'
 import {
   Sheet,
@@ -738,6 +739,7 @@ export function PagesTable({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <ExportMenu host={host} query={query} analysed={analysed} />
           </div>
         </div>
         <div className="flex min-w-0 items-center [&_[data-slot=select-trigger]]:w-full">

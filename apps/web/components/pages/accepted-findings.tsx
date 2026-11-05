@@ -1,4 +1,4 @@
-import { rulesOfAcceptance, type FindingAcceptance } from '@seotools/core/crawl/acceptance'
+import { rulesOfAcceptance } from '@seotools/core/crawl/acceptance'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
@@ -6,6 +6,7 @@ import { RuleOrigin } from '@/components/audit/state-badges'
 import { Disclosure } from '@/components/pages/disclosure'
 import { IssueEvidenceView, RelatedUrls } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
+import { describeAcceptance } from '@/lib/acceptance-reason'
 import { ruleRefsOf } from '@/lib/audit-rules'
 import type { UrlDetailData } from '@/lib/url-detail'
 
@@ -22,32 +23,17 @@ export async function AcceptedFindings({
 }) {
   const { accepted, acceptedElsewhere, crawl, evidenceUrls } = data
   if (accepted.length === 0 && acceptedElsewhere.total === 0) return null
-  const [t, tIssues, tConditions, tStatements, tBlockers] = await Promise.all([
+  const [t, tIssues, tAll] = await Promise.all([
     getTranslations('UrlDetail.accepted'),
     getTranslations('PageIssues'),
-    getTranslations('AuditStatements.conditions'),
-    getTranslations('AuditStatements.requirement'),
-    getTranslations('AuditState.blockers'),
+    getTranslations(),
   ])
   const refOf = ruleRefsOf(crawl.auditSnapshot)
 
-  const reason = (acceptance: FindingAcceptance) => {
-    switch (acceptance.kind) {
-      case 'condition':
-        return t('condition', {
-          condition: tConditions(`${acceptance.condition}.label`),
-          requirement: tStatements(acceptance.requirement),
-        })
-      case 'expectation':
-        return t('expectation')
-      case 'relation':
-        return acceptance.end === 'origin'
-          ? t('origin')
-          : t('destination', {
-              blockers: acceptance.blockers.map((blocker) => tBlockers(blocker)).join(', '),
-            })
-    }
-  }
+  const translate = tAll as unknown as (
+    key: string,
+    values?: Record<string, string | number>,
+  ) => string
 
   return (
     <>
@@ -61,7 +47,7 @@ export async function AcceptedFindings({
                   {isPageIssueId(issue) && <IssueMark issue={issue} />}
                   <IssueLabel issue={issue} />
                 </span>
-                <p className="text-muted-foreground">{reason(acceptance)}</p>
+                <p className="text-muted-foreground">{describeAcceptance(acceptance, translate)}</p>
                 {rulesOfAcceptance(acceptance).map((rule) => (
                   <RuleOrigin key={rule} rule={refOf(rule)} />
                 ))}

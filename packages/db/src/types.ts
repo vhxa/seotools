@@ -1003,8 +1003,9 @@ export interface Database {
   readonly orm: { db: unknown; schema: Record<string, unknown> }
   /** Rejects if the database is unreachable. */
   ping(): Promise<void>
-  /** Applies pending migrations from `migrationsDir` (default: the bundled ones). */
+  /** Rejects if the database has a migration `migrationsDir` does not know (default: the bundled ones). */
   checkMigrations(migrationsDir?: string): Promise<void>
+  /** Applies pending migrations from `migrationsDir` (default: the bundled ones). */
   migrate(migrationsDir?: string): Promise<void>
   close(): Promise<void>
 }

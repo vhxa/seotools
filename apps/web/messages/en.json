@@ -620,6 +620,65 @@
     "issuesMenu": "Issues",
     "rowsShown": "{shown, number} of {matching, number} URLs shown"
   },
+  "Export": {
+    "menu": {
+      "label": "Export",
+      "heading": "Download as CSV",
+      "pages": "Pages",
+      "pagesHint": "One row per URL, with its state and how many findings it has.",
+      "findings": "Findings",
+      "findingsHint": "One row per finding, with its importance and what backs it.",
+      "notAnalysed": "This crawl has not been checked for findings.",
+      "scope": "Everything the filters leave, not only this page."
+    },
+    "errors": {
+      "missing": "This crawl does not exist in this domain.",
+      "noCrawl": "This domain has no crawl with results to export yet.",
+      "pruned": "The results of this crawl were removed by the retention setting, so only its totals remain and there is nothing to export.",
+      "notAnalysed": "This crawl has not been checked for findings, so there are none to export."
+    },
+    "columns": {
+      "domain": "Domain",
+      "crawlDate": "Crawl date (UTC)",
+      "crawlId": "Crawl ID",
+      "filters": "Filters",
+      "url": "URL",
+      "site": "Site",
+      "kind": "Type",
+      "status": "HTTP status",
+      "error": "Request error",
+      "indexability": "Technical state",
+      "blockers": "Blockers",
+      "audit": "Audit",
+      "expectation": "Expected indexing",
+      "title": "Title",
+      "issues": "Number of issues",
+      "warnings": "Number of warnings",
+      "opportunities": "Number of opportunities",
+      "finding": "Finding ID",
+      "findingName": "Finding",
+      "category": "Category",
+      "type": "Finding type",
+      "importance": "Importance",
+      "details": "Details",
+      "evidenceTotal": "Evidence found",
+      "evidenceSamples": "Evidence samples",
+      "findingState": "State",
+      "acceptedBecause": "Accepted because",
+      "acceptedFindings": "Accepted by a rule"
+    },
+    "values": {
+      "internal": "This site",
+      "external": "External",
+      "atLeast": "At least {total, number}",
+      "evidenceNotStored": "Not stored in this crawl",
+      "pending": "Pending",
+      "accepted": "Accepted by a rule"
+    },
+    "filters": {
+      "view": "View: {value}"
+    }
+  },
   "UrlDetail": {
     "back": "Back to the detail",
     "openFullScreen": "Open full screen",

@@ -45,6 +45,12 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **CSV export** of the pages table (Export, in its toolbar): the pages, or their findings. Each file
+  holds every row the address lists (the same view, filters, search, order and crawl), not only the
+  page on screen, and carries the domain, the crawl date and id, and the filters on every row. Headers
+  are in the language of the request, text opens correctly in Excel (UTF-8 with a byte order mark,
+  RFC 4180) and what a site wrote cannot run as a spreadsheet formula. A crawl with no results, with
+  its results removed, or never checked for findings answers an error instead of an empty file.
 - **Updates** page (System → Updates) for administrators: the installed version and kind of build,
   the latest stable release, when the last check ran and how it ended, and links to the release
   notes and the update guide. It tells _up to date_, _update available_, _could not check_ and
