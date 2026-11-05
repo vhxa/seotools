@@ -3,10 +3,10 @@
 import { JOB_TYPES } from '@seotools/core'
 import { revalidatePath } from 'next/cache'
 import { getDb } from '@/lib/db'
-import { requireSession } from '@/lib/session'
+import { requireAdmin } from '@/lib/session'
 
 export async function enqueueExampleJob() {
-  await requireSession()
+  await requireAdmin()
   const db = await getDb()
   await db.jobs.enqueue({
     type: JOB_TYPES.exampleEcho,

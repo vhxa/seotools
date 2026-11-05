@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ArchivedNotice } from '@/components/archived-notice'
+import { DomainAccessProvider } from '@/components/domain-access'
 import { requireDomain } from '@/lib/workspace'
 
 /**
@@ -15,11 +16,11 @@ export default async function DomainLayout({
   children: ReactNode
 }) {
   const { host } = await params
-  const { domain } = await requireDomain(host)
+  const { domain, canEdit, role } = await requireDomain(host)
   return (
-    <>
-      {domain.archivedAt && <ArchivedNotice />}
+    <DomainAccessProvider canEdit={canEdit}>
+      {domain.archivedAt && <ArchivedNotice canManage={role === 'admin'} />}
       {children}
-    </>
+    </DomainAccessProvider>
   )
 }

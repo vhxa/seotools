@@ -35,6 +35,8 @@ export const JOB_TYPES = {
   auditRecompute: 'audit.recompute',
   /** Requests some URLs of a domain again and checks what each one answers on its own. */
   urlVerify: 'url.verify',
+  /** Sends someone a link to set their password. The link is made when sending, never stored. */
+  accessEmail: 'access.email',
 } as const
 
 export const exampleEchoPayload = z.object({
@@ -68,3 +70,10 @@ export function retryDelayMs(attempts: number, baseMs = 5_000, maxMs = 15 * 60_0
 /** How often a worker writes its heartbeat, and how long before it is considered gone. */
 export const WORKER_HEARTBEAT_INTERVAL_MS = 10_000
 export const WORKER_STALE_AFTER_MS = 30_000
+
+export const accessEmailPayload = z.object({
+  userId: z.string().min(1),
+  kind: z.enum(['invite', 'reset']),
+  locale: z.enum(['en', 'es']),
+})
+export type AccessEmailPayload = z.infer<typeof accessEmailPayload>

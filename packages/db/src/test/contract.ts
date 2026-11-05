@@ -27,6 +27,7 @@ import type {
 } from '../types'
 import { addDomain, createCompany } from '../workspace'
 import { describeLifecycle } from './lifecycle'
+import { describeUsers } from './users'
 
 const minutes = (n: number) => n * 60_000
 
@@ -281,6 +282,7 @@ export function describeDatabaseContract(
       () => db,
       (table) => countRows(table),
     )
+    describeUsers(() => db)
 
     describe('companies and domains', () => {
       it('creates a company with its first domain, normalized', async () => {

@@ -36,20 +36,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { accessAfterMove } from '@/lib/domain-move'
 
 export interface DomainActionsProps {
   domain: { id: string; host: string; archived: boolean }
   company: { id: string; name: string }
   /** Every company, for the one to move to. */
   companies: { id: string; name: string }[]
+  /** Who gains and who loses the domain if it moves to each company. */
+  moveAccess: Record<string, { gain: string[]; lose: string[] }>
   usage: UsageCounts
 }
 
 type Dialogs = 'archive' | 'move' | 'changeSite' | 'delete'
 
 /** Archive or restore, move, change site and delete, for one domain of the companies page. */
-export function DomainActions({ domain, company, companies, usage }: DomainActionsProps) {
+export function DomainActions({
+  domain,
+  company,
+  companies,
+  moveAccess,
+  usage,
+}: DomainActionsProps) {
   const t = useTranslations('Companies')
   const [dialog, setDialog] = useState<Dialogs | null>(null)
   const [restoring, startRestore] = useTransition()
@@ -113,7 +120,7 @@ export function DomainActions({ domain, company, companies, usage }: DomainActio
         />
       )}
       {dialog === 'move' && (
-        <MoveDialog domain={domain} from={company} targets={others} onClose={close} />
+        <MoveDialog domain={domain} targets={others} moveAccess={moveAccess} onClose={close} />
       )}
       {dialog === 'changeSite' && <ChangeSiteDialog companyId={company.id} onClose={close} />}
       {dialog === 'delete' && (
@@ -143,20 +150,20 @@ export function DomainActions({ domain, company, companies, usage }: DomainActio
 
 function MoveDialog({
   domain,
-  from,
   targets,
+  moveAccess,
   onClose,
 }: {
   domain: { id: string; host: string }
-  from: { id: string; name: string }
   targets: { id: string; name: string }[]
+  moveAccess: DomainActionsProps['moveAccess']
   onClose: () => void
 }) {
   const t = useTranslations('Companies')
   const [targetId, setTargetId] = useState(targets[0]?.id ?? '')
   const target = targets.find((other) => other.id === targetId)
   const items = targets.map((other) => ({ value: other.id, label: other.name }))
-  const access = target ? accessAfterMove({ from, to: target }) : null
+  const access = target ? moveAccess[target.id] : undefined
 
   return (
     <ActionDialog
@@ -164,7 +171,19 @@ function MoveDialog({
       description={
         <div className="grid gap-2">
           <p>{t('move.results')}</p>
-          {access && <p>{t(`move.access.${access.kind}`)}</p>}
+          {access &&
+            (access.gain.length === 0 && access.lose.length === 0 ? (
+              <p>{t('move.access.unchanged')}</p>
+            ) : (
+              <>
+                {access.gain.length > 0 && (
+                  <p>{t('move.access.gain', { names: access.gain.join(', ') })}</p>
+                )}
+                {access.lose.length > 0 && (
+                  <p>{t('move.access.lose', { names: access.lose.join(', ') })}</p>
+                )}
+              </>
+            ))}
         </div>
       }
       action={moveDomainAction}

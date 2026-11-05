@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   and,
   asc,
@@ -26,6 +26,7 @@ import {
   readUrlAuditState,
   serializeAuditSnapshot,
   statusRange,
+  type AccessGrant,
   type AuditCondition,
   type AuditSnapshot,
   type ConditionObservation,
@@ -49,6 +50,7 @@ import {
 import type {
   Company,
   CompanyWithDomains,
+  UserRecord,
   CrawlUrlAcceptedIssue,
   Crawl,
   CrawlCounts,
@@ -122,6 +124,74 @@ export const EMPTY_COUNTS: Record<JobStatus, number> = {
 }
 
 export const CREDENTIAL_PROVIDER = 'credential'
+
+// --- users ---------------------------------------------------------------
+/** An account as a repository returns it. A role that is not known gives nothing extra. */
+export function toUserRecord(
+  row: {
+    id: string
+    name: string
+    email: string
+    role: string
+    disabledAt: Date | null
+    resetRequestedAt: Date | null
+    createdAt: Date
+  },
+  hasPassword: boolean,
+): UserRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role === 'admin' ? 'admin' : 'member',
+    disabledAt: row.disabledAt,
+    hasPassword,
+    resetRequestedAt: row.resetRequestedAt,
+    createdAt: row.createdAt,
+  }
+}
+
+/** A grant as stored. A role that is not known reads only. `null`: it says nothing it can act on. */
+export function toAccessGrant(row: {
+  role: string
+  companyId: string | null
+  domainId: string | null
+}): AccessGrant | null {
+  const role = row.role === 'editor' ? 'editor' : 'viewer'
+  if (row.domainId) return { role, companyId: null, domainId: row.domainId }
+  return row.companyId ? { role, companyId: row.companyId, domainId: null } : null
+}
+
+/** The grants of each user. */
+export function foldGrants(
+  rows: readonly {
+    userId: string
+    role: string
+    companyId: string | null
+    domainId: string | null
+  }[],
+): Map<string, AccessGrant[]> {
+  const byUser = new Map<string, AccessGrant[]>()
+  for (const row of rows) {
+    const grant = toAccessGrant(row)
+    if (grant) byUser.set(row.userId, [...(byUser.get(row.userId) ?? []), grant])
+  }
+  return byUser
+}
+
+export const accessRows = (userId: string, grants: readonly AccessGrant[]) =>
+  grants.map(({ role, companyId, domainId }) => ({
+    id: randomUUID(),
+    userId,
+    role,
+    companyId,
+    domainId,
+  }))
+
+/** Whether a change takes away the only administrator left, out of those who can sign in. */
+export function removesLastAdmin(activeAdmins: readonly string[], id: string): boolean {
+  return activeAdmins.length === 1 && activeAdmins[0] === id
+}
 
 const byName = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 

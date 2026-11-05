@@ -10,6 +10,12 @@ export const user = sqliteTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
   image: text('image'),
+  /** `admin` or `member`. A new user has what they are given, never more (`@seotools/core/access`). */
+  role: text('role').notNull().default('member'),
+  /** Set while the account cannot sign in. Its sessions are removed when that happens. */
+  disabledAt: ts('disabled_at'),
+  /** The last time a password email was asked for, to answer only one in a while. */
+  resetRequestedAt: ts('reset_requested_at'),
   createdAt: ts('created_at').notNull().$defaultFn(now),
   updatedAt: ts('updated_at').notNull().$defaultFn(now).$onUpdateFn(now),
 })
@@ -644,4 +650,44 @@ export const crawlFileChecks = sqliteTable(
     outcome: text('outcome', { enum: ['ok', 'unreachable'] }),
   },
   (t) => [index('crawl_file_checks_due_idx').on(t.nextCheckAt)],
+)
+
+/**
+ * What a member was given: a role on a company or on a domain, exactly one of the two
+ * (`AccessGrant` in `@seotools/core/access`). It goes with what it is about.
+ */
+export const userAccess = sqliteTable(
+  'user_access',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    companyId: text('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+    domainId: text('domain_id').references(() => domains.id, { onDelete: 'cascade' }),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex('user_access_company_idx').on(t.userId, t.companyId),
+    uniqueIndex('user_access_domain_idx').on(t.userId, t.domainId),
+  ],
+)
+
+/**
+ * Links that let someone set a password: an invitation, or a recovery. Only the hash of the token is
+ * kept, so reading the database gives nobody a working link. All of a user's go when one is used.
+ */
+export const userTokens = sqliteTable(
+  'user_tokens',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    expiresAt: ts('expires_at').notNull(),
+    createdAt: ts('created_at').notNull().$defaultFn(now),
+  },
+  (t) => [index('user_tokens_user_idx').on(t.userId)],
 )

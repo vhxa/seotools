@@ -11,6 +11,7 @@ For whoever runs an installation. For how releases are made, see [releases.md](r
 - [Automatic updates with Dokploy (optional)](#automatic-updates-with-dokploy-optional)
 - [Check the result](#check-the-result)
 - [When something goes wrong](#when-something-goes-wrong)
+- [If nobody can sign in](#if-nobody-can-sign-in)
 - [Backups and restore](#backups-and-restore)
 - [What has been validated](#what-has-been-validated)
 
@@ -287,6 +288,24 @@ not evidence of compatibility.
 Stop every app/worker instance, restore the pre-update database and original keys, select the
 previous image, then start and verify login, settings and a known crawl. Writes since the backup
 are lost. Dokploy's image rollback does not restore the database.
+
+## If nobody can sign in
+
+Someone who forgot their password can ask for a link from the sign-in page if email is configured. If
+email does not work, another administrator can get them a recovery link in System → Users. When no
+administrator can sign in, run this on the installation, with the email of an existing account:
+
+```bash
+# Docker Compose
+docker compose exec seotools node /app/worker/dist/recover.mjs person@example.com
+# Dokploy, or a plain container: the same command in a terminal of the container
+node /app/worker/dist/recover.mjs person@example.com
+```
+
+It makes that account an active administrator and prints a link to choose a password, which works
+once and for 24 hours. It deletes nobody, does not change the password until the link is used, and
+does not open registration. The link is printed to your terminal and not to the logs of the app, so
+treat it as a password. Setting the password signs that account out everywhere.
 
 ## Backups and restore
 

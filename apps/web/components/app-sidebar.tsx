@@ -10,6 +10,7 @@ import {
   FileTextIcon,
   LayoutDashboardIcon,
   SettingsIcon,
+  UsersIcon,
   type LucideIcon,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -161,11 +162,13 @@ function NavGroup({
  * user at the bottom. Domain options only show while a tracked domain is open (`/domains/[host]`).
  */
 export function AppSidebar({
+  isAdmin,
   companies,
   user,
   version,
   development = false,
 }: {
+  isAdmin: boolean
   companies: SwitcherCompany[]
   user: NavUserData
   version?: string
@@ -220,6 +223,7 @@ export function AppSidebar({
     : []
   const instanceItems: NavLink[] = [
     { label: t('companies'), href: '/companies', icon: BuildingIcon },
+    { label: t('users'), href: '/system/users', icon: UsersIcon },
     { label: t('system'), href: '/system', icon: ActivityIcon, exact: true },
     { label: t('updates'), href: '/system/updates', icon: ArrowUpCircleIcon },
   ]
@@ -243,11 +247,11 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <DomainSwitcher companies={companies} />
+        <DomainSwitcher canManage={isAdmin} companies={companies} />
       </SidebarHeader>
       <SidebarContent>
         {activeHost && <NavGroup label={activeHost} items={domainItems} pathname={pathname} />}
-        <NavGroup label={t('instance')} items={instanceItems} pathname={pathname} />
+        {isAdmin && <NavGroup label={t('instance')} items={instanceItems} pathname={pathname} />}
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={user} />

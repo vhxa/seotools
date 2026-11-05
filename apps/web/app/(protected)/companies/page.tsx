@@ -1,3 +1,4 @@
+import { accessAfterMove } from '@seotools/core/access'
 import { PlusIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
@@ -33,11 +34,26 @@ export default async function CompaniesPage() {
   await requireAdmin()
   const t = await getTranslations('Companies')
   const db = await getDb()
-  const [companies, usage, icons] = await Promise.all([
+  const [companies, usage, icons, users, grants] = await Promise.all([
     db.companies.list(),
     db.domains.usage(),
     db.favicons.versions(),
+    db.users.list(),
+    db.users.allGrants(),
   ])
+  const members = users.map((user) => ({ ...user, grants: grants.get(user.id) ?? [] }))
+  const moveAccessOf = (domainId: string, from: string) =>
+    Object.fromEntries(
+      companies
+        .filter((other) => other.id !== from)
+        .map((other) => {
+          const { gain, lose } = accessAfterMove(members, { domainId, from, to: other.id })
+          return [
+            other.id,
+            { gain: gain.map(({ name }) => name), lose: lose.map(({ name }) => name) },
+          ]
+        }),
+    )
 
   return (
     <main className="grid gap-6">
@@ -96,6 +112,7 @@ export default async function CompaniesPage() {
                       }}
                       company={{ id: company.id, name: company.name }}
                       companies={companies.map(({ id, name }) => ({ id, name }))}
+                      moveAccess={moveAccessOf(domain.id, company.id)}
                       usage={usageOf(domain.id)}
                     />
                   </li>

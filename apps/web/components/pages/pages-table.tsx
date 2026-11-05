@@ -56,6 +56,7 @@ import {
 } from '@/app/(protected)/domains/[host]/actions'
 import { recheckUrlsAction } from '@/app/(protected)/domains/[host]/verify-actions'
 import { AuditDialog } from '@/components/audit/audit-dialog'
+import { useCanEdit } from '@/components/domain-access'
 import {
   IndexabilityBadge,
   IntentBadge,
@@ -241,7 +242,9 @@ function PriorityStar({ host, row }: { host: string; row: PageRow }) {
   const t = useTranslations('Pages.priority')
   const [, startTransition] = useTransition()
   const [marked, setMarked] = useOptimistic(row.priority)
+  const canEdit = useCanEdit()
   const label = t(marked ? 'unmark' : 'mark')
+  if (!canEdit) return null
   return (
     <Button
       type="button"
@@ -560,6 +563,7 @@ export function PagesTable({
   const [pending, startTransition] = useTransition()
   const [selection, setSelection] = useState<Record<string, true>>({})
   const [auditDialogOpen, setAuditDialogOpen] = useState(false)
+  const canEdit = useCanEdit()
 
   const table = useTable({
     features,
@@ -645,7 +649,7 @@ export function PagesTable({
               >
                 <XIcon />
               </Button>
-              {(selectedPages.length > 0 || selectedInternal.length > 0) && (
+              {canEdit && (selectedPages.length > 0 || selectedInternal.length > 0) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={<Button variant="outline" size="sm" disabled={pending} />}

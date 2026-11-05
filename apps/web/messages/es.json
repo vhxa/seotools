@@ -6,7 +6,8 @@
     "status": {
       "failed": "La petición falló",
       "noResponse": "Sin respuesta"
-    }
+    },
+    "account": "Cuenta"
   },
   "NotFound": {
     "title": "Página no encontrada",
@@ -21,7 +22,9 @@
     "submit": "Iniciar sesión",
     "submitting": "Iniciando sesión…",
     "invalidCredentials": "Correo o contraseña incorrectos",
-    "genericError": "Algo salió mal. Inténtalo de nuevo."
+    "genericError": "Algo salió mal. Inténtalo de nuevo.",
+    "forgot": "¿Has olvidado tu contraseña?",
+    "passwordSet": "Tu contraseña está lista. Entra con ella."
   },
   "Setup": {
     "metaTitle": "Configuración · seotools",
@@ -105,7 +108,8 @@
     "updates": "Actualizaciones",
     "versionRelease": "v{version}",
     "versionDevelopment": "v{version} · desarrollo",
-    "companies": "Empresas"
+    "companies": "Empresas",
+    "users": "Usuarios"
   },
   "ProtectedShell": {
     "skipToContent": "Saltar al contenido principal"
@@ -2601,7 +2605,9 @@
       "label": "Nueva empresa",
       "results": "Sus rastreos, resultados, reglas y programaciones se mueven con él sin cambios.",
       "access": {
-        "unchanged": "El acceso no cambia: todos los usuarios con sesión iniciada pueden verlo antes y después del cambio, porque el acceso todavía no se define por empresa."
+        "unchanged": "Nadie gana ni pierde acceso: quienes lo ven son los mismos antes y después.",
+        "gain": "Ganan acceso: {names}.",
+        "lose": "Pierden acceso: {names}."
       },
       "submit": "Mover dominio",
       "submitting": "Moviendo…"
@@ -2647,5 +2653,126 @@
     "notice": "Este dominio está archivado. Sus datos se conservan, pero nada se ejecuta automáticamente y no se puede modificar.",
     "manage": "Gestionar",
     "refused": "Este dominio está archivado. Restáuralo para hacer cambios."
+  },
+  "NoAccess": {
+    "title": "Todavía no hay nada que mostrar",
+    "description": "Tu cuenta no tiene ninguna empresa ni dominio. Pide acceso a un administrador."
+  },
+  "Users": {
+    "title": "Usuarios",
+    "close": "Cerrar",
+    "actions": "Acciones de {name}",
+    "enable": "Activar",
+    "disable": "Desactivar",
+    "columns": {
+      "user": "Usuario",
+      "role": "Rol",
+      "access": "Acceso",
+      "state": "Estado"
+    },
+    "roles": {
+      "admin": "Administrador",
+      "member": "Miembro",
+      "editor": "Editor",
+      "viewer": "Lector"
+    },
+    "roleHelp": {
+      "admin": "Lo ve todo y gestiona usuarios, empresas y la instancia.",
+      "member": "Solo llega a lo que le des aquí abajo."
+    },
+    "state": {
+      "active": "Activa",
+      "invited": "Invitación pendiente",
+      "disabled": "Desactivada {when}"
+    },
+    "access": {
+      "everything": "Todas las empresas y dominios",
+      "nothing": "Nada todavía: no puede ver ningún dominio.",
+      "row": "{target}: {role}",
+      "companyTarget": "{name} (toda la empresa)",
+      "target": "Empresa o dominio",
+      "add": "Añadir",
+      "remove": "Quitar",
+      "help": "Una empresa cubre todos sus dominios, también los futuros. El rol en un dominio sustituye allí al de la empresa. Un editor puede lanzar rastreos y cambiar reglas y ajustes; un lector puede consultar y exportar."
+    },
+    "invite": {
+      "button": "Invitar usuario",
+      "title": "Invitar a un usuario",
+      "description": "Recibe un enlace para elegir su contraseña. El registro sigue cerrado.",
+      "name": "Nombre",
+      "email": "Correo",
+      "submit": "Crear y obtener enlace",
+      "submitting": "Creando…"
+    },
+    "edit": {
+      "menu": "Editar rol y acceso",
+      "title": "Rol y acceso de {name}",
+      "submit": "Guardar",
+      "submitting": "Guardando…"
+    },
+    "link": {
+      "label": "Enlace",
+      "copy": "Copiar enlace",
+      "copied": "Copiado",
+      "emailed": "Va de camino un correo con un enlace. Si no llega, envíale este:",
+      "handOver": "Envíale este enlace:",
+      "once": "Solo se muestra ahora y funciona una vez.",
+      "inviteMenu": "Obtener enlace de invitación",
+      "recoveryMenu": "Obtener enlace de recuperación"
+    },
+    "errors": {
+      "invalidRequest": "Esa petición no es válida.",
+      "invalidName": "Escribe un nombre de hasta 100 caracteres.",
+      "invalidEmail": "Escribe un correo válido.",
+      "emailTaken": "Ya hay una cuenta con ese correo.",
+      "invalidAccess": "Una empresa o un dominio de ese acceso ya no existe.",
+      "lastAdmin": "Así no quedaría nadie que pueda administrar la instancia. Haz antes a otra persona administrador activo.",
+      "userNotFound": "Esa cuenta ya no existe.",
+      "userDisabled": "Activa antes la cuenta."
+    }
+  },
+  "Account": {
+    "title": "Cuenta",
+    "password": "Contraseña",
+    "current": "Contraseña actual",
+    "next": "Contraseña nueva",
+    "othersSignedOut": "Se cerrará la sesión en tus otros dispositivos.",
+    "submit": "Cambiar contraseña",
+    "submitting": "Cambiando…",
+    "changed": "Tu contraseña ha cambiado.",
+    "errors": {
+      "length": "Usa entre {min, number} y {max, number} caracteres.",
+      "wrongPassword": "La contraseña actual no es correcta."
+    }
+  },
+  "PasswordRecovery": {
+    "title": "Recupera tu contraseña",
+    "description": "Escribe el correo de tu cuenta.",
+    "email": "Correo",
+    "submit": "Enviarme un enlace",
+    "submitting": "Enviando…",
+    "sent": "Si ese correo tiene cuenta y esta instalación puede enviar correo, va de camino un enlace. Si no llega nada, pide a un administrador un enlace de recuperación.",
+    "backToLogin": "Volver a entrar"
+  },
+  "SetPassword": {
+    "metaTitle": "Elige tu contraseña",
+    "titles": {
+      "invite": "Elige tu contraseña",
+      "reset": "Elige una contraseña nueva"
+    },
+    "password": "Contraseña",
+    "confirm": "Repite la contraseña",
+    "submit": "Guardar contraseña",
+    "submitting": "Guardando…",
+    "invalid": {
+      "title": "Este enlace no funciona",
+      "description": "Puede que haya caducado o que ya se haya usado.",
+      "again": "Pide uno nuevo"
+    },
+    "errors": {
+      "length": "Usa entre {min, number} y {max, number} caracteres.",
+      "mismatch": "Las dos contraseñas no coinciden.",
+      "expired": "Este enlace ya no funciona. Pide uno nuevo."
+    }
   }
 }

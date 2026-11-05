@@ -49,6 +49,8 @@ export const workerEnvSchema = commonEnvSchema.extend({
   CRAWL_CONCURRENCY: int(2),
   /** Lets the crawler reach loopback and private addresses, to audit sites on an intranet. */
   CRAWLER_ALLOW_PRIVATE_NETWORKS: bool.default(false),
+  /** The public URL of the app, for the links of the emails the worker sends. */
+  BETTER_AUTH_URL: z.string().url().optional(),
 })
 
 export const bootstrapEnvSchema = commonEnvSchema.extend({

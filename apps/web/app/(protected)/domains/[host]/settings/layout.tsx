@@ -13,7 +13,8 @@ export default async function DomainSettingsLayout({
   children: ReactNode
 }) {
   const { host } = await params
-  const { domain } = await requireDomain(host)
+  const { domain, canEdit } = await requireDomain(host)
+  const readOnly = domain.archivedAt !== null || !canEdit
   const t = await getTranslations('DomainSettings')
   return (
     <main className="grid gap-6">
@@ -22,11 +23,8 @@ export default async function DomainSettingsLayout({
       </div>
       <div className="grid items-start gap-6 md:grid-cols-[12rem_minmax(0,1fr)]">
         <SettingsNav host={domain.host} />
-        {/* Inert while the domain is archived: its settings are read only, and the actions refuse. */}
-        <div
-          className={cn('grid min-w-0 gap-6', domain.archivedAt && 'opacity-60')}
-          inert={domain.archivedAt !== null}
-        >
+        {/* Inert for who cannot change them, or while archived: the actions refuse either way. */}
+        <div className={cn('grid min-w-0 gap-6', readOnly && 'opacity-60')} inert={readOnly}>
           {children}
         </div>
       </div>

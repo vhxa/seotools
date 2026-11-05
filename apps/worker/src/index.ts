@@ -17,6 +17,7 @@ import { createHttpFetcher } from './crawl/fetcher'
 import { reanalyseOutdatedCrawls } from './crawl/reanalysis'
 import { createFaviconRefresher } from './favicon/refresh'
 import { handlers } from './handlers'
+import { createAccessEmailHandler } from './handlers/access-email'
 import { createAuditRecomputeHandler } from './handlers/audit-recompute'
 import { createCrawlRunHandler } from './handlers/crawl-run'
 import { createUrlVerifyHandler } from './handlers/url-verify'
@@ -54,7 +55,11 @@ async function main() {
   const runner = createRunner({
     ...shared,
     log,
-    handlers: { ...handlers, [JOB_TYPES.auditRecompute]: createAuditRecomputeHandler({ db }) },
+    handlers: {
+      ...handlers,
+      [JOB_TYPES.auditRecompute]: createAuditRecomputeHandler({ db }),
+      [JOB_TYPES.accessEmail]: createAccessEmailHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
+    },
     concurrency: env.WORKER_CONCURRENCY,
     excludeTypes: crawlTypes,
   })

@@ -68,7 +68,7 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
 
 export default async function JobsPage({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
-  const { domain } = await requireDomain(host)
+  const { domain, canEdit } = await requireDomain(host)
   const [t, tCrawl, tRecheck, format, locale] = await Promise.all([
     getTranslations('Jobs'),
     getTranslations('Crawl'),
@@ -109,8 +109,8 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
                 disabled={active !== null || domain.archivedAt !== null}
               />
             </CardHeader>
-            {/* Inert while archived: nothing runs on a schedule, and it cannot be changed. */}
-            <CardContent className="grid gap-3" inert={domain.archivedAt !== null}>
+            {/* Inert while archived, or for who only reads: it cannot be changed. */}
+            <CardContent className="grid gap-3" inert={domain.archivedAt !== null || !canEdit}>
               <ScheduleForm
                 host={domain.host}
                 type={type}

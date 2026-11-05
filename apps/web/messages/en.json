@@ -6,7 +6,8 @@
     "status": {
       "failed": "The request failed",
       "noResponse": "No response"
-    }
+    },
+    "account": "Account"
   },
   "NotFound": {
     "title": "Page not found",
@@ -21,7 +22,9 @@
     "submit": "Sign in",
     "submitting": "Signing in…",
     "invalidCredentials": "Invalid email or password",
-    "genericError": "Something went wrong. Please try again."
+    "genericError": "Something went wrong. Please try again.",
+    "forgot": "Forgot your password?",
+    "passwordSet": "Your password is set. Sign in with it."
   },
   "Setup": {
     "metaTitle": "Set up · seotools",
@@ -105,7 +108,8 @@
     "updates": "Updates",
     "versionRelease": "v{version}",
     "versionDevelopment": "v{version} · development",
-    "companies": "Companies"
+    "companies": "Companies",
+    "users": "Users"
   },
   "ProtectedShell": {
     "skipToContent": "Skip to main content"
@@ -2601,7 +2605,9 @@
       "label": "New company",
       "results": "Its crawls, results, rules and schedules move with it unchanged.",
       "access": {
-        "unchanged": "Access does not change: every signed-in user can see it before and after the move, because access is not set per company yet."
+        "unchanged": "Nobody gains or loses access: the people who can see it are the same before and after.",
+        "gain": "They gain access: {names}.",
+        "lose": "They lose access: {names}."
       },
       "submit": "Move domain",
       "submitting": "Moving…"
@@ -2647,5 +2653,126 @@
     "notice": "This domain is archived. Its data is kept, but nothing runs automatically and it cannot be changed.",
     "manage": "Manage",
     "refused": "This domain is archived. Restore it to make changes."
+  },
+  "NoAccess": {
+    "title": "Nothing to show yet",
+    "description": "Your account has no company or domain. Ask an administrator to give you access."
+  },
+  "Users": {
+    "title": "Users",
+    "close": "Close",
+    "actions": "Actions for {name}",
+    "enable": "Enable",
+    "disable": "Disable",
+    "columns": {
+      "user": "User",
+      "role": "Role",
+      "access": "Access",
+      "state": "State"
+    },
+    "roles": {
+      "admin": "Administrator",
+      "member": "Member",
+      "editor": "Editor",
+      "viewer": "Viewer"
+    },
+    "roleHelp": {
+      "admin": "Sees everything, and manages users, companies and the instance.",
+      "member": "Only reaches what you give them below."
+    },
+    "state": {
+      "active": "Active",
+      "invited": "Invited",
+      "disabled": "Disabled {when}"
+    },
+    "access": {
+      "everything": "Every company and domain",
+      "nothing": "Nothing yet: they cannot see any domain.",
+      "row": "{target}: {role}",
+      "companyTarget": "{name} (whole company)",
+      "target": "Company or domain",
+      "add": "Add",
+      "remove": "Remove",
+      "help": "A company covers all its domains, also future ones. A role on a domain replaces the company's there. An editor can run crawls and change rules and settings; a viewer can read and export."
+    },
+    "invite": {
+      "button": "Invite user",
+      "title": "Invite a user",
+      "description": "They get a link to choose their password. Registration stays closed.",
+      "name": "Name",
+      "email": "Email",
+      "submit": "Create and get link",
+      "submitting": "Creating…"
+    },
+    "edit": {
+      "menu": "Edit role and access",
+      "title": "Role and access of {name}",
+      "submit": "Save",
+      "submitting": "Saving…"
+    },
+    "link": {
+      "label": "Link",
+      "copy": "Copy link",
+      "copied": "Copied",
+      "emailed": "An email with a link is on its way. If it does not arrive, send them this one:",
+      "handOver": "Send them this link:",
+      "once": "It is shown only now, and works once.",
+      "inviteMenu": "Get invitation link",
+      "recoveryMenu": "Get recovery link"
+    },
+    "errors": {
+      "invalidRequest": "That request is not valid.",
+      "invalidName": "Enter a name of up to 100 characters.",
+      "invalidEmail": "Enter a valid email address.",
+      "emailTaken": "There is already an account with that email.",
+      "invalidAccess": "A company or domain of that access no longer exists.",
+      "lastAdmin": "This would leave nobody who can administer the instance. Make someone else an active administrator first.",
+      "userNotFound": "That account no longer exists.",
+      "userDisabled": "Enable the account first."
+    }
+  },
+  "Account": {
+    "title": "Account",
+    "password": "Password",
+    "current": "Current password",
+    "next": "New password",
+    "othersSignedOut": "Your other devices will be signed out.",
+    "submit": "Change password",
+    "submitting": "Changing…",
+    "changed": "Your password has changed.",
+    "errors": {
+      "length": "Use between {min, number} and {max, number} characters.",
+      "wrongPassword": "The current password is not correct."
+    }
+  },
+  "PasswordRecovery": {
+    "title": "Recover your password",
+    "description": "Enter the email of your account.",
+    "email": "Email",
+    "submit": "Send me a link",
+    "submitting": "Sending…",
+    "sent": "If that email has an account and this installation can send email, a link is on its way. If nothing arrives, ask an administrator for a recovery link.",
+    "backToLogin": "Back to sign in"
+  },
+  "SetPassword": {
+    "metaTitle": "Set your password",
+    "titles": {
+      "invite": "Choose your password",
+      "reset": "Choose a new password"
+    },
+    "password": "Password",
+    "confirm": "Repeat the password",
+    "submit": "Save password",
+    "submitting": "Saving…",
+    "invalid": {
+      "title": "This link does not work",
+      "description": "It may have expired or been used already.",
+      "again": "Ask for a new one"
+    },
+    "errors": {
+      "length": "Use between {min, number} and {max, number} characters.",
+      "mismatch": "The two passwords are not the same.",
+      "expired": "This link no longer works. Ask for a new one."
+    }
   }
 }

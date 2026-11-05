@@ -44,7 +44,14 @@ export interface SwitcherCompany {
  * selector). The active domain comes from the `/domains/[host]` route, so it is always shareable
  * and each browser tab can sit on a different domain.
  */
-export function DomainSwitcher({ companies }: { companies: SwitcherCompany[] }) {
+export function DomainSwitcher({
+  companies,
+  canManage,
+}: {
+  companies: SwitcherCompany[]
+  /** Adding and managing companies is for administrators. */
+  canManage: boolean
+}) {
   const t = useTranslations('DomainSwitcher')
   const { isMobile } = useSidebar()
   const { host: currentHost } = useParams<{ host?: string }>()
@@ -127,31 +134,35 @@ export function DomainSwitcher({ companies }: { companies: SwitcherCompany[] }) 
                 {archivedDomains.map((domain) => domainItem(domain))}
               </DropdownMenuGroup>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem
-                render={
-                  <Link
-                    href={
-                      current
-                        ? `/domains/new?company=${encodeURIComponent(current.id)}`
-                        : '/domains/new'
+            {canManage && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem
+                    render={
+                      <Link
+                        href={
+                          current
+                            ? `/domains/new?company=${encodeURIComponent(current.id)}`
+                            : '/domains/new'
+                        }
+                      />
                     }
-                  />
-                }
-              >
-                <PlusIcon />
-                {t('addDomain')}
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/companies/new" />}>
-                <PlusIcon />
-                {t('addCompany')}
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/companies" />}>
-                <BuildingIcon />
-                {t('manageCompanies')}
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
+                  >
+                    <PlusIcon />
+                    {t('addDomain')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/companies/new" />}>
+                    <PlusIcon />
+                    {t('addCompany')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/companies" />}>
+                    <BuildingIcon />
+                    {t('manageCompanies')}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

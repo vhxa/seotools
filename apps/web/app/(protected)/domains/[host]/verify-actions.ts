@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
 import { getDb } from '@/lib/db'
 import { canRecheck, parseRecheckUrls } from '@/lib/recheck'
-import { archivedMessage, requireDomain } from '@/lib/workspace'
+import { archivedMessage, requireDomainEditor } from '@/lib/workspace'
 
 export interface RecheckState {
   error?: string
@@ -29,7 +29,7 @@ function revalidateRechecks(host: string) {
  * is not a file for crawlers. A list with too many URLs is refused whole.
  */
 export async function recheckUrlsAction(host: string, urls: unknown): Promise<RecheckState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('Verification.errors')
 
@@ -75,7 +75,7 @@ export async function recheckUrlsAction(host: string, urls: unknown): Promise<Re
 
 /** Stops a recheck that has not ended. What it already rechecked stays. */
 export async function cancelRecheckAction(host: string, verificationId: string) {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   const db = await getDb()
   // The id comes from the client: it has to be a recheck of the domain being acted on.
   if (typeof verificationId !== 'string') return

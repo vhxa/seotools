@@ -80,6 +80,12 @@ export function describeLifecycle(
       const url = `https://${host}/`
       const other = `https://${host}/about`
       await db.crawls.saveSettings(domainId, { ...DEFAULT_CRAWL_SETTINGS, concurrency: 3 })
+      const member = await db.users.create({
+        email: `member@${host}`,
+        name: 'Member',
+        role: 'member',
+      })
+      await db.users.setGrants(member.id, [{ role: 'viewer', companyId: null, domainId }])
       await db.crawlSchedules.save({
         ...recurrence,
         domainId,

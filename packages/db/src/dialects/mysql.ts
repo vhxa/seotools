@@ -7,6 +7,7 @@ import {
   desc,
   eq,
   exists,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -25,6 +26,10 @@ import { migrate } from 'drizzle-orm/mysql2/migrator'
 import mysql from 'mysql2/promise'
 import {
   CREDENTIAL_PROVIDER,
+  accessRows,
+  foldGrants,
+  removesLastAdmin,
+  toUserRecord,
   EMPTY_COUNTS,
   byUrl,
   changeCondition,
@@ -131,6 +136,7 @@ import type {
   CrawlUrlBrief,
   CrawlUrlAcceptedIssue,
   CrawlUrlIssue,
+  UserTokenKind,
   Database,
   NewCrawlUrl,
   NewVerificationUrl,
@@ -144,6 +150,8 @@ const {
   settings,
   user,
   account,
+  userAccess,
+  userTokens,
   companies,
   domains,
   domainFavicons,
@@ -202,6 +210,23 @@ export function createMysqlDatabase(options: {
       : [[]]
     assertKnownMigrations(dir, rows)
   }
+
+  /** Who can administer the instance right now, locked so that two changes cannot both pass. */
+  const lockActiveAdmins = async (tx: Pick<typeof db, 'select'>) =>
+    (
+      await tx
+        .select({ id: user.id })
+        .from(user)
+        .innerJoin(account, eq(account.userId, user.id))
+        .where(
+          and(
+            eq(user.role, 'admin'),
+            isNull(user.disabledAt),
+            eq(account.providerId, CREDENTIAL_PROVIDER),
+          ),
+        )
+        .for('update')
+    ).map(({ id }) => id)
 
   /** The hashes of the URLs of a crawl that have an issue, and of those a filter on the audit keeps. */
   const subqueries = (crawlId: string) => ({
@@ -721,7 +746,7 @@ export function createMysqlDatabase(options: {
       },
       async create({ id, email, name, passwordHash }) {
         await db.transaction(async (tx) => {
-          await tx.insert(user).values({ id, email, name, emailVerified: true })
+          await tx.insert(user).values({ id, email, name, role: 'admin', emailVerified: true })
           await tx.insert(account).values({
             id: randomUUID(),
             accountId: id,
@@ -734,6 +759,155 @@ export function createMysqlDatabase(options: {
       async exists() {
         const rows = await db.select({ id: user.id }).from(user).limit(1)
         return rows.length > 0
+      },
+    },
+
+    users: {
+      async list() {
+        const [rows, withPassword] = await Promise.all([
+          db.select().from(user).orderBy(asc(user.name), asc(user.email)),
+          db
+            .select({ userId: account.userId })
+            .from(account)
+            .where(eq(account.providerId, CREDENTIAL_PROVIDER)),
+        ])
+        const known = new Set(withPassword.map(({ userId }) => userId))
+        return rows.map((row) => toUserRecord(row, known.has(row.id)))
+      },
+      async get(id) {
+        const [row] = await db.select().from(user).where(eq(user.id, id))
+        if (!row) return null
+        const [cred] = await db
+          .select({ id: account.id })
+          .from(account)
+          .where(and(eq(account.userId, id), eq(account.providerId, CREDENTIAL_PROVIDER)))
+        return toUserRecord(row, cred !== undefined)
+      },
+      async findByEmail(email) {
+        const [row] = await db.select({ id: user.id }).from(user).where(eq(user.email, email))
+        return row ? this.get(row.id) : null
+      },
+      async create({ email, name, role }) {
+        const id = randomUUID()
+        await db.insert(user).values({ id, email, name, role, emailVerified: false })
+        const created = await this.get(id)
+        if (!created) throw new Error(`User ${id} not found after creating it`)
+        return created
+      },
+      async setRole(id, role) {
+        return db.transaction(async (tx) => {
+          const admins = await lockActiveAdmins(tx)
+          const [found] = await tx.select({ id: user.id }).from(user).where(eq(user.id, id))
+          if (!found) return 'not-found'
+          if (role !== 'admin' && removesLastAdmin(admins, id)) return 'last-admin'
+          await tx.update(user).set({ role }).where(eq(user.id, id))
+          return 'ok'
+        })
+      },
+      async setDisabled(id, disabled) {
+        return db.transaction(async (tx) => {
+          const admins = await lockActiveAdmins(tx)
+          const [found] = await tx.select({ id: user.id }).from(user).where(eq(user.id, id))
+          if (!found) return 'not-found'
+          if (disabled && removesLastAdmin(admins, id)) return 'last-admin'
+          await tx
+            .update(user)
+            .set({ disabledAt: disabled ? new Date() : null })
+            .where(eq(user.id, id))
+          if (disabled) {
+            await tx.delete(schema.session).where(eq(schema.session.userId, id))
+            await tx.delete(userTokens).where(eq(userTokens.userId, id))
+          }
+          return 'ok'
+        })
+      },
+      async grantsOf(userId) {
+        const rows = await db.select().from(userAccess).where(eq(userAccess.userId, userId))
+        return foldGrants(rows).get(userId) ?? []
+      },
+      async allGrants() {
+        return foldGrants(await db.select().from(userAccess))
+      },
+      async setGrants(userId, grants) {
+        return db.transaction(async (tx) => {
+          const [found] = await tx.select({ id: user.id }).from(user).where(eq(user.id, userId))
+          if (!found) return false
+          for (const { companyId, domainId } of grants) {
+            const [target] = companyId
+              ? await tx
+                  .select({ id: companies.id })
+                  .from(companies)
+                  .where(eq(companies.id, companyId))
+              : await tx.select({ id: domains.id }).from(domains).where(eq(domains.id, domainId!))
+            if (!target) return false
+          }
+          await tx.delete(userAccess).where(eq(userAccess.userId, userId))
+          for (const batch of chunk(accessRows(userId, grants))) {
+            await tx.insert(userAccess).values(batch)
+          }
+          return true
+        })
+      },
+      async addToken(input) {
+        await db.insert(userTokens).values(input)
+      },
+      async findToken(tokenHash, now) {
+        const [row] = await db
+          .select({ kind: userTokens.kind, userId: userTokens.userId })
+          .from(userTokens)
+          .innerJoin(user, eq(user.id, userTokens.userId))
+          .where(
+            and(
+              eq(userTokens.tokenHash, tokenHash),
+              gt(userTokens.expiresAt, now),
+              isNull(user.disabledAt),
+            ),
+          )
+        if (!row) return null
+        const found = await this.get(row.userId)
+        return found ? { kind: row.kind as UserTokenKind, user: found } : null
+      },
+      async redeemToken({ tokenHash, passwordHash, now }) {
+        return db.transaction(async (tx) => {
+          // Locked: of two uses of one link at once, the second finds it gone.
+          const [token] = await tx
+            .select({ userId: userTokens.userId })
+            .from(userTokens)
+            .innerJoin(user, eq(user.id, userTokens.userId))
+            .where(
+              and(
+                eq(userTokens.tokenHash, tokenHash),
+                gt(userTokens.expiresAt, now),
+                isNull(user.disabledAt),
+              ),
+            )
+            .for('update')
+          if (!token) return false
+          const { userId } = token
+          const credential = and(
+            eq(account.userId, userId),
+            eq(account.providerId, CREDENTIAL_PROVIDER),
+          )
+          const [existing] = await tx.select({ id: account.id }).from(account).where(credential)
+          if (existing) {
+            await tx.update(account).set({ password: passwordHash }).where(credential)
+          } else {
+            await tx.insert(account).values({
+              id: randomUUID(),
+              accountId: userId,
+              providerId: CREDENTIAL_PROVIDER,
+              userId,
+              password: passwordHash,
+            })
+          }
+          await tx.update(user).set({ emailVerified: true }).where(eq(user.id, userId))
+          await tx.delete(userTokens).where(eq(userTokens.userId, userId))
+          await tx.delete(schema.session).where(eq(schema.session.userId, userId))
+          return true
+        })
+      },
+      async markResetRequested(id, at) {
+        await db.update(user).set({ resetRequestedAt: at }).where(eq(user.id, id))
       },
     },
 

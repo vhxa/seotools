@@ -11,7 +11,7 @@ import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
 import { parseCrawlScheduleForm, parseCrawlSettingsForm } from '@/lib/crawl-forms'
 import { getDb } from '@/lib/db'
-import { archivedMessage, requireDomain } from '@/lib/workspace'
+import { archivedMessage, requireDomainEditor } from '@/lib/workspace'
 
 export interface ActionState {
   error?: string
@@ -43,7 +43,7 @@ export async function startCrawlAction(
   type: CrawlType,
   _previous: ActionState,
 ): Promise<ActionState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('Crawl.errors')
   const db = await getDb()
@@ -59,7 +59,7 @@ export async function startCrawlAction(
 }
 
 export async function cancelCrawlAction(host: string, crawlId: string) {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   const db = await getDb()
   // The id comes from the client: it has to be a crawl of the domain being acted on.
   const crawl = await db.crawls.get(crawlId)
@@ -69,7 +69,7 @@ export async function cancelCrawlAction(host: string, crawlId: string) {
 
 /** Marks or unmarks a URL as a priority one. */
 export async function setPriorityUrlAction(host: string, url: string, marked: boolean) {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return
   const db = await getDb()
   const normalized = parsePriorityUrl(url, domain.host)
@@ -84,7 +84,7 @@ const MAX_BULK_URLS = 200
 
 /** Marks or unmarks several URLs at once. URLs that are not of the domain are skipped. */
 export async function setPriorityUrlsAction(host: string, urls: string[], marked: boolean) {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return
   const db = await getDb()
   for (const url of urls.slice(0, MAX_BULK_URLS)) {
@@ -101,7 +101,7 @@ export async function addPriorityUrlAction(
   _previous: AddPriorityUrlState,
   formData: FormData,
 ): Promise<AddPriorityUrlState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('Crawl.errors')
   const value = String(formData.get('url') ?? '')
@@ -119,7 +119,7 @@ export async function saveScheduleAction(
   _previous: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('Crawl.errors')
   const parsed = parseCrawlScheduleForm(formData)
@@ -143,7 +143,7 @@ export async function saveCrawlSettingsAction(
   _previous: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('CrawlSettings.errors')
   const limits = CRAWL_SETTINGS_LIMITS
@@ -192,7 +192,7 @@ export async function refreshCrawlFilesAction(
   host: string,
   _previous: ActionState,
 ): Promise<ActionState> {
-  const { domain } = await requireDomain(host)
+  const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('CrawlFiles.refresh')
   const db = await getDb()

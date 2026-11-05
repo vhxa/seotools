@@ -113,6 +113,20 @@
       "when": 1793855341904,
       "tag": "0015_domain_archiving",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1793871732131,
+      "tag": "0016_users_and_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1793871732887,
+      "tag": "0017_existing_users_are_admins",
+      "breakpoints": true
     }
   ]
 }

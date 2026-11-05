@@ -1,5 +1,6 @@
 'use client'
 
+import { useCanEdit } from '@/components/domain-access'
 import { RefreshCwIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -24,6 +25,7 @@ export function RecheckButton({
   disabled?: boolean
   variant?: 'default' | 'outline'
 }) {
+  const canEdit = useCanEdit()
   const t = useTranslations('Verification')
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -37,6 +39,7 @@ export function RecheckButton({
       else router.refresh()
     })
 
+  if (!canEdit) return null
   return (
     <div className="grid justify-items-start gap-1">
       <Button variant={variant} size="sm" disabled={disabled || pending} onClick={start}>

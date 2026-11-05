@@ -35,6 +35,8 @@ describeDatabaseContract(
           'jobs',
           'worker_heartbeats',
           'settings',
+          'user_tokens',
+          'user_access',
           'user',
           'crawl_url_audit',
           'crawl_url_accepted_issues',

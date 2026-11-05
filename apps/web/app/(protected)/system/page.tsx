@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/table'
 import { getDb } from '@/lib/db'
 import { getHealth } from '@/lib/health'
-import { requireSession } from '@/lib/session'
+import { requireAdmin } from '@/lib/session'
 import { enqueueExampleJob } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -34,7 +34,7 @@ const statusVariant: Record<JobStatus, 'default' | 'secondary' | 'destructive' |
 
 /** Instance-wide status (database, worker, job queue): it does not belong to any domain. */
 export default async function SystemPage() {
-  await requireSession()
+  await requireAdmin()
   const [t, format] = await Promise.all([getTranslations('System'), getFormatter()])
   const db = await getDb()
   const [{ report }, counts, jobs] = await Promise.all([

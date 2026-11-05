@@ -1,5 +1,7 @@
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
+  AccessGrant,
+  UserRole,
   AuditCondition,
   AuditRule,
   AuditSelector,
@@ -106,6 +108,58 @@ export interface AdminRepository {
   findByEmail(email: string): Promise<AdminAccount | null>
   /** Creates the user and its credential account together. Rejects if the id or email is taken. */
   create(input: { id: string; email: string; name: string; passwordHash: string }): Promise<void>
+}
+
+/** An account, as the people who manage them see it. */
+export interface UserRecord {
+  id: string
+  name: string
+  email: string
+  role: UserRole
+  disabledAt: Date | null
+  /** It has a password: `false` is someone invited who has not accepted yet. */
+  hasPassword: boolean
+  resetRequestedAt: Date | null
+  createdAt: Date
+}
+
+export const USER_TOKEN_KINDS = ['invite', 'reset'] as const
+export type UserTokenKind = (typeof USER_TOKEN_KINDS)[number]
+
+/** What refuses a change that would leave nobody able to administer the instance. */
+export type UserChange = 'ok' | 'not-found' | 'last-admin'
+
+export interface UserRepository {
+  /** Every account, by name. */
+  list(): Promise<UserRecord[]>
+  get(id: string): Promise<UserRecord | null>
+  findByEmail(email: string): Promise<UserRecord | null>
+  /** Creates an account with no password. Rejects if the email is taken. */
+  create(input: { email: string; name: string; role: UserRole }): Promise<UserRecord>
+  /** Refuses to leave no administrator who is active and can sign in. */
+  setRole(id: string, role: UserRole): Promise<UserChange>
+  /** Disabling removes the sessions and links of the account, and refuses like `setRole`. */
+  setDisabled(id: string, disabled: boolean): Promise<UserChange>
+  /** What a member was given. An administrator keeps theirs, unused, in case the role goes. */
+  grantsOf(userId: string): Promise<AccessGrant[]>
+  /** The grants of every account, for those who manage them. */
+  allGrants(): Promise<Map<string, AccessGrant[]>>
+  /** Replaces what a member was given. `false`: the account, a company or a domain do not exist. */
+  setGrants(userId: string, grants: readonly AccessGrant[]): Promise<boolean>
+  addToken(input: {
+    tokenHash: string
+    userId: string
+    kind: UserTokenKind
+    expiresAt: Date
+  }): Promise<void>
+  /** Whose a link is while it works: not expired, and the account not disabled. */
+  findToken(tokenHash: string, now: Date): Promise<{ kind: UserTokenKind; user: UserRecord } | null>
+  /**
+   * Uses a link: sets the password, verifies the email, and removes every link and session of the
+   * account, all or nothing. `false`: the link does not work (any more), and nothing changed.
+   */
+  redeemToken(input: { tokenHash: string; passwordHash: string; now: Date }): Promise<boolean>
+  markResetRequested(id: string, at: Date): Promise<void>
 }
 
 export interface Company {
@@ -1040,6 +1094,7 @@ export interface Database {
   readonly heartbeats: HeartbeatRepository
   readonly settings: SettingsStore
   readonly admin: AdminRepository
+  readonly users: UserRepository
   readonly companies: CompanyRepository
   readonly domains: DomainRepository
   readonly crawls: CrawlRepository

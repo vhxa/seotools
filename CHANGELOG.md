@@ -28,6 +28,10 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Upgrade notes
 
+- Accounts that already exist become administrators, which is what they could do until now. New
+  accounts have nothing until they are given it.
+- With `SEOTOOLS_MODE=worker`, set `BETTER_AUTH_URL` in the worker too, or the emails with password
+  links fail: they need the address of the app. A single container already has it.
 - Keep the pre-update database backup and both secret keys. To go back after any schema or
   stored-data conversion, stop the app and restore that backup with the previous image.
   Older images predating this guard still allow unsafe downgrades; their starting successfully
@@ -36,8 +40,8 @@ which moves the entries of `[Unreleased]` into the new version.
   direct Docker runs and Dokploy Docker applications. If you followed the previous README and
   set only `DATABASE_URL` for Compose, the installation used SQLite. Back up that SQLite volume
   before changing configuration: pointing at another database does not transfer your data.
-- This version adds migrations (`crawl_url_accepted_issues`, and `domains.archived_at`, empty for
-  every existing domain). Migrations only move forward: going back to an earlier version needs the
+- This version adds migrations (`crawl_url_accepted_issues`, `domains.archived_at`, empty for every
+  existing domain, and users' roles and access). Migrations only move forward: going back to an earlier version needs the
   backup taken before updating.
 
 ### Fixed
@@ -48,6 +52,16 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **Users and permissions.** Administrators invite users from System → Users, without opening
+  registration. A member only reaches what they are given: **editor** (runs crawls, changes rules and
+  settings) or **viewer** (reads and exports), on a company, which covers all its domains, or on a
+  domain, whose role replaces the company's there. Everything else answers as if it did not exist,
+  including direct links and exports. Accounts can be disabled, which signs them out at once. The
+  instance cannot be left without an administrator who can sign in.
+- **Password recovery:** an email link from the sign-in page when email is configured, a recovery link
+  an administrator can hand over when it is not, and, if nobody can sign in,
+  `node worker/dist/recover.mjs <email>` on the command line of the installation. Everyone can change
+  their own password from their account.
 - **CSV export** of the pages table (Export, in its toolbar): the pages, or their findings. Each file
   holds every row the address lists (the same view, filters, search, order and crawl), not only the
   page on screen, and carries the domain, the crawl date and id, and the filters on every row. Headers

@@ -1,5 +1,6 @@
 'use client'
 
+import { useCanEdit } from '@/components/domain-access'
 import { SlidersHorizontalIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -22,8 +23,10 @@ export function UrlAuditActions({
   /** What the URL is under the rules in force now, and what exceptions it has. */
   current: UrlAuditCurrent
 }) {
+  const canEdit = useCanEdit()
   const t = useTranslations('UrlDetail.audit')
   const [open, setOpen] = useState(false)
+  if (!canEdit) return null
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
