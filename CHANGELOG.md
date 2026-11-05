@@ -20,41 +20,13 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.2.0-rc.1] - 2026-11-05
+
 ### Breaking
 
 - Startup refuses a database with migrations unknown to the image, reversing the previous
   documented behaviour of allowing older images to start on newer databases. This also applies
   with migrations disabled and in worker-only containers.
-
-### Upgrade notes
-
-- Accounts that already exist become administrators, which is what they could do until now. New
-  accounts have nothing until they are given it.
-- With `SEOTOOLS_MODE=worker`, set `BETTER_AUTH_URL` in the worker too, or the emails with password
-  links and the crawl alerts fail: they need the address of the app. A single container already has it.
-- Keep the pre-update database backup and both secret keys. To go back after any schema or
-  stored-data conversion, stop the app and restore that backup with the previous image.
-  Older images predating this guard still allow unsafe downgrades; their starting successfully
-  does not mean the database is compatible.
-- Docker Compose uses `DATABASE_URL_DOCKER` in `.env`; `DATABASE_URL` is for local development,
-  direct Docker runs and Dokploy Docker applications. If you followed the previous README and
-  set only `DATABASE_URL` for Compose, the installation used SQLite. Back up that SQLite volume
-  before changing configuration: pointing at another database does not transfer your data.
-- This version adds migrations (`crawl_url_accepted_issues`, `domains.archived_at`, empty for every
-  existing domain, users' roles and access, and the record of sent email and the alerts people
-  choose, empty at first: nobody receives an alert until they turn it on). Migrations only move forward: going back to an earlier version needs the
-  backup taken before updating.
-
-### Fixed
-
-- A recheck of a URL shows what an audit rule accepts (for example a `noindex` the rules allow) as
-  seen and accepted, not as fixed and not as absent. Rechecks made before this say nothing about it.
-- A viewer no longer sees anything that writes: settings, schedules, rules, languages, priority URLs
-  and cancel buttons are not shown, and the fields that show a current value are disabled instead
-  of looking active. The pages table has no selection checkboxes for them; Export stays.
-- The README and example environment now document Compose's existing database override
-  accurately, preserving `DATABASE_URL_DOCKER`. Startup logs the selected dialect without the URL.
-- Crawl retention settings explain that older crawls lose URL results, links and evidence.
 
 ### Added
 
@@ -130,3 +102,35 @@ which moves the entries of `[Unreleased]` into the new version.
   page. There is no `0` tag: while the major version is 0 a minor release can break things.
 - The container image is checked (it starts and reports the version it was published as) before the
   tags that follow releases move and before a GitHub release is created.
+
+### Fixed
+
+- A recheck of a URL shows what an audit rule accepts (for example a `noindex` the rules allow) as
+  seen and accepted, not as fixed and not as absent. Rechecks made before this say nothing about it.
+- A viewer no longer sees anything that writes: settings, schedules, rules, languages, priority URLs
+  and cancel buttons are not shown, and the fields that show a current value are disabled instead
+  of looking active. The pages table has no selection checkboxes for them; Export stays.
+- The README and example environment now document Compose's existing database override
+  accurately, preserving `DATABASE_URL_DOCKER`. Startup logs the selected dialect without the URL.
+- Crawl retention settings explain that older crawls lose URL results, links and evidence.
+
+### Upgrade notes
+
+- Accounts that already exist become administrators, which is what they could do until now. New
+  accounts have nothing until they are given it.
+- With `SEOTOOLS_MODE=worker`, set `BETTER_AUTH_URL` in the worker too, or the emails with password
+  links and the crawl alerts fail: they need the address of the app. A single container already has it.
+- Keep the pre-update database backup and both secret keys. To go back after any schema or
+  stored-data conversion, stop the app and restore that backup with the previous image.
+  Older images predating this guard still allow unsafe downgrades; their starting successfully
+  does not mean the database is compatible.
+- Docker Compose uses `DATABASE_URL_DOCKER` in `.env`; `DATABASE_URL` is for local development,
+  direct Docker runs and Dokploy Docker applications. If you followed the previous README and
+  set only `DATABASE_URL` for Compose, the installation used SQLite. Back up that SQLite volume
+  before changing configuration: pointing at another database does not transfer your data.
+- This version adds migrations (`crawl_url_accepted_issues`, `domains.archived_at`, empty for every
+  existing domain, users' roles and access, and the record of sent email and the alerts people
+  choose, empty at first: nobody receives an alert until they turn it on). Migrations only move
+  forward: going back to an earlier version needs the backup taken before updating.
+- At the first start, the worker analyses the crawls that still have their results again, with no
+  requests to any site. It may take a while on a large installation.
