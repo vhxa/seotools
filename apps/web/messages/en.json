@@ -353,6 +353,11 @@
         "title": "No longer found",
         "note": "The crawl of {when} found these at this URL; the recheck does not."
       },
+      "accepted": {
+        "title": "Seen, and accepted by a rule ({count})",
+        "note": "The recheck still sees these at this URL, but a rule takes them as expected, so they are not pending. They are not fixed.",
+        "wasPending": "The crawl reported it as pending"
+      },
       "notComparable": {
         "rules-changed": "Not compared with the last full crawl: it was analysed under other audit rules, so a finding could appear or go away only because the rules moved.",
         "not-analysed": "Not compared with the last full crawl: it has not been analysed for issues."

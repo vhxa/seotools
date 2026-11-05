@@ -10,6 +10,7 @@
  */
 import { PAGE_ISSUE_IDS, isPageIssueId, type PageIssueId } from './issues'
 import type { UrlAuditState } from './audit'
+import type { FindingAcceptance } from './acceptance'
 
 /** Most URLs one recheck takes: a recheck is a few requests, not a crawl. */
 export const MAX_VERIFICATION_URLS = 50
@@ -196,12 +197,22 @@ export interface VerificationFinding {
   details?: string[]
 }
 
+/** A finding of a recheck that a rule takes as expected: seen, and not pending. */
+export interface VerificationAcceptedFinding extends VerificationFinding {
+  acceptance: FindingAcceptance
+}
+
 /** What a recheck concluded about a URL, stored with the answer it concluded it from. */
 export interface VerificationOutcome {
   /** Whether the URL is audited, what is expected of it and what the recheck saw. */
   audit: UrlAuditState
   /** What it found among the issues of `URL_SCOPED_ISSUES`. Empty for a URL left out of the audit. */
   findings: VerificationFinding[]
+  /**
+   * What the audit rules took as expected among those issues, so it is not in `findings`. Absent in
+   * a recheck made before this was kept: that says nothing, which is not the same as none.
+   */
+  accepted?: VerificationAcceptedFinding[]
   /**
    * Issues of `URL_SCOPED_ISSUES` whose check could not be made from this URL alone. Not expected to
    * have any: it is what keeps a misclassified check from reporting as fixed what it did not see.
@@ -218,6 +229,11 @@ export interface VerificationComparison {
   fixed: PageIssueId[]
   /** Both found it. */
   remaining: PageIssueId[]
+  /**
+   * The crawl reported it as pending and the recheck sees it, but a rule takes it as expected. It
+   * is accepted, never fixed: the URL still has it.
+   */
+  nowAccepted: PageIssueId[]
   /** The recheck found it and the crawl did not. */
   appeared: PageIssueId[]
   /**
@@ -239,13 +255,21 @@ export function compareWithCrawl(input: {
   crawl: readonly string[]
   recheck: readonly string[]
   unchecked?: readonly string[]
+  /** The issues the recheck saw and a rule accepts. Left out for a recheck that did not keep them. */
+  accepted?: readonly string[]
 }): VerificationComparison {
   const unchecked = new Set(input.unchecked ?? [])
+  const accepted = new Set(input.accepted ?? [])
   const before = new Set(input.crawl.filter(isPageIssueId))
   const after = new Set(input.recheck.filter(isPageIssueId))
   const settled = (issue: PageIssueId) => SCOPE[issue] === 'url' && !unchecked.has(issue)
   return {
-    fixed: byCatalog([...before].filter((issue) => settled(issue) && !after.has(issue))),
+    fixed: byCatalog(
+      [...before].filter((issue) => settled(issue) && !after.has(issue) && !accepted.has(issue)),
+    ),
+    nowAccepted: byCatalog(
+      [...before].filter((issue) => settled(issue) && !after.has(issue) && accepted.has(issue)),
+    ),
     remaining: byCatalog([...before].filter((issue) => settled(issue) && after.has(issue))),
     appeared: byCatalog([...after].filter((issue) => settled(issue) && !before.has(issue))),
     pendingFullCrawl: byCatalog([...before].filter((issue) => !settled(issue))),

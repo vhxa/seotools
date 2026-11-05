@@ -9,6 +9,7 @@ import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { Badge } from '@/components/ui/badge'
 import { FindingHelp } from '@/components/pages/finding-help'
+import { describeAcceptance } from '@/lib/acceptance-reason'
 import { groupDetailFindings } from '@/lib/url-detail-findings'
 import { useTranslations } from 'next-intl'
 import type { UrlDetailData } from '@/lib/url-detail'
@@ -48,7 +49,15 @@ function IssueRow({
 export async function UrlRecheck({ data }: { data: UrlDetailData }) {
   const { recheck, crawl } = data
   if (!recheck.available) return null
-  const [t, format] = await Promise.all([getTranslations('Verification.detail'), getFormatter()])
+  const [t, format, tAll] = await Promise.all([
+    getTranslations('Verification.detail'),
+    getFormatter(),
+    getTranslations(),
+  ])
+  const translate = tAll as unknown as (
+    key: string,
+    values?: Record<string, string | number>,
+  ) => string
   const { view } = recheck
   const crawledAt = crawl.finishedAt ?? crawl.createdAt
   const when = (date: Date) => format.dateTime(date, { dateStyle: 'medium', timeStyle: 'short' })
@@ -59,6 +68,9 @@ export async function UrlRecheck({ data }: { data: UrlDetailData }) {
   const comparison: VerificationComparison | null = view?.comparison ?? null
   const remaining = new Set<string>(comparison?.remaining)
   const appeared = new Set<string>(comparison?.appeared)
+  const wasPending = new Set<string>(comparison?.nowAccepted)
+  // A recheck from before this was kept has none to show, which says nothing either way.
+  const accepted = outcome?.accepted ?? []
   // What only a full crawl settles, as that crawl left it. Nothing for a URL left out of the audit.
   const pending = excluded
     ? []
@@ -180,6 +192,30 @@ export async function UrlRecheck({ data }: { data: UrlDetailData }) {
                       />
                     ))}
                 </ul>
+              )}
+
+              {accepted.length > 0 && (
+                <>
+                  <h4 className="text-sm font-medium">
+                    {t('accepted.title', { count: accepted.length })}
+                  </h4>
+                  <p className="text-xs text-muted-foreground">{t('accepted.note')}</p>
+                  <ul className="grid gap-2 text-sm">
+                    {accepted.map(({ issue, acceptance }) => (
+                      <li key={issue} className="grid gap-0.5">
+                        <span className="flex flex-wrap items-center gap-2 font-medium">
+                          <IssueLabel issue={issue} />
+                          {wasPending.has(issue) && (
+                            <Badge variant="outline">{t('accepted.wasPending')}</Badge>
+                          )}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {describeAcceptance(acceptance, translate)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
 
               {comparison && comparison.fixed.length > 0 && (

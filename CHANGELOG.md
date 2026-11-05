@@ -47,6 +47,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Fixed
 
+- A recheck of a URL shows what an audit rule accepts (for example a `noindex` the rules allow) as
+  seen and accepted, not as fixed and not as absent. Rechecks made before this say nothing about it.
 - A viewer no longer sees anything that writes: settings, schedules, rules, languages, priority URLs
   and cancel buttons are not shown, and the fields that show a current value are disabled instead
   of looking active. The pages table has no selection checkboxes for them; Export stays.

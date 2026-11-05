@@ -4727,12 +4727,23 @@ export function describeDatabaseContract(
         const verification = await startVerification(domainId, [a, b])
         await db.verifications.markRunning(verification.id)
 
+        const accepted = [
+          {
+            issue: 'noindex',
+            acceptance: {
+              kind: 'condition' as const,
+              condition: 'noindex' as const,
+              requirement: 'allowed' as const,
+              rule: 'r1',
+            },
+          },
+        ]
         const first = {
           verificationId: verification.id,
           urlHash: a.urlHash,
           answer: answer({ title: 'Fresh title', statusCode: 200 }),
           auditVersion: 4,
-          outcome: outcome(['title-too-short'], { unchecked: ['noindex'] }),
+          outcome: outcome(['title-too-short'], { unchecked: ['noindex'], accepted }),
         }
         expect(await db.verifications.recordResult(first)).toBe(true)
         // Idempotent: a retried job writes the same result again, and the count does not grow.
@@ -4748,7 +4759,7 @@ export function describeDatabaseContract(
           statusCode: 200,
           title: 'Fresh title',
           auditVersion: 4,
-          outcome: outcome(['title-too-short'], { unchecked: ['noindex'] }),
+          outcome: outcome(['title-too-short'], { unchecked: ['noindex'], accepted }),
         })
         expect(stored?.fetchedAt).toBeInstanceOf(Date)
       })
@@ -4775,6 +4786,8 @@ export function describeDatabaseContract(
           nofollow: { requirement: 'allowed', rule: 'r1', observed: null },
         })
         expect(stored?.outcome?.audit).not.toHaveProperty('acceptNofollow')
+        // Nothing was kept of what a rule accepts: absent, never an empty list.
+        expect(stored?.outcome).not.toHaveProperty('accepted')
       })
 
       it('stores a failed request as an answer of its own', async () => {

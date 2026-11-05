@@ -671,6 +671,14 @@ export function applyAuditPolicy(url: AuditedUrl, found: Finding[]): Finding[] {
   return auditPolicy(url, found).kept
 }
 
+/** `applyAuditPolicy`, and the findings of the URL itself that the rules take as expected. */
+export function applyAuditPolicyKeeping(
+  url: AuditedUrl,
+  found: Finding[],
+): { kept: Finding[]; accepted: AcceptedFinding[] } {
+  return auditPolicy(url, found)
+}
+
 /** `applyAuditPolicy`, and the findings it takes as what a rule accepts. */
 function auditPolicy(
   url: AuditedUrl,

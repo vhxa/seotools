@@ -113,9 +113,42 @@ describe('viewRecheck', () => {
       fixed: ['title-missing'],
       remaining: ['h1-missing'],
       appeared: [],
+      nowAccepted: [],
       pendingFullCrawl: ['title-duplicate'],
     })
     expect(view?.notComparable).toBeNull()
+  })
+
+  it('never calls fixed what the recheck sees and a rule accepts', () => {
+    const acceptance = {
+      kind: 'condition',
+      condition: 'noindex',
+      requirement: 'allowed',
+      rule: 'r',
+    }
+    const view = viewRecheck({
+      ...input,
+      crawlIssues: ['noindex', 'h1-missing'],
+      verified: verified({
+        outcome: {
+          ...verified().outcome!,
+          findings: [{ issue: 'h1-missing' }],
+          accepted: [{ issue: 'noindex', acceptance }],
+        } as VerifiedUrl['outcome'],
+      }),
+    })
+    expect(view?.comparison).toMatchObject({
+      fixed: [],
+      nowAccepted: ['noindex'],
+      remaining: ['h1-missing'],
+    })
+  })
+
+  it('treats a recheck made before accepted findings were kept as saying nothing of them', () => {
+    const view = viewRecheck({ ...input, crawlIssues: ['noindex'] })
+    expect(view?.verified.outcome?.accepted).toBeUndefined()
+    // As it always was: the finding is not there, and nothing says why.
+    expect(view?.comparison).toMatchObject({ fixed: ['noindex'], nowAccepted: [] })
   })
 
   it('does not show a recheck the crawl has since overtaken', () => {

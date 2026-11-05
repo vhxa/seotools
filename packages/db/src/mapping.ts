@@ -1409,10 +1409,22 @@ type VerifiedUrlRow = Omit<VerifiedUrl, 'outcome' | 'source'> & {
 
 /** What a recheck stored, read like a newer one: rechecks from before conditions have none. */
 function readOutcome(stored: string): VerificationOutcome {
-  const outcome = parseJson(stored) as Omit<VerificationOutcome, 'audit'> & {
+  const { accepted, ...outcome } = parseJson(stored) as Omit<VerificationOutcome, 'audit'> & {
     audit: Parameters<typeof readUrlAuditState>[0]
   }
-  return { ...outcome, audit: readUrlAuditState(outcome.audit) }
+  return {
+    ...outcome,
+    audit: readUrlAuditState(outcome.audit),
+    // Absent in rechecks from before it was kept: that stays absent, never an empty list.
+    ...(Array.isArray(accepted)
+      ? {
+          accepted: accepted.flatMap((finding) => {
+            const acceptance = parseFindingAcceptance(finding.acceptance)
+            return acceptance ? [{ ...finding, acceptance }] : []
+          }),
+        }
+      : {}),
+  }
 }
 
 export const toVerifiedUrl = ({ outcome, source, ...row }: VerifiedUrlRow): VerifiedUrl => ({

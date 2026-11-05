@@ -353,6 +353,11 @@
         "title": "Ya no se encuentra",
         "note": "El rastreo del {when} encontró esto en esta URL; la recomprobación no."
       },
+      "accepted": {
+        "title": "Vistos y aceptados por una regla ({count})",
+        "note": "La reverificación sigue viéndolos en esta URL, pero una regla los da por esperados, así que no están pendientes. No están corregidos.",
+        "wasPending": "El rastreo lo informó como pendiente"
+      },
       "notComparable": {
         "rules-changed": "No se ha comparado con el último rastreo completo: se analizó con otras reglas de auditoría, así que un hallazgo podría aparecer o desaparecer solo porque las reglas cambiaron.",
         "not-analysed": "No se ha comparado con el último rastreo completo: no se ha analizado en busca de problemas."
