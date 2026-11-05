@@ -173,4 +173,27 @@ describe('createFaviconRefresher', () => {
     expect(configs).toEqual([])
     expect(await db.favicons.get(domainId)).toBeNull()
   })
+
+  it('does not look for the icon of an archived domain, until it is restored', async () => {
+    await db.domains.archive(domainId)
+    await refresher().tick()
+    expect(configs).toEqual([])
+    expect(await db.favicons.get(domainId)).toBeNull()
+
+    await db.domains.unarchive(domainId)
+    await refresher().tick()
+    expect(configs).toHaveLength(1)
+    expect(await db.favicons.get(domainId)).not.toBeNull()
+  })
+
+  it('keeps the icon an archived domain had, and does not refresh it when due', async () => {
+    const r = refresher()
+    await r.tick()
+    await db.domains.archive(domainId)
+    configs = []
+    clock = new Date(start.getTime() + FAVICON_REFRESH_INTERVAL_MS + 1000)
+    await r.tick()
+    expect(configs).toEqual([])
+    expect((await db.favicons.get(domainId))?.data.equals(PNG)).toBe(true)
+  })
 })

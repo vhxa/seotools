@@ -80,7 +80,9 @@
     "placeholder": "Selecciona un dominio",
     "label": "Cambiar de dominio",
     "addDomain": "Añadir dominio",
-    "addCompany": "Añadir empresa"
+    "addCompany": "Añadir empresa",
+    "archived": "Archivados",
+    "manageCompanies": "Gestionar empresas"
   },
   "Sidebar": {
     "toggle": "Alternar barra lateral",
@@ -102,7 +104,8 @@
     "pagesCompare": "Comparar",
     "updates": "Actualizaciones",
     "versionRelease": "v{version}",
-    "versionDevelopment": "v{version} · desarrollo"
+    "versionDevelopment": "v{version} · desarrollo",
+    "companies": "Empresas"
   },
   "ProtectedShell": {
     "skipToContent": "Saltar al contenido principal"
@@ -2558,5 +2561,91 @@
     "robots-block-required-missing": "Añade el bloqueo previsto en robots.txt para el bot auditado o corrige la regla que lo exige. Un bloqueo en robots.txt no garantiza la eliminación del índice.",
     "sitemap-required-missing": "Incluye esta URL como entrada en un sitemap que el rastreador pueda leer o corrige la regla que lo exige. Ejecuta un rastreo completo para verificar su presencia.",
     "sitemap-forbidden-present": "Elimina la entrada de la URL de los sitemaps afectados o corrige la regla si debe figurar en ellos. Ejecuta un rastreo completo para verificar el cambio."
+  },
+  "Companies": {
+    "metaTitle": "Empresas · seotools",
+    "title": "Empresas",
+    "addCompany": "Añadir empresa",
+    "empty": "Todavía no hay empresas.",
+    "domainCount": "{count, plural, one {# dominio} other {# dominios}}",
+    "noDomains": "Sin dominios",
+    "archivedBadge": "Archivado",
+    "actionsLabel": "Acciones de {name}",
+    "company": {
+      "rename": "Renombrar",
+      "addDomain": "Añadir dominio",
+      "delete": "Eliminar empresa…"
+    },
+    "domain": {
+      "open": "Abrir",
+      "archive": "Archivar…",
+      "restore": "Restaurar",
+      "move": "Mover a otra empresa…",
+      "changeSite": "Cambiar de sitio…",
+      "delete": "Eliminar dominio…"
+    },
+    "rename": {
+      "title": "Renombrar empresa",
+      "label": "Nombre",
+      "submit": "Guardar",
+      "submitting": "Guardando…"
+    },
+    "archive": {
+      "title": "¿Archivar {host}?",
+      "description": "Sus datos se conservan y siguen siendo legibles. Se detienen los rastreos programados y las actualizaciones de su icono y archivos, se cancela cualquier rastreo o verificación en curso y sus ajustes no podrán cambiar hasta que lo restaures.",
+      "submit": "Archivar",
+      "submitting": "Archivando…"
+    },
+    "move": {
+      "title": "Mover {host}",
+      "label": "Nueva empresa",
+      "results": "Sus rastreos, resultados, reglas y programaciones se mueven con él sin cambios.",
+      "access": {
+        "unchanged": "El acceso no cambia: todos los usuarios con sesión iniciada pueden verlo antes y después del cambio, porque el acceso todavía no se define por empresa."
+      },
+      "submit": "Mover dominio",
+      "submitting": "Moviendo…"
+    },
+    "changeSite": {
+      "title": "Cambiar de sitio",
+      "description": "La dirección de un dominio no se puede editar, porque sus resultados pertenecen a ese sitio. Para seguir un sitio nuevo, añade un dominio nuevo y archiva este.",
+      "addDomain": "Añadir dominio"
+    },
+    "delete": {
+      "close": "Cancelar",
+      "domainTitle": "¿Eliminar {host}?",
+      "domainLead": "Esto elimina de forma permanente {host} y:",
+      "companyTitle": "¿Eliminar {name}?",
+      "companyLead": "Esto elimina de forma permanente la empresa con {domains}: {hosts}, y:",
+      "companyLeadEmpty": "Esto elimina de forma permanente la empresa, que no tiene dominios.",
+      "nothingStored": "No tiene rastreos, resultados, reglas ni programaciones guardados.",
+      "keepHistory": "Para conservar su historial, archívalo en su lugar.",
+      "confirmLabel": "Escribe {value} para confirmar",
+      "domainSubmit": "Eliminar dominio",
+      "companySubmit": "Eliminar empresa",
+      "submitting": "Eliminando…",
+      "usage": {
+        "crawls": "{count, plural, one {# rastreo} other {# rastreos}}",
+        "urls": "{count, plural, one {# resultado de URL conservado} other {# resultados de URL conservados}}",
+        "rules": "{count, plural, one {# regla o excepción de auditoría} other {# reglas y excepciones de auditoría}}",
+        "rechecks": "{count, plural, one {# verificación} other {# verificaciones}}",
+        "schedules": "{count, plural, one {# programación} other {# programaciones}}",
+        "priorityUrls": "{count, plural, one {# URL prioritaria} other {# URLs prioritarias}}",
+        "crawlFiles": "{count, plural, one {# archivo de rastreo} other {# archivos de rastreo}}"
+      }
+    },
+    "errors": {
+      "invalidName": "Introduce un nombre de empresa de hasta {max} caracteres.",
+      "domainNotFound": "Ese dominio ya no existe.",
+      "companyNotFound": "Esa empresa ya no existe.",
+      "sameCompany": "El dominio ya pertenece a esa empresa.",
+      "confirmMismatch": "Lo que has escrito no coincide.",
+      "invalidRequest": "La solicitud no es válida."
+    }
+  },
+  "Archive": {
+    "notice": "Este dominio está archivado. Sus datos se conservan, pero nada se ejecuta automáticamente y no se puede modificar.",
+    "manage": "Gestionar",
+    "refused": "Este dominio está archivado. Restáuralo para hacer cambios."
   }
 }

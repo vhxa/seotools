@@ -67,6 +67,7 @@ import {
   expiredVerifications,
   faviconRow,
   foldCrawlCounts,
+  foldUsage,
   foldViewCounts,
   groupDomains,
   newCrawlLinkRow,
@@ -94,6 +95,7 @@ import {
   AUDIT_SEMANTICS,
   DEFAULT_CRAWL_SETTINGS,
   JOB_TYPES,
+  nextScheduledRun,
   type CrawlLinkKind,
 } from '@seotools/core'
 import {
@@ -122,6 +124,7 @@ import {
   type PlanContext,
 } from '../audit'
 import * as schema from '../schema/mysql'
+import { DomainArchivedError } from '../archive'
 import type {
   CrawlLink,
   CrawlUrlAudit,
@@ -456,6 +459,37 @@ export function createMysqlDatabase(options: {
       .onDuplicateKeyUpdate({ set: { value, updatedAt } })
   }
 
+  /** Refuses, inside the transaction that would create something, a domain that is archived. */
+  const assertNotArchived = async (tx: Pick<typeof db, 'select'>, domainId: string) => {
+    // Shared lock: archiving a domain waits for a start in flight, and a start sees it archived.
+    const [row] = await tx
+      .select({ archivedAt: domains.archivedAt })
+      .from(domains)
+      .where(eq(domains.id, domainId))
+      .for('share')
+    if (row?.archivedAt) throw new DomainArchivedError(domainId)
+  }
+
+  /**
+   * Removes the jobs that work on these domains: their crawls' and rechecks'. The domain's rows
+   * go by cascade, and a job that finds its crawl gone has nothing left to do; deleting the job
+   * too means a running one is not retried, and a queued one never starts.
+   */
+  const removeJobsOf = async (tx: Pick<typeof db, 'select' | 'delete'>, domainIds: string[]) => {
+    if (domainIds.length === 0) return
+    const ids = [
+      ...(await tx
+        .select({ id: crawls.jobId })
+        .from(crawls)
+        .where(inArray(crawls.domainId, domainIds))),
+      ...(await tx
+        .select({ id: urlVerifications.jobId })
+        .from(urlVerifications)
+        .where(inArray(urlVerifications.domainId, domainIds))),
+    ].map((row) => row.id)
+    for (const batch of chunk(ids)) await tx.delete(jobs).where(inArray(jobs.id, batch))
+  }
+
   return {
     dialect: 'mysql',
     orm: {
@@ -717,12 +751,35 @@ export function createMysqlDatabase(options: {
       async create({ name, host }) {
         const now = new Date()
         const company = { id: randomUUID(), name, createdAt: now }
-        const domain = { id: randomUUID(), companyId: company.id, host, createdAt: now }
+        const domain = {
+          id: randomUUID(),
+          companyId: company.id,
+          host,
+          createdAt: now,
+          archivedAt: null,
+        }
         await db.transaction(async (tx) => {
           await tx.insert(companies).values(company)
           await tx.insert(domains).values(domain)
         })
         return { company, domain }
+      },
+      async rename(id, name) {
+        await db.update(companies).set({ name }).where(eq(companies.id, id))
+        const [row] = await db.select().from(companies).where(eq(companies.id, id))
+        return row ?? null
+      },
+      async delete(id) {
+        return db.transaction(async (tx) => {
+          const [company] = await tx.select().from(companies).where(eq(companies.id, id))
+          if (!company) return false
+          const ids = (
+            await tx.select({ id: domains.id }).from(domains).where(eq(domains.companyId, id))
+          ).map((row) => row.id)
+          await removeJobsOf(tx, ids)
+          await tx.delete(companies).where(eq(companies.id, id))
+          return true
+        })
       },
     },
 
@@ -740,9 +797,109 @@ export function createMysqlDatabase(options: {
         return row ? { ...row.domain, company: row.company } : null
       },
       async add({ companyId, host }) {
-        const domain = { id: randomUUID(), companyId, host, createdAt: new Date() }
+        const domain = {
+          id: randomUUID(),
+          companyId,
+          host,
+          createdAt: new Date(),
+          archivedAt: null,
+        }
         await db.insert(domains).values(domain)
         return domain
+      },
+      async archive(id) {
+        return db.transaction(async (tx) => {
+          const [found] = await tx.select().from(domains).where(eq(domains.id, id))
+          if (!found) return null
+          const now = new Date()
+          if (!found.archivedAt) {
+            await tx.update(domains).set({ archivedAt: now }).where(eq(domains.id, id))
+          }
+          // The same statements as `crawls.cancel` and `verifications.cancel`: the jobs notice
+          // at their next check that the crawl is no longer running, and stop requesting.
+          const ended = { status: 'cancelled', activeKey: null, finishedAt: now } as const
+          await tx
+            .update(crawls)
+            .set(ended)
+            .where(and(eq(crawls.domainId, id), isNotNull(crawls.activeKey)))
+          await tx
+            .update(urlVerifications)
+            .set(ended)
+            .where(and(eq(urlVerifications.domainId, id), isNotNull(urlVerifications.activeKey)))
+          const [archived] = await tx.select().from(domains).where(eq(domains.id, id))
+          return archived ?? null
+        })
+      },
+      async unarchive(id) {
+        return db.transaction(async (tx) => {
+          const [found] = await tx.select().from(domains).where(eq(domains.id, id))
+          if (!found) return null
+          const now = new Date()
+          await tx.update(domains).set({ archivedAt: null }).where(eq(domains.id, id))
+          const schedules = await tx
+            .select()
+            .from(crawlSchedules)
+            .where(and(eq(crawlSchedules.domainId, id), eq(crawlSchedules.enabled, true)))
+          for (const row of schedules) {
+            await tx
+              .update(crawlSchedules)
+              .set({ nextRunAt: nextScheduledRun(toCrawlSchedule(row), now) })
+              .where(eq(crawlSchedules.id, row.id))
+          }
+          const [active] = await tx.select().from(domains).where(eq(domains.id, id))
+          return active ?? null
+        })
+      },
+      async move({ id, companyId }) {
+        return db.transaction(async (tx) => {
+          const [company] = await tx.select().from(companies).where(eq(companies.id, companyId))
+          if (!company) return null
+          await tx.update(domains).set({ companyId }).where(eq(domains.id, id))
+          const [moved] = await tx.select().from(domains).where(eq(domains.id, id))
+          return moved ?? null
+        })
+      },
+      async delete(id) {
+        return db.transaction(async (tx) => {
+          const [found] = await tx.select().from(domains).where(eq(domains.id, id))
+          if (!found) return false
+          await removeJobsOf(tx, [id])
+          await tx.delete(domains).where(eq(domains.id, id))
+          return true
+        })
+      },
+      async usage() {
+        return foldUsage(await db.select({ id: domains.id }).from(domains), {
+          crawls: await db
+            .select({ domainId: crawls.domainId, n: sql<number>`count(*)` })
+            .from(crawls)
+            .groupBy(crawls.domainId),
+          urls: await db
+            .select({ domainId: crawls.domainId, n: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .innerJoin(crawls, eq(crawlUrls.crawlId, crawls.id))
+            .groupBy(crawls.domainId),
+          rules: await db
+            .select({ domainId: auditRules.domainId, n: sql<number>`count(*)` })
+            .from(auditRules)
+            .groupBy(auditRules.domainId),
+          rechecks: await db
+            .select({ domainId: urlVerifications.domainId, n: sql<number>`count(*)` })
+            .from(urlVerifications)
+            .groupBy(urlVerifications.domainId),
+          schedules: await db
+            .select({ domainId: crawlSchedules.domainId, n: sql<number>`count(*)` })
+            .from(crawlSchedules)
+            .groupBy(crawlSchedules.domainId),
+          priorityUrls: await db
+            .select({ domainId: priorityUrls.domainId, n: sql<number>`count(*)` })
+            .from(priorityUrls)
+            .groupBy(priorityUrls.domainId),
+          crawlFiles: await db
+            .select({ domainId: crawlFiles.domainId, n: sql<number>`count(*)` })
+            .from(crawlFiles)
+            .groupBy(crawlFiles.domainId),
+        })
       },
     },
 
@@ -774,12 +931,14 @@ export function createMysqlDatabase(options: {
         const jobId = randomUUID()
         try {
           await db.transaction(async (tx) => {
+            await assertNotArchived(tx, domainId)
             await tx.insert(jobs).values(crawlJobValues(id, jobId, now))
             await tx
               .insert(crawls)
               .values({ id, domainId, type, trigger, jobId, activeKey: domainId, createdAt: now })
           })
         } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
           // Lost the race on the unique `active_key`: some other crawl of this domain is active.
           if (await this.active(domainId)) return null
           throw error
@@ -1750,6 +1909,7 @@ export function createMysqlDatabase(options: {
         const jobId = randomUUID()
         try {
           await db.transaction(async (tx) => {
+            await assertNotArchived(tx, domainId)
             await tx.insert(jobs).values(verificationJobValues(id, jobId, now))
             await tx.insert(urlVerifications).values({
               id,
@@ -1763,6 +1923,7 @@ export function createMysqlDatabase(options: {
             await tx.insert(urlVerificationUrls).values(newVerificationUrlRows(id, urls))
           })
         } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
           // Lost the race on the unique `active_key`: some other recheck of this domain is active.
           if (await this.active(domainId)) return null
           throw error
@@ -2014,7 +2175,21 @@ export function createMysqlDatabase(options: {
         const rows = await db
           .select()
           .from(crawlSchedules)
-          .where(and(eq(crawlSchedules.enabled, true), lte(crawlSchedules.nextRunAt, now)))
+          .where(
+            and(
+              eq(crawlSchedules.enabled, true),
+              lte(crawlSchedules.nextRunAt, now),
+              // An archived domain keeps its schedules but nothing runs for it.
+              notExists(
+                db
+                  .select({ one: sql`1` })
+                  .from(domains)
+                  .where(
+                    and(eq(domains.id, crawlSchedules.domainId), isNotNull(domains.archivedAt)),
+                  ),
+              ),
+            ),
+          )
           .orderBy(asc(crawlSchedules.nextRunAt))
           .limit(limit)
         return rows.map(toCrawlSchedule)
@@ -2086,7 +2261,12 @@ export function createMysqlDatabase(options: {
           .select({ id: domains.id, host: domains.host })
           .from(domains)
           .leftJoin(crawlFileChecks, eq(crawlFileChecks.domainId, domains.id))
-          .where(or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)))
+          .where(
+            and(
+              isNull(domains.archivedAt),
+              or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)),
+            ),
+          )
           .orderBy(asc(domains.createdAt), asc(domains.id))
           .limit(limit)
       },
@@ -2137,7 +2317,12 @@ export function createMysqlDatabase(options: {
           .select({ id: domains.id, host: domains.host })
           .from(domains)
           .leftJoin(domainFavicons, eq(domainFavicons.domainId, domains.id))
-          .where(or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)))
+          .where(
+            and(
+              isNull(domains.archivedAt),
+              or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)),
+            ),
+          )
           .orderBy(asc(domains.createdAt), asc(domains.id))
           .limit(limit)
       },

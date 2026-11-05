@@ -20,8 +20,9 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
     db.favicons.versions(),
     db.crawls.enabledFiles(),
   ])
-  // Nothing to switch between yet: finish the onboarding first.
-  if (!companies.some((company) => company.domains.length > 0)) redirect('/onboarding')
+  // Nothing to manage yet: finish the onboarding first. A company left without domains is still
+  // something to manage, so it does not send anyone back to the onboarding.
+  if (companies.length === 0) redirect('/onboarding')
 
   // The sidebar remembers whether it was collapsed in this cookie (written by the shadcn sidebar).
   const defaultOpen = (await cookies()).get('sidebar_state')?.value !== 'false'
@@ -39,9 +40,10 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           companies={companies.map((company) => ({
             id: company.id,
             name: company.name,
-            domains: company.domains.map(({ id, host }) => ({
+            domains: company.domains.map(({ id, host, archivedAt }) => ({
               id,
               host,
+              archived: archivedAt !== null,
               faviconVersion: faviconVersions.get(id) ?? null,
               extraFiles: enabledFiles.get(id) ?? [],
             })),

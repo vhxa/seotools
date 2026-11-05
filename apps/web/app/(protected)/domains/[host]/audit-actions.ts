@@ -16,7 +16,7 @@ import {
 } from '@/lib/audit-forms'
 import { previewRule, type AuditPreview } from '@/lib/audit-preview'
 import { getDb } from '@/lib/db'
-import { requireDomain } from '@/lib/workspace'
+import { archivedMessage, requireDomain } from '@/lib/workspace'
 
 export interface RuleFormState {
   error?: string
@@ -53,6 +53,7 @@ export async function saveAuditRuleAction(
   formData: FormData,
 ): Promise<RuleFormState> {
   const { domain } = await requireDomain(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const parsed = parseRuleForm(formData, domain.host)
   if (!parsed.ok) return { error: ruleError(t, parsed.error) }
@@ -86,6 +87,7 @@ export async function setAuditRulesEnabledAction(
   enabled: boolean,
 ): Promise<RuleFormState> {
   const { domain } = await requireDomain(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const rules = parseRuleIds(ids)
   if (!rules || typeof enabled !== 'boolean') return { error: t('notFound') }
@@ -99,6 +101,7 @@ export async function setAuditRulesEnabledAction(
 
 export async function deleteAuditRulesAction(host: string, ids: unknown): Promise<RuleFormState> {
   const { domain } = await requireDomain(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const rules = parseRuleIds(ids)
   if (!rules) return { error: t('notFound') }
@@ -158,6 +161,7 @@ export async function previewAuditRuleAction(
  */
 export async function setUrlAuditAction(host: string, input: unknown): Promise<RuleFormState> {
   const { domain } = await requireDomain(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const parsed = parseUrlConfig(input, domain.host)
   if (!parsed.ok) return { error: urlError(t, parsed.error) }
@@ -186,6 +190,7 @@ export async function saveAuditLanguagesAction(
   formData: FormData,
 ): Promise<LanguagesFormState> {
   const { domain } = await requireDomain(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await errorMessages()
   const parsed = parseLanguagesForm(formData)
   if (!parsed.ok) return { error: languagesError(t, parsed.error) }

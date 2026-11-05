@@ -156,7 +156,11 @@ export default async function PagesOverviewPage({ params }: { params: Promise<{ 
               <span className="text-xs text-muted-foreground">{t(`stats.${key}`)}</span>
             </div>
           ))}
-          <StartCrawlButton host={domain.host} type="full" disabled={active !== null} />
+          <StartCrawlButton
+            host={domain.host}
+            type="full"
+            disabled={active !== null || domain.archivedAt !== null}
+          />
         </div>
       </div>
 

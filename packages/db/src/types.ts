@@ -120,6 +120,25 @@ export interface Domain {
   /** Normalized host, e.g. `example.com` (see `normalizeDomain` in @seotools/core). */
   host: string
   createdAt: Date
+  /**
+   * When the domain was archived, `null` while it is active. An archived domain keeps all its
+   * data and stays readable, but nothing automatic runs for it and nothing can be started or
+   * changed (`DomainArchivedError`).
+   */
+  archivedAt: Date | null
+}
+
+/** What deleting a domain removes, in rows a person can recognise. Counted by the database. */
+export interface DomainUsage {
+  crawls: number
+  /** URLs with their results, over the crawls that still keep them. */
+  urls: number
+  /** Audit rules and exceptions. */
+  rules: number
+  rechecks: number
+  schedules: number
+  priorityUrls: number
+  crawlFiles: number
 }
 
 export interface CompanyWithDomains extends Company {
@@ -136,6 +155,14 @@ export interface CompanyRepository {
   get(id: string): Promise<Company | null>
   /** Creates a company together with its first domain. Rejects if the host is already taken. */
   create(input: { name: string; host: string }): Promise<{ company: Company; domain: Domain }>
+  /** `null` when the company does not exist. */
+  rename(id: string, name: string): Promise<Company | null>
+  /**
+   * Deletes the company with its domains and everything stored for them (crawls, results, rules,
+   * rechecks, schedules, files, icons) and the queued or running jobs that work on them, in one
+   * transaction. `false` when the company does not exist.
+   */
+  delete(id: string): Promise<boolean>
 }
 
 export interface DomainRepository {
@@ -143,6 +170,29 @@ export interface DomainRepository {
   findByHost(host: string): Promise<DomainWithCompany | null>
   /** Rejects if the host is already taken or the company does not exist. */
   add(input: { companyId: string; host: string }): Promise<Domain>
+  /**
+   * Archives a domain, and in the same transaction cancels its active crawl and recheck: the jobs
+   * notice at their next check and stop requesting. Archiving twice keeps the first date. `null`
+   * when the domain does not exist.
+   */
+  archive(id: string): Promise<Domain | null>
+  /**
+   * Makes an archived domain active again. Its schedules move to their next run from now, so that
+   * coming back does not start a crawl for every run it missed. `null` when it does not exist.
+   */
+  unarchive(id: string): Promise<Domain | null>
+  /**
+   * Moves a domain to another company. Only `company_id` changes: the id is the same, so every
+   * result, rule and schedule stays with it. `null` when the domain or the company does not exist.
+   */
+  move(input: { id: string; companyId: string }): Promise<Domain | null>
+  /**
+   * Deletes the domain and everything stored for it, and the jobs that work on it, in one
+   * transaction. `false` when it does not exist.
+   */
+  delete(id: string): Promise<boolean>
+  /** What each domain would lose if deleted, by domain id. Domains with nothing are included. */
+  usage(): Promise<Map<string, DomainUsage>>
 }
 
 export interface Crawl {

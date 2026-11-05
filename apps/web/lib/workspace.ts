@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { getTranslations } from 'next-intl/server'
 import { cache } from 'react'
 import { getDb } from './db'
 import { requireSession } from './session'
@@ -25,4 +26,13 @@ export async function requireDomain(host: string) {
   if (!found) notFound()
   const { company, ...domain } = found
   return { session, company, domain }
+}
+
+/**
+ * What an action of a domain answers when the domain is archived. Its data is readable and nothing
+ * can change or start: the repositories refuse (`DomainArchivedError`), and actions say so up
+ * front instead of failing. The pages already show a notice and disable what they can.
+ */
+export async function archivedMessage(): Promise<string> {
+  return (await getTranslations('Archive'))('refused')
 }

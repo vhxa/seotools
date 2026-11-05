@@ -26,6 +26,7 @@ import type {
   VerificationAnswer,
 } from '../types'
 import { addDomain, createCompany } from '../workspace'
+import { describeLifecycle } from './lifecycle'
 
 const minutes = (n: number) => n * 60_000
 
@@ -43,16 +44,23 @@ export interface LegacyWrites {
 
 export function describeDatabaseContract(
   name: string,
-  setup: () => Promise<{ db: Database; reset: () => Promise<void>; legacy: LegacyWrites }>,
+  setup: () => Promise<{
+    db: Database
+    reset: () => Promise<void>
+    legacy: LegacyWrites
+    /** Rows in a table, by its name: for proving that nothing is left behind. */
+    countRows: (table: string) => Promise<number>
+  }>,
   options: { skip?: boolean } = {},
 ) {
   describe.skipIf(options.skip)(`database contract: ${name}`, () => {
     let db: Database
     let reset: () => Promise<void>
     let legacy: LegacyWrites
+    let countRows: (table: string) => Promise<number>
 
     beforeAll(async () => {
-      ;({ db, reset, legacy } = await setup())
+      ;({ db, reset, legacy, countRows } = await setup())
     })
     afterAll(async () => {
       await db?.close()
@@ -268,6 +276,11 @@ export function describeDatabaseContract(
         expect(await db.settings.get('k')).toBeNull()
       })
     })
+
+    describeLifecycle(
+      () => db,
+      (table) => countRows(table),
+    )
 
     describe('companies and domains', () => {
       it('creates a company with its first domain, normalized', async () => {

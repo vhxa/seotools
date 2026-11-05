@@ -130,6 +130,11 @@ export const domains = pgTable(
     /** Normalized by `normalizeDomain` in @seotools/core: `example.com`, never a URL. */
     host: text('host').notNull().unique(),
     createdAt: ts('created_at').notNull().$defaultFn(now),
+    /**
+     * Set while the domain is archived: it keeps all its data and stays readable, but nothing
+     * automatic runs for it and nothing can start or change.
+     */
+    archivedAt: ts('archived_at'),
   },
   (t) => [index('domains_company_id_idx').on(t.companyId)],
 )

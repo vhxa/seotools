@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
 import { getDb } from '@/lib/db'
 import { canRecheck, parseRecheckUrls } from '@/lib/recheck'
-import { requireDomain } from '@/lib/workspace'
+import { archivedMessage, requireDomain } from '@/lib/workspace'
 
 export interface RecheckState {
   error?: string
@@ -30,6 +30,7 @@ function revalidateRechecks(host: string) {
  */
 export async function recheckUrlsAction(host: string, urls: unknown): Promise<RecheckState> {
   const { domain } = await requireDomain(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('Verification.errors')
 
   const parsed = parseRecheckUrls(urls, domain.host)

@@ -36,6 +36,9 @@ which moves the entries of `[Unreleased]` into the new version.
   direct Docker runs and Dokploy Docker applications. If you followed the previous README and
   set only `DATABASE_URL` for Compose, the installation used SQLite. Back up that SQLite volume
   before changing configuration: pointing at another database does not transfer your data.
+- This version adds migrations (`crawl_url_accepted_issues`, and `domains.archived_at`, empty for
+  every existing domain). Migrations only move forward: going back to an earlier version needs the
+  backup taken before updating.
 
 ### Fixed
 
@@ -51,6 +54,18 @@ which moves the entries of `[Unreleased]` into the new version.
   are in the language of the request, text opens correctly in Excel (UTF-8 with a byte order mark,
   RFC 4180) and what a site wrote cannot run as a spreadsheet formula. A crawl with no results, with
   its results removed, or never checked for findings answers an error instead of an empty file.
+- **Companies** page (Instance → Companies, or _Manage companies_ in the domain selector) to manage
+  a client's lifecycle without touching the database: rename a company, add domains, **archive**
+  and restore a domain, move it to another company, and delete a domain or a company. Deleting
+  lists what will disappear (crawls, retained URL results, rules, rechecks, schedules, priority
+  URLs and crawl files) and requires typing the host or the company name. Moving keeps every
+  result: only the company changes. A domain's address cannot be edited; a new site is a new
+  domain, and the old one can be archived.
+- An archived domain keeps all of its data and stays readable, but nothing automatic runs for it
+  (scheduled crawls, icon and crawl file refreshes), crawls and rechecks cannot start, its settings,
+  rules and priority URLs cannot change, and a crawl or recheck in progress is cancelled when it is
+  archived. Archived domains are listed apart in the domain selector. Restoring one moves its
+  schedules to their next run instead of catching up on what it missed.
 - **Updates** page (System → Updates) for administrators: the installed version and kind of build,
   the latest stable release, when the last check ran and how it ended, and links to the release
   notes and the update guide. It tells _up to date_, _update available_, _could not check_ and

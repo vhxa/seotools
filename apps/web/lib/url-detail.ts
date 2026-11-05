@@ -64,6 +64,8 @@ export interface UrlDetailData {
     waiting: boolean
     /** The domain has a recheck under way (a domain runs one at a time). */
     busy: boolean
+    /** The domain is archived: nothing can be rechecked until it is restored. */
+    archived: boolean
   }
 }
 
@@ -99,6 +101,7 @@ export async function loadUrlDetail(input: {
     priorities,
     verified,
     activeRecheck,
+    owner,
   ] = await Promise.all([
     db.crawls.issuesOf(crawl.id, [urlHash]),
     db.crawls.acceptedOf(crawl.id, [urlHash]),
@@ -110,6 +113,7 @@ export async function loadUrlDetail(input: {
     db.priorityUrls.list(domainId),
     db.verifications.latestFor(domainId, [urlHash]),
     db.verifications.active(domainId),
+    db.domains.get(domainId),
   ])
   const waiting = activeRecheck
     ? (await db.verifications.urlsOf(activeRecheck.id)).some(
@@ -146,6 +150,7 @@ export async function loadUrlDetail(input: {
       }),
       waiting,
       busy: activeRecheck !== null,
+      archived: owner?.archivedAt != null,
     },
   }
 }

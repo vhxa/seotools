@@ -71,6 +71,7 @@ import type {
   CrawlViewCounts,
   Domain,
   DomainFavicon,
+  DomainUsage,
   FaviconImage,
   NewCrawlFile,
   NewCrawlUrl,
@@ -144,6 +145,37 @@ export function groupDomains(companies: Company[], domains: Domain[]): CompanyWi
       ),
     }))
     .sort((a, b) => byName.compare(a.name, b.name) || a.createdAt.getTime() - b.createdAt.getTime())
+}
+
+export type UsageCounts = Record<keyof DomainUsage, { domainId: string; n: number | string }[]>
+
+/**
+ * Puts the grouped counts of each kind of data into one `DomainUsage` per domain. Domains with
+ * no rows of a kind have `0` of it; counts that arrive as strings (bigint drivers) are converted.
+ */
+export function foldUsage(
+  domains: { id: string }[],
+  counts: UsageCounts,
+): Map<string, DomainUsage> {
+  const usage = new Map<string, DomainUsage>()
+  for (const { id } of domains) {
+    usage.set(id, {
+      crawls: 0,
+      urls: 0,
+      rules: 0,
+      rechecks: 0,
+      schedules: 0,
+      priorityUrls: 0,
+      crawlFiles: 0,
+    })
+  }
+  for (const kind of Object.keys(counts) as (keyof DomainUsage)[]) {
+    for (const { domainId, n } of counts[kind]) {
+      const entry = usage.get(domainId)
+      if (entry) entry[kind] = Number(n)
+    }
+  }
+  return usage
 }
 
 // --- crawls --------------------------------------------------------------

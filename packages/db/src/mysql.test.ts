@@ -26,6 +26,10 @@ describeDatabaseContract(
           ])
         },
       },
+      countRows: async (table: string) => {
+        const [rows] = await conn.query(`select count(*) as n from \`${table}\``)
+        return Number((rows as { n: number | string }[])[0]?.n)
+      },
       reset: async () => {
         for (const table of [
           'jobs',

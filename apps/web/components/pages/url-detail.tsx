@@ -94,7 +94,11 @@ export async function UrlDetail({
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">{t(`kinds.${url.kind}`)}</span>
         {data.recheck.available && (
-          <RecheckButton host={host} urls={[url.url]} disabled={data.recheck.busy} />
+          <RecheckButton
+            host={host}
+            urls={[url.url]}
+            disabled={data.recheck.busy || data.recheck.archived}
+          />
         )}
         {isPage && <PriorityToggle host={host} url={url.url} marked={data.priority} />}
         {url.scope === 'internal' && (

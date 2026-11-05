@@ -306,4 +306,27 @@ describe('createCrawlFileRefresher', () => {
     await instance.tick()
     expect(requests).toEqual([])
   })
+
+  it('does not request the files of an archived domain, even when someone asked', async () => {
+    await db.crawlFiles.requestCheck({ domainId, now: clock })
+    await db.domains.archive(domainId)
+    await refresher().tick()
+    expect(requests).toEqual([])
+
+    await db.domains.unarchive(domainId)
+    await refresher().tick()
+    expect(requests).toContain('https://example.com/robots.txt')
+  })
+
+  it('keeps the files an archived domain has when they fall due', async () => {
+    site = { 'https://example.com/robots.txt': text('User-agent: *') }
+    const instance = refresher()
+    await instance.tick()
+    await db.domains.archive(domainId)
+    requests = []
+    clock = new Date(start.getTime() + CRAWL_FILE_REFRESH_INTERVAL_MS + 1000)
+    await instance.tick()
+    expect(requests).toEqual([])
+    expect((await fileAt('https://example.com/robots.txt'))?.body).toBe('User-agent: *')
+  })
 })

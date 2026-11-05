@@ -22,7 +22,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/sqlite-core'
+import { alias, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { sqlitePathFromUrl } from '../dialect'
@@ -70,6 +70,7 @@ import {
   expiredVerifications,
   faviconRow,
   foldCrawlCounts,
+  foldUsage,
   foldViewCounts,
   groupDomains,
   newCrawlLinkRow,
@@ -97,6 +98,7 @@ import {
   AUDIT_SEMANTICS,
   DEFAULT_CRAWL_SETTINGS,
   JOB_TYPES,
+  nextScheduledRun,
   type CrawlLinkKind,
 } from '@seotools/core'
 import {
@@ -125,6 +127,7 @@ import {
   type PlanContext,
 } from '../audit'
 import * as schema from '../schema/sqlite'
+import { DomainArchivedError } from '../archive'
 import type {
   CrawlLink,
   CrawlUrlAudit,
@@ -458,6 +461,38 @@ export function createSqliteDatabase(options: {
       .run()
   }
 
+  /** Refuses, inside the transaction that would create something, a domain that is archived. */
+  const assertNotArchived = (tx: Pick<typeof db, 'select'>, domainId: string) => {
+    const row = tx
+      .select({ archivedAt: domains.archivedAt })
+      .from(domains)
+      .where(eq(domains.id, domainId))
+      .get()
+    if (row?.archivedAt) throw new DomainArchivedError(domainId)
+  }
+
+  /**
+   * Removes the jobs that work on these domains: their crawls' and rechecks'. The domain's rows
+   * go by cascade, and a job that finds its crawl gone has nothing left to do; deleting the job
+   * too means a running one is not retried, and a queued one never starts.
+   */
+  const removeJobsOf = (tx: Pick<typeof db, 'select' | 'delete'>, domainIds: string[]) => {
+    if (domainIds.length === 0) return
+    const ids = [
+      ...tx
+        .select({ id: crawls.jobId })
+        .from(crawls)
+        .where(inArray(crawls.domainId, domainIds))
+        .all(),
+      ...tx
+        .select({ id: urlVerifications.jobId })
+        .from(urlVerifications)
+        .where(inArray(urlVerifications.domainId, domainIds))
+        .all(),
+    ].map((row) => row.id)
+    for (const batch of chunk(ids)) tx.delete(jobs).where(inArray(jobs.id, batch)).run()
+  }
+
   return {
     dialect: 'sqlite',
     orm: {
@@ -718,12 +753,37 @@ export function createSqliteDatabase(options: {
       async create({ name, host }) {
         const now = new Date()
         const company = { id: randomUUID(), name, createdAt: now }
-        const domain = { id: randomUUID(), companyId: company.id, host, createdAt: now }
+        const domain = {
+          id: randomUUID(),
+          companyId: company.id,
+          host,
+          createdAt: now,
+          archivedAt: null,
+        }
         db.transaction((tx) => {
           tx.insert(companies).values(company).run()
           tx.insert(domains).values(domain).run()
         })
         return { company, domain }
+      },
+      async rename(id, name) {
+        db.update(companies).set({ name }).where(eq(companies.id, id)).run()
+        return db.select().from(companies).where(eq(companies.id, id)).get() ?? null
+      },
+      async delete(id) {
+        return db.transaction((tx) => {
+          const company = tx.select().from(companies).where(eq(companies.id, id)).get()
+          if (!company) return false
+          const ids = tx
+            .select({ id: domains.id })
+            .from(domains)
+            .where(eq(domains.companyId, id))
+            .all()
+            .map((row) => row.id)
+          removeJobsOf(tx, ids)
+          tx.delete(companies).where(eq(companies.id, id)).run()
+          return true
+        })
       },
     },
 
@@ -741,9 +801,95 @@ export function createSqliteDatabase(options: {
         return row ? { ...row.domain, company: row.company } : null
       },
       async add({ companyId, host }) {
-        const domain = { id: randomUUID(), companyId, host, createdAt: new Date() }
+        const domain = {
+          id: randomUUID(),
+          companyId,
+          host,
+          createdAt: new Date(),
+          archivedAt: null,
+        }
         db.insert(domains).values(domain).run()
         return domain
+      },
+      async archive(id) {
+        return db.transaction((tx) => {
+          const found = tx.select().from(domains).where(eq(domains.id, id)).get()
+          if (!found) return null
+          const now = new Date()
+          if (!found.archivedAt) {
+            tx.update(domains).set({ archivedAt: now }).where(eq(domains.id, id)).run()
+          }
+          // The same statements as `crawls.cancel` and `verifications.cancel`: the jobs notice
+          // at their next check that the crawl is no longer running, and stop requesting.
+          const ended = { status: 'cancelled', activeKey: null, finishedAt: now } as const
+          tx.update(crawls)
+            .set(ended)
+            .where(and(eq(crawls.domainId, id), isNotNull(crawls.activeKey)))
+            .run()
+          tx.update(urlVerifications)
+            .set(ended)
+            .where(and(eq(urlVerifications.domainId, id), isNotNull(urlVerifications.activeKey)))
+            .run()
+          return tx.select().from(domains).where(eq(domains.id, id)).get() ?? null
+        })
+      },
+      async unarchive(id) {
+        return db.transaction((tx) => {
+          if (!tx.select().from(domains).where(eq(domains.id, id)).get()) return null
+          const now = new Date()
+          tx.update(domains).set({ archivedAt: null }).where(eq(domains.id, id)).run()
+          const schedules = tx
+            .select()
+            .from(crawlSchedules)
+            .where(and(eq(crawlSchedules.domainId, id), eq(crawlSchedules.enabled, true)))
+            .all()
+          for (const row of schedules) {
+            const schedule = toCrawlSchedule(row)
+            tx.update(crawlSchedules)
+              .set({ nextRunAt: nextScheduledRun(schedule, now) })
+              .where(eq(crawlSchedules.id, row.id))
+              .run()
+          }
+          return tx.select().from(domains).where(eq(domains.id, id)).get() ?? null
+        })
+      },
+      async move({ id, companyId }) {
+        return db.transaction((tx) => {
+          const company = tx.select().from(companies).where(eq(companies.id, companyId)).get()
+          if (!company) return null
+          tx.update(domains).set({ companyId }).where(eq(domains.id, id)).run()
+          return tx.select().from(domains).where(eq(domains.id, id)).get() ?? null
+        })
+      },
+      async delete(id) {
+        return db.transaction((tx) => {
+          if (!tx.select().from(domains).where(eq(domains.id, id)).get()) return false
+          removeJobsOf(tx, [id])
+          tx.delete(domains).where(eq(domains.id, id)).run()
+          return true
+        })
+      },
+      async usage() {
+        const group = <T extends SQLiteTable>(table: T, column: SQLiteColumn) =>
+          db
+            .select({ domainId: column, n: sql<number>`count(*)` })
+            .from(table)
+            .groupBy(column)
+            .all()
+        return foldUsage(db.select({ id: domains.id }).from(domains).all(), {
+          crawls: group(crawls, crawls.domainId),
+          urls: db
+            .select({ domainId: crawls.domainId, n: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .innerJoin(crawls, eq(crawlUrls.crawlId, crawls.id))
+            .groupBy(crawls.domainId)
+            .all(),
+          rules: group(auditRules, auditRules.domainId),
+          rechecks: group(urlVerifications, urlVerifications.domainId),
+          schedules: group(crawlSchedules, crawlSchedules.domainId),
+          priorityUrls: group(priorityUrls, priorityUrls.domainId),
+          crawlFiles: group(crawlFiles, crawlFiles.domainId),
+        })
       },
     },
 
@@ -777,6 +923,7 @@ export function createSqliteDatabase(options: {
         const jobId = randomUUID()
         try {
           db.transaction((tx) => {
+            assertNotArchived(tx, domainId)
             tx.insert(jobs)
               .values(crawlJobValues(id, jobId, now))
               .run()
@@ -785,6 +932,7 @@ export function createSqliteDatabase(options: {
               .run()
           })
         } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
           // Lost the race on the unique `active_key`: some other crawl of this domain is active.
           if (await this.active(domainId)) return null
           throw error
@@ -1773,6 +1921,7 @@ export function createSqliteDatabase(options: {
         const jobId = randomUUID()
         try {
           db.transaction((tx) => {
+            assertNotArchived(tx, domainId)
             tx.insert(jobs)
               .values(verificationJobValues(id, jobId, now))
               .run()
@@ -1790,6 +1939,7 @@ export function createSqliteDatabase(options: {
             tx.insert(urlVerificationUrls).values(newVerificationUrlRows(id, urls)).run()
           })
         } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
           // Lost the race on the unique `active_key`: some other recheck of this domain is active.
           if (await this.active(domainId)) return null
           throw error
@@ -2051,7 +2201,21 @@ export function createSqliteDatabase(options: {
         const rows = db
           .select()
           .from(crawlSchedules)
-          .where(and(eq(crawlSchedules.enabled, true), lte(crawlSchedules.nextRunAt, now)))
+          .where(
+            and(
+              eq(crawlSchedules.enabled, true),
+              lte(crawlSchedules.nextRunAt, now),
+              // An archived domain keeps its schedules but nothing runs for it.
+              notExists(
+                db
+                  .select({ one: sql`1` })
+                  .from(domains)
+                  .where(
+                    and(eq(domains.id, crawlSchedules.domainId), isNotNull(domains.archivedAt)),
+                  ),
+              ),
+            ),
+          )
           .orderBy(asc(crawlSchedules.nextRunAt))
           .limit(limit)
           .all()
@@ -2131,7 +2295,12 @@ export function createSqliteDatabase(options: {
           .select({ id: domains.id, host: domains.host })
           .from(domains)
           .leftJoin(crawlFileChecks, eq(crawlFileChecks.domainId, domains.id))
-          .where(or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)))
+          .where(
+            and(
+              isNull(domains.archivedAt),
+              or(isNull(crawlFileChecks.domainId), lte(crawlFileChecks.nextCheckAt, now)),
+            ),
+          )
           .orderBy(asc(domains.createdAt), asc(domains.id))
           .limit(limit)
           .all()
@@ -2186,7 +2355,12 @@ export function createSqliteDatabase(options: {
           .select({ id: domains.id, host: domains.host })
           .from(domains)
           .leftJoin(domainFavicons, eq(domainFavicons.domainId, domains.id))
-          .where(or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)))
+          .where(
+            and(
+              isNull(domains.archivedAt),
+              or(isNull(domainFavicons.domainId), lte(domainFavicons.nextCheckAt, now)),
+            ),
+          )
           .orderBy(asc(domains.createdAt), asc(domains.id))
           .limit(limit)
           .all()

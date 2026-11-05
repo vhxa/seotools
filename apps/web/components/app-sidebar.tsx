@@ -3,6 +3,7 @@
 import {
   ActivityIcon,
   ArrowUpCircleIcon,
+  BuildingIcon,
   CalendarClockIcon,
   ChevronRightIcon,
   FileCode2Icon,
@@ -218,6 +219,7 @@ export function AppSidebar({
       ]
     : []
   const instanceItems: NavLink[] = [
+    { label: t('companies'), href: '/companies', icon: BuildingIcon },
     { label: t('system'), href: '/system', icon: ActivityIcon, exact: true },
     { label: t('updates'), href: '/system/updates', icon: ArrowUpCircleIcon },
   ]

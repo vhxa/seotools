@@ -31,6 +31,15 @@ describeDatabaseContract('sqlite', async () => {
           .run(accept ? 1 : 0, ruleId)
       },
     },
+    countRows: async (table: string) => {
+      const raw = (
+        db.orm.db as {
+          $client: { prepare: (sql: string) => { get: () => unknown } }
+        }
+      ).$client
+      const row = raw.prepare(`select count(*) as n from "${table}"`).get() as { n: number }
+      return row.n
+    },
     reset: async () => {
       const raw = (db.orm.db as { $client: { exec: (sql: string) => void } }).$client
       raw.exec(

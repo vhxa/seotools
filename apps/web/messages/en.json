@@ -80,7 +80,9 @@
     "placeholder": "Select a domain",
     "label": "Switch domain",
     "addDomain": "Add domain",
-    "addCompany": "Add company"
+    "addCompany": "Add company",
+    "archived": "Archived",
+    "manageCompanies": "Manage companies"
   },
   "Sidebar": {
     "toggle": "Toggle sidebar",
@@ -102,7 +104,8 @@
     "pagesCompare": "Compare",
     "updates": "Updates",
     "versionRelease": "v{version}",
-    "versionDevelopment": "v{version} · development"
+    "versionDevelopment": "v{version} · development",
+    "companies": "Companies"
   },
   "ProtectedShell": {
     "skipToContent": "Skip to main content"
@@ -2558,5 +2561,91 @@
     "robots-block-required-missing": "Add the intended block in robots.txt for the audited bot, or correct the rule that requires it. A robots.txt block does not guarantee removal from the index.",
     "sitemap-required-missing": "Include this URL as an entry in a sitemap that the crawler can read, or correct the rule requiring it. Run a full crawl to verify membership.",
     "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change."
+  },
+  "Companies": {
+    "metaTitle": "Companies · seotools",
+    "title": "Companies",
+    "addCompany": "Add company",
+    "empty": "There are no companies yet.",
+    "domainCount": "{count, plural, one {# domain} other {# domains}}",
+    "noDomains": "No domains",
+    "archivedBadge": "Archived",
+    "actionsLabel": "Actions for {name}",
+    "company": {
+      "rename": "Rename",
+      "addDomain": "Add domain",
+      "delete": "Delete company…"
+    },
+    "domain": {
+      "open": "Open",
+      "archive": "Archive…",
+      "restore": "Restore",
+      "move": "Move to another company…",
+      "changeSite": "Change site…",
+      "delete": "Delete domain…"
+    },
+    "rename": {
+      "title": "Rename company",
+      "label": "Name",
+      "submit": "Save",
+      "submitting": "Saving…"
+    },
+    "archive": {
+      "title": "Archive {host}?",
+      "description": "Its data is kept and stays readable. Scheduled crawls and refreshes of its icon and files stop, a crawl or recheck in progress is cancelled, and its settings cannot change until you restore it.",
+      "submit": "Archive",
+      "submitting": "Archiving…"
+    },
+    "move": {
+      "title": "Move {host}",
+      "label": "New company",
+      "results": "Its crawls, results, rules and schedules move with it unchanged.",
+      "access": {
+        "unchanged": "Access does not change: every signed-in user can see it before and after the move, because access is not set per company yet."
+      },
+      "submit": "Move domain",
+      "submitting": "Moving…"
+    },
+    "changeSite": {
+      "title": "Change site",
+      "description": "A domain's address cannot be edited, because its results belong to that site. To track a new site, add a new domain and archive this one.",
+      "addDomain": "Add domain"
+    },
+    "delete": {
+      "close": "Cancel",
+      "domainTitle": "Delete {host}?",
+      "domainLead": "This permanently deletes {host} and:",
+      "companyTitle": "Delete {name}?",
+      "companyLead": "This permanently deletes the company with {domains}: {hosts}, and:",
+      "companyLeadEmpty": "This permanently deletes the company, which has no domains.",
+      "nothingStored": "No crawls, results, rules or schedules are stored for it.",
+      "keepHistory": "To keep its history, archive it instead.",
+      "confirmLabel": "Type {value} to confirm",
+      "domainSubmit": "Delete domain",
+      "companySubmit": "Delete company",
+      "submitting": "Deleting…",
+      "usage": {
+        "crawls": "{count, plural, one {# crawl} other {# crawls}}",
+        "urls": "{count, plural, one {# retained URL result} other {# retained URL results}}",
+        "rules": "{count, plural, one {# audit rule or exception} other {# audit rules and exceptions}}",
+        "rechecks": "{count, plural, one {# recheck} other {# rechecks}}",
+        "schedules": "{count, plural, one {# schedule} other {# schedules}}",
+        "priorityUrls": "{count, plural, one {# priority URL} other {# priority URLs}}",
+        "crawlFiles": "{count, plural, one {# crawl file} other {# crawl files}}"
+      }
+    },
+    "errors": {
+      "invalidName": "Enter a company name of up to {max} characters.",
+      "domainNotFound": "That domain no longer exists.",
+      "companyNotFound": "That company no longer exists.",
+      "sameCompany": "The domain already belongs to that company.",
+      "confirmMismatch": "What you typed does not match.",
+      "invalidRequest": "The request is not valid."
+    }
+  },
+  "Archive": {
+    "notice": "This domain is archived. Its data is kept, but nothing runs automatically and it cannot be changed.",
+    "manage": "Manage",
+    "refused": "This domain is archived. Restore it to make changes."
   }
 }

@@ -106,10 +106,11 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
                 host={domain.host}
                 type={type}
                 variant="outline"
-                disabled={active !== null}
+                disabled={active !== null || domain.archivedAt !== null}
               />
             </CardHeader>
-            <CardContent className="grid gap-3">
+            {/* Inert while archived: nothing runs on a schedule, and it cannot be changed. */}
+            <CardContent className="grid gap-3" inert={domain.archivedAt !== null}>
               <ScheduleForm
                 host={domain.host}
                 type={type}
