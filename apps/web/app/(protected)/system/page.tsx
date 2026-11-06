@@ -1,12 +1,11 @@
 import { type JobStatus } from '@seotools/core'
 import { getFormatter, getTranslations } from 'next-intl/server'
-import { PauseIcon } from 'lucide-react'
-import { HelpDisclosure } from '@/components/help'
+import { ChevronRightIcon, PauseIcon } from 'lucide-react'
 import { AutoRefresh } from '@/components/auto-refresh'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Table,
   TableBody,
@@ -18,6 +17,7 @@ import {
 import { getDb } from '@/lib/db'
 import { getEnv } from '@/lib/env'
 import { getHealth } from '@/lib/health'
+import { summarizeJobResult } from '@/lib/job-summary'
 import { requireAdmin } from '@/lib/session'
 import { enqueueExampleJob } from './actions'
 
@@ -45,14 +45,14 @@ export default async function SystemPage() {
     db.jobs.countByStatus(),
     db.jobs.list({ limit: 10 }),
   ])
-  const tHelp = await getTranslations('Help')
   const workerAlive = report.worker.ok
   const lastSeen = report.worker.lastSeen ? new Date(report.worker.lastSeen) : null
   const ago = (date: Date | null) => (date ? format.relativeTime(date) : t('never'))
 
   return (
-    <main className="grid gap-6">
+    <main className="grid gap-8">
       <AutoRefresh />
+      <h1 className="text-2xl font-semibold">{t('title')}</h1>
 
       {getEnv().SEOTOOLS_PAUSE_AUTOMATION && (
         <Alert>
@@ -62,108 +62,128 @@ export default async function SystemPage() {
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardDescription>{t('database')}</CardDescription>
-            <CardTitle className="flex items-center gap-2">
-              <span className="text-sm">{t('connected')}</span>
-              <span className="text-sm font-normal text-muted-foreground">{db.dialect}</span>
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>{t('worker')}</CardDescription>
-            <CardTitle className="flex items-center gap-2">
-              {workerAlive ? (
-                <span className="text-sm">{t('online')}</span>
-              ) : (
-                <Badge variant="destructive">{t('offline')}</Badge>
-              )}
-              <span className="text-sm font-normal text-muted-foreground">
-                {t('seen', { when: ago(lastSeen) })}
-              </span>
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>{t('jobs')}</CardDescription>
-            <CardTitle className="text-sm font-normal">
-              {t('jobCounts', {
-                pending: counts.pending,
-                running: counts.running,
-                completed: counts.completed,
-                failed: counts.failed,
-              })}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
-          <div className="grid gap-1">
-            <CardTitle>{t('queueTitle')}</CardTitle>
-            <CardDescription>{t('queueDescription')}</CardDescription>
+      <section aria-labelledby="health" className="grid gap-3">
+        <h2 id="health" className="text-lg font-medium">
+          {t('health')}
+        </h2>
+        <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+          <div className="grid gap-0.5">
+            <dt className="text-sm text-muted-foreground">{t('database')}</dt>
+            <dd className="text-sm font-medium">{t('databaseOk', { dialect: db.dialect })}</dd>
           </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('columns.job')}</TableHead>
-                <TableHead>{t('columns.type')}</TableHead>
-                <TableHead>{t('columns.status')}</TableHead>
-                <TableHead>{t('columns.attempts')}</TableHead>
-                <TableHead>{t('columns.created')}</TableHead>
-                <TableHead>{t('columns.result')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    {t('empty')}
-                  </TableCell>
-                </TableRow>
+          <div className="grid gap-0.5">
+            <dt className="text-sm text-muted-foreground">{t('worker')}</dt>
+            <dd className="flex flex-wrap items-center gap-2 text-sm">
+              {workerAlive ? (
+                <span className="font-medium">{t('workerOk')}</span>
+              ) : (
+                <Badge variant="destructive">{t('workerDown')}</Badge>
               )}
-              {jobs.map((job) => (
-                <TableRow key={job.id}>
-                  <TableCell className="font-mono text-xs">{job.id.slice(0, 8)}</TableCell>
-                  <TableCell>{job.type}</TableCell>
-                  <TableCell>
-                    {job.status === 'completed' ? (
-                      <span>{t('status.completed')}</span>
-                    ) : (
-                      <Badge variant={statusVariant[job.status]}>{t(`status.${job.status}`)}</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {job.attempts}/{job.maxAttempts}
-                  </TableCell>
-                  <TableCell>{ago(job.createdAt)}</TableCell>
-                  <TableCell className="max-w-48 truncate font-mono text-xs">
-                    {job.lastError && job.status !== 'completed'
-                      ? job.lastError
-                      : job.result
-                        ? JSON.stringify(job.result)
-                        : '—'}
-                  </TableCell>
+              <span className="text-muted-foreground">
+                {t('heartbeat', { when: ago(lastSeen) })}
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="jobs" className="grid gap-3">
+        <h2 id="jobs" className="text-lg font-medium">
+          {t('jobs')}
+        </h2>
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {(['pending', 'running', 'completed', 'failed'] as const).map((state) => (
+            <div key={state} className="grid gap-0.5">
+              <dt className="text-sm text-muted-foreground">{t(`jobStates.${state}`)}</dt>
+              <dd className="text-2xl font-semibold tabular-nums">
+                {format.number(counts[state])}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <Collapsible className="grid gap-3">
+        <CollapsibleTrigger
+          render={<Button variant="ghost" className="group justify-start px-2" />}
+        >
+          <ChevronRightIcon className="transition-transform group-data-[panel-open]:rotate-90" />
+          {t('technical.title')}
+        </CollapsibleTrigger>
+        <CollapsibleContent className="grid gap-4">
+          <p className="text-sm text-muted-foreground">{t('technical.description')}</p>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('columns.job')}</TableHead>
+                  <TableHead>{t('columns.type')}</TableHead>
+                  <TableHead>{t('columns.status')}</TableHead>
+                  <TableHead>{t('columns.attempts')}</TableHead>
+                  <TableHead>{t('columns.created')}</TableHead>
+                  <TableHead>{t('columns.result')}</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-      <HelpDisclosure title={tHelp('diagnostics')}>
-        <form action={enqueueExampleJob}>
-          <Button type="submit" variant="outline">
-            {t('enqueue')}
-          </Button>
-        </form>
-      </HelpDisclosure>
+              </TableHeader>
+              <TableBody>
+                {jobs.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                      {t('empty')}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {jobs.map((job) => {
+                  const summary = summarizeJobResult(job.type, job.result)
+                  return (
+                    <TableRow key={job.id}>
+                      <TableCell className="font-mono text-xs">{job.id.slice(0, 8)}</TableCell>
+                      <TableCell>{job.type}</TableCell>
+                      <TableCell>
+                        {job.status === 'completed' ? (
+                          <span>{t('status.completed')}</span>
+                        ) : (
+                          <Badge variant={statusVariant[job.status]}>
+                            {t(`status.${job.status}`)}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {job.attempts}/{job.maxAttempts}
+                      </TableCell>
+                      <TableCell>{ago(job.createdAt)}</TableCell>
+                      <TableCell className="grid max-w-64 gap-1">
+                        {job.lastError && job.status !== 'completed' ? (
+                          <span className="truncate font-mono text-xs">{job.lastError}</span>
+                        ) : (
+                          <>
+                            {summary && (
+                              <span className="text-sm">
+                                {t(`summary.${summary.key}`, summary.values)}
+                              </span>
+                            )}
+                            {job.result ? (
+                              <span className="truncate font-mono text-xs text-muted-foreground">
+                                {JSON.stringify(job.result)}
+                              </span>
+                            ) : (
+                              !summary && '—'
+                            )}
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <form action={enqueueExampleJob}>
+            <Button type="submit" variant="outline">
+              {t('enqueue')}
+            </Button>
+          </form>
+        </CollapsibleContent>
+      </Collapsible>
     </main>
   )
 }
