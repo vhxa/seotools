@@ -19,6 +19,8 @@ import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/accep
 import {
   ALERT_KINDS,
   JOB_TYPES,
+  LINK_CONTEXT_LIMITS,
+  LINK_REGIONS,
   MAX_DELIVERY_ERROR_LENGTH,
   MAX_VERIFICATION_URLS,
   alertLocaleOf,
@@ -45,7 +47,9 @@ import {
   type ExtraCrawlFileKind,
   type Job,
   type JobStatus,
+  type LinkContext,
   type LinkDirection,
+  type LinkRegion,
   type PagesAudit,
   type FieldChange,
   type PagesByWorstIssue,
@@ -278,7 +282,11 @@ export type CrawlRow = Omit<
   pagesUnknownIndexabilityCount: number | null
   auditSnapshot: string | null
 }
-export type CrawlUrlRow = Omit<CrawlUrl, 'data' | 'source' | 'scope' | 'kind' | 'state'> & {
+export type CrawlUrlRow = Omit<
+  CrawlUrl,
+  'data' | 'source' | 'scope' | 'kind' | 'state' | 'foundKind'
+> & {
+  foundKind: string | null
   data: string | null
   source: string
   scope: string
@@ -522,7 +530,38 @@ export const newCrawlUrlRow = (crawlId: string, url: NewCrawlUrl) => ({
   state: url.scope === 'internal' ? ('queued' as const) : ('skipped' as const),
 })
 
-export const newCrawlLinkRow = (crawlId: string, link: CrawlLink) => ({ crawlId, ...link })
+/** A link as a row of `crawl_url_links`: its ends by `seq`, its crawl by `ref`, its context bounded. */
+export function newCrawlLinkRow(crawlRef: number, source: number, target: number, link: CrawlLink) {
+  const { context } = link
+  return {
+    crawlRef,
+    source,
+    target,
+    kind: link.kind,
+    text: cleanText(context?.text, LINK_CONTEXT_LIMITS.text),
+    element: cleanText(context?.element, LINK_CONTEXT_LIMITS.element),
+    region: context?.region && LINK_REGIONS.includes(context.region) ? context.region : null,
+    snippet: cleanText(context?.snippet, LINK_CONTEXT_LIMITS.snippet),
+  }
+}
+
+/** The context of a stored link, or `null` when none was kept. */
+export function toLinkContext(row: {
+  text: string | null
+  element: string | null
+  region: string | null
+  snippet: string | null
+}): LinkContext | null {
+  const context: LinkContext = {
+    ...(row.text ? { text: row.text } : {}),
+    ...(row.element ? { element: row.element } : {}),
+    ...(row.region && (LINK_REGIONS as readonly string[]).includes(row.region)
+      ? { region: row.region as LinkRegion }
+      : {}),
+    ...(row.snippet ? { snippet: row.snippet } : {}),
+  }
+  return Object.keys(context).length > 0 ? context : null
+}
 
 export function priorityUrlRow(domainId: string, url: string, now: Date) {
   return { domainId, url, urlHash: crawlUrlHash(url), createdAt: now }
@@ -758,12 +797,18 @@ export function crawlUrlOrder(
   ]
 }
 
-/** The columns of `crawl_links` that listing the links of a URL looks at. */
+/** The columns of `crawl_url_links` that listing the links of a URL looks at. */
 export interface CrawlLinkColumns {
-  crawlId: AnyColumn
-  sourceHash: AnyColumn
-  targetHash: AnyColumn
+  crawlRef: AnyColumn
+  source: AnyColumn
+  target: AnyColumn
   kind: AnyColumn
+}
+
+/** Where the links of one URL of a crawl are: the crawl's `ref` and the URL's `seq`. */
+export interface LinkScope {
+  ref: number
+  seq: number
 }
 
 /**
@@ -773,17 +818,17 @@ export interface CrawlLinkColumns {
  */
 export function crawlLinkEnds(columns: CrawlLinkColumns, direction: LinkDirection) {
   return direction === 'in'
-    ? { self: columns.targetHash, other: columns.sourceHash }
-    : { self: columns.sourceHash, other: columns.targetHash }
+    ? { self: columns.target, other: columns.source }
+    : { self: columns.source, other: columns.target }
 }
 
 /** Joins each link to the `crawl_urls` row of its other end, within the same crawl. */
 export const crawlLinkJoin = (
   columns: CrawlLinkColumns,
-  urls: { crawlId: AnyColumn; urlHash: AnyColumn },
+  urls: { crawlId: AnyColumn; seq: AnyColumn },
   direction: LinkDirection,
-) =>
-  and(eq(urls.crawlId, columns.crawlId), eq(urls.urlHash, crawlLinkEnds(columns, direction).other))
+  crawlId: string,
+) => and(eq(urls.crawlId, crawlId), eq(urls.seq, crawlLinkEnds(columns, direction).other))
 
 /**
  * The condition that selects the links of a query, within its crawl. `otherUrl` is the address of
@@ -793,12 +838,13 @@ export const crawlLinkJoin = (
 export function crawlLinkWhere(
   columns: CrawlLinkColumns,
   otherUrl: AnyColumn,
-  query: CrawlLinkQuery,
+  query: Omit<CrawlLinkQuery, 'crawlId' | 'urlHash'>,
+  scope: LinkScope,
 ): SQL | undefined {
   const pattern = query.search ? containsPattern(query.search) : null
   return and(
-    eq(columns.crawlId, query.crawlId),
-    eq(crawlLinkEnds(columns, query.direction).self, query.urlHash),
+    eq(columns.crawlRef, scope.ref),
+    eq(crawlLinkEnds(columns, query.direction).self, scope.seq),
     query.kinds ? inArray(columns.kind, [...query.kinds]) : undefined,
     pattern ? sql`lower(${otherUrl}) like ${pattern} escape '!'` : undefined,
   )
@@ -815,7 +861,13 @@ export const crawlLinkOrder = (otherUrl: AnyColumn, otherHash: AnyColumn, kind: 
 ]
 
 /** A row of `listLinks`, as the repository returns it. */
-export const toCrawlLinkRow = (row: {
+export const toCrawlLinkRow = ({
+  text,
+  element,
+  region,
+  snippet,
+  ...row
+}: {
   url: string
   urlHash: string
   kind: string
@@ -824,7 +876,113 @@ export const toCrawlLinkRow = (row: {
   state: string
   statusCode: number | null
   error: string | null
-}) => row as CrawlLinkRow
+  text: string | null
+  element: string | null
+  region: string | null
+  snippet: string | null
+}): CrawlLinkRow =>
+  ({ ...row, context: toLinkContext({ text, element, region, snippet }) }) as CrawlLinkRow
+
+/**
+ * What a URL of a crawl was, compact: the row of `crawl_url_history` that keeps it once its
+ * results per URL are removed. `audit` is the row `crawlAuditRows` writes, read back with
+ * `toCrawlUrlAudit`.
+ */
+export function crawlHistoryRow(
+  crawlId: string,
+  url: SnapshotRow & { urlHash: string; url: string },
+  issues: readonly string[],
+  accepted: readonly string[],
+  audit: Omit<ReturnType<typeof crawlAuditRows>[number], 'crawlId'> | null,
+) {
+  return {
+    crawlId,
+    urlHash: url.urlHash,
+    url: url.url,
+    state: url.state ?? 'queued',
+    kind: url.kind ?? 'unknown',
+    statusCode: url.statusCode,
+    redirectTo: url.redirectTo,
+    title: url.title,
+    canonical: url.canonical,
+    metaRobots: url.metaRobots,
+    xRobotsTag: url.xRobotsTag,
+    error: url.error,
+    depth: url.depth ?? 0,
+    issues: issues.length > 0 ? JSON.stringify([...new Set(issues)]) : null,
+    accepted: accepted.length > 0 ? JSON.stringify([...new Set(accepted)]) : null,
+    audit: audit ? JSON.stringify(audit) : null,
+  }
+}
+
+/** Issues by URL, as the history keeps them. */
+export function groupIssues(rows: { urlHash: string; issue: string }[]) {
+  const grouped = new Map<string, string[]>()
+  for (const { urlHash, issue } of rows)
+    grouped.set(urlHash, [...(grouped.get(urlHash) ?? []), issue])
+  return grouped
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * Whether the compact history of a crawl is past its domain's `historyDays`: the default when the
+ * domain saved no settings (`saved` is null), never when it chose to keep it (`days` is null).
+ */
+export function historyExpired(
+  row: { finishedAt: Date | null; createdAt: Date; saved: string | null; days: number | null },
+  now: Date,
+  defaultDays: number,
+): boolean {
+  const days = row.saved === null ? defaultDays : row.days
+  if (days === null) return false
+  return (row.finishedAt ?? row.createdAt).getTime() < now.getTime() - days * DAY_MS
+}
+
+/** A row of `crawl_url_history` as the trace of a URL in that crawl (see `foldTraces`). */
+export function historyTrace(row: {
+  crawlId: string
+  urlHash: string
+  url: string
+  state: string
+  kind: string
+  statusCode: number | null
+  redirectTo: string | null
+  title: string | null
+  canonical: string | null
+  metaRobots: string | null
+  xRobotsTag: string | null
+  error: string | null
+  depth: number
+  issues: string | null
+  accepted: string | null
+  audit: string | null
+}): CrawlUrlTrace | null {
+  const snapshot = toUrlSnapshot(row)
+  if (!snapshot) return null
+  const list = (raw: string | null) => {
+    const parsed = raw === null ? [] : parseJson(raw)
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : []
+  }
+  const audit = row.audit === null ? null : parseJson(row.audit)
+  return {
+    crawlId: row.crawlId,
+    urlHash: row.urlHash,
+    url: row.url,
+    snapshot,
+    issues: list(row.issues).map((issue) => ({ urlHash: row.urlHash, issue })),
+    accepted: list(row.accepted),
+    audit:
+      audit && typeof audit === 'object'
+        ? toCrawlUrlAudit({
+            ...(audit as Parameters<typeof toCrawlUrlAudit>[0]),
+            urlHash: row.urlHash,
+          })
+        : null,
+  }
+}
 
 /**
  * What an issue row keeps in its `details` column. Rows written before evidence existed hold a JSON

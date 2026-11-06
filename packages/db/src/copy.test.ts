@@ -32,7 +32,8 @@ describe('tablesInCopyOrder', () => {
     before('companies', 'domains')
     before('domains', 'crawls')
     before('crawls', 'crawl_urls')
-    before('crawls', 'crawl_links')
+    before('crawls', 'crawl_url_links')
+    before('crawls', 'crawl_url_history')
   })
 })
 
@@ -109,10 +110,10 @@ async function seed() {
       depth: 1,
     },
   ])
-  await db.insert(sqliteSchema.crawlLinks).values({
-    crawlId: crawl.id,
-    sourceHash: 'h1',
-    targetHash: 'h2',
+  await db.insert(sqliteSchema.crawlUrlLinks).values({
+    crawlRef: crawl.ref!,
+    source: 1,
+    target: 2,
     kind: 'a',
   })
   return source
@@ -151,7 +152,7 @@ describe.skipIf(!baseUrl)('copySqliteToPostgres', () => {
         expect(count('user')).toBe(1)
         expect(count('jobs')).toBeGreaterThanOrEqual(2)
         expect(count('crawl_urls')).toBe(2)
-        expect(count('crawl_links')).toBe(1)
+        expect(count('crawl_url_links')).toBe(1)
         // The mail setting and the record of what audit rules mean.
         expect(count('settings')).toBe(2)
 

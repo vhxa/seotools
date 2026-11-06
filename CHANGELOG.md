@@ -22,6 +22,13 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Breaking
 
+- **Old crawls keep a compact history instead of everything.** The full results (links, evidence,
+  page data) are kept for the latest crawl and the one before it, which is what a comparison
+  needs; for older crawls, what each URL was (its answer, findings and audit state) is kept for 30
+  days by default (Settings → Crawling, "Days of URL history"; empty keeps it always), then only
+  their totals. Domains still on the old default of 10 crawls move to 2. A domain that chose
+  another number keeps it.
+
 - MySQL is no longer supported: seotools runs on SQLite (the default) or PostgreSQL. A `mysql://`
   `DATABASE_URL` (or `DATABASE_DIALECT=mysql`) now fails at startup with a message saying so.
 - **What counts as a page changed.** A page is a URL that answered with HTML and a 2xx. A page,
@@ -36,6 +43,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Changed
 
+- Links take much less space: on a real site the database went from 1.1 GB to 133 MB after the
+  first start. SQLite files are compacted on start when a removal left them mostly empty.
 - Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a
   redirect**, or **a URL that cannot be indexed**. Only the last one follows the audit rules; a
   broken or redirecting target is always reported.
@@ -50,6 +59,10 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **Where each link is**: the text of the link, the element that holds it and the part of the page
+  (menu, header, footer, main content, sidebar), and, where a link brings in query parameters the
+  page does not have, the tag as the crawler read it. Each URL also records the page and the kind
+  of link it was first found through. Only crawls from now on have it.
 - `node /app/worker/dist/migrate-db.mjs --from file:… --to postgres://…` copies an installation from
   SQLite to an empty PostgreSQL database, keeping people signed in. See
   [Move from SQLite to PostgreSQL](docs/updating.md#move-from-sqlite-to-postgresql).
@@ -59,12 +72,17 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Fixed
 
+- A script, stylesheet or image that answers with an HTML error page (a missing `.js` on many
+  sites) is a broken resource, no longer counted as a page.
 - Running the bundled worker scripts (`node apps/worker/dist/recover.mjs <email>`, `bootstrap.mjs`) outside Docker no longer needs `MIGRATIONS_DIR`: the migrations are found next to the repository, and when they are not, the error names the folders it looked in and says to set `MIGRATIONS_DIR`.
 - Crawl alerts no longer compare a crawl whose findings were never analysed (after waiting two hours for the analysis): only a crawl problem is reported if it applies, otherwise nothing is sent, and the worker logs a warning.
 - Every page under System answered with an error when the saved email settings could not be decrypted (the encryption key changed after saving them). They now render, System → Email and the warning in System say that the settings must be entered again, and the worker records the email as not sent instead of failing.
 
 ### Upgrade notes
 
+- The first start after the update moves the results of older crawls to the compact history and,
+  with SQLite, compacts the file: about 20 seconds for a 1 GB database. Take a backup first (see
+  docs/updating.md): going back to 0.2.0-rc.1 needs it.
 - MySQL was never in a stable release and nobody should be affected. An installation on MySQL must
   stay on 0.2.0-rc.1 or move to PostgreSQL by exporting its data itself: there is no tool for that.
 

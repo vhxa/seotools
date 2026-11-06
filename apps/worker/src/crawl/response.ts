@@ -6,6 +6,7 @@ import {
   type CrawlPageData,
   type CrawlUrlKind,
   type CrawlUrlSource,
+  type LinkContext,
   type Logger,
 } from '@seotools/core'
 import type { CrawlUrlResult } from '@seotools/db'
@@ -73,15 +74,24 @@ export function analyseResponse(input: {
   /** The domain's optional crawl files: a feed or OpenSearch link in a home page is one. */
   optionalFiles: readonly string[]
   log: Logger
-  discover: (url: string, kind: CrawlLinkKind, source?: CrawlUrlSource) => void
+  discover: (
+    url: string,
+    kind: CrawlLinkKind,
+    source?: CrawlUrlSource,
+    context?: LinkContext,
+  ) => void
 }): AnalysedResponse {
   const { item, response, log } = input
   const { statusCode, headers, body } = response
   const contentType = headers['content-type'] ?? null
-  const fromHere = (url: string, kind: CrawlLinkKind, source: CrawlUrlSource = 'link') =>
-    input.discover(url, kind, source)
+  const fromHere = (
+    url: string,
+    kind: CrawlLinkKind,
+    source: CrawlUrlSource = 'link',
+    context?: LinkContext,
+  ) => input.discover(url, kind, source, context)
   const addAll = (links: ExtractedLink[]) => {
-    for (const { url, kind } of links) fromHere(url, kind)
+    for (const { url, kind, context } of links) fromHere(url, kind, 'link', context)
   }
 
   let kind: CrawlUrlKind = 'resource'

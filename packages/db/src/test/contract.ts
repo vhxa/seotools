@@ -397,7 +397,10 @@ export function describeDatabaseContract(
     })
 
     describe('crawls', () => {
+      // Each URL gets a number of its own, as the crawler gives them: unique within a crawl.
+      let lastSeq = 0
       const newUrl = (url: string, overrides: Partial<NewCrawlUrl> = {}): NewCrawlUrl => ({
+        seq: ++lastSeq,
         url,
         urlHash: crawlUrlHash(url),
         scope: 'internal',
@@ -4492,7 +4495,7 @@ export function describeDatabaseContract(
             ).toEqual(['base/old', 'target/new'])
           })
 
-          it('leaves out external URLs, other domains, other types and pruned crawls', async () => {
+          it('leaves out external URLs, other domains, other types and crawls with nothing kept', async () => {
             const ids = await pair()
             const newest = await crawlOf(ids.domainId, target)
             const other = await domain('other.com')
@@ -4507,11 +4510,29 @@ export function describeDatabaseContract(
               crawlIds: [ids.baseId, ids.targetId, newest.id, foreign.id, priority.id],
               urlHashes: hashes,
             })
-            // The oldest was pruned; the foreign and priority crawls are not full crawls of the domain.
+            // The oldest was pruned to its compact history, which still says what the URL was; the
+            // foreign and priority crawls are not full crawls of the domain.
             expect(history.map((entry) => entry.crawlId).sort()).toEqual(
-              [ids.targetId, newest.id].sort(),
+              [ids.baseId, ids.targetId, newest.id].sort(),
             )
             expect(history.every((entry) => entry.urlHash === hashOf('/'))).toBe(true)
+            const base = history.find((entry) => entry.crawlId === ids.baseId)
+            expect(base?.snapshot).toMatchObject({ state: 'done' })
+            // Once its history expires, nothing of it is left but the totals.
+            expect(
+              await db.crawls.expireHistory({
+                now: new Date(Date.now() + 365 * 86_400_000),
+                defaultDays: 30,
+              }),
+            ).toBe(1)
+            const after = await db.crawls.urlHistory({
+              domainId: ids.domainId,
+              crawlIds: [ids.baseId, ids.targetId, newest.id],
+              urlHashes: hashes,
+            })
+            expect(after.map((entry) => entry.crawlId).sort()).toEqual(
+              [ids.targetId, newest.id].sort(),
+            )
             // Asked with another domain, the same crawls give nothing.
             expect(
               await db.crawls.urlHistory({

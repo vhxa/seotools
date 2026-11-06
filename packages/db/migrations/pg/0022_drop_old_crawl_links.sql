@@ -1,0 +1,1 @@
+DROP TABLE "crawl_links" CASCADE;

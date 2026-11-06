@@ -41,6 +41,7 @@ async function finishedCrawl(host: string, home: string, about: string) {
     scope: 'internal' as const,
     source: 'link' as const,
     depth: 1,
+    seq: url === home ? 1 : 2,
   })
   await db.crawls.addUrls(crawl.id, [entry(home), entry(about)])
   await db.crawls.recordResult({

@@ -30,6 +30,8 @@ function crawl(overrides: Partial<Crawl> & { id: string }): Crawl {
     auditSnapshot: null,
     robots: null,
     pruned: false,
+    history: false,
+    ref: 1,
     error: null,
     createdAt: new Date(2026, 0, counter),
     startedAt: null,

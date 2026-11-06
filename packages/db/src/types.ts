@@ -26,6 +26,7 @@ import type {
   ExtraCrawlFileKind,
   CrawlFrequency,
   CrawlLinkKind,
+  LinkContext,
   CrawlPageData,
   CrawlRecurrence,
   CrawlRobotsFiles,
@@ -362,6 +363,10 @@ export interface Crawl {
   robots: CrawlRobotsFiles | null
   /** The results per URL were removed by the domain's retention setting; the counts remain. */
   pruned: boolean
+  /** Pruned, and what each URL was is still kept in the compact history (`urlHistory`). */
+  history: boolean
+  /** The crawl's number, unique: what its rows of links refer to. `null` only before 0019. */
+  ref: number | null
   error: string | null
   createdAt: Date
   startedAt: Date | null
@@ -379,6 +384,11 @@ export interface NewCrawlUrl {
   scope: CrawlUrlScope
   source: CrawlUrlSource
   depth: number
+  /** Its number in the crawl, unique, given in the order it was found. */
+  seq: number
+  /** `seq` of the URL whose response it was first found in, and how. Absent: not found in one. */
+  foundFrom?: number | null
+  foundKind?: CrawlLinkKind | null
 }
 
 export interface CrawlUrlResult {
@@ -396,7 +406,12 @@ export interface CrawlUrlResult {
   data: CrawlPageData | null
 }
 
-export interface CrawlUrl extends NewCrawlUrl, CrawlUrlResult {
+export interface CrawlUrl
+  extends Omit<NewCrawlUrl, 'seq' | 'foundFrom' | 'foundKind'>, CrawlUrlResult {
+  /** `null` only for a URL stored before migration 0019 that it could not number. */
+  seq: number | null
+  foundFrom: number | null
+  foundKind: CrawlLinkKind | null
   crawlId: string
   state: CrawlUrlState
   fetchedAt: Date | null
@@ -406,6 +421,8 @@ export interface CrawlLink {
   sourceHash: string
   targetHash: string
   kind: CrawlLinkKind
+  /** Where in the source page it was found. Kept for the first occurrence only. */
+  context?: LinkContext
 }
 
 /**
@@ -477,14 +494,17 @@ export interface CrawlLinkQuery {
 
 /**
  * One link of a URL, seen from it: the URL at the other end (where an incoming link starts, where
- * an outgoing one points), the type of the link, and what the crawl knows of that URL. It is what
- * was stored and nothing more: there is no anchor text, and no attribute but `rel="nofollow"`,
- * which is a type of its own. Several links of the same type between two URLs are one.
+ * an outgoing one points), the type of the link, where it sits in the page that has it, and what
+ * the crawl knows of that URL. It is what was stored and nothing more: crawls before the context
+ * was kept have none, and it is never made up. Several links of the same type between two URLs are
+ * one, with the context of the first.
  */
 export interface CrawlLinkRow {
   url: string
   urlHash: string
   kind: CrawlLinkKind
+  /** Where the link is in the page that has it. `null`: not kept (an older crawl, a header…). */
+  context: LinkContext | null
   /** Of the URL at the other end. */
   scope: CrawlUrlScope
   /** `unknown` when it was not requested, never answered, or is external: never a verdict. */
@@ -582,15 +602,25 @@ export interface CrawlRepository {
   /**
    * Removes the results per URL of old crawls of a type, keeping the newest `keep` usable ones
    * (`null`: all of them). Results of failed or cancelled crawls are partial, so they always go.
+   * What each URL of a usable full crawl was stays in the compact history (`history`), until
+   * `expireHistory` removes it.
    */
   prune(input: { domainId: string; type: CrawlType; keep: number | null }): Promise<number>
+  /**
+   * Removes the compact history of crawls that finished more than their domain's `historyDays`
+   * ago (the default when the domain saved no settings; never when it chose to keep it). Returns
+   * how many crawls lost it. Their totals stay.
+   */
+  expireHistory(input: { now: Date; defaultDays: number }): Promise<number>
 
   /** Adds URLs to a crawl, ignoring those it already has. */
   addUrls(crawlId: string, urls: NewCrawlUrl[]): Promise<void>
   /** URLs waiting to be requested, shallowest first. */
   nextQueued(crawlId: string, limit: number): Promise<NewCrawlUrl[]>
   /** Every URL of the crawl, to pick up where a previous attempt left off. */
-  knownUrls(crawlId: string): Promise<{ urlHash: string; scope: CrawlUrlScope }[]>
+  knownUrls(
+    crawlId: string,
+  ): Promise<{ urlHash: string; scope: CrawlUrlScope; seq: number | null }[]>
   /** Stores what a request returned along with the URLs and links found in it, atomically. */
   recordResult(input: {
     crawlId: string
@@ -1183,6 +1213,13 @@ export interface Database {
   ping(): Promise<void>
   /** Rejects if the database has a migration `migrationsDir` does not know (default: the bundled ones). */
   checkMigrations(migrationsDir?: string): Promise<void>
+  /**
+   * Gives back to the disk the space a large removal left unused (old crawl results pruned): in
+   * SQLite, a `VACUUM` when at least a quarter of the file and 64 MB are free; nothing in
+   * PostgreSQL, whose autovacuum does it. Returns the bytes freed, or `null` when nothing was done.
+   * Only while nothing else uses the database: bootstrap runs it before web and worker start.
+   */
+  compact(): Promise<number | null>
   /** Applies pending migrations from `migrationsDir` (default: the bundled ones). */
   migrate(migrationsDir?: string): Promise<void>
   close(): Promise<void>

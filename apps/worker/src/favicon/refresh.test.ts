@@ -138,6 +138,7 @@ describe('createFaviconRefresher', () => {
       maxRetries: 2,
       maxUrls: null,
       retainCrawls: null,
+      historyDays: null,
       optionalFiles: [],
       indexNowKey: null,
     })
@@ -157,6 +158,7 @@ describe('createFaviconRefresher', () => {
       maxRetries: 2,
       maxUrls: null,
       retainCrawls: null,
+      historyDays: null,
       optionalFiles: [],
       indexNowKey: null,
     })

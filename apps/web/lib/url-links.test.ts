@@ -41,7 +41,8 @@ async function crawlOfAHome(count: number) {
     (_, index) => `${SITE}/p/${String(index).padStart(3, '0')}`,
   )
   const others = [`${SITE}/app.js`, `${SITE}/logo.png`]
-  const entry = (url: string) => ({
+  const entry = (url: string, index: number) => ({
+    seq: index + 1,
     url,
     urlHash: hashOf(url),
     scope: 'internal' as const,

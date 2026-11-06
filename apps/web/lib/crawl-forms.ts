@@ -20,6 +20,7 @@ export type CrawlSettingsFormError =
   | 'maxRetries'
   | 'maxUrls'
   | 'retainCrawls'
+  | 'historyDays'
   | 'indexNowKey'
   | 'indexNowKeyRequired'
 
@@ -77,6 +78,12 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
       return { ok: false, error: 'retainCrawls' }
   }
 
+  const historyText = text(form, 'historyDays')
+  const historyDays = historyText === '' ? null : integer(historyText)
+  if (historyDays !== null && !inRange(historyDays, limits.historyDays)) {
+    return { ok: false, error: 'historyDays' }
+  }
+
   // The key is only read while its switch is on: turning IndexNow off forgets it.
   const indexNowOn = form.get('file.indexnow') === 'on'
   const indexNowKey = text(form, 'indexNowKey')
@@ -95,6 +102,7 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
     maxRetries,
     maxUrls,
     retainCrawls,
+    historyDays,
     optionalFiles: OPTIONAL_CRAWL_FILES.filter((kind) => form.get(`file.${kind}`) === 'on'),
     indexNowKey: indexNowOn ? indexNowKey : null,
   })

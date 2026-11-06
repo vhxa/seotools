@@ -1,6 +1,7 @@
 import {
   fieldChanges,
   issueTimelines,
+  keepsUrlHistory,
   reportedIssues,
   type FieldChange,
   type FindingChange,
@@ -119,11 +120,11 @@ export function UrlHistory({
       const previous = crawls
         .slice(0, position)
         .reverse()
-        .find((candidate) => !candidate.pruned)
+        .find((candidate) => keepsUrlHistory(candidate))
       const previousTrace = previous ? traceOf(previous) : undefined
       let changes: FieldChange[] = []
       let presence: 'added' | 'missing' | null = null
-      if (!crawl.pruned && previous) {
+      if (keepsUrlHistory(crawl) && previous) {
         if (trace && previousTrace) changes = fieldChanges(previousTrace.snapshot, trace.snapshot)
         else if (trace) presence = 'added'
         else if (previousTrace) presence = 'missing'
@@ -175,7 +176,7 @@ export function UrlHistory({
                   >
                     <TableCell className="align-top">
                       <div className="grid gap-1">
-                        {trace && !crawl.pruned ? (
+                        {trace && keepsUrlHistory(crawl) ? (
                           <Link
                             href={`/domains/${host}/pages/details/${urlHash}?crawl=${crawl.id}`}
                             className="text-sm font-medium hover:underline"
@@ -187,7 +188,7 @@ export function UrlHistory({
                         )}
                         <span className="flex flex-wrap gap-1">
                           <CrawlStatusBadge status={crawl.status} />
-                          {crawl.pruned && (
+                          {!keepsUrlHistory(crawl) && (
                             <Badge variant="secondary" title={t('prunedHint')}>
                               {t('pruned')}
                             </Badge>
@@ -199,7 +200,7 @@ export function UrlHistory({
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
-                      {crawl.pruned ? (
+                      {!keepsUrlHistory(crawl) ? (
                         <span className="text-sm text-muted-foreground">{t('prunedRow')}</span>
                       ) : trace ? (
                         <Answer snapshot={snapshotOf(trace)} />
@@ -208,7 +209,7 @@ export function UrlHistory({
                       )}
                     </TableCell>
                     <TableCell className="max-w-xs align-top text-sm">
-                      {trace && !crawl.pruned ? (
+                      {trace && keepsUrlHistory(crawl) ? (
                         <div className="grid gap-1">
                           <Text value={trace.snapshot.title} />
                           {trace.snapshot.canonical && (
@@ -221,7 +222,7 @@ export function UrlHistory({
                       ) : null}
                     </TableCell>
                     <TableCell className="align-top text-sm">
-                      {crawl.pruned ? null : findings(crawl, trace)}
+                      {keepsUrlHistory(crawl) ? findings(crawl, trace) : null}
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="flex flex-wrap items-center gap-1">

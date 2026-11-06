@@ -166,6 +166,8 @@ export async function saveCrawlSettingsAction(
         return { error: t('maxUrls', limits.maxUrls) }
       case 'retainCrawls':
         return { error: t('retainCrawls', limits.retainCrawls) }
+      case 'historyDays':
+        return { error: t('historyDays', limits.historyDays) }
       case 'indexNowKey':
         return { error: t('indexNowKey') }
       case 'indexNowKeyRequired':

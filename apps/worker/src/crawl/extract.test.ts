@@ -434,3 +434,63 @@ describe('parseOpenSearch', () => {
     expect(parseOpenSearch('<html></html>')).toBeNull()
   })
 })
+
+describe('link context', () => {
+  const linksOf = (html: string, page = PAGE) => extractHtml(html, page).links
+
+  it('says where an anchor is: its text, element and landmark', () => {
+    const [link] = linksOf(
+      `<body><header><nav><ul><li><a class="dropdown-item  lang" role="menuitem" href="/ca/post">
+        Català <img src="/flag.png" alt="flag"></a></li></ul></nav></header></body>`,
+    )
+    expect(link).toMatchObject({
+      url: 'https://example.com/ca/post',
+      kind: 'anchor',
+      context: {
+        text: 'Català flag',
+        element: 'a.dropdown-item.lang[role=menuitem]',
+        region: 'nav',
+      },
+    })
+    expect(link?.context?.snippet).toBeUndefined()
+  })
+
+  it('takes ARIA landmarks and leaves the region out where there is none', () => {
+    const links = linksOf(
+      `<body><div role="contentinfo"><div><span></span></div><a href="/legal">Legal</a></div>
+      <p><a href="/x">X</a></p></body>`,
+    )
+    expect(links[0]?.context).toMatchObject({ region: 'footer', text: 'Legal' })
+    expect(links[1]?.context).toEqual({ element: 'a', text: 'X' })
+  })
+
+  it('keeps the opening tag where a link brings in query parameters the page does not have', () => {
+    const links = linksOf(
+      `<a href="/es?utm_source=x&amp;center=1" role="menuitem">ES</a><a href="/es?page=2">2</a>`,
+      'https://example.com/blog?page=1',
+    )
+    expect(links[0]?.context?.snippet).toBe('<a href="/es?utm_source=x&center=1" role="menuitem">')
+    expect(links[1]?.context?.snippet).toBeUndefined()
+  })
+
+  it('bounds what it keeps', () => {
+    const long = 'word '.repeat(200)
+    const [link] = linksOf(`<a href="/a?x=1" class="${'c'.repeat(300)}">${long}</a>`)
+    expect(link?.context?.text?.length).toBeLessThanOrEqual(100)
+    expect(link?.context?.element?.length).toBeLessThanOrEqual(80)
+    expect(link?.context?.snippet?.length).toBeLessThanOrEqual(300)
+  })
+
+  it('describes elements that are not anchors and links from structured data', () => {
+    const links = linksOf(
+      `<head><link rel="shortlink" href="/?p=12"><meta property="og:image" content="/i.png">
+      <script type="application/ld+json">{"url":"https://example.com/about"}</script></head>`,
+    )
+    expect(links.map((link) => link.context?.element)).toEqual([
+      'link[rel=shortlink]',
+      'meta[property=og:image]',
+      'script[type=application/ld+json]',
+    ])
+    expect(links[0]?.context?.text).toBeUndefined()
+  })
+})

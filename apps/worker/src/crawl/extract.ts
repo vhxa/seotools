@@ -1,6 +1,9 @@
 import {
+  LINK_CONTEXT_LIMITS,
   normalizeCrawlUrl,
   type CrawlLinkKind,
+  type LinkContext,
+  type LinkRegion,
   type CrawlPageFacts,
   type FeedSummary,
   type HreflangEntry,
@@ -13,6 +16,8 @@ import { PageFactsCollector } from './page-facts'
 export interface ExtractedLink {
   url: string
   kind: CrawlLinkKind
+  /** Where in the page it was found. Absent for links that are not in the HTML (headers, CSS files). */
+  context?: LinkContext
 }
 
 export interface ExtractedHtml {
@@ -106,6 +111,53 @@ const CSS_URL =
 
 const collapse = (text: string) => text.replace(/\s+/g, ' ').trim()
 
+/** At most `max` characters, marked as cut when it is. */
+const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
+
+/** The landmark each element or ARIA role stands for. */
+const LANDMARK_TAGS: Record<string, LinkRegion> = {
+  nav: 'nav',
+  header: 'header',
+  footer: 'footer',
+  main: 'main',
+  aside: 'aside',
+}
+const LANDMARK_ROLES: Record<string, LinkRegion> = {
+  navigation: 'nav',
+  banner: 'header',
+  contentinfo: 'footer',
+  main: 'main',
+  complementary: 'aside',
+}
+
+/** Attributes that say what an element is, in the order they are described. */
+const DESCRIBING_ATTRIBUTES = ['role', 'rel', 'type', 'property', 'name', 'method'] as const
+
+/** A short description of an element, as a CSS-like selector: `a.dropdown-item[role=menuitem]`. */
+export function describeElement(name: string, attributes: Record<string, string>): string {
+  const word = (value: string | undefined) => value?.slice(0, 100).trim().split(/\s+/)[0] ?? ''
+  let out = name
+  const id = word(attributes.id)
+  if (id) out += `#${id}`
+  const classes = (attributes.class ?? '').slice(0, 200).trim().split(/\s+/).filter(Boolean)
+  for (const name of classes.slice(0, 3)) out += `.${name}`
+  for (const attribute of DESCRIBING_ATTRIBUTES) {
+    const value = attributes[attribute]?.slice(0, 60).trim()
+    if (value) out += `[${attribute}=${value}]`
+  }
+  return cut(out, LINK_CONTEXT_LIMITS.element)
+}
+
+/** The opening tag as it was read, bounded: what someone can search for in the HTML. */
+function openingTag(name: string, attributes: Record<string, string>): string {
+  let out = `<${name}`
+  for (const [attribute, value] of Object.entries(attributes)) {
+    out += ` ${attribute}="${value.slice(0, LINK_CONTEXT_LIMITS.snippet).replaceAll('"', '&quot;')}"`
+    if (out.length > LINK_CONTEXT_LIMITS.snippet) break
+  }
+  return cut(`${out}>`, LINK_CONTEXT_LIMITS.snippet)
+}
+
 /** The URLs of a `srcset`: comma-separated candidates of a URL and an optional descriptor. */
 function parseSrcset(value: string): string[] {
   const urls: string[] = []
@@ -152,14 +204,55 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
   let rawText: { kind: 'style' | 'json-ld'; text: string } | null = null
   const robots: string[] = []
 
-  const add = (raw: string | undefined, kind: CrawlLinkKind) => {
+  const pageParameters = new Set(new URL(pageUrl).searchParams.keys())
+  /** Every element open, with the landmark it starts if any: where a link sits. */
+  const open: { name: string; region: LinkRegion | null }[] = []
+  /** The element whose attributes are being read: the context of what `add` finds in it. */
+  let element: { name: string; attributes: Record<string, string> } | null = null
+  /** The outermost anchor open, collecting its text into the context of its link. */
+  let anchor: { context: LinkContext; text: string } | null = null
+  let anchorDepth = 0
+
+  const regionHere = (): LinkRegion | undefined => {
+    for (let i = open.length - 1; i >= 0; i--) {
+      const region = open[i]!.region
+      if (region) return region
+    }
+    return undefined
+  }
+
+  /** Whether the link adds query parameters the page does not have: where they enter the site. */
+  const bringsParameters = (url: string) => {
+    for (const name of new URL(url).searchParams.keys()) {
+      if (!pageParameters.has(name)) return true
+    }
+    return false
+  }
+
+  const contextOf = (url: string, from: typeof element): LinkContext | undefined => {
+    if (!from) return undefined
+    const region = regionHere()
+    return {
+      element: describeElement(from.name, from.attributes),
+      ...(region ? { region } : {}),
+      ...(bringsParameters(url) ? { snippet: openingTag(from.name, from.attributes) } : {}),
+    }
+  }
+
+  const add = (raw: string | undefined, kind: CrawlLinkKind, from = element) => {
     if (raw === undefined) return
     const value = raw.trim()
     // `#section` and an empty href point at the page itself: they are not links to anything.
     if (!value || value.startsWith('#')) return
     collector.sawUrl(value, kind)
     const url = normalizeCrawlUrl(value, base)
-    if (url) result.links.push({ url, kind })
+    if (!url) return
+    const context = contextOf(url, from)
+    result.links.push(context ? { url, kind, context } : { url, kind })
+    const isAnchor = kind === 'anchor' || kind === 'anchor-nofollow'
+    if (context && isAnchor && anchorDepth === 0 && anchor === null) {
+      anchor = { context, text: from?.name === 'area' ? (from.attributes.alt ?? '') : '' }
+    }
   }
 
   const addCss = (css: string) => {
@@ -226,6 +319,15 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
       onopentag(rawName, attributes) {
         const name = rawName.toLowerCase()
         collector.open(name, attributes)
+        open.push({
+          name,
+          region:
+            LANDMARK_TAGS[name] ??
+            LANDMARK_ROLES[(attributes.role ?? '').slice(0, 30).trim().toLowerCase()] ??
+            null,
+        })
+        element = { name, attributes }
+        if (anchor && name === 'img' && attributes.alt) anchor.text += ` ${attributes.alt}`
         if (name === 'svg') svgDepth++
         if (name === 'base' && !baseSet && attributes.href) {
           const resolved = normalizeCrawlUrl(attributes.href, base)
@@ -258,10 +360,13 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
           if (list) for (const url of parseSrcset(value)) add(url, kind)
           else add(value, kind)
         }
+        if ((name === 'a' || name === 'area') && attributes.href !== undefined) anchorDepth++
         if (attributes.style) addCss(attributes.style)
+        element = null
       },
       ontext(text) {
         collector.onText(text)
+        if (anchor && anchor.text.length < LINK_CONTEXT_LIMITS.text * 2) anchor.text += text
         if (title !== null) title += text
         if (h1 !== null) h1 += text
         if (rawText) rawText.text += text
@@ -269,6 +374,20 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
       onclosetag(rawName) {
         const name = rawName.toLowerCase()
         collector.close(name)
+        for (let i = open.length - 1; i >= 0; i--) {
+          if (open[i]!.name === name) {
+            open.length = i
+            break
+          }
+        }
+        if ((name === 'a' || name === 'area') && anchorDepth > 0 && --anchorDepth === 0 && anchor) {
+          const text = cut(
+            collapse(anchor.text.slice(0, LINK_CONTEXT_LIMITS.text * 2)),
+            LINK_CONTEXT_LIMITS.text,
+          )
+          if (text) anchor.context.text = text
+          anchor = null
+        }
         if (name === 'svg' && svgDepth > 0) svgDepth--
         if (name === 'title' && title !== null) {
           result.title = collapse(title)
@@ -292,7 +411,8 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
             } catch {
               // Malformed JSON-LD is an issue of the page (`jsonLdInvalid`), not a crawl error.
             }
-            for (const url of urls) add(url, 'structured-data')
+            const script = { name: 'script', attributes: { type: 'application/ld+json' } }
+            for (const url of urls) add(url, 'structured-data', script)
           }
         }
       },

@@ -183,6 +183,8 @@ export const crawlSettings = pgTable('crawl_settings', {
   maxUrls: integer('max_urls'),
   /** `null` keeps the results of every crawl. */
   retainCrawls: integer('retain_crawls'),
+  /** Days the compact history of crawls whose results were removed is kept. `null`: always. */
+  historyDays: integer('history_days').default(30),
   /** JSON array of `OptionalCrawlFile`. `null`: none. */
   optionalFiles: text('optional_files'),
   indexNowKey: text('index_now_key'),
@@ -267,6 +269,13 @@ export const crawls = pgTable(
     auditVersion: integer('audit_version'),
     /** JSON (`AuditSnapshot`): the rules that analysis used, to read and repeat it as it was. */
     auditSnapshot: text('audit_snapshot'),
+    /**
+     * A small number for the crawl, unique, so that the many rows of its links stay short
+     * (`crawl_url_links`). Set when the crawl starts; `null` only before migration 0019.
+     */
+    ref: integer('ref').unique(),
+    /** Its results per URL were replaced by the compact history (`crawl_url_history`). */
+    history: boolean('history').notNull().default(false),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: boolean('pruned').notNull().default(false),
     error: text('error'),
@@ -306,29 +315,86 @@ export const crawlUrls = pgTable(
     /** JSON (`CrawlPageData`): everything extracted that has no column of its own. */
     data: text('data'),
     fetchedAt: ts('fetched_at'),
+    /** Its number in the crawl, in the order it was found: what the rows of links refer to. */
+    seq: integer('seq'),
+    /**
+     * `seq` of the URL whose response it was first found in, and how (`CrawlLinkKind`): how the
+     * crawler got to it. `null`: a seed, a crawl file or a priority URL, or found before 0019.
+     */
+    foundFrom: integer('found_from'),
+    foundKind: text('found_kind'),
   },
   (t) => [
     primaryKey({ columns: [t.crawlId, t.urlHash] }),
+    uniqueIndex('crawl_urls_seq_idx').on(t.crawlId, t.seq),
     index('crawl_urls_queue_idx').on(t.crawlId, t.state, t.depth),
     index('crawl_urls_view_idx').on(t.crawlId, t.scope, t.kind, t.depth),
     index('crawl_urls_hash_idx').on(t.urlHash),
   ],
 )
 
-/** Which URL of a crawl links to which, and how. External targets are recorded here too. */
-export const crawlLinks = pgTable(
-  'crawl_links',
+/**
+ * Which URL of a crawl links to which, how, and where in the page (`LinkContext`). The URLs are
+ * their `seq` in the crawl and the crawl its `ref`, so that the most numerous rows of the database
+ * stay small. One row per source, target and kind: the first occurrence in the page.
+ */
+export const crawlUrlLinks = pgTable(
+  'crawl_url_links',
+  {
+    crawlRef: integer('crawl_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    source: integer('source').notNull(),
+    target: integer('target').notNull(),
+    kind: text('kind').notNull(),
+    /** The anchor text, bounded. */
+    text: text('text'),
+    /** The element that holds the link, e.g. `a.dropdown-item[role=menuitem]`. */
+    element: text('element'),
+    /** The landmark it sits in (`LINK_REGIONS`). */
+    region: text('region'),
+    /** The opening tag, only where the link brings in query parameters the page does not have. */
+    snippet: text('snippet'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlRef, t.source, t.target, t.kind] }),
+    index('crawl_url_links_target_idx').on(t.crawlRef, t.target),
+  ],
+)
+
+/**
+ * What each URL of the site was in a crawl whose results per URL are no longer kept: its answer,
+ * the findings pending and accepted, and its audit state. Enough for the history of a URL, with no
+ * links or evidence. Removed after the domain's `history_days`.
+ */
+export const crawlUrlHistory = pgTable(
+  'crawl_url_history',
   {
     crawlId: text('crawl_id')
       .notNull()
       .references(() => crawls.id, { onDelete: 'cascade' }),
-    sourceHash: text('source_hash').notNull(),
-    targetHash: text('target_hash').notNull(),
+    urlHash: text('url_hash').notNull(),
+    url: text('url').notNull(),
+    state: text('state').notNull(),
     kind: text('kind').notNull(),
+    statusCode: integer('status_code'),
+    redirectTo: text('redirect_to'),
+    title: text('title'),
+    canonical: text('canonical'),
+    metaRobots: text('meta_robots'),
+    xRobotsTag: text('x_robots_tag'),
+    error: text('error'),
+    depth: integer('depth').notNull(),
+    /** JSON array of the issues pending on it. */
+    issues: text('issues'),
+    /** JSON array of the issues a rule accepted on it. */
+    accepted: text('accepted'),
+    /** JSON (`CrawlUrlAudit` without its hash). `null`: the crawl was not analysed. */
+    audit: text('audit'),
   },
   (t) => [
-    primaryKey({ columns: [t.crawlId, t.sourceHash, t.targetHash, t.kind] }),
-    index('crawl_links_target_idx').on(t.crawlId, t.targetHash),
+    primaryKey({ columns: [t.crawlId, t.urlHash] }),
+    index('crawl_url_history_hash_idx').on(t.urlHash),
   ],
 )
 
