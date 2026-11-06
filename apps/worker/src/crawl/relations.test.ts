@@ -590,11 +590,14 @@ describe('a missing return link', () => {
     ['required', [asking(exactPath('/t'), 'noindex', 'required')]],
     ['allowed', [asking(exactPath('/t'), 'noindex', 'allowed')]],
     ['expected', [expecting(exactPath('/t'), 'not-indexable')]],
-  ])('was not, under semantics 4, when the destination is out on purpose (%s)', async (_, rules) => {
-    await addRules(rules)
-    const id = await asSemantics4(await crawl(world({ target: { ...NOINDEX, returns: false } })))
-    expect(await findings(id, '/s')).not.toContain('hreflang-no-return')
-  })
+  ])(
+    'was not, under semantics 4, when the destination is out on purpose (%s)',
+    async (_, rules) => {
+      await addRules(rules)
+      const id = await asSemantics4(await crawl(world({ target: { ...NOINDEX, returns: false } })))
+      expect(await findings(id, '/s')).not.toContain('hreflang-no-return')
+    },
+  )
 
   it('is, from an indexable origin, whatever the destination declares', async () => {
     await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
