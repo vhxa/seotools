@@ -286,6 +286,12 @@ const linkedTargets =
     return backedBy({ kind: 'related-urls', total: picked.size, urls })
   }
 
+/** The typed nodes of a page's JSON-LD that lack what Google asks, as `Type: missing, …`. */
+const structuredProblems = (facts: CrawlPageFacts, level: 'required' | 'recommended') =>
+  (facts.structuredDataProblems ?? [])
+    .filter((problem) => problem.level === level)
+    .map((problem) => `${problem.type}: ${problem.missing.join(', ')}`)
+
 /** A URL can have thousands of them, and looking for repeats is quadratic. */
 const MAX_PATH_SEGMENTS = 50
 const pathSegments = (url: AuditedUrl) =>
@@ -608,6 +614,10 @@ export const CHECKS: Record<PageIssueId, Check> = {
   // --- structured data -----------------------------------------------------
   'json-ld-invalid': onPage((_, facts) => facts.jsonLdInvalid > 0),
   'no-structured-data': onPage((_, facts) => facts.structuredData === 0),
+  'structured-data-required-missing': onPage((_, facts) => structuredProblems(facts, 'required')),
+  'structured-data-recommended-missing': onPage((_, facts) =>
+    structuredProblems(facts, 'recommended'),
+  ),
 
   // --- links ---------------------------------------------------------------
   'link-to-localhost': linkProblem('localhost', (facts) => facts.localhostLinks),

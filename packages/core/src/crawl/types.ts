@@ -1,3 +1,4 @@
+import type { StructuredDataProblem } from './structured-data'
 export const CRAWL_TYPES = ['full', 'priority'] as const
 export type CrawlType = (typeof CRAWL_TYPES)[number]
 
@@ -231,6 +232,12 @@ export interface CrawlPageFacts {
   jsonLdInvalid: number
   /** JSON-LD blocks and elements with microdata or RDFa. */
   structuredData: number
+  /**
+   * The `@type`s the JSON-LD declares, and what Google asks of them that is missing
+   * (`checkStructuredData`). Absent: parsed before this was kept, so nothing is known.
+   */
+  structuredDataTypes?: string[]
+  structuredDataProblems?: StructuredDataProblem[]
   localhostLinks: number
   uncrawlableLinks: number
   emptyAnchors: number

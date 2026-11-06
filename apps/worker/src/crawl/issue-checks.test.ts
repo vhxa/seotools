@@ -466,6 +466,24 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   },
 
   // --- structured data -----------------------------------------------------
+  'structured-data-required-missing': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', {
+        head: '<script type="application/ld+json">{"@type":"Product","name":"Robe"}</script>',
+      }),
+    },
+    details: ['Product: offers | review | aggregateRating'],
+  },
+  'structured-data-recommended-missing': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', {
+        head: '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Aire","url":"https://example.com"}]}</script>',
+      }),
+    },
+    details: ['Organization: logo'],
+  },
   'json-ld-invalid': {
     at: '/x',
     pages: { '/x': page('/x', { head: '<script type="application/ld+json">{not json</script>' }) },

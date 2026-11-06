@@ -23,8 +23,10 @@ export type IssueImportance = (typeof ISSUE_IMPORTANCES)[number]
  * - `hreflang-source`: where the hreflang came from, one of `HREFLANG_SOURCES`.
  * - `security-header`: the names of the headers that are missing.
  * - `indexability-blocker`: what keeps a URL from being indexable, from `INDEXABILITY_BLOCKERS`.
+ * - `structured-data-missing`: `Type: property, property | alternative`, schema.org names.
  */
-export type IssueDetailKind = 'hreflang-source' | 'security-header' | 'indexability-blocker'
+export type IssueDetailKind =
+  'hreflang-source' | 'security-header' | 'indexability-blocker' | 'structured-data-missing'
 
 type Entry = readonly [type: IssueType, importance: IssueImportance, detail?: IssueDetailKind]
 
@@ -150,6 +152,9 @@ const ISSUE_CATALOG = {
   },
   'structured-data': {
     'json-ld-invalid': ['warning', 'high'],
+    // What Google asks of a rich result type that the JSON-LD lacks (`checkStructuredData`).
+    'structured-data-required-missing': ['warning', 'medium', 'structured-data-missing'],
+    'structured-data-recommended-missing': ['opportunity', 'low', 'structured-data-missing'],
     'no-structured-data': ['opportunity', 'low'],
   },
   links: {
@@ -295,6 +300,8 @@ export const SEO_CONTENT_ISSUES: ReadonlySet<PageIssueId> = new Set<PageIssueId>
   'content-near-duplicate',
   'content-thin',
   'no-structured-data',
+  'structured-data-required-missing',
+  'structured-data-recommended-missing',
   'deep-page',
   'anchor-vague',
   'url-multiple-slashes',
