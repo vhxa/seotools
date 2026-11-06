@@ -156,6 +156,7 @@ export async function UrlDetail({
               </div>
             </Field>
           )}
+          {url.data?.notRequested && <p>{t(`notRequested.${url.data.notRequested}`)}</p>}
           {url.error && <Field label={t('fields.error')}>{url.error}</Field>}
           {url.redirectTo && (
             <Field label={t('fields.redirectTo')}>

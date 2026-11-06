@@ -96,14 +96,15 @@ export function ScheduleForm({
     saveScheduleAction.bind(null, host, type),
     {},
   )
-  // Controlled: the fields that show depend on the frequency, and the time zone is not a field.
+  // Controlled: the frequency decides which fields are shown.
   const [enabled, setEnabled] = useState(values.enabled)
   const [frequency, setFrequency] = useState<string>(values.frequency)
   const [dayOfWeek, setDayOfWeek] = useState(String(values.dayOfWeek))
   const [dayOfMonth, setDayOfMonth] = useState(String(values.dayOfMonth))
   const [time, setTime] = useState(values.time)
   const detected = useSyncExternalStore(noSubscription, browserTimeZone, serverTimeZone)
-  const timeZone = values.timeZone ?? detected
+  const [chosenZone, setChosenZone] = useState<string | null>(values.timeZone)
+  const timeZone = chosenZone ?? detected
   const id = (name: string) => `${type}-${name}`
 
   return (
@@ -178,7 +179,24 @@ export function ScheduleForm({
       {/* Not every frequency shows these, but the form always needs a valid value for them. */}
       {frequency !== 'weekly' && <input type="hidden" name="dayOfWeek" value={dayOfWeek} />}
       {frequency !== 'monthly' && <input type="hidden" name="dayOfMonth" value={dayOfMonth} />}
-      <input type="hidden" name="timeZone" value={timeZone} />
+      <div className="grid gap-2">
+        <Label htmlFor={id('timeZone')}>{t('timeZone')}</Label>
+        <Input
+          id={id('timeZone')}
+          name="timeZone"
+          value={timeZone}
+          onChange={(event) => setChosenZone(event.target.value)}
+          disabled={!canEdit}
+          list={id('zones')}
+          required
+          maxLength={100}
+        />
+        <datalist id={id('zones')}>
+          {['UTC', ...Intl.supportedValuesOf('timeZone')].map((zone) => (
+            <option key={zone} value={zone} />
+          ))}
+        </datalist>
+      </div>
       <p className="text-xs text-muted-foreground">
         {t(frequency === 'hourly' ? 'hourlyHint' : 'timeZoneHint', { timeZone })}
       </p>

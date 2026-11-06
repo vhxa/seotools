@@ -277,7 +277,9 @@
       "alreadyRunning": "Este dominio ya tiene un rastreo en curso.",
       "noPriorityUrls": "Todavía no hay páginas prioritarias. Márcalas primero en Páginas.",
       "invalidPriorityUrl": "Introduce una URL de {host}, como /precios o https://{host}/precios.",
-      "invalidSchedule": "Revisa la frecuencia, el día y la hora de la programación."
+      "invalidSchedule": "Revisa la frecuencia, el día y la hora de la programación.",
+      "listLimit": "Introduce entre 1 y 1000 URL.",
+      "listInvalid": "{count} URL no son válidas o no pertenecen a este dominio."
     }
   },
   "Verification": {
@@ -638,7 +640,11 @@
     "advancedFilters": "Filtros avanzados e incidencias",
     "filtersMenu": "Filtros",
     "issuesMenu": "Incidencias",
-    "rowsShown": "{shown, number} de {matching, number} URLs mostradas"
+    "rowsShown": "{shown, number} de {matching, number} URLs mostradas",
+    "notRequested": {
+      "excluded": "No solicitada: excluida por la configuración de rastreo",
+      "depth": "No solicitada: profundidad máxima superada"
+    }
   },
   "Export": {
     "menu": {
@@ -781,6 +787,10 @@
       "related": "{total, plural, one {# URL a la que apunta} other {# URLs a las que apunta}}",
       "elsewhereTitle": "Las reglas de esta URL afectan a otras URLs ({total, number})",
       "elsewhereNote": "Lo que una regla declara de esta URL acepta estos hallazgos de las URLs que apuntan a ella. Los primeros:"
+    },
+    "notRequested": {
+      "excluded": "No solicitada: excluida por la configuración de rastreo",
+      "depth": "No solicitada: profundidad máxima superada"
     }
   },
   "UrlLinks": {
@@ -1421,7 +1431,8 @@
         "started": "La última ejecución empezó {when}.",
         "skipped-active": "La última ejecución se omitió {when}: había otro rastreo en curso.",
         "skipped-empty": "La última ejecución se omitió {when}: no hay páginas prioritarias marcadas."
-      }
+      },
+      "timeZone": "Zona horaria"
     },
     "history": {
       "title": "Rastreos recientes",
@@ -1437,6 +1448,12 @@
         "schedule": "Programación"
       },
       "empty": "Todavía no hay rastreos."
+    },
+    "list": {
+      "label": "Rastrear una lista de URL",
+      "hint": "Una URL por línea, hasta 1000; no se siguen enlaces.",
+      "start": "Iniciar rastreo de lista",
+      "started": "Rastreo de lista iniciado."
     }
   },
   "DomainSettings": {
@@ -1555,7 +1572,30 @@
       "retainCrawls": "El número de rastreos que se conservan debe estar entre {min} y {max}.",
       "indexNowKey": "La clave de IndexNow debe tener de 8 a 128 letras, números o guiones.",
       "indexNowKeyRequired": "Introduce la clave de IndexNow o desactiva IndexNow.",
-      "historyDays": "Los días de historial deben estar entre {min} y {max}."
+      "historyDays": "Los días de historial deben estar entre {min} y {max}.",
+      "scope": "Introduce hasta 100 prefijos válidos por lista y una profundidad de 1 a 100.",
+      "requestSecrets": "Credenciales o cabeceras no válidas (máximo 10; Host y cabeceras de transporte no permitidas)."
+    },
+    "includePrefixes": {
+      "label": "Incluir rutas",
+      "hint": "Un prefijo por línea; vacío incluye todas las rutas."
+    },
+    "excludePrefixes": {
+      "label": "Excluir rutas",
+      "hint": "Un prefijo por línea; coincide por segmentos completos."
+    },
+    "maxDepth": {
+      "label": "Profundidad máxima",
+      "hint": "Clics desde las semillas (1–100); vacío sin límite."
+    },
+    "requestSecrets": {
+      "label": "Credenciales de solicitud",
+      "saved": "Guardadas y ocultas. Deja los campos vacíos para conservarlas.",
+      "headers": "Cabeceras personalizadas",
+      "hint": "Hasta 10 líneas Nombre: Valor; solo se envían a este sitio.",
+      "username": "Usuario de Basic Auth",
+      "password": "Contraseña de Basic Auth",
+      "clear": "Eliminar todas las credenciales"
     }
   },
   "CrawlFiles": {
