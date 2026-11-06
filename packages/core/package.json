@@ -10,6 +10,7 @@
     "./crawl/acceptance": "./src/crawl/acceptance.ts",
     "./crawl/audit": "./src/crawl/audit.ts",
     "./crawl/evidence": "./src/crawl/evidence.ts",
+    "./crawl/extraction": "./src/crawl/extraction.ts",
     "./crawl/files": "./src/crawl/files.ts",
     "./crawl/indexability": "./src/crawl/indexability.ts",
     "./crawl/issues": "./src/crawl/issues.ts",
@@ -28,6 +29,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "css-what": "^7.0.0",
     "nodemailer": "^10.3.1",
     "pino": "^10.4.0",
     "resend": "^6.37.0",
