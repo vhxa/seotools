@@ -263,6 +263,13 @@ Then act according to the size of the change.
 
 When unsure whether a change is minor or major, treat it as major.
 
+### Keep the README current
+
+`README.md` is the presentation of the project, not its documentation: what it does, how to run and
+deploy it, the environment variables, and links to `docs/`. Every PR that adds or removes something a
+user, an administrator or an operator sees (a feature, an environment variable, a deployment step, a
+supported platform) updates it in the same PR, briefly; details belong in `docs/`.
+
 ### Writing rules
 
 - Write rules as specific instructions ("Every server action must call `requireSession()`"), not as history ("We had a bug where…").
