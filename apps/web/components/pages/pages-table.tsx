@@ -77,7 +77,7 @@ import {
   SheetClose,
 } from '@/components/ui/sheet'
 import { ResultsTable } from '@/components/results-table'
-import { readColumnWidths } from '@/lib/table-columns'
+import { parseSavedObject, readColumnWidths } from '@/lib/table-columns'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { OpenUrlLink } from '@/components/pages/url-drawer'
@@ -218,19 +218,14 @@ const DEFAULT_WIDTHS: Record<string, number> = {
 
 /** What was saved, on top of the defaults so a column added later starts with its default. */
 function parseVisibility(raw: string | null): ColumnVisibilityState {
-  if (!raw) return DEFAULT_VISIBILITY
-  try {
-    const saved: unknown = JSON.parse(raw)
-    if (!saved || typeof saved !== 'object') return DEFAULT_VISIBILITY
-    const visibility = { ...DEFAULT_VISIBILITY }
-    for (const id of HIDEABLE) {
-      const value = (saved as Record<string, unknown>)[id]
-      if (typeof value === 'boolean') visibility[id] = value
-    }
-    return visibility
-  } catch {
-    return DEFAULT_VISIBILITY
+  const saved = parseSavedObject(raw)
+  if (!saved) return DEFAULT_VISIBILITY
+  const visibility = { ...DEFAULT_VISIBILITY }
+  for (const id of HIDEABLE) {
+    const value = saved[id]
+    if (typeof value === 'boolean') visibility[id] = value
   }
+  return visibility
 }
 
 /** Only on hover or focus, unless the control is already in use. */
