@@ -225,51 +225,53 @@ export function AppSidebar({
     : []
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/" />} tooltip="seotools">
-              {/* `!` beats the button's `[&_svg]:size-4`, which is meant for icons. */}
-              <Logo className="size-8! shrink-0 rounded-lg" />
-              <span className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">seotools</span>
-                {version && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {t(development ? 'versionDevelopment' : 'versionRelease', { version })}
-                  </span>
-                )}
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <DomainSwitcher canManage={isAdmin} companies={companies} />
-      </SidebarHeader>
-      <nav aria-label={t('navLabel')} className="flex min-h-0 flex-1 flex-col">
-        <SidebarContent>
-          {activeHost && <NavGroup label={activeHost} items={domainItems} pathname={pathname} />}
-        </SidebarContent>
-      </nav>
-      <SidebarFooter>
-        {isAdmin && (
-          <nav aria-label={t('administration')}>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  render={<Link href="/system" />}
-                  isActive={pathname === '/system' || pathname.startsWith('/system/')}
-                  tooltip={t('administration')}
-                >
-                  <ShieldIcon />
-                  <span>{t('administration')}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </nav>
-        )}
-        <NavUser user={user} />
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+    <nav aria-label={t('navLabel')} className="contents">
+      <Sidebar collapsible="icon">
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" render={<Link href="/" />} tooltip="seotools">
+                {/* `!` beats the button's `[&_svg]:size-4`, which is meant for icons. */}
+                <Logo className="size-8! shrink-0 rounded-lg" />
+                <span className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">seotools</span>
+                  {version && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {t(development ? 'versionDevelopment' : 'versionRelease', { version })}
+                    </span>
+                  )}
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <DomainSwitcher canManage={isAdmin} companies={companies} />
+        </SidebarHeader>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <SidebarContent>
+            {activeHost && <NavGroup label={activeHost} items={domainItems} pathname={pathname} />}
+          </SidebarContent>
+        </div>
+        <SidebarFooter>
+          {isAdmin && (
+            <nav aria-label={t('administration')}>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    render={<Link href="/system" />}
+                    isActive={pathname === '/system' || pathname.startsWith('/system/')}
+                    tooltip={t('administration')}
+                  >
+                    <ShieldIcon />
+                    <span>{t('administration')}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </nav>
+          )}
+          <NavUser user={user} />
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+    </nav>
   )
 }

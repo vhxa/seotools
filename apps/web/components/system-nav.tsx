@@ -29,12 +29,12 @@ const SECTIONS: readonly {
   { id: 'updates', href: '/system/updates', icon: ArrowUpCircleIcon },
 ]
 
-/** A row above the section of Administration; it scrolls sideways on narrow screens. */
+/** A row above the section of Administration; it wraps on narrow screens. */
 export function SystemNav() {
   const t = useTranslations('SystemNav')
   const pathname = usePathname()
   return (
-    <nav aria-label={t('label')} className="flex gap-1 overflow-x-auto">
+    <nav aria-label={t('label')} className="flex min-w-0 flex-wrap gap-1">
       {SECTIONS.map(({ id, href, icon: Icon, exact }) => {
         const active = pathname === href || (!exact && pathname.startsWith(`${href}/`))
         return (

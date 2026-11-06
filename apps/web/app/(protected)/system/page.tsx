@@ -50,7 +50,7 @@ export default async function SystemPage() {
   const ago = (date: Date | null) => (date ? format.relativeTime(date) : t('never'))
 
   return (
-    <main className="grid gap-8">
+    <main className="grid min-w-0 gap-8">
       <AutoRefresh />
       <h1 className="text-2xl font-semibold">{t('title')}</h1>
 
@@ -103,14 +103,14 @@ export default async function SystemPage() {
         </dl>
       </section>
 
-      <Collapsible className="grid gap-3">
+      <Collapsible className="grid min-w-0 gap-3">
         <CollapsibleTrigger
           render={<Button variant="ghost" className="group justify-start px-2" />}
         >
           <ChevronRightIcon className="transition-transform group-data-[panel-open]:rotate-90" />
           {t('technical.title')}
         </CollapsibleTrigger>
-        <CollapsibleContent className="grid gap-4">
+        <CollapsibleContent className="grid min-w-0 gap-4">
           <p className="text-sm text-muted-foreground">{t('technical.description')}</p>
           <div className="overflow-x-auto">
             <Table>
