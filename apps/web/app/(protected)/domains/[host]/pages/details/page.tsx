@@ -199,15 +199,17 @@ export default async function PagesDetailsPage({
     >
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
-          <Link
-            href={`/domains/${host}/pages/parameters${browsable ? '?crawl=' + browsable.id : ''}`}
-            className="text-sm underline"
-          >
-            {tParameters('title')}
-          </Link>
           <h1 className="text-2xl font-semibold">{t('title')}</h1>
           {!selected && <p className="text-sm text-muted-foreground">{t('neverCrawled')}</p>}
         </div>
+        {selected && (
+          <Link
+            href={`/domains/${host}/pages/parameters${browsable ? `?crawl=${browsable.id}` : ''}`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            {tParameters('title')}
+          </Link>
+        )}
       </div>
       {selected && (
         <>

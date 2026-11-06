@@ -3185,16 +3185,21 @@
     "updates": "Updates"
   },
   "Parameters": {
+    "metaTitle": "Query parameters · {host} · seotools",
+    "back": "← URLs",
     "title": "Query parameters",
-    "empty": "No crawl results yet.",
-    "pruned": "The URL results of this crawl have been pruned.",
-    "crawl": "Crawl: {date}",
-    "bounded": "Limited to the first 100,000 URLs containing a query string.",
+    "crawl": "Full crawl of {date}",
+    "empty": "Parameters appear here once the domain has had a full crawl.",
+    "pruned": "Detailed results from this crawl are no longer retained.",
+    "names": "Parameters found",
+    "bounded": "Counted over the first {count, number} URLs with a query string.",
     "name": "Parameter",
     "count": "URLs",
-    "none": "No query parameters found.",
-    "entries": "Where they enter",
-    "noContext": "No stored link context is available. Older crawls did not retain it.",
+    "none": "No internal URL of this crawl has query parameters.",
+    "entries": "Where they enter the site",
+    "entriesHelp": "Links from a URL without a parameter to a URL with it.",
+    "noContext": "No entry points were stored for this crawl. Crawls from before this version did not keep them.",
+    "pagination": "Entry points pages",
     "previous": "Previous",
     "next": "Next"
   }

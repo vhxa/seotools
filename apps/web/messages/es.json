@@ -3185,16 +3185,21 @@
     "updates": "Actualizaciones"
   },
   "Parameters": {
+    "metaTitle": "Parámetros de consulta · {host} · seotools",
+    "back": "← URL",
     "title": "Parámetros de consulta",
-    "empty": "Todavía no hay resultados.",
-    "pruned": "Los resultados de URL de este rastreo se han eliminado.",
-    "crawl": "Rastreo: {date}",
-    "bounded": "Limitado a las primeras 100.000 URL con una cadena de consulta.",
+    "crawl": "Rastreo completo del {date}",
+    "empty": "Los parámetros aparecen aquí cuando el dominio tenga un rastreo completo.",
+    "pruned": "Los resultados detallados de este rastreo ya no se conservan.",
+    "names": "Parámetros encontrados",
+    "bounded": "Contados sobre las primeras {count, number} URL con parámetros.",
     "name": "Parámetro",
     "count": "URL",
-    "none": "No se encontraron parámetros.",
-    "entries": "Dónde entran",
-    "noContext": "No hay contexto de enlace guardado. Los rastreos antiguos no lo conservaban.",
+    "none": "Ninguna URL interna de este rastreo tiene parámetros de consulta.",
+    "entries": "Por dónde entran en el sitio",
+    "entriesHelp": "Enlaces desde una URL sin el parámetro a una URL que lo tiene.",
+    "noContext": "Este rastreo no guardó puntos de entrada. Los rastreos anteriores a esta versión no los conservaban.",
+    "pagination": "Páginas de puntos de entrada",
     "previous": "Anterior",
     "next": "Siguiente"
   }
