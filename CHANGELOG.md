@@ -20,12 +20,6 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
-### Added
-
-- Crawl settings support path scope, maximum depth, encrypted request headers and Basic Auth. URLs outside the scope remain visible as not requested.
-- Editors can crawl an ad hoc list of up to 1000 URLs without following links.
-- Crawl schedules offer editable IANA time zones; daily, weekly and monthly runs shift missing DST times forward and use the earlier instant for repeated times. Hourly schedules run in each real hour.
-
 ### Breaking
 
 - **Old crawls keep a compact history instead of everything.** The full results (links, evidence,
@@ -64,6 +58,10 @@ which moves the entries of `[Unreleased]` into the new version.
   and so are a missing `alt`, `nosnippet` and a possible soft 404; `noimageindex` is a low warning.
 
 ### Added
+
+- Crawl settings support path scope, maximum depth, encrypted request headers and Basic Auth. URLs outside the scope remain visible as not requested.
+- Editors can crawl an ad hoc list of up to 1000 URLs without following links.
+- Crawl schedules offer editable IANA time zones; daily, weekly and monthly runs shift missing DST times forward and use the earlier instant for repeated times. Hourly schedules run in each real hour.
 
 - **Thresholds per domain** (Settings → Audit → Thresholds): the figures some checks compare with
   (title and meta description length, words for thin content, URL length, click depth, image
