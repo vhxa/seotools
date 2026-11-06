@@ -2,7 +2,7 @@ import { ArrowLeftIcon } from 'lucide-react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
-import { byAge } from '@seotools/core/crawl/compare'
+import { byAge, keepsUrlHistory } from '@seotools/core/crawl/compare'
 import { CrawlBanner } from '@/components/history/crawl-banner'
 import { CrawlSwitcher } from '@/components/history/crawl-switcher'
 import { UrlHistory } from '@/components/history/url-history'
@@ -71,7 +71,7 @@ export default async function UrlPage({
     data.url.scope === 'internal'
       ? await db.crawls.urlHistory({
           domainId: domain.id,
-          crawlIds: crawls.filter((crawl) => !crawl.pruned).map((crawl) => crawl.id),
+          crawlIds: crawls.filter(keepsUrlHistory).map((crawl) => crawl.id),
           urlHashes: [hash],
         })
       : []

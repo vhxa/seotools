@@ -1,6 +1,7 @@
 import { hostname } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import {
+  DEFAULT_CRAWL_SETTINGS,
   EnvError,
   JOB_TYPES,
   MAIL_DELIVERIES_KEEP,
@@ -113,7 +114,14 @@ async function main() {
         before: new Date(Date.now() - MAIL_DELIVERIES_MAX_AGE_MS),
         keep: MAIL_DELIVERIES_KEEP,
       })
-      .catch((err) => log.error({ err }, 'could not prune the record of sent email'))
+      .then(() =>
+        // The compact history of old crawls goes after its domain's days, crawl or no crawl.
+        db.crawls.expireHistory({
+          now: new Date(),
+          defaultDays: DEFAULT_CRAWL_SETTINGS.historyDays ?? 30,
+        }),
+      )
+      .catch((err) => log.error({ err }, 'could not prune the record of sent email or old history'))
   void pruneDeliveries()
   const deliveriesTimer = setInterval(() => void pruneDeliveries(), PRUNE_INTERVAL_MS)
   void tickScheduler()

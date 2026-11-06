@@ -132,6 +132,32 @@ export function describeLifecycle(
       ])
       await db.crawlFiles.requestCheck({ domainId, now: new Date() })
 
+      // An older crawl, whose results are pruned to the compact history below.
+      const older = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+      if (!older) throw new Error('crawl did not start')
+      await db.crawls.addUrls(older.id, [
+        { url, urlHash: crawlUrlHash(url), scope: 'internal', source: 'seed', depth: 0, seq: 1 },
+      ])
+      await db.crawls.recordResult({
+        crawlId: older.id,
+        urlHash: crawlUrlHash(url),
+        result: {
+          kind: 'page',
+          statusCode: 200,
+          contentType: 'text/html',
+          redirectTo: null,
+          title: 'Home',
+          metaRobots: null,
+          xRobotsTag: null,
+          canonical: null,
+          responseTimeMs: 10,
+          bytes: 100,
+          error: null,
+          data: null,
+        },
+      })
+      await db.crawls.finish(older.id, { status: 'completed' })
+
       const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
       if (!crawl) throw new Error('crawl did not start')
       const page = (u: string) => ({
@@ -140,6 +166,7 @@ export function describeLifecycle(
         scope: 'internal' as const,
         source: 'link' as const,
         depth: 1,
+        seq: u === url ? 1 : 2,
       })
       await db.crawls.addUrls(crawl.id, [page(url), page(other)])
       await db.crawls.recordResult({
@@ -165,6 +192,7 @@ export function describeLifecycle(
         { pageHash: crawlUrlHash(url), lang: 'es', url: `${url}es` },
       ])
       await db.crawls.finish(crawl.id, { status: 'completed' })
+      expect(await db.crawls.prune({ domainId, type: 'full', keep: 1 })).toBe(1)
       await db.alerts.save({
         userId: member.id,
         locale: 'en',
@@ -442,7 +470,8 @@ export function describeLifecycle(
           expect.arrayContaining([
             'audit_rules',
             'crawl_files',
-            'crawl_links',
+            'crawl_url_history',
+            'crawl_url_links',
             'crawl_url_accepted_issues',
             'crawl_url_audit',
             'crawl_url_issues',
@@ -692,8 +721,9 @@ export function describeLifecycle(
         const empty = await company('Empty', 'empty.com')
 
         const usage = await db.domains.usage()
+        // The crawl and an older one pruned to its compact history.
         expect(usage.get(site.domainId)).toEqual({
-          crawls: 1,
+          crawls: 2,
           urls: 2,
           rules: 1,
           rechecks: 1,

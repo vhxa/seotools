@@ -19,7 +19,8 @@ const validSettings = {
   maxRetries: '2',
   maxUrls: '100000',
   retention: 'latest',
-  retainCrawls: '10',
+  retainCrawls: '2',
+  historyDays: '30',
 }
 
 describe('parseCrawlSettingsForm', () => {

@@ -1500,7 +1500,9 @@
         "all": "Conserva los resultados de todos los rastreos completados e incompletos; la base de datos crece sin límite."
       },
       "countLabel": "Cuántos de cada tipo",
-      "countHint": "Los rastreos antiguos solo conservan totales; se eliminan sus resultados por URL, enlaces y evidencias."
+      "countHint": "Los rastreos antiguos solo conservan totales; se eliminan sus resultados por URL, enlaces y evidencias.",
+      "historyLabel": "Días de historial de URLs",
+      "historyHint": "Cuando se borran los resultados completos de un rastreo antiguo, lo que fue cada URL (su respuesta y sus hallazgos) se guarda este tiempo. Déjalo vacío para guardarlo siempre."
     },
     "optionalFiles": {
       "label": "Otros archivos de rastreo",
@@ -1552,7 +1554,8 @@
       "maxUrls": "El límite de URLs debe estar entre {min} y {max}, o vacío para no poner límite.",
       "retainCrawls": "El número de rastreos que se conservan debe estar entre {min} y {max}.",
       "indexNowKey": "La clave de IndexNow debe tener de 8 a 128 letras, números o guiones.",
-      "indexNowKeyRequired": "Introduce la clave de IndexNow o desactiva IndexNow."
+      "indexNowKeyRequired": "Introduce la clave de IndexNow o desactiva IndexNow.",
+      "historyDays": "Los días de historial deben estar entre {min} y {max}."
     }
   },
   "CrawlFiles": {

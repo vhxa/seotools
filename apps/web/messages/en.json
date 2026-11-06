@@ -1500,7 +1500,9 @@
         "all": "Keeps all completed and incomplete crawl results; the database grows without limit."
       },
       "countLabel": "How many of each type",
-      "countHint": "Older crawls keep totals only; their URL results, links and evidence are removed."
+      "countHint": "Older crawls keep totals only; their URL results, links and evidence are removed.",
+      "historyLabel": "Days of URL history",
+      "historyHint": "After its full results are removed, what each URL was in an older crawl (its answer and findings) is kept this long. Leave it empty to keep it always."
     },
     "optionalFiles": {
       "label": "Other crawl files",
@@ -1552,7 +1554,8 @@
       "maxUrls": "The URL limit must be between {min} and {max}, or empty for no limit.",
       "retainCrawls": "The number of crawls to keep must be between {min} and {max}.",
       "indexNowKey": "The IndexNow key must be 8 to 128 letters, numbers or dashes.",
-      "indexNowKeyRequired": "Enter the IndexNow key, or turn IndexNow off."
+      "indexNowKeyRequired": "Enter the IndexNow key, or turn IndexNow off.",
+      "historyDays": "The days of history must be between {min} and {max}."
     }
   },
   "CrawlFiles": {

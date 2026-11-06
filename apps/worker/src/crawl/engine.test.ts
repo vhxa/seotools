@@ -68,6 +68,47 @@ const row = async (crawlId: string, url: string) =>
   (await db.crawls.latestResults(domainId, [crawlUrlHash(url)])).find((r) => r.crawlId === crawlId)
 
 describe('full crawl', () => {
+  it('keeps how each URL was found and where each link sits, and what was asked as a file stays one', async () => {
+    const site = fakeSite({
+      'https://example.com/': html(
+        `<head><script src="/gone.js"></script></head>
+        <body><nav><a class="menu-item" href="/about">About us</a></nav></body>`,
+      ),
+      'https://example.com/about': html('<title>About</title>'),
+      // A missing script answered with the site's HTML error page.
+      'https://example.com/gone.js': {
+        statusCode: 404,
+        headers: { 'content-type': 'text/html' },
+        body: Buffer.from('<html><title>Not found</title></html>'),
+      },
+    })
+    const { crawl } = await crawlWith(site)
+    const home = await row(crawl.id, 'https://example.com/')
+    const about = await row(crawl.id, 'https://example.com/about')
+    expect(about).toMatchObject({ foundFrom: home!.seq, foundKind: 'anchor' })
+    expect(await row(crawl.id, 'https://example.com/gone.js')).toMatchObject({
+      kind: 'resource',
+      statusCode: 404,
+      foundKind: 'script',
+    })
+    expect(await urls(crawl.id, 'pages')).not.toContain('https://example.com/gone.js')
+    expect(await urls(crawl.id, 'errors')).toContain('https://example.com/gone.js')
+
+    const [link] = await db.crawls.listLinks({
+      crawlId: crawl.id,
+      urlHash: crawlUrlHash('https://example.com/'),
+      direction: 'out',
+      kinds: ['anchor'],
+      limit: 10,
+      offset: 0,
+    })
+    expect(link).toMatchObject({
+      url: 'https://example.com/about',
+      context: { text: 'About us', element: 'a.menu-item', region: 'nav' },
+    })
+    expect(crawl.ref).toBeGreaterThan(0)
+  })
+
   it('reaches every URL from the homepage, the sitemap and everything linked', async () => {
     const site = fakeSite({
       'https://example.com/': html(`

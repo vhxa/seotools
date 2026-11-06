@@ -225,11 +225,20 @@ export function CrawlSettingsForm({
             name="retainCrawls"
             label={t('retention.countLabel')}
             hint={t('retention.countHint')}
-            defaultValue={settings.retainCrawls ?? 10}
+            defaultValue={settings.retainCrawls ?? 2}
             disabled={!canEdit}
             {...limits.retainCrawls}
           />
         )}
+        <NumberField
+          name="historyDays"
+          label={t('retention.historyLabel')}
+          hint={t('retention.historyHint')}
+          defaultValue={settings.historyDays ?? ''}
+          disabled={!canEdit}
+          required={false}
+          {...limits.historyDays}
+        />
       </div>
 
       <fieldset className="grid gap-4">

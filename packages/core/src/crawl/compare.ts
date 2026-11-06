@@ -104,8 +104,10 @@ export interface CrawlLike {
   status: CrawlStatus
   createdAt: Date
   finishedAt: Date | null
-  /** The results per URL were removed by retention; only the totals remain. */
+  /** The results per URL were removed by retention. */
   pruned: boolean
+  /** Pruned, but what each URL was (answer, findings, audit state) is kept in the compact history. */
+  history?: boolean
   /** `null`: the crawl was never analysed, so it has no findings. */
   pagesByWorstIssue: unknown
   /** `null`: analysed before what was concluded about each URL was kept. */
@@ -114,6 +116,13 @@ export interface CrawlLike {
   auditVersion: number | null
   auditSnapshot: AuditSnapshot | null
 }
+
+/**
+ * Whether a crawl still says what each URL was: its full results, or the compact history that
+ * replaces them for a while. Links, evidence and the rest are only in the full results (`!pruned`).
+ */
+export const keepsUrlHistory = (crawl: Pick<CrawlLike, 'pruned' | 'history'>) =>
+  !crawl.pruned || crawl.history === true
 
 /** Crawls that finished with results worth browsing (`completed`, or `incomplete` at the URL limit). */
 export const isBrowsableStatus = (status: CrawlStatus) =>
@@ -195,7 +204,7 @@ export interface CrawlFacts {
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
   return {
-    retained: !crawl.pruned,
+    retained: keepsUrlHistory(crawl),
     analysed: crawl.pagesByWorstIssue !== null,
     complete: crawl.status === 'completed',
     catalog: crawl.issueCatalog,
