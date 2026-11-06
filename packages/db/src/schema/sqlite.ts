@@ -181,6 +181,8 @@ export const crawlSettings = sqliteTable('crawl_settings', {
   indexNowKey: text('index_now_key'),
   includePrefixes: text('include_prefixes'),
   excludePrefixes: text('exclude_prefixes'),
+  /** JSON array of `Extractor` (custom extraction). `null`: none. */
+  extractors: text('extractors'),
   maxDepth: integer('max_depth'),
   requestSecrets: text('request_secrets'),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),

@@ -76,6 +76,7 @@ export async function GET(
       onlyAccepted: query.accepted,
       analysed: crawl.pagesByWorstIssue !== null,
       translate,
+      extractors: (await db.crawls.settings(domain.id)).extractors,
     },
   })
 

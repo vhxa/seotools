@@ -26,6 +26,7 @@ import {
   alertLocaleOf,
   crawlUrlHash,
   enabledExtraFiles,
+  extractorsSchema,
   isPageIssueId,
   isSecondaryFinding,
   parseAuditSnapshot,
@@ -1281,9 +1282,10 @@ export function toDomainFavicon(row: {
 
 export type CrawlSettingsRow = Omit<
   CrawlSettings,
-  'optionalFiles' | 'includePrefixes' | 'excludePrefixes'
+  'optionalFiles' | 'includePrefixes' | 'excludePrefixes' | 'extractors'
 > & {
   optionalFiles: string | null
+  extractors: string | null
   requestSecrets: string | null
   includePrefixes: string | null
   excludePrefixes: string | null
@@ -1298,9 +1300,12 @@ export const toCrawlSettings = ({
   requestSecrets: _requestSecrets,
   includePrefixes,
   excludePrefixes,
+  extractors,
   ...row
 }: CrawlSettingsRow): CrawlSettings => ({
   ...row,
+  // Read back through its schema: an extractor that no longer checks out is dropped, not run.
+  extractors: extractorsSchema.catch([]).parse(parseJson(extractors) ?? []),
   includePrefixes: (parseJson(includePrefixes) ?? []) as string[],
   excludePrefixes: (parseJson(excludePrefixes) ?? []) as string[],
   optionalFiles: (parseJson(optionalFiles) ?? []) as CrawlSettings['optionalFiles'],
@@ -1320,9 +1325,11 @@ export const crawlSettingsColumns = ({
   optionalFiles,
   includePrefixes,
   excludePrefixes,
+  extractors,
   ...settings
 }: CrawlSettings) => ({
   ...settings,
+  extractors: extractors.length > 0 ? JSON.stringify(extractors) : null,
   optionalFiles: JSON.stringify(optionalFiles),
   includePrefixes: JSON.stringify(includePrefixes),
   excludePrefixes: JSON.stringify(excludePrefixes),

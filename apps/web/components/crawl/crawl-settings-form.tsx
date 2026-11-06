@@ -1,4 +1,5 @@
 'use client'
+import { extractorsText } from '@/lib/crawl-extractors'
 
 import {
   EXTRA_CRAWL_FILES,
@@ -202,6 +203,19 @@ export function CrawlSettingsForm({
           <p className="text-xs text-muted-foreground">{t(`${name}.hint`)}</p>
         </div>
       ))}
+      <div className="grid gap-2">
+        <Label htmlFor="extractors">{t('extractors.label')}</Label>
+        <Textarea
+          id="extractors"
+          name="extractors"
+          defaultValue={extractorsText(settings.extractors)}
+          placeholder={t('extractors.placeholder')}
+          disabled={!canEdit}
+          className="font-mono"
+          spellCheck={false}
+        />
+        <p className="text-xs text-muted-foreground">{t('extractors.hint')}</p>
+      </div>
       <NumberField
         name="maxDepth"
         label={t('maxDepth.label')}

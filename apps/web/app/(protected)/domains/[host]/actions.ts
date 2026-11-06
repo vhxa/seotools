@@ -1,5 +1,6 @@
 'use server'
 
+import { EXTRACTION_LIMITS } from '@seotools/core/crawl/extraction'
 import {
   CRAWL_SETTINGS_LIMITS,
   domainRequestSettings,
@@ -161,6 +162,8 @@ export async function saveCrawlSettingsAction(
     switch (parsed.error) {
       case 'scope':
         return { error: t('scope') }
+      case 'extractors':
+        return { error: t('extractors', { max: EXTRACTION_LIMITS.extractors }) }
       case 'renderingUnavailable':
         return { error: t('renderingUnavailable') }
       case 'userAgent':

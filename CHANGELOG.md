@@ -59,6 +59,9 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **Custom extraction** (Settings → Crawling): up to 10 values read from every page with a CSS
+  selector, as text or from an attribute (a price, an author, a product id). They show in the
+  detail of each URL and as columns of the pages CSV, from the next crawl.
 - **Export links and redirects** from the URLs table (Export menu): one row per link leaving the
   listed URLs (with its text, element and part of the page), and one row per redirect with where
   its chain ends, how many hops it has and whether it loops.

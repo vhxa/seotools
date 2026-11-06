@@ -228,6 +228,7 @@ export async function runVerification(
               item,
               response,
               optionalFiles: [],
+              extractors: settings.extractors,
               log,
               discover: (url, kind) => anchors.add(url, kind),
             }).result

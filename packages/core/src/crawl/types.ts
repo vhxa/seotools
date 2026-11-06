@@ -1,3 +1,4 @@
+import type { Extracted } from './extraction'
 import type { StructuredDataProblem } from './structured-data'
 export const CRAWL_TYPES = ['full', 'priority'] as const
 export type CrawlType = (typeof CRAWL_TYPES)[number]
@@ -286,6 +287,8 @@ export type IssueEvidence =
 /** Data extracted from a page that has no column of its own. */
 export interface CrawlPageData {
   notRequested?: 'excluded' | 'depth'
+  /** What the domain's custom extractors read from the page, by extractor key. */
+  extracted?: Extracted
   description?: string
   h1?: string[]
   hreflang?: HreflangEntry[]
