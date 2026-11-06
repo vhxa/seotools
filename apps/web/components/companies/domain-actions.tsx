@@ -9,7 +9,7 @@ import {
   deleteDomainAction,
   moveDomainAction,
   unarchiveDomainAction,
-} from '@/app/(protected)/companies/actions'
+} from '@/app/(protected)/system/companies/actions'
 import { ActionDialog } from '@/components/companies/action-dialog'
 import { UsageList, type UsageCounts } from '@/components/companies/usage-list'
 import { Button, buttonVariants } from '@/components/ui/button'

@@ -81,7 +81,6 @@ describe('pages and routes', () => {
     const instance = all.filter(
       (path) =>
         path.includes(join('(protected)', 'system')) ||
-        path.includes(join('(protected)', 'companies')) ||
         path.includes(join('domains', 'new')),
     )
     expect(instance.length).toBeGreaterThanOrEqual(5)
