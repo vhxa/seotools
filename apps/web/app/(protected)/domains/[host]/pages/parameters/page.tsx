@@ -175,7 +175,7 @@ export default async function ParametersPage({
                   {[
                     tKinds(entry.kind),
                     entry.context?.text ? `“${entry.context.text}”` : undefined,
-                    entry.context?.element ? `<${entry.context.element}>` : undefined,
+                    entry.context?.element,
                     entry.context?.region ? tRegions(entry.context.region) : undefined,
                   ]
                     .filter(Boolean)
