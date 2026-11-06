@@ -1,8 +1,8 @@
 'use client'
 
 import {
+  isSecondaryFinding,
   PAGE_ISSUES,
-  compareIssueSeverity,
   isPageIssueId,
   type IssueDetailKind,
 } from '@seotools/core/crawl/issues'
@@ -65,7 +65,7 @@ import {
   RuleOrigin,
 } from '@/components/audit/state-badges'
 import { StatusCell } from '@/components/crawl/status-cell'
-import { IssueBadge, IssueDetails, useIssueLabel } from '@/components/pages/issue-mark'
+import { ISSUE_TYPE_STYLES, IssueDetails, useIssueLabel } from '@/components/pages/issue-mark'
 import { ExportMenu } from '@/components/pages/export-menu'
 import { TableFilters } from '@/components/pages/table-filters'
 import {
@@ -92,6 +92,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { findingCounters } from '@/lib/finding-counters'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useLocalStorage } from '@/hooks/use-local-storage'
 import type { RuleRef } from '@/lib/audit-rules'
@@ -263,14 +264,15 @@ function PriorityStar({ host, row }: { host: string; row: PageRow }) {
 }
 
 /** Rows have to stay rows: a page can have dozens of issues, and its detail lists them all. */
-const MAX_ISSUE_BADGES = 3
 
 function IssueBadges({
   ids,
+  indexability,
   participation,
   analysed,
 }: {
   ids: string[]
+  indexability: IndexabilityState | null
   participation: AuditParticipation | null
   /** Whether the crawl was checked for issues at all. */
   analysed: boolean
@@ -288,22 +290,25 @@ function IssueBadges({
   }
   if (!analysed) return <span className="text-muted-foreground">{t('findings.notAnalysed')}</span>
   if (ids.length === 0) return <span className="text-muted-foreground">{t('findings.none')}</span>
-  const ranked = [...ids].sort(
-    (a, b) =>
-      Number(isPageIssueId(b)) - Number(isPageIssueId(a)) ||
-      (isPageIssueId(a) && isPageIssueId(b) ? compareIssueSeverity(a, b) : 0),
-  )
-  const rest = ranked.slice(MAX_ISSUE_BADGES)
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {ranked.slice(0, MAX_ISSUE_BADGES).map((id) => (
-        <IssueBadge key={id} issue={id} />
-      ))}
-      {rest.length > 0 && (
-        <Badge variant="outline" title={rest.map(label).join('\n')}>
-          {t('moreIssues', { count: rest.length })}
-        </Badge>
-      )}
+    <div className="flex gap-2">
+      {findingCounters(ids, indexability).map(({ type, primary, secondary }) => {
+        const Icon = ISSUE_TYPE_STYLES[type].icon
+        return primary.length + secondary.length > 0 ? (
+          <span
+            key={type}
+            className={primary.length ? ISSUE_TYPE_STYLES[type].text : 'text-muted-foreground'}
+            title={[
+              ...primary.map(label),
+              ...secondary.map((id) => label(id) + ' · ' + t('secondaryFinding')),
+            ].join('\n')}
+          >
+            <Icon aria-hidden className="mr-1 inline size-3.5" />
+            {primary.length}
+          </span>
+        ) : null
+      })}
     </div>
   )
 }
@@ -375,13 +380,30 @@ function Cell({
       if (row.notRequested) return <Muted>{t(`notRequested.${row.notRequested}`)}</Muted>
       return <StatusCell row={row} automaticCheck={row.automaticCheck} />
     case 'issueDetail':
+      if (
+        query.issue &&
+        isPageIssueId(query.issue) &&
+        isSecondaryFinding(query.issue, row.indexability)
+      )
+        return (
+          <Badge variant="secondary" className="text-muted-foreground">
+            {t('secondaryFinding')}
+          </Badge>
+        )
       return row.issueDetails.length > 0 ? (
         <IssueDetails details={row.issueDetails} />
       ) : (
         <Muted>—</Muted>
       )
     case 'issues':
-      return <IssueBadges ids={row.issues} participation={row.participation} analysed={analysed} />
+      return (
+        <IssueBadges
+          indexability={row.indexability}
+          ids={row.issues}
+          participation={row.participation}
+          analysed={analysed}
+        />
+      )
     case 'audit':
       return row.internal ? (
         <ParticipationBadge participation={row.participation} />
@@ -788,7 +810,9 @@ export function PagesTable({
                             onCheckedChange={(value) => table.toggleAllRowsSelected(value)}
                             aria-label={t('selectAll')}
                           />
-                        ) : column.id === 'actions' ? null : (
+                        ) : column.id === 'actions' ? (
+                          <span className="sr-only">{t('columns.actions')}</span>
+                        ) : (
                           <SortableHead
                             id={column.id}
                             label={

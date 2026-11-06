@@ -47,7 +47,9 @@ which moves the entries of `[Unreleased]` into the new version.
   and a Crawls section. Administration groups status, companies, users, email and updates; old
   company and pages-overview addresses redirect to their new locations. Status describes worker
   health and job results in words, with the queue under Technical details.
-
+- The detail of a URL shows its key facts first and the rest in tabs, with how the crawler
+  reached it and, for each link, its text, element and page region. The URLs table counts
+  findings by type in less space, apart from those on non-indexable pages.
 - Links take much less space: on a real site the database went from 1.1 GB to 133 MB after the
   first start. SQLite files are compacted on start when a removal left them mostly empty.
 - Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a
@@ -64,6 +66,9 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **Query parameters** (URLs → Parameters): every parameter the crawl found, with how many URLs
+  carry it, and where each one enters the site: the link from a URL without it to one with it.
+- Light and dark themes, or the system's, chosen in the account menu.
 - **Custom extraction** (Settings → Crawling): up to 10 values read from every page with a CSS
   selector, as text or from an attribute (a price, an author, a product id). They show in the
   detail of each URL and as columns of the pages CSV, from the next crawl.
@@ -95,6 +100,7 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Fixed
 
+- Secondary text has enough contrast in light and dark themes.
 - A script, stylesheet or image that answers with an HTML error page (a missing `.js` on many
   sites) is a broken resource, no longer counted as a page.
 - Running the bundled worker scripts (`node apps/worker/dist/recover.mjs <email>`, `bootstrap.mjs`) outside Docker no longer needs `MIGRATIONS_DIR`: the migrations are found next to the repository, and when they are not, the error names the folders it looked in and says to set `MIGRATIONS_DIR`.

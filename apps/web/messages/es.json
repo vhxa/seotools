@@ -7,7 +7,12 @@
       "failed": "La petición falló",
       "noResponse": "Sin respuesta"
     },
-    "account": "Cuenta"
+    "account": "Cuenta",
+    "theme": {
+      "system": "Tema del sistema",
+      "light": "Tema claro",
+      "dark": "Tema oscuro"
+    }
   },
   "NotFound": {
     "title": "Página no encontrada",
@@ -524,7 +529,8 @@
       "audit": "Auditoría",
       "intent": "Intención de indexación",
       "indexability": "Estado técnico",
-      "origin": "Origen de la configuración"
+      "origin": "Origen de la configuración",
+      "actions": "Acciones"
     },
     "sortBy": "Ordenar por {column}",
     "sortedAscending": "Orden ascendente, haz clic para ordenar de forma descendente",
@@ -641,7 +647,8 @@
     "notRequested": {
       "excluded": "No solicitada: excluida por la configuración de rastreo",
       "depth": "No solicitada: profundidad máxima superada"
-    }
+    },
+    "secondaryFinding": "En una página no indexable"
   },
   "Export": {
     "menu": {
@@ -806,7 +813,21 @@
     "notRequested": {
       "excluded": "No solicitada: excluida por la configuración de rastreo",
       "depth": "No solicitada: profundidad máxima superada"
-    }
+    },
+    "keyFacts": "Datos clave",
+    "characters": "({count} caracteres)",
+    "self": "Propia",
+    "discovery": "Cómo se encontró",
+    "tabs": {
+      "findings": "Hallazgos",
+      "links": "Enlaces",
+      "indexing": "Indexación",
+      "history": "Historial",
+      "technical": "Técnico"
+    },
+    "words": "Palabras",
+    "inbound": "Enlaces entrantes",
+    "viewHistory": "Ver historial de la URL"
   },
   "UrlLinks": {
     "in": {
@@ -3162,5 +3183,19 @@
     "users": "Usuarios",
     "email": "Correo",
     "updates": "Actualizaciones"
+  },
+  "Parameters": {
+    "title": "Parámetros de consulta",
+    "empty": "Todavía no hay resultados.",
+    "pruned": "Los resultados de URL de este rastreo se han eliminado.",
+    "crawl": "Rastreo: {date}",
+    "bounded": "Limitado a las primeras 100.000 URL con una cadena de consulta.",
+    "name": "Parámetro",
+    "count": "URL",
+    "none": "No se encontraron parámetros.",
+    "entries": "Dónde entran",
+    "noContext": "No hay contexto de enlace guardado. Los rastreos antiguos no lo conservaban.",
+    "previous": "Anterior",
+    "next": "Siguiente"
   }
 }

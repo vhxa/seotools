@@ -10,7 +10,14 @@ const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const locale = await getLocale()
   return (
-    <html lang={locale} className={cn('font-sans', geist.variable)}>
+    <html suppressHydrationWarning lang={locale} className={cn('font-sans', geist.variable)}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{const t=localStorage.getItem('seotools-theme');document.documentElement.classList.toggle('dark',t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches))}catch{}`,
+          }}
+        />
+      </head>
       <body>
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>

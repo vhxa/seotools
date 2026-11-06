@@ -60,6 +60,7 @@ export function UrlLinksPanel({
 }) {
   const direction = initial.direction
   const t = useTranslations('UrlLinks')
+  const tRegions = useTranslations('LinkRegions')
   const tKinds = useTranslations('LinkKinds')
   const tPagination = useTranslations('Pagination')
   const format = useFormatter()
@@ -138,7 +139,6 @@ export function UrlLinksPanel({
           {t(`${direction}.title`)}
           <Badge variant="secondary">{t('count', { count: everything })}</Badge>
         </h3>
-        <p className="text-sm text-muted-foreground">{t(`${direction}.description`)}</p>
       </div>
 
       <Tabs
@@ -263,6 +263,22 @@ export function UrlLinksPanel({
                         {tKinds(isLinkKind(link.kind) ? link.kind : 'other')}
                       </Badge>
                     </span>
+                    {link.context && (
+                      <div className="col-span-full grid gap-1 text-xs break-words whitespace-normal text-muted-foreground">
+                        <p>
+                          {[
+                            link.context.text,
+                            link.context.element,
+                            link.context.region ? tRegions(link.context.region) : undefined,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                        {link.context.snippet && (
+                          <p className="font-mono">{link.context.snippet}</p>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

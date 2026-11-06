@@ -26,6 +26,7 @@ import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRecheck } from '@/components/verification/url-recheck'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { groupDetailFindings } from '@/lib/url-detail-findings'
 import { ruleRefsOf } from '@/lib/audit-rules'
@@ -35,7 +36,7 @@ import type { UrlDetailData } from '@/lib/url-detail'
 function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
     <section id={id} className="grid min-w-0 scroll-mt-4 grid-cols-[minmax(0,1fr)] gap-3">
-      <h3 className="text-sm font-medium">{title}</h3>
+      <h2 className="text-sm font-medium">{title}</h2>
       {children}
     </section>
   )
@@ -67,8 +68,10 @@ export async function UrlDetail({
   data,
   hrefFor,
   context,
+  history,
 }: {
   host: string
+  history?: ReactNode
   context?: ReactNode
   data: UrlDetailData
   hrefFor: (urlHash: string) => string
@@ -91,6 +94,8 @@ export async function UrlDetail({
   const extractors = new Map(
     (await (await getDb()).crawls.settings(crawl.domainId)).extractors.map((e) => [e.key, e.name]),
   )
+  const discovery = await (await getDb()).crawls.discoveryPath(crawl.id, url.urlHash)
+  const tKinds = await getTranslations('LinkKinds')
   const extracted = Object.entries(url.data?.extracted ?? {})
   const notSet = <span className="text-muted-foreground">{t('notSet')}</span>
   const text = (value: string | null | undefined) => (value ? value : notSet)
@@ -186,150 +191,25 @@ export async function UrlDetail({
           )}
       </Section>
 
-      <Section id={findingsId} title={t('sections.issues')}>
-        <p className="text-xs text-muted-foreground">{t('crawlFindingsNote')}</p>
-        {crawl.pagesByWorstIssue === null ? (
-          <p className="text-sm text-muted-foreground">{t('notChecked')}</p>
-        ) : audit?.participation === 'excluded' ? (
-          <p className="text-sm text-muted-foreground">{t('excludedFindings')}</p>
-        ) : data.issues.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {data.accepted.length > 0 ? t('noPendingIssues') : t('noIssues')}
-          </p>
-        ) : (
-          <div className="grid gap-4">
-            {findingGroups.map(({ importance, findings }) => (
-              <div key={importance} className="grid gap-2">
-                <h4 className="text-sm font-medium">
-                  {t(`findingGroups.${importance}`, { count: findings.length })}
-                </h4>
-                <ul className="grid gap-2 text-sm">
-                  {findings.map(({ issue: id, details, evidence }) => (
-                    <li key={id}>
-                      <Disclosure
-                        defaultOpen={importance === 'high'}
-                        title={
-                          <span className="flex flex-wrap items-center gap-2">
-                            {isPageIssueId(id) && <IssueMark issue={id} />}
-                            <IssueLabel issue={id} />
-                          </span>
-                        }
-                      >
-                        {isPageIssueId(id) && (
-                          <p className="text-muted-foreground">{tIssues(`${id}.description`)}</p>
-                        )}
-                        {details && <IssueDetails details={details} />}
-                        <IssueEvidenceView
-                          issue={id}
-                          evidence={evidence}
-                          known={data.evidenceUrls}
-                          hrefFor={hrefFor}
-                        />
-                        <FindingHelp issue={id} />
-                      </Disclosure>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      <AcceptedFindings data={data} hrefFor={hrefFor} />
-
-      <UrlRecheck data={data} />
-
-      {url.scope === 'internal' && (
-        <Disclosure title={t('sections.audit')}>
-          {audit === null ? (
-            <p className="text-sm text-muted-foreground">{tAudit('notAnalysed')}</p>
-          ) : (
-            <>
-              <Fields>
-                {audit.participation === 'excluded' && (
-                  <Field label={tAudit('participation')}>
-                    <ParticipationBadge participation={audit.participation} />
-                  </Field>
-                )}
-                {audit.intentRule !== null && (
-                  <Field label={tAudit('intent')}>
-                    {isPage ? (
-                      <div className="grid gap-1">
-                        <div className="flex flex-wrap gap-1">
-                          <IntentBadge
-                            intent={audit.intent}
-                            isDefault={audit.intentRule === null}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {tState('intent.notApplicable')}
-                      </span>
-                    )}
-                  </Field>
-                )}
-                {AUDIT_CONDITIONS.some((condition) => audit.conditions[condition]) && (
-                  <Field label={tAudit('conditions')}>
-                    <div className="grid gap-2">
-                      {AUDIT_CONDITIONS.map((condition) => {
-                        const state = audit.conditions[condition]
-                        return state ? (
-                          <div key={condition} className="grid gap-1">
-                            <div className="flex flex-wrap gap-1">
-                              <ConditionBadges
-                                conditions={{ [condition]: state }}
-                                className="h-auto max-w-full whitespace-normal"
-                              />
-                            </div>
-                            <RuleOrigin rule={refOf(state.rule)} />
-                          </div>
-                        ) : null
-                      })}
-                    </div>
-                  </Field>
-                )}
-              </Fields>
-              {isPage && audit.intentRule !== null && (
-                <IntentOutcomeText
-                  outcome={intentOutcome(audit.intent, audit.indexability, audit.blockers)}
-                />
-              )}
-              {audit.participation === 'excluded' && (
-                <p className="text-sm text-muted-foreground">{tAudit('excludedNote')}</p>
-              )}
-              {(audit.participationRule !== null || audit.intentRule !== null) && (
-                <Disclosure title={t('sections.ruleOrigins')}>
-                  <Fields>
-                    {audit.participationRule !== null && (
-                      <Field label={tAudit('participation')}>
-                        <RuleOrigin rule={refOf(audit.participationRule)} />
-                      </Field>
-                    )}
-                    {isPage && audit.intentRule !== null && (
-                      <Field label={tAudit('intent')}>
-                        <RuleOrigin rule={refOf(audit.intentRule)} />
-                      </Field>
-                    )}
-                  </Fields>
-                </Disclosure>
-              )}
-              {audit.participationRule === null &&
-                audit.intentRule === null &&
-                !AUDIT_CONDITIONS.some((condition) => audit.conditions[condition]) && (
-                  <p className="text-sm text-muted-foreground">{tAudit('noExplicitRules')}</p>
-                )}
-            </>
-          )}
-        </Disclosure>
-      )}
-
       {isPage && (
-        <Disclosure title={t('sections.page')}>
+        <Section title={t('keyFacts')}>
           <Fields>
-            <Field label={t('fields.title')}>{text(url.title)}</Field>
-            <Field label={t('fields.description')}>{text(url.data?.description)}</Field>
+            <Field label={t('fields.title')}>
+              {text(url.title)}{' '}
+              {url.title && (
+                <span className="text-muted-foreground">
+                  {t('characters', { count: url.title.length })}
+                </span>
+              )}
+            </Field>
+            <Field label={t('fields.description')}>
+              {text(url.data?.description)}{' '}
+              {url.data?.description && (
+                <span className="text-muted-foreground">
+                  {t('characters', { count: url.data.description.length })}
+                </span>
+              )}
+            </Field>
             <Field label={t('fields.h1')}>
               {url.data?.h1?.length ? (
                 <ul className="grid gap-1">
@@ -341,7 +221,26 @@ export async function UrlDetail({
                 notSet
               )}
             </Field>
-            <Field label={t('fields.canonical')}>{text(url.canonical)}</Field>
+            <Field label={t('fields.canonical')}>
+              {text(url.canonical)}{' '}
+              {url.canonical === url.url && <Badge variant="secondary">{t('self')}</Badge>}
+            </Field>
+
+            <Field label={t('fields.metaRobots')}>{text(url.metaRobots)}</Field>
+            <Field label={t('fields.xRobotsTag')}>{text(url.xRobotsTag)}</Field>
+            <Field label={t('words')}>
+              {url.data?.facts ? format.number(url.data.facts.words) : notSet}
+            </Field>
+            <Field label={t('fields.depth')}>{format.number(url.depth)}</Field>
+            <Field label={t('inbound')}>{format.number(data.links.in.total)}</Field>
+            <Field label={t('fields.responseTime')}>
+              {url.responseTimeMs === null
+                ? notSet
+                : t('responseTime', { value: url.responseTimeMs })}
+            </Field>
+            <Field label={t('fields.size')}>
+              {url.bytes === null ? notSet : formatBytes(format, url.bytes)}
+            </Field>
             {extracted.map(([key, values]) => (
               <Field key={key} label={extractors.get(key) ?? key}>
                 <ul className="grid gap-1">
@@ -352,33 +251,213 @@ export async function UrlDetail({
               </Field>
             ))}
           </Fields>
-        </Disclosure>
+        </Section>
       )}
 
-      <Disclosure title={t('sections.technical')}>
-        <Fields>
-          <Field label={t('fields.xRobotsTag')}>{text(url.xRobotsTag)}</Field>
-          <Field label={t('fields.metaRobots')}>{text(url.metaRobots)}</Field>
-          <Field label={t('fields.contentType')}>{text(url.contentType)}</Field>
-          <Field label={t('fields.responseTime')}>
-            {url.responseTimeMs === null
-              ? notSet
-              : t('responseTime', { value: url.responseTimeMs })}
-          </Field>
-          <Field label={t('fields.size')}>
-            {url.bytes === null ? notSet : formatBytes(format, url.bytes)}
-          </Field>
-          <Field label={t('fields.depth')}>{format.number(url.depth)}</Field>
-          <Field label={t('fields.fetchedAt')}>
-            {url.fetchedAt
-              ? format.dateTime(url.fetchedAt, { dateStyle: 'medium', timeStyle: 'short' })
-              : notSet}
-          </Field>
-        </Fields>
-      </Disclosure>
+      {discovery.length > 1 && (
+        <Section title={t('discovery')}>
+          <ol className="grid gap-2 text-sm">
+            {discovery.map((step) => (
+              <li key={step.urlHash} className="min-w-0">
+                {step.foundKind && (
+                  <span className="mr-2 text-muted-foreground">{tKinds(step.foundKind)}</span>
+                )}
+                <a className="break-all underline" href={hrefFor(step.urlHash)}>
+                  {step.url}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </Section>
+      )}
+      <Tabs defaultValue="findings" className="min-w-0">
+        <TabsList className="max-w-full flex-wrap group-data-horizontal/tabs:h-auto">
+          {(['findings', 'links', 'indexing', 'history', 'technical'] as const).map((tab) => (
+            <TabsTrigger key={tab} value={tab}>
+              {t(`tabs.${tab}`)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        <TabsContent value="findings" className="grid gap-6">
+          <Section id={findingsId} title={t('sections.issues')}>
+            {crawl.pagesByWorstIssue === null ? (
+              <p className="text-sm text-muted-foreground">{t('notChecked')}</p>
+            ) : audit?.participation === 'excluded' ? (
+              <p className="text-sm text-muted-foreground">{t('excludedFindings')}</p>
+            ) : data.issues.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {data.accepted.length > 0 ? t('noPendingIssues') : t('noIssues')}
+              </p>
+            ) : (
+              <div className="grid gap-4">
+                {findingGroups.map(({ importance, findings }) => (
+                  <div key={importance} className="grid gap-2">
+                    <h3 className="text-sm font-medium">
+                      {t(`findingGroups.${importance}`, { count: findings.length })}
+                    </h3>
+                    <ul className="grid gap-2 text-sm">
+                      {findings.map(({ issue: id, details, evidence }) => (
+                        <li key={id}>
+                          <Disclosure
+                            defaultOpen={importance === 'high'}
+                            title={
+                              <span className="flex flex-wrap items-center gap-2">
+                                {isPageIssueId(id) && <IssueMark issue={id} />}
+                                <IssueLabel issue={id} />
+                              </span>
+                            }
+                          >
+                            {isPageIssueId(id) && (
+                              <p className="text-muted-foreground">
+                                {tIssues(`${id}.description`)}
+                              </p>
+                            )}
+                            {details && <IssueDetails details={details} />}
+                            <IssueEvidenceView
+                              issue={id}
+                              evidence={evidence}
+                              known={data.evidenceUrls}
+                              hrefFor={hrefFor}
+                            />
+                            <FindingHelp issue={id} />
+                          </Disclosure>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
 
-      <UrlLinks host={host} data={data} direction="in" hrefFor={hrefFor} />
-      <UrlLinks host={host} data={data} direction="out" hrefFor={hrefFor} />
+          <AcceptedFindings data={data} hrefFor={hrefFor} />
+
+          <UrlRecheck data={data} />
+        </TabsContent>
+        <TabsContent value="indexing">
+          {url.scope === 'internal' && (
+            <Disclosure title={t('sections.audit')}>
+              {audit === null ? (
+                <p className="text-sm text-muted-foreground">{tAudit('notAnalysed')}</p>
+              ) : (
+                <>
+                  <Fields>
+                    {audit.participation === 'excluded' && (
+                      <Field label={tAudit('participation')}>
+                        <ParticipationBadge participation={audit.participation} />
+                      </Field>
+                    )}
+                    {audit.intentRule !== null && (
+                      <Field label={tAudit('intent')}>
+                        {isPage ? (
+                          <div className="grid gap-1">
+                            <div className="flex flex-wrap gap-1">
+                              <IntentBadge
+                                intent={audit.intent}
+                                isDefault={audit.intentRule === null}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {tState('intent.notApplicable')}
+                          </span>
+                        )}
+                      </Field>
+                    )}
+                    {AUDIT_CONDITIONS.some((condition) => audit.conditions[condition]) && (
+                      <Field label={tAudit('conditions')}>
+                        <div className="grid gap-2">
+                          {AUDIT_CONDITIONS.map((condition) => {
+                            const state = audit.conditions[condition]
+                            return state ? (
+                              <div key={condition} className="grid gap-1">
+                                <div className="flex flex-wrap gap-1">
+                                  <ConditionBadges
+                                    conditions={{ [condition]: state }}
+                                    className="h-auto max-w-full whitespace-normal"
+                                  />
+                                </div>
+                                <RuleOrigin rule={refOf(state.rule)} />
+                              </div>
+                            ) : null
+                          })}
+                        </div>
+                      </Field>
+                    )}
+                  </Fields>
+                  {isPage && audit.intentRule !== null && (
+                    <IntentOutcomeText
+                      outcome={intentOutcome(audit.intent, audit.indexability, audit.blockers)}
+                    />
+                  )}
+                  {audit.participation === 'excluded' && (
+                    <p className="text-sm text-muted-foreground">{tAudit('excludedNote')}</p>
+                  )}
+                  {(audit.participationRule !== null || audit.intentRule !== null) && (
+                    <Disclosure title={t('sections.ruleOrigins')}>
+                      <Fields>
+                        {audit.participationRule !== null && (
+                          <Field label={tAudit('participation')}>
+                            <RuleOrigin rule={refOf(audit.participationRule)} />
+                          </Field>
+                        )}
+                        {isPage && audit.intentRule !== null && (
+                          <Field label={tAudit('intent')}>
+                            <RuleOrigin rule={refOf(audit.intentRule)} />
+                          </Field>
+                        )}
+                      </Fields>
+                    </Disclosure>
+                  )}
+                  {audit.participationRule === null &&
+                    audit.intentRule === null &&
+                    !AUDIT_CONDITIONS.some((condition) => audit.conditions[condition]) && (
+                      <p className="text-sm text-muted-foreground">{tAudit('noExplicitRules')}</p>
+                    )}
+                </>
+              )}
+            </Disclosure>
+          )}
+        </TabsContent>
+        <TabsContent value="technical">
+          <Disclosure title={t('sections.technical')}>
+            <Fields>
+              <Field label={t('fields.xRobotsTag')}>{text(url.xRobotsTag)}</Field>
+              <Field label={t('fields.metaRobots')}>{text(url.metaRobots)}</Field>
+              <Field label={t('fields.contentType')}>{text(url.contentType)}</Field>
+              <Field label={t('fields.responseTime')}>
+                {url.responseTimeMs === null
+                  ? notSet
+                  : t('responseTime', { value: url.responseTimeMs })}
+              </Field>
+              <Field label={t('fields.size')}>
+                {url.bytes === null ? notSet : formatBytes(format, url.bytes)}
+              </Field>
+              <Field label={t('fields.depth')}>{format.number(url.depth)}</Field>
+              <Field label={t('fields.fetchedAt')}>
+                {url.fetchedAt
+                  ? format.dateTime(url.fetchedAt, { dateStyle: 'medium', timeStyle: 'short' })
+                  : notSet}
+              </Field>
+            </Fields>
+          </Disclosure>
+        </TabsContent>
+        <TabsContent value="history">
+          {history ?? (
+            <a
+              className="underline"
+              href={`/domains/${host}/pages/details/${url.urlHash}?crawl=${crawl.id}`}
+            >
+              {t('viewHistory')}
+            </a>
+          )}
+        </TabsContent>
+        <TabsContent value="links" className="grid gap-6">
+          <UrlLinks host={host} data={data} direction="in" hrefFor={hrefFor} />
+          <UrlLinks host={host} data={data} direction="out" hrefFor={hrefFor} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

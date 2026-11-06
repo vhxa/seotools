@@ -7,7 +7,12 @@
       "failed": "The request failed",
       "noResponse": "No response"
     },
-    "account": "Account"
+    "account": "Account",
+    "theme": {
+      "system": "System theme",
+      "light": "Light theme",
+      "dark": "Dark theme"
+    }
   },
   "NotFound": {
     "title": "Page not found",
@@ -524,7 +529,8 @@
       "audit": "Audit",
       "intent": "Indexing intent",
       "indexability": "Technical state",
-      "origin": "Configuration source"
+      "origin": "Configuration source",
+      "actions": "Actions"
     },
     "sortBy": "Sort by {column}",
     "sortedAscending": "Sorted ascending, click to sort descending",
@@ -641,7 +647,8 @@
     "notRequested": {
       "excluded": "Not requested: excluded by the crawl settings",
       "depth": "Not requested: maximum depth exceeded"
-    }
+    },
+    "secondaryFinding": "On a non-indexable page"
   },
   "Export": {
     "menu": {
@@ -806,7 +813,21 @@
     "notRequested": {
       "excluded": "Not requested: excluded by the crawl settings",
       "depth": "Not requested: maximum depth exceeded"
-    }
+    },
+    "keyFacts": "Key facts",
+    "characters": "({count} characters)",
+    "self": "Self",
+    "discovery": "How it was found",
+    "tabs": {
+      "findings": "Findings",
+      "links": "Links",
+      "indexing": "Indexing",
+      "history": "History",
+      "technical": "Technical"
+    },
+    "words": "Words",
+    "inbound": "Inbound links",
+    "viewHistory": "View URL history"
   },
   "UrlLinks": {
     "in": {
@@ -3162,5 +3183,19 @@
     "users": "Users",
     "email": "Email",
     "updates": "Updates"
+  },
+  "Parameters": {
+    "title": "Query parameters",
+    "empty": "No crawl results yet.",
+    "pruned": "The URL results of this crawl have been pruned.",
+    "crawl": "Crawl: {date}",
+    "bounded": "Limited to the first 100,000 URLs containing a query string.",
+    "name": "Parameter",
+    "count": "URLs",
+    "none": "No query parameters found.",
+    "entries": "Where they enter",
+    "noContext": "No stored link context is available. Older crawls did not retain it.",
+    "previous": "Previous",
+    "next": "Next"
   }
 }
