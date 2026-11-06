@@ -3,6 +3,7 @@ import {
   ISSUE_CATALOG_VERSION,
   createLogger,
   crawlUrlHash,
+  domainRequestSettings,
 } from '@seotools/core'
 import { createCompany, deleteDomain } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
@@ -1124,5 +1125,90 @@ describe('crawl files', () => {
     await crawlWith(fakeSite({ 'https://example.com/llms.txt': text('# Acme') }))
     const [file] = (await filesOf(['llms'])).filter((row) => row.statusCode === 200)
     expect(file?.body).toBe('# Acme')
+  })
+})
+
+describe('crawl configuration', () => {
+  it('records scope and depth skips without requesting, auditing or counting errors', async () => {
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      includePrefixes: ['/allowed'],
+      excludePrefixes: ['/allowed/private'],
+      maxDepth: 1,
+    })
+    const site = fakeSite({
+      'https://example.com/': html(
+        '<a href="/allowed">a</a><a href="/outside">b</a><a href="/allowed/private">c</a>',
+      ),
+      'https://example.com/allowed': html('<a href="/allowed/deep">deep</a>'),
+    })
+    const { crawl } = await crawlWith(site)
+    for (const [path, reason] of [
+      ['/outside', 'excluded'],
+      ['/allowed/private', 'excluded'],
+      ['/allowed/deep', 'depth'],
+    ]) {
+      const url = await db.crawls.getUrl(crawl.id, crawlUrlHash(`https://example.com${path}`))
+      expect(url).toMatchObject({
+        state: 'skipped',
+        kind: 'unknown',
+        statusCode: null,
+        error: null,
+        data: { notRequested: reason },
+      })
+      expect(site.requests).not.toContain(`https://example.com${path}`)
+      expect(
+        await db.crawls.issuesOf(crawl.id, [crawlUrlHash(`https://example.com${path}`)]),
+      ).toEqual([])
+    }
+    expect(site.requests).toContain('https://example.com/robots.txt')
+    expect(crawl.pagesCount).toBe(2)
+    expect(await urls(crawl.id, 'errors')).not.toContain('https://example.com/outside')
+    expect(crawl.pagesAudit?.audited).toBe(2)
+  })
+
+  it('persists ad hoc priority seeds and requests exactly the list without following links', async () => {
+    await db.crawls.saveSettings(domainId, { ...(await db.crawls.settings(domainId)), maxUrls: 1 })
+    await db.priorityUrls.add({ domainId, url: 'https://example.com/saved' })
+    const crawl = await db.crawls.start({
+      domainId,
+      type: 'priority',
+      trigger: 'manual',
+      seedUrls: ['https://example.com/list', 'https://example.com/list2'],
+    })
+    if (!crawl) throw new Error('not started')
+    const site = fakeSite({ 'https://example.com/list': html('<a href="/other">other</a>') })
+    await runCrawl(crawl.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+    })
+    expect(site.requests.sort()).toEqual(['https://example.com/list', 'https://example.com/list2'])
+    expect((await db.crawls.get(crawl.id))?.seedUrls).toEqual([
+      'https://example.com/list',
+      'https://example.com/list2',
+    ])
+    expect((await db.priorityUrls.list(domainId)).map((u) => u.url)).toEqual([
+      'https://example.com/saved',
+    ])
+  })
+})
+
+it('loads encrypted credentials for a crawl without exposing them as crawl settings', async () => {
+  await domainRequestSettings(db.crawls, domainId, 'test-key').setJson(
+    'request',
+    {
+      headers: [{ name: 'Cookie', value: 'secret-cookie' }],
+      username: 'stage',
+      password: 'secret',
+    },
+    { encrypted: true },
+  )
+  const site = fakeSite({ 'https://example.com/': html('hello') })
+  await crawlWith(site, 'full', { settingsSecret: 'test-key' })
+  expect(site.configs[0]?.siteHeaders).toEqual({
+    host: 'example.com',
+    headers: { cookie: 'secret-cookie', authorization: 'Basic c3RhZ2U6c2VjcmV0' },
   })
 })

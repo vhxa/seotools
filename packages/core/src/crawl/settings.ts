@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { parseAuditSelector } from './audit'
 import { INDEXNOW_KEY, OPTIONAL_CRAWL_FILES, type OptionalCrawlFile } from './files'
 
 /**
@@ -10,6 +11,9 @@ export type CrawlRenderingMode = (typeof CRAWL_RENDERING_MODES)[number]
 export const CRAWL_RENDERING_AVAILABLE: readonly CrawlRenderingMode[] = ['http']
 
 export interface CrawlSettings {
+  includePrefixes: string[]
+  excludePrefixes: string[]
+  maxDepth: number | null
   renderingMode: CrawlRenderingMode
   /** `null` uses `defaultCrawlerUserAgent`. */
   userAgent: string | null
@@ -35,6 +39,9 @@ export interface CrawlSettings {
 }
 
 export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
+  includePrefixes: [],
+  excludePrefixes: [],
+  maxDepth: null,
   renderingMode: 'http',
   userAgent: null,
   concurrency: 2,
@@ -65,7 +72,43 @@ const between = ({ min, max }: { min: number; max: number }) => z.number().int()
 /** What an HTTP header value may hold: printable ASCII, so no header injection. */
 const USER_AGENT = /^[\x20-\x7e]+$/
 
+const prefixesSchema = z
+  .array(z.string())
+  .max(100)
+  .transform((values, ctx) => {
+    const paths: string[] = []
+    for (const value of values) {
+      const parsed = parseAuditSelector({ kind: 'prefix', value, query: 'any' }, 'example.com')
+      if (!parsed.ok || parsed.selector.kind !== 'prefix') {
+        ctx.addIssue({ code: 'custom', message: 'Invalid path prefix' })
+        return z.NEVER
+      }
+      paths.push(parsed.selector.path)
+    }
+    return [...new Set(paths)]
+  })
+
+/** Seeds bypass scope and depth; all other URLs remain visible even when not requested. */
+export function crawlSkipReason(
+  url: string,
+  depth: number,
+  settings: Pick<CrawlSettings, 'includePrefixes' | 'excludePrefixes' | 'maxDepth'>,
+): 'excluded' | 'depth' | undefined {
+  const path = new URL(url).pathname
+  const covers = (prefix: string) =>
+    prefix === '/' || path === prefix || path.startsWith(`${prefix}/`)
+  if (
+    settings.excludePrefixes.some(covers) ||
+    (settings.includePrefixes.length > 0 && !settings.includePrefixes.some(covers))
+  )
+    return 'excluded'
+  if (settings.maxDepth !== null && depth > settings.maxDepth) return 'depth'
+}
+
 export const crawlSettingsSchema = z.object({
+  includePrefixes: prefixesSchema.default([]),
+  excludePrefixes: prefixesSchema.default([]),
+  maxDepth: z.number().int().min(1).max(100).nullable().default(null),
   renderingMode: z.enum(CRAWL_RENDERING_MODES),
   userAgent: z
     .string()

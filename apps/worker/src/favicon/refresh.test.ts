@@ -130,6 +130,9 @@ describe('createFaviconRefresher', () => {
 
   it('identifies itself like the crawler, honouring the domain settings, with a short timeout', async () => {
     await db.crawls.saveSettings(domainId, {
+      includePrefixes: [],
+      excludePrefixes: [],
+      maxDepth: null,
       renderingMode: 'http',
       userAgent: null,
       concurrency: 2,
@@ -150,6 +153,9 @@ describe('createFaviconRefresher', () => {
     })
 
     await db.crawls.saveSettings(domainId, {
+      includePrefixes: [],
+      excludePrefixes: [],
+      maxDepth: null,
       renderingMode: 'http',
       userAgent: 'MyBot/9',
       concurrency: 2,

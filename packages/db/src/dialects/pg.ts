@@ -1316,6 +1316,19 @@ export function createPgDatabase(options: {
     },
 
     crawls: {
+      async requestSecrets(domainId) {
+        const row = (
+          await db.select().from(crawlSettings).where(eq(crawlSettings.domainId, domainId))
+        )[0]
+        return row?.requestSecrets ?? null
+      },
+      async saveRequestSecrets(domainId, encrypted) {
+        await this.saveSettings(domainId, await this.settings(domainId))
+        await db
+          .update(crawlSettings)
+          .set({ requestSecrets: encrypted })
+          .where(eq(crawlSettings.domainId, domainId))
+      },
       async settings(domainId) {
         const row = (
           await db.select().from(crawlSettings).where(eq(crawlSettings.domainId, domainId))
@@ -1337,7 +1350,7 @@ export function createPgDatabase(options: {
           .onConflictDoUpdate({ target: crawlSettings.domainId, set: { ...values, updatedAt } })
       },
 
-      async start({ domainId, type, trigger }) {
+      async start({ domainId, type, trigger, seedUrls }) {
         const now = new Date()
         const id = randomUUID()
         const jobId = randomUUID()
@@ -1355,6 +1368,7 @@ export function createPgDatabase(options: {
                   domainId,
                   type,
                   trigger,
+                  seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
                   jobId,
                   activeKey: domainId,
                   ref: (last?.ref ?? 0) + 1,

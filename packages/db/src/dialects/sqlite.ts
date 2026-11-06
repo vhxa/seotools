@@ -1343,6 +1343,21 @@ export function createSqliteDatabase(options: {
     },
 
     crawls: {
+      async requestSecrets(domainId) {
+        const row = db
+          .select()
+          .from(crawlSettings)
+          .where(eq(crawlSettings.domainId, domainId))
+          .get()
+        return row?.requestSecrets ?? null
+      },
+      async saveRequestSecrets(domainId, encrypted) {
+        await this.saveSettings(domainId, await this.settings(domainId))
+        db.update(crawlSettings)
+          .set({ requestSecrets: encrypted })
+          .where(eq(crawlSettings.domainId, domainId))
+          .run()
+      },
       async settings(domainId) {
         const row = db
           .select()
@@ -1366,7 +1381,7 @@ export function createSqliteDatabase(options: {
           .run()
       },
 
-      async start({ domainId, type, trigger }) {
+      async start({ domainId, type, trigger, seedUrls }) {
         const now = new Date()
         const id = randomUUID()
         const jobId = randomUUID()
@@ -1388,6 +1403,7 @@ export function createSqliteDatabase(options: {
                 domainId,
                 type,
                 trigger,
+                seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
                 jobId,
                 activeKey: domainId,
                 ref: last + 1,

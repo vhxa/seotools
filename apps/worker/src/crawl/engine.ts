@@ -1,9 +1,11 @@
+import { siteHeaders } from './credentials'
 import {
   DEFAULT_CRAWL_SETTINGS,
   crawlFileKindOf,
   crawlFileRequests,
   crawlFileSource,
   crawlUrlHash,
+  crawlSkipReason,
   defaultCrawlerUserAgent,
   isInternalUrl,
   normalizeCrawlUrl,
@@ -39,6 +41,7 @@ const PROGRESS_INTERVAL_MS = 2000
 const EXTERNAL_BODY_BYTES = 1
 
 export interface CrawlEngineOptions {
+  settingsSecret?: string
   db: Database
   log: Logger
   createFetcher: (config: Omit<FetcherConfig, 'allowPrivateNetworks'>) => Fetcher
@@ -87,6 +90,7 @@ export async function runCrawl(
   const followLinks = crawl.type === 'full'
   const log = parentLog.child({ crawlId, host, crawlType: crawl.type })
   const fetcher = options.createFetcher({
+    siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
     userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
     timeoutMs: settings.timeoutMs,
     concurrency: settings.concurrency,
@@ -112,7 +116,7 @@ export async function runCrawl(
   let doneCount = counts.urlsDoneCount
   const robots: CrawlRobotsFiles = { ...(crawl.robots ?? {}) }
   // A resumed crawl that was already at the limit has lost track of what it left out.
-  let truncated = settings.maxUrls !== null && internalCount >= settings.maxUrls
+  let truncated = !crawl.seedUrls && settings.maxUrls !== null && internalCount >= settings.maxUrls
 
   /** Adds a URL to the crawl unless it is known, or the limit says otherwise. `false` if dropped. */
   function admit(
@@ -126,7 +130,7 @@ export async function runCrawl(
     if (seen.has(urlHash)) return true
     const scope = isInternalUrl(url, host) ? 'internal' : 'external'
     const current = scope === 'internal' ? internalCount : externalCount
-    if (settings.maxUrls !== null && current >= settings.maxUrls) {
+    if (!crawl!.seedUrls && settings.maxUrls !== null && current >= settings.maxUrls) {
       truncated = true
       return false
     }
@@ -140,6 +144,9 @@ export async function runCrawl(
       scope,
       source,
       depth,
+      ...(scope === 'internal' && depth > 0
+        ? { notRequested: crawlSkipReason(url, depth, settings) }
+        : {}),
       seq,
       ...(from ? { foundFrom: from.seq, foundKind: from.kind } : {}),
     })
@@ -177,7 +184,8 @@ export async function runCrawl(
         admit(url, crawlFileSource(kind), 0, urls)
       }
     }
-    for (const { url } of await db.priorityUrls.list(crawl!.domainId)) {
+    for (const { url } of crawl!.seedUrls?.map((url) => ({ url })) ??
+      (await db.priorityUrls.list(crawl!.domainId))) {
       admit(url, 'priority', 0, urls)
     }
     await db.crawls.addUrls(crawlId, urls)
@@ -324,8 +332,10 @@ export async function runCrawl(
   }
 
   const inFlight = new Map<string, Promise<void>>()
+  const inFlightDepth = new Map<string, number>()
   let fatal: unknown
   const start = (item: NewCrawlUrl, handle: (item: NewCrawlUrl) => Promise<void>) => {
+    inFlightDepth.set(item.urlHash, item.depth)
     const task: Promise<void> = handle(item)
       .catch((error) => {
         // Being stopped leaves the URL queued, for whoever resumes the crawl.
@@ -333,7 +343,10 @@ export async function runCrawl(
         fatal ??= error
         stop.abort()
       })
-      .finally(() => inFlight.delete(item.urlHash))
+      .finally(() => {
+        inFlight.delete(item.urlHash)
+        inFlightDepth.delete(item.urlHash)
+      })
     inFlight.set(item.urlHash, task)
   }
 
@@ -372,7 +385,12 @@ export async function runCrawl(
         await waitForProgress()
         continue
       }
-      if (inFlight.size >= settings.concurrency) {
+      // Finish a breadth level before starting the next: depth is the shortest discovered path,
+      // even when a slow sibling links directly to something a fast branch also reaches.
+      if (
+        inFlight.size >= settings.concurrency ||
+        (settings.maxDepth !== null && item.depth > Math.min(...inFlightDepth.values()))
+      ) {
         await waitForProgress()
         continue
       }
