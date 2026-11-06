@@ -1605,8 +1605,10 @@ export function createPgDatabase(options: {
             days: crawlSettings.historyDays,
           })
           .from(crawls)
+          .innerJoin(domains, eq(domains.id, crawls.domainId))
           .leftJoin(crawlSettings, eq(crawlSettings.domainId, crawls.domainId))
-          .where(eq(crawls.history, true))
+          // An archived domain keeps everything it had, history included.
+          .where(and(eq(crawls.history, true), isNull(domains.archivedAt)))
         const expired = rows
           .filter((row) => historyExpired(row, now, defaultDays))
           .map((row) => row.id)
@@ -1674,8 +1676,8 @@ export function createPgDatabase(options: {
               links.flatMap((link) => [link.sourceHash, link.targetHash]),
             )
             const rows = links.flatMap((link) => {
-              const source = seqs.get(link.sourceHash)
-              const target = seqs.get(link.targetHash)
+              const source = link.sourceSeq ?? seqs.get(link.sourceHash)
+              const target = link.targetSeq ?? seqs.get(link.targetHash)
               return crawl?.ref == null || source === undefined || target === undefined
                 ? []
                 : [newCrawlLinkRow(crawl.ref, source, target, link)]

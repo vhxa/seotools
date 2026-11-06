@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EMPTY_AUDIT_SNAPSHOT, auditSnapshotOf, type AuditRule } from './audit'
 import {
+  keepsUrlHistory,
   FINDING_CHANGES,
   PAGE_LOCAL_ISSUES,
   assessPair,
@@ -356,7 +357,7 @@ describe('observe', () => {
       const o = observe('title-missing', e)
       return o.presence === 'unknown' ? o.reason : o.presence
     }
-    expect(reason(seen([], {}, facts({ retained: false })))).toBe('pruned')
+    expect(reason(seen([], {}, facts({ retained: false, observable: false })))).toBe('pruned')
     expect(reason(seen([], {}, facts({ analysed: false })))).toBe('unanalysed')
     expect(reason({ crawl: facts(), url: null })).toBe('not-seen')
     expect(reason(seen([], { requested: false }))).toBe('not-requested')
@@ -458,7 +459,7 @@ describe('classifyFinding', () => {
       // Crawls that report it do not count when they cannot say, or say it was not there.
       expect(
         classify(seen([]), seen([issue]), {
-          earlier: [seen([], {}, facts({ retained: false })), seen([])],
+          earlier: [seen([], {}, facts({ retained: false, observable: false })), seen([])],
         })?.kind,
       ).toBe('new')
     })
@@ -469,7 +470,7 @@ describe('classifyFinding', () => {
       )
       // A crawl in between that cannot say is a gap, not an absence.
       for (const between of [
-        seen([], {}, facts({ retained: false })),
+        seen([], {}, facts({ retained: false, observable: false })),
         seen([], { participation: 'excluded' }),
         seen([], { requested: false }),
         { crawl: facts(), url: null },
@@ -643,7 +644,7 @@ describe('issueTimelines', () => {
 
   it('leaves a gap instead of reading a pruned crawl as "not reported"', () => {
     const [timeline] = issueTimelines(
-      [seen([issue]), seen([], {}, facts({ retained: false })), seen([issue])],
+      [seen([issue]), seen([], {}, facts({ retained: false, observable: false })), seen([issue])],
       [issue],
     )
     expect(timeline?.cells.map((c) => c.presence)).toEqual(['present', 'unknown', 'present'])
@@ -672,6 +673,7 @@ describe('issueTimelines', () => {
 describe('a finding a rule accepts in the later crawl', () => {
   const crawl: Evidence['crawl'] = {
     retained: true,
+    observable: true,
     analysed: true,
     complete: true,
     catalog: 'v1',
@@ -709,5 +711,14 @@ describe('a finding a rule accepts in the later crawl', () => {
       target: { crawl: { ...crawl, scope: 's2' }, url: url(['noindex']) },
     })
     expect(change).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+  })
+})
+
+describe('a crawl kept only as compact history', () => {
+  it('still says what each URL was, but cannot be compared with another crawl in detail', () => {
+    const compact = { pruned: true, history: true }
+    expect(keepsUrlHistory(compact)).toBe(true)
+    expect(keepsUrlHistory({ pruned: true, history: false })).toBe(false)
+    expect(keepsUrlHistory({ pruned: false })).toBe(true)
   })
 })
