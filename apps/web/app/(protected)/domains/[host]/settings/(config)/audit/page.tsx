@@ -4,6 +4,7 @@ import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { AuditTabs } from '@/components/audit/audit-tabs'
 import { LanguagesTab } from '@/components/audit/languages-tab'
 import { RulesTab } from '@/components/audit/rules-tab'
+import { ThresholdsTab } from '@/components/audit/thresholds-tab'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { parseAuditTab } from '@/lib/audit-tabs'
 import { getDb } from '@/lib/db'
@@ -63,6 +64,9 @@ export default async function AuditSettingsPage({
         )}
         {tab === 'languages' && (
           <LanguagesTab host={domain.host} languages={config.languages} rules={config.rules} />
+        )}
+        {tab === 'thresholds' && (
+          <ThresholdsTab host={domain.host} thresholds={config.thresholds} />
         )}
       </AuditTabs>
     </>

@@ -457,6 +457,12 @@ export const domainAuditConfig = sqliteTable('domain_audit_config', {
    * them moves the version.
    */
   languagePrefixes: text('language_prefixes'),
+  /**
+   * The figures checks compare with where the domain set its own (`ThresholdOverrides` in
+   * @seotools/core), as JSON; `null`: the defaults. Part of the configuration: changing them moves
+   * the version.
+   */
+  thresholds: text('thresholds'),
   /** The domain has pages of its default language without a language directory. */
   languageUnprefixed: integer('language_unprefixed', { mode: 'boolean' }).notNull().default(false),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),

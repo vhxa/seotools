@@ -101,6 +101,7 @@ import {
   historyExpired,
   historyTrace,
   type LinkScope,
+  foldIssueCounts,
 } from '../mapping'
 import {
   AUDIT_SEMANTICS,
@@ -133,6 +134,10 @@ import {
   type AuditPlan,
   type AuditRuleRow,
   type PlanContext,
+  planThresholds,
+  thresholdColumns,
+  thresholdsOf,
+  type AuditStateRow,
 } from '../audit'
 import {
   alertColumns,
@@ -416,7 +421,11 @@ export function createPgDatabase(options: {
    */
   const changeRules = (
     domainId: string,
-    plan: (rows: AuditRuleRow[], context: PlanContext) => AuditPlan,
+    plan: (
+      rows: AuditRuleRow[],
+      context: PlanContext,
+      config: AuditStateRow | undefined,
+    ) => AuditPlan,
   ) =>
     ensureAuditConfig(domainId).then(() =>
       db.transaction(async (tx) => {
@@ -430,7 +439,11 @@ export function createPgDatabase(options: {
         )[0]
         let version = config?.version ?? 0
         const rows = await tx.select().from(auditRules).where(eq(auditRules.domainId, domainId))
-        const decided = plan(rows, { now, newId: randomUUID, languages: languagesOf(config) })
+        const decided = plan(
+          rows,
+          { now, newId: randomUUID, languages: languagesOf(config) },
+          config,
+        )
         if (decided.ok && planChanges(decided)) {
           for (const change of inApplyOrder(decided.changes)) {
             if (change.op === 'delete')
@@ -448,6 +461,7 @@ export function createPgDatabase(options: {
               recomputeErrorVersion: null,
               updatedAt: now,
               ...(decided.languages ? languageColumns(decided.languages) : {}),
+              ...(decided.thresholds ? thresholdColumns(decided.thresholds) : {}),
             })
             .where(eq(domainAuditConfig.domainId, domainId))
           await requestRecompute(tx, domainId, now)
@@ -1933,11 +1947,22 @@ export function createPgDatabase(options: {
 
       async issueCounts(crawlId) {
         const rows = await db
-          .select({ issue: crawlUrlIssues.issue, pages: sql<number>`count(*)` })
+          .select({
+            issue: crawlUrlIssues.issue,
+            indexability: crawlUrlAudit.indexability,
+            pages: sql<number>`count(*)`,
+          })
           .from(crawlUrlIssues)
+          .leftJoin(
+            crawlUrlAudit,
+            and(
+              eq(crawlUrlAudit.crawlId, crawlUrlIssues.crawlId),
+              eq(crawlUrlAudit.urlHash, crawlUrlIssues.urlHash),
+            ),
+          )
           .where(eq(crawlUrlIssues.crawlId, crawlId))
-          .groupBy(crawlUrlIssues.issue)
-        return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
+          .groupBy(crawlUrlIssues.issue, crawlUrlAudit.indexability)
+        return foldIssueCounts(rows)
       },
 
       async issuesOf(crawlId, urlHashes) {
@@ -2385,6 +2410,12 @@ export function createPgDatabase(options: {
 
       async setLanguages({ domainId, languages }) {
         return changeRules(domainId, (_rows, context) => planLanguages(languages, context))
+      },
+
+      async setThresholds({ domainId, thresholds }) {
+        return changeRules(domainId, (_rows, _context, config) =>
+          planThresholds(thresholds, thresholdsOf(config)),
+        )
       },
 
       upgradeSemantics: upgradeAuditSemantics,

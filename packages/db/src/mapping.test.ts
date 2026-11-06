@@ -2,6 +2,7 @@ import type { IssueEvidence } from '@seotools/core'
 import { describe, expect, it } from 'vitest'
 import {
   crawlIssueRows,
+  foldIssueCounts,
   foldViewCounts,
   parseIssueDetails,
   serializeIssueDetails,
@@ -100,5 +101,22 @@ describe('how many URLs each view starts from', () => {
       external: 0,
       all: 0,
     })
+  })
+})
+
+describe('issue counts', () => {
+  it('counts search-result findings on a URL that cannot be indexed apart, as secondary', () => {
+    expect(
+      foldIssueCounts([
+        { issue: 'title-too-long', indexability: 'indexable', pages: 3 },
+        { issue: 'title-too-long', indexability: 'not-indexable', pages: '2' },
+        { issue: 'img-no-alt', indexability: 'not-indexable', pages: 4 },
+        { issue: 'title-too-long', indexability: null, pages: 1 },
+      ]),
+    ).toEqual([
+      { issue: 'title-too-long', pages: 4, secondary: 2 },
+      // Accessibility counts wherever it is.
+      { issue: 'img-no-alt', pages: 4, secondary: 0 },
+    ])
   })
 })

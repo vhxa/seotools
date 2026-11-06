@@ -17,6 +17,7 @@
     "./crawl/links": "./src/crawl/links.ts",
     "./crawl/schedule": "./src/crawl/schedule.ts",
     "./crawl/settings": "./src/crawl/settings.ts",
+    "./crawl/thresholds": "./src/crawl/thresholds.ts",
     "./crawl/compare": "./src/crawl/compare.ts",
     "./crawl/verification": "./src/crawl/verification.ts",
     "./version": "./src/version.ts"

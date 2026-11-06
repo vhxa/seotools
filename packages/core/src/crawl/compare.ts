@@ -25,6 +25,7 @@ import {
   type ConditionStates,
   type RecordedIntent,
 } from './audit'
+import { canonicalThresholds } from './thresholds'
 import { compareIssueSeverity, isPageIssueId, type PageIssueId } from './issues'
 import type { CrawlStatus, CrawlUrlKind, CrawlUrlState } from './types'
 
@@ -144,10 +145,13 @@ export function auditScopeKey(snapshot: AuditSnapshot): string {
       ].join(' '),
     )
     .sort()
+  const thresholds = canonicalThresholds(snapshot.thresholds)
   return JSON.stringify({
     semantics: meaningOf(snapshot),
     languages: canonicalLanguages(snapshot.languages ?? NO_LANGUAGES),
     rules,
+    // Absent when the defaults applied, so that a key from before thresholds existed is the same.
+    ...(Object.keys(thresholds).length > 0 ? { thresholds } : {}),
   })
 }
 

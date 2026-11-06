@@ -51,7 +51,12 @@ export async function recomputeAudit(options: {
     // Deleted since the change that queued this job: there is nothing left to analyse.
     if (!(await db.domains.get(domainId))) return { ...last, analysed }
     const config = await db.audit.config(domainId)
-    const snapshot = auditSnapshotOf(config.version, config.rules, config.languages)
+    const snapshot = auditSnapshotOf(
+      config.version,
+      config.rules,
+      config.languages,
+      config.thresholds,
+    )
     const crawl = await db.crawls.latestWithResults(domainId, 'full')
     last = { crawlId: crawl?.id ?? null, version: snapshot.version }
     if (!crawl || isCurrent(crawl, snapshot.version)) {

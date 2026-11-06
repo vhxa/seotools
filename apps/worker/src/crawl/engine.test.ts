@@ -453,7 +453,7 @@ describe('page issues', () => {
     // Only the crawler ever asked for this one.
     expect(await issuesOf(crawl.id, 'https://www.example.com/')).toEqual([])
     const counts = await db.crawls.issueCounts(crawl.id)
-    expect(counts).toContainEqual({ issue: 'client-error', pages: 1 })
+    expect(counts).toContainEqual({ issue: 'client-error', pages: 1, secondary: 0 })
   })
 
   it('sorts pages by the worst type of issue they have', async () => {

@@ -26,6 +26,8 @@ import {
   alertLocaleOf,
   crawlUrlHash,
   enabledExtraFiles,
+  isPageIssueId,
+  isSecondaryFinding,
   parseAuditSnapshot,
   parseIssueEvidence,
   readUrlAuditState,
@@ -913,6 +915,21 @@ export function crawlHistoryRow(
     accepted: accepted.length > 0 ? JSON.stringify([...new Set(accepted)]) : null,
     audit: audit ? JSON.stringify(audit) : null,
   }
+}
+
+/** Folds issue counts by the URL's indexability into what is pending and what is secondary. */
+export function foldIssueCounts(
+  rows: { issue: string; indexability: string | null; pages: unknown }[],
+): { issue: string; pages: number; secondary: number }[] {
+  const counts = new Map<string, { issue: string; pages: number; secondary: number }>()
+  for (const row of rows) {
+    const entry = counts.get(row.issue) ?? { issue: row.issue, pages: 0, secondary: 0 }
+    const secondary = isPageIssueId(row.issue) && isSecondaryFinding(row.issue, row.indexability)
+    if (secondary) entry.secondary += Number(row.pages)
+    else entry.pages += Number(row.pages)
+    counts.set(row.issue, entry)
+  }
+  return [...counts.values()]
 }
 
 /** Issues by URL, as the history keeps them. */

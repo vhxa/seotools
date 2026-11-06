@@ -1,4 +1,6 @@
 import {
+  canonicalThresholds,
+  parseThresholdOverrides,
   AUDIT_CONDITIONS,
   AUDIT_DIMENSIONS,
   AUDIT_LIMITS,
@@ -20,6 +22,7 @@ import {
   type QuerySelector,
   type Requirement,
   type SelectorScope,
+  type ThresholdOverrides,
 } from '@seotools/core'
 import type {
   AuditConfig,
@@ -122,6 +125,8 @@ export type AuditPlan =
       changes: RuleChange[]
       /** The language directories are changing to these. */
       languages?: LanguageConfig
+      /** The figures of the checks are changing to these. */
+      thresholds?: ThresholdOverrides
       /** The version moves even if no rule or language does: what the rules mean changed. */
       bump?: boolean
       result?: string
@@ -444,6 +449,18 @@ export function planDeleteMany(
 }
 
 /** Changes the language directories of the domain, if they are not these already. */
+/** The figures of the checks, which change the configuration only when they differ. */
+export function planThresholds(
+  thresholds: ThresholdOverrides,
+  current: ThresholdOverrides,
+): AuditPlan {
+  const next = canonicalThresholds(thresholds)
+  if (JSON.stringify(next) === JSON.stringify(canonicalThresholds(current))) {
+    return { ok: true, changes: [] }
+  }
+  return { ok: true, changes: [], thresholds: next }
+}
+
 export function planLanguages(languages: LanguageConfig, context: PlanContext): AuditPlan {
   const next = canonicalLanguages(languages)
   if (sameLanguages(next, context.languages)) return { ok: true, changes: [] }
@@ -592,7 +609,10 @@ export function mutationResult(
 
 /** Whether a plan changes anything that makes the version move. */
 export const planChanges = (plan: Extract<AuditPlan, { ok: true }>) =>
-  plan.changes.length > 0 || plan.languages !== undefined || plan.bump === true
+  plan.changes.length > 0 ||
+  plan.languages !== undefined ||
+  plan.thresholds !== undefined ||
+  plan.bump === true
 
 export interface AuditStateRow {
   version: number
@@ -600,6 +620,7 @@ export interface AuditStateRow {
   recomputeErrorVersion: number | null
   languagePrefixes: string | null
   languageUnprefixed: boolean
+  thresholds: string | null
 }
 
 /** The language directories as the configuration row keeps them. */
@@ -615,6 +636,23 @@ export function languagesOf(
     // A column nobody but this code writes: if it is garbage, no language is declared.
   }
   return canonicalLanguages({ prefixes, unprefixed: row.languageUnprefixed })
+}
+
+/** The figures a domain set, from its row; anything unreadable is the defaults. */
+export function thresholdsOf(
+  row: Pick<AuditStateRow, 'thresholds'> | undefined,
+): ThresholdOverrides {
+  if (!row?.thresholds) return {}
+  try {
+    return parseThresholdOverrides(JSON.parse(row.thresholds))
+  } catch {
+    return {}
+  }
+}
+
+export const thresholdColumns = (thresholds: ThresholdOverrides) => {
+  const kept = canonicalThresholds(thresholds)
+  return { thresholds: Object.keys(kept).length > 0 ? JSON.stringify(kept) : null }
 }
 
 export const languageColumns = (languages: LanguageConfig) => ({
@@ -642,6 +680,7 @@ export async function readAuditConfig(read: {
       return {
         version: before?.version ?? 0,
         languages: languagesOf(before),
+        thresholds: thresholdsOf(before),
         rules: rules.map(toAuditRule),
         recomputeError:
           after?.recomputeError != null && after.recomputeErrorVersion != null

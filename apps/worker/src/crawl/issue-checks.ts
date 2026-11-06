@@ -3,6 +3,8 @@ import {
   HREFLANG_SOURCES,
   MAX_EVIDENCE_ITEMS,
   PAGE_ISSUE_IDS,
+  resolveThresholds,
+  type AuditThresholds,
   boundedText,
   boundedUrl,
   parseIssueEvidence,
@@ -55,17 +57,19 @@ interface Found {
 type Verdict = boolean | string[] | Found
 type Check = (url: AuditedUrl, site: Site) => Verdict
 
-const TITLE_MAX = 60
-const TITLE_MIN = 30
-const DESCRIPTION_MAX = 155
-const DESCRIPTION_MIN = 70
-const THIN_CONTENT_WORDS = 200
+/** The figures of the configuration being applied (`AUDIT_THRESHOLDS`), resolved once per config. */
+const resolved = new WeakMap<object, AuditThresholds>()
+function figures(site: Pick<Site, 'config'>): AuditThresholds {
+  let values = resolved.get(site.config)
+  if (!values) {
+    values = resolveThresholds(site.config.thresholds)
+    resolved.set(site.config, values)
+  }
+  return values
+}
 /** Under this much text, a page has no use for subsections. */
 const SUBSECTIONS_MIN_WORDS = 300
-const URL_MAX = 115
-const CLICK_DEPTH_MAX = 3
 const DOCUMENT_MAX_BYTES = 2 * 1024 * 1024
-const IMAGE_MAX_BYTES = 100 * 1024
 const SITEMAP_MAX_ENTRIES = 50_000
 const SITEMAP_MAX_BYTES = 50 * 1024 * 1024
 
@@ -535,9 +539,10 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'title-duplicate': onPage(
     (url, _, site) => url.indexable && duplicates(url, site.titles.get(comparable(url.url.title))),
   ),
-  'title-too-long': onPage((url) => (url.url.title?.length ?? 0) > TITLE_MAX),
+  'title-too-long': onPage((url, _, site) => (url.url.title?.length ?? 0) > figures(site).titleMax),
   'title-too-short': onPage(
-    (url) => !blank(url.url.title) && (url.url.title?.length ?? 0) < TITLE_MIN,
+    (url, _, site) =>
+      !blank(url.url.title) && (url.url.title?.length ?? 0) < figures(site).titleMin,
   ),
 
   // --- meta description ----------------------------------------------------
@@ -550,11 +555,12 @@ export const CHECKS: Record<PageIssueId, Check> = {
       duplicates(url, site.descriptions.get(comparable(url.url.data?.description))),
   ),
   'description-too-long': onPage(
-    ({ url }) => (url.data?.description?.length ?? 0) > DESCRIPTION_MAX,
+    ({ url }, _, site) => (url.data?.description?.length ?? 0) > figures(site).descriptionMax,
   ),
   'description-too-short': onPage(
-    ({ url }) =>
-      !blank(url.data?.description) && (url.data?.description?.length ?? 0) < DESCRIPTION_MIN,
+    ({ url }, _, site) =>
+      !blank(url.data?.description) &&
+      (url.data?.description?.length ?? 0) < figures(site).descriptionMin,
   ),
 
   // --- headings ------------------------------------------------------------
@@ -586,16 +592,16 @@ export const CHECKS: Record<PageIssueId, Check> = {
     })
   }),
   'content-placeholder': onPage((_, facts) => facts.placeholderText),
-  'content-thin': onPage((_, facts) => facts.words < THIN_CONTENT_WORDS),
+  'content-thin': onPage((_, facts, site) => facts.words < figures(site).thinWords),
 
   // --- images --------------------------------------------------------------
   'img-no-alt': imageProblem('no-alt', (facts) => facts.imagesNoAlt),
   'img-empty-alt': imageProblem('empty-alt', (facts) => facts.imagesEmptyAlt),
-  'img-too-heavy': (url) =>
+  'img-too-heavy': (url, site) =>
     url.internal &&
     statusIn(url, 200, 299) &&
     (url.url.contentType ?? '').toLowerCase().startsWith('image/') &&
-    (url.url.bytes ?? 0) > IMAGE_MAX_BYTES,
+    (url.url.bytes ?? 0) > figures(site).imageMaxKb * 1024,
   'img-no-size': imageProblem('no-size', (facts) => facts.imagesNoSize),
   'img-long-alt': imageProblem('long-alt', (facts) => facts.imagesLongAlt),
 
@@ -622,7 +628,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
     url.contentPage && url.sitemaps > 0 && url.anchorsIn === 0 && url.url.source !== 'seed',
   'no-outgoing-links': onPage((url) => url.internalAnchorsOut === 0),
   'internal-nofollow-links': onPage((url) => url.nofollowAnchorsOut > 0),
-  'deep-page': onPage((url) => (url.clickDepth ?? 0) > CLICK_DEPTH_MAX),
+  'deep-page': onPage((url, _, site) => (url.clickDepth ?? 0) > figures(site).clickDepthMax),
   'anchor-empty': linkProblem('empty-anchor', (facts) => facts.emptyAnchors),
   'anchor-vague': linkProblem('vague-anchor', (facts) => facts.vagueAnchors),
 
@@ -641,7 +647,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
       parameterNames(url).some((name) => SEARCH_PARAMETERS.has(name)),
   ),
   'url-underscores': onPage(({ parsed }) => parsed.pathname.includes('_')),
-  'url-too-long': onPage(({ url }) => url.url.length > URL_MAX),
+  'url-too-long': onPage(({ url }, _, site) => url.url.length > figures(site).urlMax),
 
   // --- security ------------------------------------------------------------
   'http-url': onPage(({ parsed }) => parsed.protocol === 'http:'),

@@ -27,6 +27,7 @@ import type {
   CrawlFrequency,
   CrawlLinkKind,
   LinkContext,
+  ThresholdOverrides,
   CrawlPageData,
   CrawlRecurrence,
   CrawlRobotsFiles,
@@ -713,7 +714,11 @@ export interface CrawlRepository {
    */
   outdatedAnalyses(catalog: string, limit: number): Promise<Crawl[]>
   /** For each issue found in a crawl, how many URLs have it. Issues nobody has are left out. */
-  issueCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
+  /**
+   * URLs with each issue. `pages` leaves out the secondary ones (`isSecondaryFinding`: a
+   * search-result finding on a URL the crawl saw as not indexable), counted apart in `secondary`.
+   */
+  issueCounts(crawlId: string): Promise<{ issue: string; pages: number; secondary: number }[]>
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
   /** For each issue a rule accepts in a crawl, how many URLs it accepts it on. */
@@ -846,6 +851,8 @@ export interface AuditConfig {
   rules: AuditRuleRecord[]
   /** The language directories shared rules look at. None until the domain declares some. */
   languages: LanguageConfig
+  /** The figures the domain set for its checks, where they differ from the defaults. */
+  thresholds: ThresholdOverrides
   /** The last recalculation that gave up, if no change has been made since. */
   recomputeError: { message: string; version: number } | null
 }
@@ -939,6 +946,11 @@ export interface AuditRepository {
    * these already.
    */
   setLanguages(input: { domainId: string; languages: LanguageConfig }): Promise<AuditMutation>
+  /**
+   * Sets the figures checks compare with (only those that differ from the defaults are kept). Like
+   * a change of rules: the version moves and the latest crawl is analysed again.
+   */
+  setThresholds(input: { domainId: string; thresholds: ThresholdOverrides }): Promise<AuditMutation>
   /**
    * Brings the rules of every domain to the current meaning of a configuration (`AUDIT_SEMANTICS`)
    * from the one they have (`planUpgradeSemantics`): the rules that said `none` go, accepting

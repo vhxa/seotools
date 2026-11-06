@@ -2069,7 +2069,8 @@
     "tabs": {
       "label": "Audit settings",
       "rules": "Rules",
-      "languages": "Language directories"
+      "languages": "Language directories",
+      "thresholds": "Thresholds"
     },
     "create": "Create rule",
     "sections": {
@@ -2219,6 +2220,52 @@
         "reason": "The reason is too long."
       },
       "statements": "Choose at least one thing for the rule to say: whether the URLs take part in the audit, a condition or the expected indexing."
+    },
+    "thresholds": {
+      "title": "Thresholds",
+      "description": "The figures some checks compare with. They are conventions, not facts: leave a field empty to use the recommended figure. Changing them analyses the latest crawl again.",
+      "recommended": "Recommended: {value}",
+      "save": "Save thresholds",
+      "saved": "Saved. The latest crawl is being analysed again.",
+      "errors": {
+        "range": "{field} must be between {min} and {max}.",
+        "title": "The shortest title must be shorter than the longest.",
+        "description": "The shortest meta description must be shorter than the longest."
+      },
+      "fields": {
+        "titleMin": {
+          "label": "Shortest title",
+          "unit": "Characters"
+        },
+        "titleMax": {
+          "label": "Longest title",
+          "unit": "Characters"
+        },
+        "descriptionMin": {
+          "label": "Shortest meta description",
+          "unit": "Characters"
+        },
+        "descriptionMax": {
+          "label": "Longest meta description",
+          "unit": "Characters"
+        },
+        "thinWords": {
+          "label": "Fewest words before a page is thin",
+          "unit": "Words of text"
+        },
+        "urlMax": {
+          "label": "Longest URL",
+          "unit": "Characters"
+        },
+        "clickDepthMax": {
+          "label": "Deepest page",
+          "unit": "Clicks from the home page"
+        },
+        "imageMaxKb": {
+          "label": "Heaviest image",
+          "unit": "Kilobytes"
+        }
+      }
     }
   },
   "AuditDialog": {
