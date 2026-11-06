@@ -426,6 +426,12 @@ export interface CrawlLink {
   kind: CrawlLinkKind
   /** Where in the source page it was found. Kept for the first occurrence only. */
   context?: LinkContext
+  /**
+   * The `seq` of each end, when the writer knows them (the crawler does). Then the link is stored
+   * whether or not the other end's row is stored yet: concurrent results can commit in any order.
+   */
+  sourceSeq?: number
+  targetSeq?: number
 }
 
 /**

@@ -164,10 +164,15 @@ export async function runCrawl(
   ) {
     if (!followLinks) return
     if (admit(url, source, depth, into.urls, { seq: from.seq, kind })) {
+      const targetHash = crawlUrlHash(url)
+      const targetSeq = seen.get(targetHash)
       into.links.push({
         sourceHash: from.urlHash,
-        targetHash: crawlUrlHash(url),
+        targetHash,
         kind,
+        // Unnumbered (queued before 0019): the database looks the ends up instead.
+        ...(from.seq ? { sourceSeq: from.seq } : {}),
+        ...(targetSeq ? { targetSeq } : {}),
         ...(context ? { context } : {}),
       })
     }

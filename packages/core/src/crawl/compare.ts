@@ -192,8 +192,14 @@ export function crawlAuditScope(crawl: CrawlLike): string | null {
 
 /** What a crawl can vouch for when its findings are compared with those of another. */
 export interface CrawlFacts {
-  /** Its results per URL are still stored. */
+  /** Its full results per URL are still stored: links, evidence, everything a comparison reads. */
   retained: boolean
+  /**
+   * What each URL was (answer, findings, audit state) can still be read: its full results or the
+   * compact history that replaces them for a while. Enough for the history of a URL, not for a
+   * comparison of two crawls.
+   */
+  observable: boolean
   /** It has findings (it was analysed). */
   analysed: boolean
   /** It requested every URL it found, instead of stopping at the URL limit. */
@@ -208,7 +214,8 @@ export interface CrawlFacts {
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
   return {
-    retained: keepsUrlHistory(crawl),
+    retained: !crawl.pruned,
+    observable: keepsUrlHistory(crawl),
     analysed: crawl.pagesByWorstIssue !== null,
     complete: crawl.status === 'completed',
     catalog: crawl.issueCatalog,
@@ -453,7 +460,7 @@ const unknown = (reason: UnknownReason): Observation => ({ presence: 'unknown', 
  * at other URLs) the crawl reached every URL it found.
  */
 export function observe(issue: string, { crawl, url }: Evidence): Observation {
-  if (!crawl.retained) return unknown('pruned')
+  if (!crawl.observable) return unknown('pruned')
   if (!crawl.analysed) return unknown('unanalysed')
   if (!url) return unknown('not-seen')
   if (!url.requested) return unknown('not-requested')

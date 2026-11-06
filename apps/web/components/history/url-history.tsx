@@ -176,7 +176,7 @@ export function UrlHistory({
                   >
                     <TableCell className="align-top">
                       <div className="grid gap-1">
-                        {trace && keepsUrlHistory(crawl) ? (
+                        {trace && !crawl.pruned ? (
                           <Link
                             href={`/domains/${host}/pages/details/${urlHash}?crawl=${crawl.id}`}
                             className="text-sm font-medium hover:underline"
@@ -188,10 +188,16 @@ export function UrlHistory({
                         )}
                         <span className="flex flex-wrap gap-1">
                           <CrawlStatusBadge status={crawl.status} />
-                          {!keepsUrlHistory(crawl) && (
+                          {!keepsUrlHistory(crawl) ? (
                             <Badge variant="secondary" title={t('prunedHint')}>
                               {t('pruned')}
                             </Badge>
+                          ) : (
+                            crawl.pruned && (
+                              <Badge variant="secondary" title={t('compactHint')}>
+                                {t('compact')}
+                              </Badge>
+                            )
                           )}
                           {crawl.id === viewingId && (
                             <Badge variant="outline">{t('viewing')}</Badge>

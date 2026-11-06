@@ -2442,7 +2442,9 @@
         "title": "Findings over time",
         "description": "Each square is a crawl, oldest first. A finding is called new, resolved or reappeared only when the crawls on both sides could have reported it under the same issue catalog and audit rules.",
         "legend": "Red: reported. Green: not reported by a crawl that could have reported it. Dashed: the crawl cannot say (pruned, not analysed, URL not found or not requested, excluded from the audit, or a different catalog or configuration)."
-      }
+      },
+      "compact": "Summary only",
+      "compactHint": "Older crawl: what the URL was is kept for a while, without its links or evidence."
     }
   },
   "CrawlCompare": {

@@ -213,13 +213,8 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
   let anchor: { context: LinkContext; text: string } | null = null
   let anchorDepth = 0
 
-  const regionHere = (): LinkRegion | undefined => {
-    for (let i = open.length - 1; i >= 0; i--) {
-      const region = open[i]!.region
-      if (region) return region
-    }
-    return undefined
-  }
+  /** Each entry keeps the landmark it is in, inherited: constant time however deep the page. */
+  const regionHere = (): LinkRegion | undefined => open.at(-1)?.region ?? undefined
 
   /** Whether the link adds query parameters the page does not have: where they enter the site. */
   const bringsParameters = (url: string) => {
@@ -324,6 +319,7 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
           region:
             LANDMARK_TAGS[name] ??
             LANDMARK_ROLES[(attributes.role ?? '').slice(0, 30).trim().toLowerCase()] ??
+            open.at(-1)?.region ??
             null,
         })
         element = { name, attributes }

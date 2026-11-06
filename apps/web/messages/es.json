@@ -2442,7 +2442,9 @@
         "title": "Hallazgos a lo largo del tiempo",
         "description": "Cada cuadrado es un rastreo, del más antiguo al más reciente. Un hallazgo solo se llama nuevo, resuelto o reaparecido cuando los rastreos de ambos lados podían haberlo detectado con el mismo catálogo de problemas y las mismas reglas de auditoría.",
         "legend": "Rojo: detectado. Verde: no detectado por un rastreo que podía haberlo detectado. Discontinuo: el rastreo no puede saberlo (podado, sin analizar, URL no encontrada o no solicitada, excluida de la auditoría, o con otro catálogo o configuración)."
-      }
+      },
+      "compact": "Solo resumen",
+      "compactHint": "Rastreo antiguo: se guarda lo que era la URL durante un tiempo, sin sus enlaces ni evidencias."
     }
   },
   "CrawlCompare": {

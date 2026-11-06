@@ -494,3 +494,17 @@ describe('link context', () => {
     expect(links[0]?.context?.text).toBeUndefined()
   })
 })
+
+describe('landmarks of deeply nested links', () => {
+  it('are inherited through any depth, at a cost that does not grow with it', () => {
+    const depth = 20_000
+    const html = `<nav>${'<div>'.repeat(depth)}${'<a href="/x">x</a>'.repeat(2000)}${'</div>'.repeat(depth)}</nav><a href="/y">y</a>`
+    const started = performance.now()
+    const links = extractHtml(html, 'https://example.com/').links
+    const elapsed = performance.now() - started
+    expect(links.at(0)?.context?.region).toBe('nav')
+    expect(links.at(-1)?.context?.region).toBeUndefined()
+    // Quadratic work on this input took seconds; linear takes a fraction of one.
+    expect(elapsed).toBeLessThan(3000)
+  })
+})

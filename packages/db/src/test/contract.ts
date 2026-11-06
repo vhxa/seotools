@@ -1480,6 +1480,38 @@ export function describeDatabaseContract(
           expect(await db.crawls.outlinksOf('missing', [hashOf(home)])).toEqual([])
         })
 
+        it('keeps a link whose target is not stored yet, when the crawler numbered both ends', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const home = newUrl(`${site}/`, { depth: 0 })
+          const later = newUrl(`${site}/later`)
+          await db.crawls.addUrls(id, [home])
+          // Another response admitted /later and has not committed yet: this one only links to it.
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: home.urlHash,
+            result: result('page'),
+            links: [
+              {
+                sourceHash: home.urlHash,
+                targetHash: later.urlHash,
+                kind: 'anchor',
+                sourceSeq: home.seq,
+                targetSeq: later.seq,
+              },
+            ],
+          })
+          await db.crawls.addUrls(id, [later])
+          const out = await db.crawls.listLinks({
+            crawlId: id,
+            urlHash: home.urlHash,
+            direction: 'out',
+            limit: 10,
+            offset: 0,
+          })
+          expect(out.map((row) => row.url)).toEqual([later.url])
+        })
+
         it('says where parameters enter the site, and how each URL was found', async () => {
           const domainId = await domain()
           const { id } = await startCrawl(domainId)
@@ -4645,6 +4677,17 @@ export function describeDatabaseContract(
                 )
                 .sort(),
             ).toEqual(['base/old', 'target/new'])
+          })
+
+          it('keeps the history of an archived domain past its days', async () => {
+            const ids = await pair()
+            await crawlOf(ids.domainId, target)
+            await db.crawls.prune({ domainId: ids.domainId, type: 'full', keep: 2 })
+            await db.domains.archive(ids.domainId)
+            const later = new Date(Date.now() + 365 * 86_400_000)
+            expect(await db.crawls.expireHistory({ now: later, defaultDays: 30 })).toBe(0)
+            await db.domains.unarchive(ids.domainId)
+            expect(await db.crawls.expireHistory({ now: later, defaultDays: 30 })).toBe(1)
           })
 
           it('leaves out external URLs, other domains, other types and crawls with nothing kept', async () => {

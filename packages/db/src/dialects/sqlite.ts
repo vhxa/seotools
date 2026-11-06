@@ -1636,8 +1636,10 @@ export function createSqliteDatabase(options: {
             days: crawlSettings.historyDays,
           })
           .from(crawls)
+          .innerJoin(domains, eq(domains.id, crawls.domainId))
           .leftJoin(crawlSettings, eq(crawlSettings.domainId, crawls.domainId))
-          .where(eq(crawls.history, true))
+          // An archived domain keeps everything it had, history included.
+          .where(and(eq(crawls.history, true), isNull(domains.archivedAt)))
           .all()
         const expired = rows
           .filter((row) => historyExpired(row, now, defaultDays))
@@ -1709,8 +1711,8 @@ export function createSqliteDatabase(options: {
               links.flatMap((link) => [link.sourceHash, link.targetHash]),
             )
             const rows = links.flatMap((link) => {
-              const source = seqs.get(link.sourceHash)
-              const target = seqs.get(link.targetHash)
+              const source = link.sourceSeq ?? seqs.get(link.sourceHash)
+              const target = link.targetSeq ?? seqs.get(link.targetHash)
               return ref == null || source === undefined || target === undefined
                 ? []
                 : [newCrawlLinkRow(ref, source, target, link)]
