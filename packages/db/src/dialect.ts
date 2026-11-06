@@ -2,16 +2,20 @@ import type { Dialect } from './types'
 
 /** Infers the SQL dialect from a connection string, unless one is given explicitly. */
 export function detectDialect(url: string, explicit?: Dialect): Dialect {
-  if (explicit) return explicit
   const lower = url.trim().toLowerCase()
+  if (/^(mysql2?|mariadb):\/\//.test(lower)) {
+    throw new Error(
+      'MySQL is no longer supported. Use SQLite (file:…) or PostgreSQL (postgres://…) for DATABASE_URL.',
+    )
+  }
+  if (explicit) return explicit
   if (lower.startsWith('postgres://') || lower.startsWith('postgresql://')) return 'pg'
-  if (/^(mysql2?|mariadb):\/\//.test(lower)) return 'mysql'
   if (lower.startsWith('file:') || lower.startsWith('sqlite:') || lower === ':memory:') {
     return 'sqlite'
   }
   throw new Error(
     `Cannot infer the database dialect from DATABASE_URL ("${lower.split('://')[0]}…"). ` +
-      'Use file:…, postgres://… or mysql://…, or set DATABASE_DIALECT.',
+      'Use file:… or postgres://…, or set DATABASE_DIALECT.',
   )
 }
 

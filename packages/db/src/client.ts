@@ -9,7 +9,7 @@ export interface CreateDatabaseOptions {
 }
 
 /** See `migrationsDirOf`: `MIGRATIONS_DIR`, or the folder found from the source or the bundle. */
-const migrationsDirFor = (dialect: Dialect) => () => migrationsDirOf(dialect)
+export const migrationsDirFor = (dialect: Dialect) => () => migrationsDirOf(dialect)
 
 /** Connects to the database described by `url`. Drivers are loaded lazily, per dialect. */
 export async function createDatabase(options: CreateDatabaseOptions): Promise<Database> {
@@ -20,7 +20,5 @@ export async function createDatabase(options: CreateDatabaseOptions): Promise<Da
       return withArchiveGuard((await import('./dialects/sqlite')).createSqliteDatabase(config))
     case 'pg':
       return withArchiveGuard((await import('./dialects/pg')).createPgDatabase(config))
-    case 'mysql':
-      return withArchiveGuard((await import('./dialects/mysql')).createMysqlDatabase(config))
   }
 }

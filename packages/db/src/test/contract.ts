@@ -34,7 +34,7 @@ const minutes = (n: number) => n * 60_000
 
 /**
  * Behaviour every dialect must provide. `reset` must leave all tables empty.
- * SQLite runs it always; Postgres/MySQL run it when TEST_POSTGRES_URL / TEST_MYSQL_URL are set.
+ * SQLite runs it always; Postgres runs it when TEST_POSTGRES_URL is set.
  */
 /** What only an older version of the code wrote, put into the database as it was. */
 export interface LegacyWrites {

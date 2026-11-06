@@ -10,7 +10,7 @@ Raspberry Pi to a VPS.
 
 - **Web** — Next.js (App Router) with shadcn/ui, single-admin login via [better-auth](https://better-auth.com).
 - **Worker** — processes background jobs stored in your database. No Redis or external queue.
-- **Database** — SQLite by default (zero setup), PostgreSQL or MySQL by changing `DATABASE_URL`.
+- **Database** — SQLite by default (zero setup), PostgreSQL by changing `DATABASE_URL`.
   Migrations run automatically on startup.
 - **Notifications (base)** — email via SMTP ([nodemailer](https://nodemailer.com)) or
   [Resend](https://resend.com). The admin panel to configure them is coming; the encrypted settings
@@ -69,8 +69,8 @@ annotated list.
 | `BETTER_AUTH_URL`                | `http://localhost:3000`  | Public URL of the app. Must match the browser's address.                 |
 | `TRUSTED_ORIGINS`                | —                        | Extra comma-separated origins allowed to call the auth API.              |
 | `SETTINGS_ENCRYPTION_KEY`        | `BETTER_AUTH_SECRET`     | Key for secrets saved from the admin panel (SMTP password, Resend key).  |
-| `DATABASE_URL`                   | `file:/data/seotools.db` | `file:…` (SQLite), `postgres://…` or `mysql://…`.                        |
-| `DATABASE_DIALECT`               | inferred                 | `sqlite` \| `pg` \| `mysql`. Only if it can't be inferred from the URL.  |
+| `DATABASE_URL`                   | `file:/data/seotools.db` | `file:…` (SQLite) or `postgres://…`.                                     |
+| `DATABASE_DIALECT`               | inferred                 | `sqlite` \| `pg`. Only if it can't be inferred from the URL.             |
 | `RUN_MIGRATIONS`                 | `true`                   | Apply pending migrations at startup.                                     |
 | `PORT`                           | `3000`                   | HTTP port (in Compose: the host port; the container always uses 3000).   |
 | `LOG_LEVEL`                      | `info`                   | `fatal` … `trace`, or `silent`.                                          |
@@ -149,7 +149,7 @@ Use a 64-bit OS (Raspberry Pi OS 64-bit or Ubuntu Server) with Docker installed,
 start. Docker pulls the `arm64` variant automatically; nothing is compiled on the device. SQLite is
 the right choice here. Keep the volume on reliable storage (an SSD, or a good SD card).
 
-### PostgreSQL or MySQL
+### PostgreSQL
 
 Set `DATABASE_URL_DOCKER` in `.env` for Docker Compose. Compose overrides
 `DATABASE_URL` (reserved here for local development) with this value, defaulting to SQLite.
@@ -157,8 +157,6 @@ Set `DATABASE_URL_DOCKER` in `.env` for Docker Compose. Compose overrides
 ```bash
 # PostgreSQL (tested on 17)
 DATABASE_URL_DOCKER=postgres://seotools:secret@db:5432/seotools
-# MySQL (tested on 8.4). Needs FOR UPDATE SKIP LOCKED: MySQL 8+, MariaDB 10.6+ (untested)
-DATABASE_URL_DOCKER=mysql://seotools:secret@db:3306/seotools
 ```
 
 For direct `docker run` or a Dokploy Docker application, use the same URL in `DATABASE_URL`
@@ -166,12 +164,16 @@ instead.
 
 Create the (empty) database first; migrations create the tables. The `/data` volume is then unused.
 
+Already running on SQLite? A one-off command copies your data to PostgreSQL:
+[Move from SQLite to PostgreSQL](docs/updating.md#move-from-sqlite-to-postgresql). MySQL is not
+supported.
+
 ### Running web and worker separately
 
 By default one container runs both, so the UI and the job processor always live and die together
 (if either process crashes, the container exits and your orchestrator restarts it).
 
-With PostgreSQL or MySQL you can scale them independently using the same image:
+With PostgreSQL you can scale them independently using the same image:
 
 ```yaml
 services:
@@ -191,7 +193,7 @@ services:
 
 A backup is the database plus your secrets (`BETTER_AUTH_SECRET`, `SETTINGS_ENCRYPTION_KEY`). With
 SQLite, copy the **whole** `/data` directory with the container stopped, not only `seotools.db`: recent
-writes live in `seotools.db-wal`. With PostgreSQL or MySQL, use `pg_dump` / `mysqldump`. The
+writes live in `seotools.db-wal`. With PostgreSQL, use `pg_dump`. The
 commands, and how to restore, are in [docs/updating.md](docs/updating.md#backups-and-restore).
 
 ### Health check
@@ -237,26 +239,25 @@ cp .env.example .env
 pnpm dev          # applies migrations, then runs web (:3000) and worker with hot reload
 ```
 
-| Command                                                     | What it does                                           |
-| ----------------------------------------------------------- | ------------------------------------------------------ |
-| `pnpm dev`                                                  | Migrate, then run web + worker in watch mode           |
-| `pnpm build`                                                | Build everything (Next standalone + worker bundle)     |
-| `pnpm lint` / `pnpm typecheck`                              | ESLint / TypeScript                                    |
-| `pnpm format` / `pnpm format:check`                         | Prettier                                               |
-| `pnpm test`                                                 | Vitest                                                 |
-| `pnpm --filter @seotools/db generate --name <what_changed>` | Generate Drizzle migrations for **all three** dialects |
-| `pnpm db:check`                                             | Verify the migration files are consistent              |
-| `pnpm release:check`                                        | Package versions and `CHANGELOG.md` agree              |
+| Command                                                     | What it does                                       |
+| ----------------------------------------------------------- | -------------------------------------------------- |
+| `pnpm dev`                                                  | Migrate, then run web + worker in watch mode       |
+| `pnpm build`                                                | Build everything (Next standalone + worker bundle) |
+| `pnpm lint` / `pnpm typecheck`                              | ESLint / TypeScript                                |
+| `pnpm format` / `pnpm format:check`                         | Prettier                                           |
+| `pnpm test`                                                 | Vitest                                             |
+| `pnpm --filter @seotools/db generate --name <what_changed>` | Generate Drizzle migrations for **both** dialects  |
+| `pnpm db:check`                                             | Verify the migration files are consistent          |
+| `pnpm release:check`                                        | Package versions and `CHANGELOG.md` agree          |
 
-PostgreSQL and MySQL tests are skipped unless you provide databases:
+PostgreSQL tests are skipped unless you provide a database:
 
 ```bash
 TEST_POSTGRES_URL=postgres://postgres:test@localhost:5432/seotools \
-TEST_MYSQL_URL=mysql://root:test@localhost:3306/seotools \
 pnpm test
 ```
 
-CI runs them against real Postgres and MySQL services.
+CI runs them against a real Postgres service.
 
 ### Layout
 
@@ -266,7 +267,7 @@ apps/
   worker/     Job runner + handlers (example.echo, mail.send); also the bootstrap CLI
 packages/
   core/       Env validation, logger, job types, settings encryption, mail (SMTP + Resend)
-  db/         Drizzle schemas + migrations for sqlite/pg/mysql, repositories, first-run admin
+  db/         Drizzle schemas + migrations for sqlite/pg, repositories, first-run admin
 docker/       Container entrypoint and healthcheck
 docs/         Guides: updating an installation, making a release
 scripts/      Release tooling (`node scripts/release.mjs`)
@@ -275,14 +276,14 @@ scripts/      Release tooling (`node scripts/release.mjs`)
 ### How it fits together
 
 - **Jobs** are rows in the `jobs` table. The worker claims due rows atomically
-  (`FOR UPDATE SKIP LOCKED` on Postgres/MySQL, an immediate transaction on SQLite), retries failures
+  (`FOR UPDATE SKIP LOCKED` on Postgres, an immediate transaction on SQLite), retries failures
   with exponential backoff, recovers jobs left `running` by a crashed worker, and writes a heartbeat
   that `/api/health` reads. To add a job: register its type and payload schema in
   `packages/core/src/jobs.ts` and a handler in `apps/worker/src/handlers/`.
 - **One schema per dialect.** Drizzle tables are dialect-specific, so there is a schema file and a
-  migrations folder for each of SQLite, PostgreSQL and MySQL. When you change a schema, change all
-  three and run `pnpm --filter @seotools/db generate --name <description>`. The shared contract test in
-  `packages/db/src/test/contract.ts` runs against every dialect.
+  migrations folder for each of SQLite and PostgreSQL. When you change a schema, change both
+  and run `pnpm --filter @seotools/db generate --name <description>`. The shared contract test in
+  `packages/db/src/test/contract.ts` runs against both dialects.
 - **Email settings** are stored as JSON in the `settings` table, encrypted with AES-256-GCM
   (`SETTINGS_ENCRYPTION_KEY`, or `BETTER_AUTH_SECRET`). `getMailer(settings)` in `@seotools/core`
   builds a nodemailer or Resend client from them; the `mail.send` job uses it.

@@ -43,8 +43,8 @@ describe('migrationsDirOf', () => {
   })
 
   it('names a wrong MIGRATIONS_DIR', () => {
-    expect(() =>
-      migrationsDirOf('mysql', { here: '/x', env: '/nope', exists: () => false }),
-    ).toThrow(/MIGRATIONS_DIR points to: .*nope.*mysql/)
+    expect(() => migrationsDirOf('pg', { here: '/x', env: '/nope', exists: () => false })).toThrow(
+      /MIGRATIONS_DIR points to: .*nope.*pg/,
+    )
   })
 })

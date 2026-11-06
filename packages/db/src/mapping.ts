@@ -1159,9 +1159,6 @@ export type Differs = (a: AnyColumn, b: AnyColumn, text?: boolean) => SQL
 
 export const sqliteDiffers: Differs = (a, b) => sql`${a} is not ${b}`
 export const pgDiffers: Differs = (a, b) => sql`${a} is distinct from ${b}`
-/** MySQL compares text without regard to case or accents unless told to: here a change is a change. */
-export const mysqlDiffers: Differs = (a, b, text) =>
-  text ? sql`not (binary ${a} <=> binary ${b})` : sql`not (${a} <=> ${b})`
 
 /** What the findings of two crawls differ in, for a dialect to build (they need its own `db`). */
 export interface FindingDifferences {
