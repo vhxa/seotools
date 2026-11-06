@@ -2322,7 +2322,7 @@ export function createSqliteDatabase(options: {
               and(
                 eq(crawlUrls.crawlId, mainId),
                 eq(crawlUrls.scope, 'internal'),
-                compareViewOf(crawlUrls.kind, view),
+                compareViewOf(crawlUrls, view),
                 isNull(otherUrls.urlHash),
               ),
             )
@@ -2363,7 +2363,7 @@ export function createSqliteDatabase(options: {
                 inBoth,
                 eq(crawlUrls.state, 'done'),
                 eq(otherUrls.state, 'done'),
-                compareViewEither(crawlUrls.kind, otherUrls.kind, view),
+                compareViewEither(crawlUrls, otherUrls, view),
               ),
             )
             .get(),

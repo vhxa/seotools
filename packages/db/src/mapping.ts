@@ -1419,13 +1419,24 @@ export function changeCondition(
   }
 }
 
-/** URLs that are pages (`pages`) or are not (`other`), by the kind a crawl gave them. */
-export const compareViewOf = (kind: AnyColumn, view: 'pages' | 'other') =>
-  view === 'pages' ? eq(kind, 'page') : ne(kind, 'page')
+type PageColumns = { kind: AnyColumn; statusCode: AnyColumn }
 
-/** A URL that is a page in either crawl (`pages`), or in neither (`other`). */
-export const compareViewEither = (a: AnyColumn, b: AnyColumn, view: 'pages' | 'other') =>
-  view === 'pages' ? or(eq(a, 'page'), eq(b, 'page')) : and(ne(a, 'page'), ne(b, 'page'))
+/** A page: HTML that answered 2xx (`URL_VIEWS`), as the listing counts them. */
+const isPageSql = ({ kind, statusCode }: PageColumns) =>
+  and(eq(kind, 'page'), gte(statusCode, 200), lt(statusCode, 300))
+const notPageSql = ({ kind, statusCode }: PageColumns) =>
+  or(ne(kind, 'page'), isNull(statusCode), lt(statusCode, 200), gte(statusCode, 300))
+
+/** URLs that are pages (`pages`) or are not (`other`) in the crawl they come from. */
+export const compareViewOf = (url: PageColumns, view: 'pages' | 'other') =>
+  view === 'pages' ? isPageSql(url) : notPageSql(url)
+
+/**
+ * A URL that is a page in either crawl (`pages`: a page that broke or appeared is a change of a
+ * page), or in neither (`other`).
+ */
+export const compareViewEither = (a: PageColumns, b: PageColumns, view: 'pages' | 'other') =>
+  view === 'pages' ? or(isPageSql(a), isPageSql(b)) : and(notPageSql(a), notPageSql(b))
 
 /** The URL or the title contains the text, whatever its case. */
 export const compareSearch = (url: AnyColumn, title: AnyColumn, search: string | undefined) => {
@@ -1464,7 +1475,7 @@ export function compareWhere(
     return and(
       eq(main.crawlId, plan.mainCrawlId),
       eq(main.scope, 'internal'),
-      compareViewOf(main.kind, query.view),
+      compareViewOf(main, query.view),
       isNull(other.urlHash),
       search,
     )
@@ -1476,7 +1487,7 @@ export function compareWhere(
     eq(other.scope, 'internal'),
     eq(main.state, 'done'),
     eq(other.state, 'done'),
-    compareViewEither(main.kind, other.kind, query.view),
+    compareViewEither(main, other, query.view),
     search,
     changeCondition(query.change, { target: main, base: other }, differs, findings, query.issue),
   )

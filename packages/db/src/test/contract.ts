@@ -4377,6 +4377,30 @@ export function describeDatabaseContract(
             ...options,
           })
 
+        it('compares as pages what answered HTML 2xx in either crawl, and a page failing in both as the rest', async () => {
+          const domainId = await domain()
+          const older = await crawlOf(domainId, {
+            '/': { result: { title: 'Home' } },
+            '/broke': { result: { title: 'Broke' } },
+            '/gone': { result: { statusCode: 404 } },
+          })
+          const newer = await crawlOf(domainId, {
+            '/': { result: { title: 'Home' } },
+            '/broke': { result: { statusCode: 404 } },
+            '/gone': { result: { statusCode: 404 } },
+          })
+          const ids = { domainId, baseId: older.id, targetId: newer.id }
+          const changed = async (view: 'pages' | 'other') =>
+            paths(
+              await db.crawls.compareUrls({ ...ids, change: 'status', view, limit: 50, offset: 0 }),
+            )
+          // A page that broke is a change of a page; one that failed both times is not a page.
+          expect(await changed('pages')).toEqual(['/broke'])
+          expect((await db.crawls.compareCounts({ ...ids, view: 'pages' })).compared).toBe(2)
+          expect((await db.crawls.compareCounts({ ...ids, view: 'other' })).compared).toBe(1)
+          expect(await changed('other')).toEqual([])
+        })
+
         it('counts what was added, is missing and changed, apart from the external URLs', async () => {
           const ids = await pair()
           expect(await db.crawls.compareCounts({ ...ids, view: 'pages' })).toEqual({
