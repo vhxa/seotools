@@ -4410,8 +4410,8 @@ export function describeDatabaseContract(
             )
           // A page that broke is a change of a page; one that failed both times is not a page.
           expect(await changed('pages')).toEqual(['/broke'])
-          expect((await db.crawls.compareCounts({ ...ids, view: 'pages' })).compared).toBe(2)
-          expect((await db.crawls.compareCounts({ ...ids, view: 'other' })).compared).toBe(1)
+          expect((await db.crawls.compareCounts({ ...ids, view: 'pages' }))?.compared).toBe(2)
+          expect((await db.crawls.compareCounts({ ...ids, view: 'other' }))?.compared).toBe(1)
           expect(await changed('other')).toEqual([])
         })
 
