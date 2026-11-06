@@ -176,7 +176,7 @@
     "never": "never"
   },
   "Updates": {
-    "metaTitle": "Updates · seotools",
+    "metaTitle": "Updates · Administration · seotools",
     "title": "Updates",
     "description": "Which version is installed and whether a newer release exists. Looking for updates does not install them.",
     "status": {
@@ -2762,7 +2762,7 @@
     "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change."
   },
   "Companies": {
-    "metaTitle": "Companies · seotools",
+    "metaTitle": "Companies · Administration · seotools",
     "title": "Companies",
     "addCompany": "Add company",
     "empty": "There are no companies yet.",
@@ -2854,6 +2854,7 @@
     "description": "Your account has no company or domain. Ask an administrator to give you access."
   },
   "Users": {
+    "metaTitle": "Users · Administration · seotools",
     "title": "Users",
     "close": "Close",
     "actions": "Actions for {name}",
@@ -2998,7 +2999,7 @@
     }
   },
   "Email": {
-    "metaTitle": "Email · seotools",
+    "metaTitle": "Email · Administration · seotools",
     "title": "Email",
     "description": "How the app sends email: invitations, password links and crawl alerts.",
     "health": {

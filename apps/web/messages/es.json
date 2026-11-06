@@ -176,7 +176,7 @@
     "never": "nunca"
   },
   "Updates": {
-    "metaTitle": "Actualizaciones · seotools",
+    "metaTitle": "Actualizaciones · Administración · seotools",
     "title": "Actualizaciones",
     "description": "Qué versión está instalada y si existe una versión más reciente. Buscar actualizaciones no las instala.",
     "status": {
@@ -2762,7 +2762,7 @@
     "sitemap-forbidden-present": "Elimina la entrada de la URL de los sitemaps afectados o corrige la regla si debe figurar en ellos. Ejecuta un rastreo completo para verificar el cambio."
   },
   "Companies": {
-    "metaTitle": "Empresas · seotools",
+    "metaTitle": "Empresas · Administración · seotools",
     "title": "Empresas",
     "addCompany": "Añadir empresa",
     "empty": "Todavía no hay empresas.",
@@ -2854,6 +2854,7 @@
     "description": "Tu cuenta no tiene ninguna empresa ni dominio. Pide acceso a un administrador."
   },
   "Users": {
+    "metaTitle": "Usuarios · Administración · seotools",
     "title": "Usuarios",
     "close": "Cerrar",
     "actions": "Acciones de {name}",
@@ -2998,7 +2999,7 @@
     }
   },
   "Email": {
-    "metaTitle": "Correo · seotools",
+    "metaTitle": "Correo · Administración · seotools",
     "title": "Correo",
     "description": "Cómo envía correo la aplicación: invitaciones, enlaces de contraseña y alertas de rastreo.",
     "health": {
