@@ -14,7 +14,7 @@ export interface CreateDatabaseOptions {
  * `packages/db/migrations`, relative to both `src/` and the bundled `dist/`. Built with `path`
  * instead of `new URL(…, import.meta.url)` so bundlers don't try to treat it as an asset.
  */
-function migrationsDirFor(dialect: Dialect) {
+export function migrationsDirFor(dialect: Dialect) {
   return () => {
     const root =
       process.env.MIGRATIONS_DIR ??
