@@ -485,8 +485,8 @@
     }
   },
   "PagesDetails": {
-    "metaTitle": "Detalle de páginas · {host} · seotools",
-    "title": "Detalle de páginas",
+    "metaTitle": "URL · {host} · seotools",
+    "title": "URL",
     "description": "Todas las URLs del último rastreo completo. Selecciona varias para actuar sobre ellas a la vez.",
     "neverCrawled": "Este dominio todavía no se ha rastreado. Lanza un rastreo completo desde el resumen de páginas.",
     "viewsLabel": "Vistas",
@@ -728,7 +728,7 @@
     }
   },
   "UrlDetail": {
-    "back": "Volver al detalle",
+    "back": "Volver a las URL",
     "openFullScreen": "Abrir en pantalla completa",
     "openUrl": "Abrir en una pestaña nueva",
     "close": "Cerrar",

@@ -485,8 +485,8 @@
     }
   },
   "PagesDetails": {
-    "metaTitle": "Pages detail · {host} · seotools",
-    "title": "Pages detail",
+    "metaTitle": "URLs · {host} · seotools",
+    "title": "URLs",
     "description": "Every URL of the last full crawl. Select some to act on them together.",
     "neverCrawled": "This domain has not been crawled yet. Run a full crawl from the pages overview.",
     "viewsLabel": "Views",
@@ -728,7 +728,7 @@
     }
   },
   "UrlDetail": {
-    "back": "Back to the detail",
+    "back": "Back to URLs",
     "openFullScreen": "Open full screen",
     "openUrl": "Open in a new tab",
     "close": "Close",
