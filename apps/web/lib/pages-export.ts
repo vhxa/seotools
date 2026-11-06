@@ -1,3 +1,4 @@
+import { crawlUrlHash } from '@seotools/core'
 import { ANY_ACCEPTED, type FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import { evidenceKindOf } from '@seotools/core/crawl/evidence'
 import {
@@ -15,6 +16,7 @@ import type {
   CrawlUrlIssue,
   CrawlUrlQuery,
   CrawlUrlSort,
+  OutLink,
 } from '@seotools/db'
 import { describeAcceptance } from './acceptance-reason'
 import { CSV_BOM, csvRow, type CsvCell } from './csv'
@@ -32,7 +34,7 @@ import { activeFilters, type DetailQuery, type FilterKey, type NotApplied } from
  * `FINDINGS_COLUMNS` and its header to `Export.columns`; nothing else reads the order.
  */
 
-export const EXPORT_KINDS = ['pages', 'findings'] as const
+export const EXPORT_KINDS = ['pages', 'findings', 'links', 'redirects'] as const
 export type ExportKind = (typeof EXPORT_KINDS)[number]
 export const isExportKind = (value: string): value is ExportKind =>
   (EXPORT_KINDS as readonly string[]).includes(value)
@@ -198,7 +200,23 @@ export interface ExportUrl {
   /** What a rule accepts on the URL: what the crawl saw, and is not pending. */
   accepted?: CrawlUrlAcceptedIssue[]
   audit: CrawlUrlAudit | undefined
+  /** The links leaving it (the links file). */
+  links?: OutLink[]
+  /** Where its redirects end (the redirects file). */
+  redirect?: RedirectChain
 }
+
+/** Where a redirect leads once every hop the crawl recorded is followed. */
+export interface RedirectChain {
+  /** The last URL reached: the end of the chain, or where the crawl's knowledge stops. */
+  finalUrl: string | null
+  finalStatus: number | null
+  hops: number
+  loop: boolean
+}
+
+/** Hops followed at most: past this a chain is reported as it is, unfinished. */
+const MAX_REDIRECT_HOPS = 10
 
 interface Column {
   /** The message in `Export.columns` that is the header. */
@@ -442,17 +460,76 @@ export function findingsOf(row: ExportUrl, accepted = false): Finding[] {
     .map(({ acceptance, ...issue }) => ({ row, issue, ...(acceptance ? { acceptance } : {}) }))
 }
 
+const ORIGIN: readonly UrlColumn[] = ORIGIN_COLUMNS.map(({ header, value }) => ({
+  header,
+  cell: (_: ExportUrl, c: ExportContext) => value(c),
+}))
+
+interface LinkColumn extends Column {
+  cell: (link: OutLink, row: ExportUrl, context: ExportContext) => CsvCell
+}
+
+/** The links file: one row per link that leaves a listed URL. */
+export const LINKS_COLUMNS: readonly LinkColumn[] = [
+  ...ORIGIN.map(({ header, cell }) => ({
+    header,
+    cell: (_: OutLink, row: ExportUrl, c: ExportContext) => cell(row, c),
+  })),
+  { header: 'url', cell: (_, { url }) => url.url },
+  { header: 'linkTo', cell: (link) => link.url },
+  { header: 'linkKind', cell: (link, _, c) => tr(c, `LinkKinds.${link.kind}`) },
+  { header: 'linkStatus', cell: (link) => link.statusCode },
+  { header: 'linkText', cell: (link) => link.context?.text ?? null },
+  { header: 'linkElement', cell: (link) => link.context?.element ?? null },
+  {
+    header: 'linkRegion',
+    cell: (link, _, c) =>
+      link.context?.region ? tr(c, `LinkRegions.${link.context.region}`) : null,
+  },
+]
+
+/** The redirects file: one row per listed URL that redirects, with where it ends. */
+export const REDIRECTS_COLUMNS: readonly UrlColumn[] = [
+  ...ORIGIN,
+  urlOf,
+  { header: 'status', cell: ({ url }) => url.statusCode },
+  { header: 'redirectTo', cell: ({ url }) => url.redirectTo },
+  { header: 'finalUrl', cell: ({ redirect }) => redirect?.finalUrl ?? null },
+  { header: 'finalStatus', cell: ({ redirect }) => redirect?.finalStatus ?? null },
+  { header: 'hops', cell: ({ redirect }) => redirect?.hops ?? null },
+  {
+    header: 'loop',
+    cell: ({ redirect }, c) =>
+      redirect ? tr(c, redirect.loop ? 'Export.values.yes' : 'Export.values.no') : null,
+  },
+]
+
+const headersOf = (kind: ExportKind): readonly Column[] =>
+  kind === 'pages'
+    ? PAGES_COLUMNS
+    : kind === 'findings'
+      ? FINDINGS_COLUMNS
+      : kind === 'links'
+        ? LINKS_COLUMNS
+        : REDIRECTS_COLUMNS
+
 export const exportHeader = (kind: ExportKind, context: ExportContext): string =>
-  csvRow(
-    (kind === 'pages' ? PAGES_COLUMNS : FINDINGS_COLUMNS).map((column) =>
-      tr(context, `Export.columns.${column.header}`),
-    ),
-  )
+  csvRow(headersOf(kind).map((column) => tr(context, `Export.columns.${column.header}`)))
 
 /** The records a URL makes: one in the pages file, one per finding in the findings file. */
 export function exportRecords(kind: ExportKind, row: ExportUrl, context: ExportContext): string[] {
   if (kind === 'pages') {
     return [csvRow(PAGES_COLUMNS.map((column) => column.cell(row, context)))]
+  }
+  if (kind === 'links') {
+    return (row.links ?? []).map((link) =>
+      csvRow(LINKS_COLUMNS.map((column) => column.cell(link, row, context))),
+    )
+  }
+  if (kind === 'redirects') {
+    return row.url.kind === 'redirect'
+      ? [csvRow(REDIRECTS_COLUMNS.map((column) => column.cell(row, context)))]
+      : []
   }
   const { onlyIssue, onlyAccepted } = context
   return findingsOf(row, Boolean(onlyAccepted))
@@ -467,7 +544,70 @@ export function exportRecords(kind: ExportKind, row: ExportUrl, context: ExportC
 // Walking the crawl
 
 /** What the export needs of the database. */
-export type ExportSource = Pick<CrawlRepository, 'listUrls' | 'issuesOf' | 'acceptedOf' | 'auditOf'>
+export type ExportSource = Pick<
+  CrawlRepository,
+  'listUrls' | 'issuesOf' | 'acceptedOf' | 'auditOf' | 'outlinksOf' | 'urlsOf'
+>
+
+/** Follows the redirects of these URLs through what the crawl recorded, a hop at a time. */
+async function redirectChains(
+  source: Pick<CrawlRepository, 'urlsOf'>,
+  crawlId: string,
+  urls: CrawlUrl[],
+): Promise<Map<string, RedirectChain>> {
+  const chains = new Map<string, RedirectChain & { at: CrawlUrl; seen: Set<string> }>()
+  for (const url of urls) {
+    if (url.kind !== 'redirect') continue
+    chains.set(url.urlHash, {
+      at: url,
+      seen: new Set([url.urlHash]),
+      finalUrl: url.redirectTo,
+      finalStatus: null,
+      hops: 0,
+      loop: false,
+    })
+  }
+  for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
+    const moving = [...chains.values()].filter(
+      (chain) => !chain.loop && chain.at.kind === 'redirect' && chain.at.redirectTo,
+    )
+    if (moving.length === 0) break
+    const next = new Map(
+      (
+        await source.urlsOf(
+          crawlId,
+          moving.map((chain) => crawlUrlHash(chain.at.redirectTo!)),
+        )
+      ).map((url) => [url.urlHash, url]),
+    )
+    for (const chain of moving) {
+      const target = chain.at.redirectTo!
+      const hash = crawlUrlHash(target)
+      chain.hops++
+      chain.finalUrl = target
+      const reached = next.get(hash)
+      if (chain.seen.has(hash)) {
+        chain.loop = true
+        continue
+      }
+      chain.seen.add(hash)
+      if (!reached) {
+        // The crawl did not record where it goes: the chain is known up to here.
+        chain.finalStatus = null
+        chain.at = { ...chain.at, kind: 'unknown', redirectTo: null }
+        continue
+      }
+      chain.finalStatus = reached.statusCode
+      chain.at = reached
+    }
+  }
+  return new Map(
+    [...chains].map(([hash, { finalUrl, finalStatus, hops, loop }]) => [
+      hash,
+      { finalUrl, finalStatus, hops, loop },
+    ]),
+  )
+}
 
 /** The list changed while it was being written, so the file would not hold what it said it does. */
 export class ExportInconsistentError extends Error {
@@ -515,11 +655,21 @@ export async function* exportCsv(options: {
       const hashes = urls.map((url) => url.urlHash)
       // The pages file counts findings only when the crawl was checked for them.
       const checked = kind === 'findings' || context.analysed
-      const [issues, accepted, audits] = await Promise.all([
+      const [issues, accepted, audits, links, chains] = await Promise.all([
         checked ? source.issuesOf(listing.crawlId, hashes) : [],
         checked ? source.acceptedOf(listing.crawlId, hashes) : [],
         source.auditOf(listing.crawlId, hashes),
+        kind === 'links' ? source.outlinksOf(listing.crawlId, hashes) : [],
+        kind === 'redirects'
+          ? redirectChains(source, listing.crawlId, urls)
+          : new Map<string, RedirectChain>(),
       ])
+      const linksByUrl = new Map<string, OutLink[]>()
+      for (const link of links) {
+        const list = linksByUrl.get(link.sourceHash)
+        if (list) list.push(link)
+        else linksByUrl.set(link.sourceHash, [link])
+      }
       const issuesByUrl = new Map<string, CrawlUrlIssue[]>()
       for (const issue of issues) {
         const list = issuesByUrl.get(issue.urlHash)
@@ -542,6 +692,8 @@ export async function* exportCsv(options: {
               issues: issuesByUrl.get(url.urlHash) ?? [],
               accepted: acceptedByUrl.get(url.urlHash) ?? [],
               audit: auditByUrl.get(url.urlHash),
+              links: linksByUrl.get(url.urlHash),
+              redirect: chains.get(url.urlHash),
             },
             context,
           ),

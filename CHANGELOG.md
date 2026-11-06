@@ -59,6 +59,9 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **Export links and redirects** from the URLs table (Export menu): one row per link leaving the
+  listed URLs (with its text, element and part of the page), and one row per redirect with where
+  its chain ends, how many hops it has and whether it loops.
 - **Structured data checked against Google's rich result requirements**: for Product, Article,
   BreadcrumbList, FAQPage, LocalBusiness (and common kinds), Event, Recipe, VideoObject,
   JobPosting, Organization, SoftwareApplication, Review and AggregateRating, the JSON-LD of a page

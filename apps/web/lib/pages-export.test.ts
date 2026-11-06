@@ -11,7 +11,9 @@ import {
   EXPORT_KINDS,
   ExportInconsistentError,
   FINDINGS_COLUMNS,
+  LINKS_COLUMNS,
   PAGES_COLUMNS,
+  REDIRECTS_COLUMNS,
   contentDisposition,
   crawlMoment,
   csvStream,
@@ -603,19 +605,20 @@ describe('the columns', () => {
   ] as const)(
     'are all translated in %s, with different headers for different columns',
     (_, catalog) => {
-      for (const columns of [PAGES_COLUMNS, FINDINGS_COLUMNS]) {
+      for (const columns of [PAGES_COLUMNS, FINDINGS_COLUMNS, LINKS_COLUMNS, REDIRECTS_COLUMNS]) {
         const headers = columns.map((column) => column.header)
         expect(new Set(headers).size).toBe(headers.length)
         for (const header of headers) {
           expect(catalog.Export.columns, header).toHaveProperty(header)
         }
       }
-      const translated = [...PAGES_COLUMNS, ...FINDINGS_COLUMNS].map(
+      const all = [...PAGES_COLUMNS, ...FINDINGS_COLUMNS, ...LINKS_COLUMNS, ...REDIRECTS_COLUMNS]
+      const translated = all.map(
         (column) => (catalog.Export.columns as Record<string, string>)[column.header],
       )
       expect(translated.every(Boolean)).toBe(true)
       // What is in the catalog and used by no file is a leftover.
-      const used = new Set([...PAGES_COLUMNS, ...FINDINGS_COLUMNS].map((column) => column.header))
+      const used = new Set(all.map((column) => column.header))
       expect(Object.keys(catalog.Export.columns).filter((key) => !used.has(key))).toEqual([])
     },
   )
@@ -784,6 +787,8 @@ describe('walking the crawl', () => {
       issuesOf: issuesOf as unknown as ExportSource['issuesOf'],
       acceptedOf: vi.fn(async () => []) as unknown as ExportSource['acceptedOf'],
       auditOf: auditOf as unknown as ExportSource['auditOf'],
+      outlinksOf: vi.fn(async () => []) as unknown as ExportSource['outlinksOf'],
+      urlsOf: vi.fn(async () => []) as unknown as ExportSource['urlsOf'],
       calls: { listUrls, issuesOf, auditOf },
       ...overrides,
     }
@@ -1055,5 +1060,82 @@ describe('what a rule accepts', () => {
     const [record] = asObjects('pages', exportRecords('pages', row, context()).join(''))
     expect(record!['Accepted by a rule']).toBe('1')
     expect(record!['Number of issues']).toBe('1')
+  })
+})
+
+describe('the links and redirects files', () => {
+  const context = {
+    host: 'example.com',
+    crawlId: 'c1',
+    crawlDate: new Date('2026-11-06T10:00:00Z'),
+    filters: '',
+    onlyIssue: null,
+    onlyAccepted: null,
+    analysed: true,
+    translate: (key: string) => key,
+  } as unknown as Parameters<typeof exportRecords>[2]
+
+  it('writes one row per link leaving a URL, with where it sits', () => {
+    const row = {
+      url: crawlUrl('/a'),
+      issues: [],
+      audit: undefined,
+      links: [
+        {
+          sourceHash: 'h',
+          url: 'https://example.com/b',
+          urlHash: 'b',
+          kind: 'anchor' as const,
+          scope: 'internal' as const,
+          urlKind: 'page' as const,
+          state: 'done' as const,
+          statusCode: 404,
+          error: null,
+          context: { text: 'B', element: 'a.menu', region: 'nav' as const },
+        },
+      ],
+    }
+    const [line] = exportRecords('links', row, context)
+    expect(line).toContain('https://example.com/b')
+    expect(line).toContain('LinkKinds.anchor')
+    expect(line).toContain('404')
+    expect(line).toContain('a.menu')
+    expect(line).toContain('LinkRegions.nav')
+  })
+
+  it('follows a redirect chain through what the crawl recorded, and tells a loop', async () => {
+    const hop = (path: string, to: string | null, status = 301): CrawlUrl => ({
+      ...crawlUrl(path),
+      kind: to ? 'redirect' : 'page',
+      statusCode: to ? status : 200,
+      redirectTo: to ? `${SITE}${to}` : null,
+    })
+    const known = [hop('/b', '/c'), hop('/c', null), hop('/x', '/y'), hop('/y', '/x')]
+    const byHash = new Map(known.map((url) => [url.urlHash, url]))
+    const start = [hop('/a', '/b'), hop('/x', '/y')]
+    const source = {
+      listUrls: vi.fn(async ({ offset }: { offset: number }) => (offset === 0 ? start : [])),
+      issuesOf: vi.fn(async () => []),
+      acceptedOf: vi.fn(async () => []),
+      auditOf: vi.fn(async () => []),
+      outlinksOf: vi.fn(async () => []),
+      urlsOf: vi.fn(async (_id: string, hashes: string[]) =>
+        hashes.flatMap((hash) => byHash.get(hash) ?? []),
+      ),
+    } as unknown as ExportSource
+    const chunks: string[] = []
+    for await (const piece of exportCsv({
+      kind: 'redirects',
+      source,
+      listing: { crawlId: 'c1', view: 'redirects' },
+      context,
+      expected: 2,
+    })) {
+      chunks.push(piece)
+    }
+    const [, a, x] = chunks.join('').trim().split('\r\n')
+    expect(a).toContain(`${SITE}/c`)
+    expect(a).toContain(',2,')
+    expect(x).toContain('Export.values.yes')
   })
 })

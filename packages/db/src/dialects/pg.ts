@@ -102,6 +102,7 @@ import {
   historyTrace,
   type LinkScope,
   foldIssueCounts,
+  toLinkContext,
 } from '../mapping'
 import {
   AUDIT_SEMANTICS,
@@ -164,6 +165,9 @@ import type {
   SitemapHreflang,
   VerifiedUrl,
   CrawlUrlTrace,
+  OutLink,
+  DiscoveryStep,
+  CrawlUrl,
 } from '../types'
 
 const {
@@ -201,6 +205,8 @@ const {
 
 /** `limit` when a list is not capped. */
 const MAX_LIMIT = 2_147_483_647
+/** Steps of a discovery path read at most: crawls are not deeper than this in practice. */
+const MAX_DISCOVERY_STEPS = 200
 
 const urlColumns = {
   state: crawlUrls.state,
@@ -1720,6 +1726,152 @@ export function createPgDatabase(options: {
             .where(crawlUrlWhere(urlColumns, query, subqueries(query.crawlId)))
         )[0]
         return Number(row?.count ?? 0)
+      },
+
+      async urlsOf(crawlId, urlHashes) {
+        const found: CrawlUrl[] = []
+        for (const batch of chunk([...new Set(urlHashes)])) {
+          const rows = await db
+            .select()
+            .from(crawlUrls)
+            .where(and(eq(crawlUrls.crawlId, crawlId), inArray(crawlUrls.urlHash, batch)))
+          found.push(...rows.map(toCrawlUrl))
+        }
+        return found
+      },
+
+      async outlinksOf(crawlId, sourceHashes) {
+        const ref = await refOf(crawlId)
+        if (ref === null) return []
+        const sources = alias(crawlUrls, 'out_sources')
+        const found: OutLink[] = []
+        for (const batch of chunk(sourceHashes)) {
+          const rows = await db
+            .select({
+              sourceHash: sources.urlHash,
+              url: crawlUrls.url,
+              urlHash: crawlUrls.urlHash,
+              kind: crawlUrlLinks.kind,
+              scope: crawlUrls.scope,
+              urlKind: crawlUrls.kind,
+              state: crawlUrls.state,
+              statusCode: crawlUrls.statusCode,
+              error: crawlUrls.error,
+              text: crawlUrlLinks.text,
+              element: crawlUrlLinks.element,
+              region: crawlUrlLinks.region,
+              snippet: crawlUrlLinks.snippet,
+            })
+            .from(crawlUrlLinks)
+            .innerJoin(
+              sources,
+              and(eq(sources.crawlId, crawlId), eq(sources.seq, crawlUrlLinks.source)),
+            )
+            .innerJoin(
+              crawlUrls,
+              and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.seq, crawlUrlLinks.target)),
+            )
+            .where(and(eq(crawlUrlLinks.crawlRef, ref), inArray(sources.urlHash, batch)))
+            .orderBy(
+              asc(sources.urlHash),
+              asc(crawlUrls.url),
+              asc(crawlUrls.urlHash),
+              asc(crawlUrlLinks.kind),
+            )
+          found.push(
+            ...rows.map(({ sourceHash, ...row }) => ({ sourceHash, ...toCrawlLinkRow(row) })),
+          )
+        }
+        return found
+      },
+
+      async parameterEntries(crawlId, { limit, offset }) {
+        const ref = await refOf(crawlId)
+        if (ref === null) return { entries: [], total: 0 }
+        const sources = alias(crawlUrls, 'entry_sources')
+        const where = and(eq(crawlUrlLinks.crawlRef, ref), isNotNull(crawlUrlLinks.snippet))
+        const rows = await db
+          .select({
+            sourceUrl: sources.url,
+            sourceHash: sources.urlHash,
+            url: crawlUrls.url,
+            urlHash: crawlUrls.urlHash,
+            kind: crawlUrlLinks.kind,
+            text: crawlUrlLinks.text,
+            element: crawlUrlLinks.element,
+            region: crawlUrlLinks.region,
+            snippet: crawlUrlLinks.snippet,
+          })
+          .from(crawlUrlLinks)
+          .innerJoin(
+            sources,
+            and(eq(sources.crawlId, crawlId), eq(sources.seq, crawlUrlLinks.source)),
+          )
+          .innerJoin(
+            crawlUrls,
+            and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.seq, crawlUrlLinks.target)),
+          )
+          .where(where)
+          .orderBy(
+            asc(crawlUrls.url),
+            asc(crawlUrls.urlHash),
+            asc(sources.url),
+            asc(sources.urlHash),
+            asc(crawlUrlLinks.kind),
+          )
+          .limit(limit)
+          .offset(offset)
+        const counted = (
+          await db
+            .select({ count: sql<number>`count(*)` })
+            .from(crawlUrlLinks)
+            .where(where)
+        )[0]
+        return {
+          entries: rows.map(({ text, element, region, snippet, ...row }) => ({
+            ...row,
+            kind: row.kind as CrawlLinkKind,
+            context: toLinkContext({ text, element, region, snippet }),
+          })),
+          total: Number(counted?.count ?? 0),
+        }
+      },
+
+      async discoveryPath(crawlId, urlHash) {
+        const steps: DiscoveryStep[] = []
+        let row = (
+          await db
+            .select({
+              url: crawlUrls.url,
+              urlHash: crawlUrls.urlHash,
+              foundFrom: crawlUrls.foundFrom,
+              foundKind: crawlUrls.foundKind,
+            })
+            .from(crawlUrls)
+            .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, urlHash)))
+        )[0]
+        const seen = new Set<string>()
+        while (row && !seen.has(row.urlHash) && steps.length < MAX_DISCOVERY_STEPS) {
+          seen.add(row.urlHash)
+          steps.unshift({
+            url: row.url,
+            urlHash: row.urlHash,
+            foundKind: row.foundFrom === null ? null : (row.foundKind as CrawlLinkKind | null),
+          })
+          if (row.foundFrom === null) break
+          row = (
+            await db
+              .select({
+                url: crawlUrls.url,
+                urlHash: crawlUrls.urlHash,
+                foundFrom: crawlUrls.foundFrom,
+                foundKind: crawlUrls.foundKind,
+              })
+              .from(crawlUrls)
+              .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.seq, row.foundFrom)))
+          )[0]
+        }
+        return steps
       },
 
       async getUrl(crawlId, urlHash) {

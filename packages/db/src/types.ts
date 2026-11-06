@@ -515,6 +515,29 @@ export interface CrawlLinkRow {
   error: string | null
 }
 
+/** A link leaving a URL, for an export of links. */
+export interface OutLink extends CrawlLinkRow {
+  sourceHash: string
+}
+
+/** A link where query parameters enter the site. */
+export interface ParameterEntry {
+  sourceUrl: string
+  sourceHash: string
+  url: string
+  urlHash: string
+  kind: CrawlLinkKind
+  context: LinkContext | null
+}
+
+/** A step of how the crawler got to a URL. */
+export interface DiscoveryStep {
+  url: string
+  urlHash: string
+  /** How this URL was found from the step before. `null` for the first (a seed, a file). */
+  foundKind: CrawlLinkKind | null
+}
+
 /** An issue found on a URL of a crawl. */
 export interface CrawlUrlIssue {
   urlHash: string
@@ -645,6 +668,24 @@ export interface CrawlRepository {
   viewCounts(crawlId: string): Promise<CrawlViewCounts>
   /** One URL of a crawl, or `null` if the crawl does not have it. */
   getUrl(crawlId: string, urlHash: string): Promise<CrawlUrl | null>
+  /** These URLs of a crawl that it has, in no particular order. */
+  urlsOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrl[]>
+  /** Every link that leaves these URLs of a crawl, with what is known of where it goes. */
+  outlinksOf(crawlId: string, sourceHashes: string[]): Promise<OutLink[]>
+  /**
+   * The links that bring query parameters their page does not have (they kept the tag as read,
+   * `LinkContext.snippet`): where parameters enter the site. Ordered by target, then source.
+   */
+  parameterEntries(
+    crawlId: string,
+    page: { limit: number; offset: number },
+  ): Promise<{ entries: ParameterEntry[]; total: number }>
+  /**
+   * How the crawler got to a URL: from the first URL it found it through, up to the URL itself,
+   * each with the kind of link that led on (`foundKind` of the next one). Empty: not found in the
+   * crawl. A URL found before this was recorded has only itself.
+   */
+  discoveryPath(crawlId: string, urlHash: string): Promise<DiscoveryStep[]>
   /** The URLs of a crawl that link to `targetHash`, sorted by URL. A home page has thousands. */
   linkSources(
     crawlId: string,

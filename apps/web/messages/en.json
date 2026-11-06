@@ -649,7 +649,11 @@
       "findings": "Findings",
       "findingsHint": "One row per finding, with its importance and what backs it.",
       "notAnalysed": "This crawl has not been checked for findings.",
-      "scope": "Everything the filters leave, not only this page."
+      "scope": "Everything the filters leave, not only this page.",
+      "links": "Links",
+      "linksHint": "One row per link that leaves the listed URLs, with where it sits.",
+      "redirects": "Redirects",
+      "redirectsHint": "One row per listed redirect, with where its chain ends."
     },
     "errors": {
       "missing": "This crawl does not exist in this domain.",
@@ -685,7 +689,18 @@
       "evidenceSamples": "Evidence samples",
       "findingState": "State",
       "acceptedBecause": "Accepted because",
-      "acceptedFindings": "Accepted by a rule"
+      "acceptedFindings": "Accepted by a rule",
+      "linkTo": "Links to",
+      "linkKind": "Link type",
+      "linkStatus": "Linked URL status",
+      "linkText": "Link text",
+      "linkElement": "Element",
+      "linkRegion": "Part of the page",
+      "redirectTo": "Redirects to",
+      "finalUrl": "Final URL",
+      "finalStatus": "Final URL status",
+      "hops": "Redirects in the chain",
+      "loop": "Loop"
     },
     "values": {
       "internal": "This site",
@@ -693,7 +708,9 @@
       "atLeast": "At least {total, number}",
       "evidenceNotStored": "Not stored in this crawl",
       "pending": "Pending",
-      "accepted": "Accepted by a rule"
+      "accepted": "Accepted by a rule",
+      "yes": "Yes",
+      "no": "No"
     },
     "filters": {
       "view": "View: {value}"
@@ -3013,5 +3030,12 @@
     "none": "You are not emailed about this domain.",
     "archived": "This domain is archived: no alerts are sent.",
     "manage": "Choose your alerts"
+  },
+  "LinkRegions": {
+    "nav": "Navigation",
+    "header": "Header",
+    "footer": "Footer",
+    "main": "Main content",
+    "aside": "Sidebar"
   }
 }
