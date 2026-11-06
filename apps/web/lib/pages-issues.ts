@@ -13,13 +13,17 @@ import {
 export interface IssueCount {
   issue: PageIssueId
   pages: number
+  /** Search-result findings on URLs that cannot be indexed: listed, never pending. */
+  secondary?: number
 }
 
 /**
  * What a crawl found, worst first and then the most widespread. Ids the code no longer defines are
  * left out: they are old data without a name to show.
  */
-export function rankIssueCounts(counts: { issue: string; pages: number }[]): IssueCount[] {
+export function rankIssueCounts(
+  counts: { issue: string; pages: number; secondary?: number }[],
+): IssueCount[] {
   return counts
     .filter((row): row is IssueCount => isPageIssueId(row.issue))
     .sort(

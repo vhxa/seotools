@@ -21,7 +21,7 @@ describe('homePriorities', () => {
     expect(homePriorities({ ...analysed, pruned: true }, { kind: 'current' }, counts)).toBeNull()
   })
 
-  it('limits priorities using the existing severity order and skips retired or empty findings', () => {
+  it('limits priorities (five by default) using the existing severity order and skips retired or empty findings', () => {
     expect(
       homePriorities(analysed, { kind: 'current' }, [
         { issue: 'title-too-long', pages: 40 },
@@ -31,6 +31,18 @@ describe('homePriorities', () => {
         { issue: 'no-response', pages: 0 },
         { issue: 'nofollow', pages: 90 },
       ])?.map(({ issue }) => issue),
-    ).toEqual(['noindex', 'nofollow', 'title-too-short'])
+    ).toEqual(['noindex', 'nofollow', 'title-too-short', 'title-too-long'])
+    expect(
+      homePriorities(
+        analysed,
+        { kind: 'current' },
+        [
+          { issue: 'title-too-long', pages: 40 },
+          { issue: 'noindex', pages: 1 },
+          { issue: 'nofollow', pages: 90 },
+        ],
+        2,
+      )?.map(({ issue }) => issue),
+    ).toEqual(['noindex', 'nofollow'])
   })
 })

@@ -92,67 +92,65 @@
     "mobileTitle": "Navegación",
     "mobileDescription": "Navegación principal y selector de dominio.",
     "overview": "Resumen",
-    "pages": "Páginas",
     "crawlFiles": "Archivos de rastreo",
     "robots": "robots.txt",
     "sitemaps": "Sitemaps",
     "llms": "llms.txt",
-    "scheduledJobs": "Tareas programadas",
     "settings": "Ajustes",
-    "instance": "Instancia",
-    "system": "Sistema",
-    "pagesOverview": "Resumen",
-    "pagesDetails": "Detalle",
-    "pagesHistory": "Historial",
-    "pagesCompare": "Comparar",
-    "updates": "Actualizaciones",
     "versionRelease": "v{version}",
     "versionDevelopment": "v{version} · desarrollo",
-    "companies": "Empresas",
-    "users": "Usuarios",
-    "email": "Correo"
+    "issues": "Problemas",
+    "urls": "URLs",
+    "crawls": "Rastreos",
+    "crawlsRun": "Ejecutar y programar",
+    "crawlsHistory": "Historial",
+    "crawlsCompare": "Comparar",
+    "administration": "Administración",
+    "navLabel": "Principal"
   },
   "ProtectedShell": {
     "skipToContent": "Saltar al contenido principal"
   },
-  "DomainHome": {
-    "metaTitle": "{host} · seotools",
-    "company": "Empresa: {company}",
-    "crawlTitle": "Último rastreo completo disponible",
-    "lastCrawl": "Resultados guardados del {when}.",
-    "noCrawl": "Todavía no hay resultados de un rastreo completo. Inicia uno para recopilar páginas y hallazgos de auditoría.",
-    "coverage": "{done, number} de {total, number} URL descubiertas procesadas · {pages, number} páginas encontradas",
-    "auditCoverage": "En este análisis: {audited, number} páginas auditadas · {excluded, number} excluidas · {unknown, number} con indexabilidad desconocida",
-    "incomplete": "Este rastreo alcanzó su límite de URL. La cobertura y los hallazgos son parciales.",
-    "crawlSettings": "Revisar límites de rastreo",
-    "lastAttempt": "Intento de rastreo completo más reciente:",
-    "jobs": "Ver trabajos",
-    "linksLabel": "Explorar resultados del dominio",
-    "overview": "Resumen de páginas",
-    "history": "Historial de rastreos",
-    "prioritiesTitle": "Hallazgos que revisar primero",
-    "prioritiesDescription": "Los principales hallazgos de este rastreo.",
-    "pruned": "Ya no se conservan los resultados detallados de este rastreo. Sus totales siguen disponibles en el historial.",
-    "stale": "Los hallazgos prioritarios estarán disponibles cuando el análisis refleje la configuración de auditoría actual.",
-    "notChecked": "Este rastreo no tiene el análisis necesario para mostrar hallazgos prioritarios. Inicia un nuevo rastreo completo para obtener datos actuales.",
-    "noPriorities": "No se registraron hallazgos en este análisis.",
-    "affectedUrls": "{count, plural, one {# URL} other {# URL}}",
-    "allFindings": "Ver todos los hallazgos"
-  },
   "System": {
-    "metaTitle": "Sistema · seotools",
+    "metaTitle": "Estado · Administración · seotools",
+    "title": "Estado",
+    "health": "Salud",
     "database": "Base de datos",
-    "connected": "conectada",
+    "databaseOk": "Conectada ({dialect})",
     "worker": "Worker",
-    "online": "en línea",
-    "offline": "sin conexión",
-    "seen": "visto {when}",
-    "never": "nunca",
+    "workerOk": "En marcha",
+    "workerDown": "Sin respuesta",
+    "heartbeat": "Último latido {when}",
     "jobs": "Trabajos",
-    "jobCounts": "{pending} pendientes · {running} en curso · {completed} completados · {failed} fallidos",
-    "queueTitle": "Cola de trabajos",
-    "queueDescription": "Los trabajos viven en la base de datos y los procesa el worker. No hace falta Redis.",
-    "enqueue": "Encolar trabajo de ejemplo",
+    "jobStates": {
+      "pending": "En espera",
+      "running": "En curso",
+      "completed": "Hechos",
+      "failed": "Fallidos"
+    },
+    "technical": {
+      "title": "Detalles técnicos",
+      "description": "Los últimos trabajos de la cola. Los trabajos viven en la base de datos y los procesa el worker."
+    },
+    "summary": {
+      "crawl": "{pages, number} páginas · {urls, number} URL",
+      "crawlStopped": "Detenido tras {pages, number} páginas · {urls, number} URL",
+      "recomputed": "Analizado de nuevo ({count, plural, one {# vez} other {# veces}})",
+      "upToDate": "Ya estaba al día",
+      "alertsSent": "{sent, plural, one {# correo enviado} other {# correos enviados}}",
+      "alertsSkipped": {
+        "nobody": "Omitido: nadie está suscrito",
+        "archived": "Omitido: el dominio está archivado",
+        "gone": "Omitido: el rastreo ya no existe",
+        "not-applicable": "Omitido: nada que avisar"
+      },
+      "emailSent": "Correo enviado",
+      "emailSkipped": "Omitido: la persona ya no puede recibirlo"
+    },
+    "paused": {
+      "title": "La automatización está en pausa",
+      "description": "SEOTOOLS_PAUSE_AUTOMATION está activada: los rastreos programados, las actualizaciones periódicas, la búsqueda de versiones y todo el correo están desactivados. Lo que inicias tú sigue funcionando."
+    },
     "columns": {
       "job": "Trabajo",
       "type": "Tipo",
@@ -168,10 +166,8 @@
       "completed": "completado",
       "failed": "fallido"
     },
-    "paused": {
-      "title": "La automatización está en pausa",
-      "description": "SEOTOOLS_PAUSE_AUTOMATION está activada: los rastreos programados, las actualizaciones periódicas, la búsqueda de versiones y todo el correo están desactivados. Lo que inicias tú sigue funcionando."
-    }
+    "enqueue": "Encolar trabajo de ejemplo",
+    "never": "nunca"
   },
   "Updates": {
     "metaTitle": "Actualizaciones · seotools",
@@ -1428,8 +1424,8 @@
     "anchor-nofollow": "Enlace nofollow"
   },
   "Jobs": {
-    "metaTitle": "Tareas programadas · {host} · seotools",
-    "title": "Tareas programadas",
+    "metaTitle": "Ejecutar y programar · {host} · seotools",
+    "title": "Ejecutar y programar",
     "description": "Lanza cada tipo de rastreo ahora o de forma recurrente. Un dominio ejecuta un solo rastreo a la vez.",
     "typeDescriptions": {
       "full": "Pide todas las URLs de la web: desde la portada, los sitemaps y todo lo enlazado en cualquier parte, sin hacer caso a robots.txt ni a meta robots.",
@@ -3078,5 +3074,83 @@
     "footer": "Pie",
     "main": "Contenido principal",
     "aside": "Lateral"
+  },
+  "Dashboard": {
+    "metaTitle": "{host} · seotools",
+    "lastCrawl": "Último rastreo completo terminado {when}.",
+    "neverCrawled": "Este dominio todavía no se ha rastreado.",
+    "lastAttempt": "Intento de rastreo completo más reciente:",
+    "jobs": "Ver rastreos",
+    "incomplete": {
+      "title": "El último rastreo se detuvo en su límite de URL",
+      "description": "Pidió {urls, number} URL y había más. Estas cifras no cubren todo el sitio.",
+      "settings": "Sube el límite en los ajustes de rastreo."
+    },
+    "figures": "Último rastreo completo",
+    "figuresHelp": "Las páginas indexables se cuentan entre todas las páginas rastreadas y solo dicen lo que vio el rastreo: no dependen de la auditoría. Las páginas con problemas, avisos y oportunidades se cuentan solo entre las auditadas, y una página cuenta en cada grupo del que tenga algo.",
+    "tiles": {
+      "crawled": "Páginas rastreadas",
+      "indexable": "Páginas indexables",
+      "issues": "Páginas con problemas",
+      "warnings": "Páginas con avisos",
+      "opportunities": "Páginas con oportunidades"
+    },
+    "ofCrawled": "de {count, number} rastreadas",
+    "ofAudited": "de {count, number} auditadas",
+    "notChecked": "Aún sin comprobar",
+    "notAvailable": "No disponible para este rastreo",
+    "unknownIndexability": "{count, plural, one {# página tiene} other {# páginas tienen}} pocos datos para saber si se puede indexar.",
+    "trend": "Evolución",
+    "trendFindings": "Páginas con hallazgos",
+    "trendFindingsHelp": "Páginas auditadas que tienen algo de cada tipo tras cada rastreo completo. Una página puede estar en varios.",
+    "trendIndexable": "Páginas indexables",
+    "trendIndexableHelp": "Páginas a las que el rastreo no vio nada que lo impida, entre todas las rastreadas. Se cuenta aparte porque su total no son las páginas auditadas.",
+    "series": {
+      "indexable": "Páginas indexables",
+      "issues": "Problemas",
+      "warnings": "Avisos",
+      "opportunities": "Oportunidades"
+    },
+    "chartEmpty": "El historial empieza con el próximo rastreo completo: se revisa en busca de problemas al terminar.",
+    "chartCaption": "{series}, tras cada rastreo completo",
+    "chartDate": "Rastreo terminado",
+    "prioritiesTitle": "Hallazgos que revisar primero",
+    "noCrawl": "Los hallazgos aparecen aquí cuando el dominio se haya rastreado.",
+    "pruned": "Ya no se conservan los resultados detallados de este rastreo. Sus totales siguen disponibles en el historial.",
+    "stale": "Los hallazgos prioritarios estarán disponibles cuando el análisis refleje la configuración de auditoría actual.",
+    "noPriorities": "No se registraron hallazgos en este análisis.",
+    "affectedUrls": "{count, plural, one {# URL} other {# URL}}",
+    "allIssues": "Todos los problemas",
+    "notCheckedFindings": "Este rastreo no tiene el análisis necesario para mostrar hallazgos. Inicia un nuevo rastreo completo para obtener datos actuales."
+  },
+  "Issues": {
+    "metaTitle": "Problemas · {host} · seotools",
+    "title": "Problemas",
+    "description": "Todo lo que encontró el último rastreo completo, por importancia.",
+    "noCrawl": "Los problemas aparecen aquí cuando el dominio se haya rastreado.",
+    "pruned": "Ya no se conservan los resultados detallados de este rastreo.",
+    "notChecked": "El último rastreo completo no se ha revisado en busca de problemas. Inicia un nuevo rastreo completo para verlos aquí.",
+    "importance": {
+      "high": "Importancia alta",
+      "medium": "Importancia media",
+      "low": "Importancia baja"
+    },
+    "importanceLabel": "importancia y tipos",
+    "empty": "No se encontró nada de esta importancia.",
+    "urls": "{count, plural, one {# URL} other {# URL}}",
+    "secondary": "+{count, number} en páginas no indexables",
+    "accepted": {
+      "title": "Aceptados por una regla",
+      "help": "El rastreo sigue viéndolos y una regla dice que se esperan. No están pendientes ni arreglados: quita la regla y vuelven a contar.",
+      "viewAll": "Ver todas las URL con un hallazgo aceptado"
+    }
+  },
+  "SystemNav": {
+    "label": "Secciones de administración",
+    "status": "Estado",
+    "companies": "Empresas",
+    "users": "Usuarios",
+    "email": "Correo",
+    "updates": "Actualizaciones"
   }
 }

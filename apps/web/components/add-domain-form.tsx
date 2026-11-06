@@ -3,7 +3,10 @@
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useActionState, useState } from 'react'
-import { addDomainAction, type AddDomainFormState } from '@/app/(protected)/system/companies/actions'
+import {
+  addDomainAction,
+  type AddDomainFormState,
+} from '@/app/(protected)/system/companies/actions'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
