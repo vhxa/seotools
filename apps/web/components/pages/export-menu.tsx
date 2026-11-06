@@ -1,6 +1,12 @@
 'use client'
 
-import { DownloadIcon, ListChecksIcon, TableIcon } from 'lucide-react'
+import {
+  DownloadIcon,
+  CornerDownRightIcon,
+  LinkIcon,
+  ListChecksIcon,
+  TableIcon,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import {
@@ -62,6 +68,26 @@ export function ExportMenu({
               <span className="text-xs text-muted-foreground">
                 {analysed ? t('findingsHint') : t('notAnalysed')}
               </span>
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            render={<a href={exportHref(host, query, 'links')} />}
+            className="items-start"
+          >
+            <LinkIcon className="mt-0.5" />
+            <span className="grid gap-0.5">
+              {t('links')}
+              <span className="text-xs text-muted-foreground">{t('linksHint')}</span>
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            render={<a href={exportHref(host, query, 'redirects')} />}
+            className="items-start"
+          >
+            <CornerDownRightIcon className="mt-0.5" />
+            <span className="grid gap-0.5">
+              {t('redirects')}
+              <span className="text-xs text-muted-foreground">{t('redirectsHint')}</span>
             </span>
           </DropdownMenuItem>
         </DropdownMenuGroup>

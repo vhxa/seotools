@@ -649,7 +649,11 @@
       "findings": "Hallazgos",
       "findingsHint": "Una fila por hallazgo, con su importancia y lo que lo respalda.",
       "notAnalysed": "Este rastreo no se ha revisado en busca de hallazgos.",
-      "scope": "Todo lo que dejan los filtros, no solo esta página."
+      "scope": "Todo lo que dejan los filtros, no solo esta página.",
+      "links": "Enlaces",
+      "linksHint": "Una fila por enlace que sale de las URLs listadas, con dónde está.",
+      "redirects": "Redirecciones",
+      "redirectsHint": "Una fila por redirección listada, con dónde termina su cadena."
     },
     "errors": {
       "missing": "Este rastreo no existe en este dominio.",
@@ -685,7 +689,18 @@
       "evidenceSamples": "Ejemplos de evidencia",
       "findingState": "Estado",
       "acceptedBecause": "Motivo de la aceptación",
-      "acceptedFindings": "Aceptados por una regla"
+      "acceptedFindings": "Aceptados por una regla",
+      "linkTo": "Enlaza a",
+      "linkKind": "Tipo de enlace",
+      "linkStatus": "Estado de la URL enlazada",
+      "linkText": "Texto del enlace",
+      "linkElement": "Elemento",
+      "linkRegion": "Parte de la página",
+      "redirectTo": "Redirige a",
+      "finalUrl": "URL final",
+      "finalStatus": "Estado de la URL final",
+      "hops": "Redirecciones en la cadena",
+      "loop": "Bucle"
     },
     "values": {
       "internal": "Este sitio",
@@ -693,7 +708,9 @@
       "atLeast": "Al menos {total, number}",
       "evidenceNotStored": "No guardada en este rastreo",
       "pending": "Pendiente",
-      "accepted": "Aceptado por una regla"
+      "accepted": "Aceptado por una regla",
+      "yes": "Sí",
+      "no": "No"
     },
     "filters": {
       "view": "Vista: {value}"
@@ -3013,5 +3030,12 @@
     "none": "No recibes correo sobre este dominio.",
     "archived": "Este dominio está archivado: no se envían alertas.",
     "manage": "Elegir mis alertas"
+  },
+  "LinkRegions": {
+    "nav": "Navegación",
+    "header": "Cabecera",
+    "footer": "Pie",
+    "main": "Contenido principal",
+    "aside": "Lateral"
   }
 }

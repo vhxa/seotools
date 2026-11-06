@@ -1444,6 +1444,98 @@ export function describeDatabaseContract(
         const pairs = (rows: { url: string; kind: string }[]) =>
           rows.map((row) => `${row.url.replace(site, '')} ${row.kind}`)
 
+        it('reads the links leaving several URLs at once, and URLs by their hash', async () => {
+          const crawlId = await crawlWithLinks()
+          const out = await db.crawls.outlinksOf(crawlId, [
+            hashOf(url('/about')),
+            hashOf(url('/blog/b')),
+          ])
+          expect(
+            out.map(
+              (row) =>
+                `${row.sourceHash === hashOf(url('/about')) ? 'about' : 'b'} ${pairs([row])[0]}`,
+            ),
+          ).toEqual([
+            ...(hashOf(url('/about')) < hashOf(url('/blog/b'))
+              ? ['about / anchor', 'about /logo.png image', 'b / anchor-nofollow']
+              : ['b / anchor-nofollow', 'about / anchor', 'about /logo.png image']),
+          ])
+          expect(
+            (await db.crawls.urlsOf(crawlId, [hashOf(home), 'missing'])).map((u) => u.url),
+          ).toEqual([home])
+          expect(await db.crawls.outlinksOf('missing', [hashOf(home)])).toEqual([])
+        })
+
+        it('says where parameters enter the site, and how each URL was found', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const seed = newUrl(`${site}/`, { depth: 0 })
+          const target = newUrl(`${site}/es?utm_source=x`, {
+            foundFrom: seed.seq,
+            foundKind: 'anchor',
+          })
+          const deeper = newUrl(`${site}/ca?utm_source=x`, {
+            foundFrom: target.seq,
+            foundKind: 'anchor',
+          })
+          await db.crawls.addUrls(id, [seed, target, deeper])
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: seed.urlHash,
+            result: result('page'),
+            links: [
+              {
+                sourceHash: seed.urlHash,
+                targetHash: target.urlHash,
+                kind: 'anchor',
+                context: {
+                  text: 'ES',
+                  element: 'a.dropdown-item',
+                  region: 'nav',
+                  snippet: '<a href="/es?utm_source=x">',
+                },
+              },
+            ],
+          })
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: target.urlHash,
+            result: result('page'),
+            // Same parameters as its page: not where they enter.
+            links: [
+              {
+                sourceHash: target.urlHash,
+                targetHash: deeper.urlHash,
+                kind: 'anchor',
+                context: { text: 'CA' },
+              },
+            ],
+          })
+          const { entries, total } = await db.crawls.parameterEntries(id, { limit: 10, offset: 0 })
+          expect(total).toBe(1)
+          expect(entries).toEqual([
+            {
+              sourceUrl: seed.url,
+              sourceHash: seed.urlHash,
+              url: target.url,
+              urlHash: target.urlHash,
+              kind: 'anchor',
+              context: {
+                text: 'ES',
+                element: 'a.dropdown-item',
+                region: 'nav',
+                snippet: '<a href="/es?utm_source=x">',
+              },
+            },
+          ])
+          expect(await db.crawls.discoveryPath(id, deeper.urlHash)).toEqual([
+            { url: seed.url, urlHash: seed.urlHash, foundKind: null },
+            { url: target.url, urlHash: target.urlHash, foundKind: 'anchor' },
+            { url: deeper.url, urlHash: deeper.urlHash, foundKind: 'anchor' },
+          ])
+          expect(await db.crawls.discoveryPath(id, 'missing')).toEqual([])
+        })
+
         it('lists each direction on its own, by address and then by type', async () => {
           const crawlId = await crawlWithLinks()
           expect(pairs(await list(crawlId, home, 'in'))).toEqual([
