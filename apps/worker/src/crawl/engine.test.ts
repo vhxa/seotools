@@ -69,6 +69,22 @@ const row = async (crawlId: string, url: string) =>
   (await db.crawls.latestResults(domainId, [crawlUrlHash(url)])).find((r) => r.crawlId === crawlId)
 
 describe('full crawl', () => {
+  it('reads what the custom extractors ask from every page', async () => {
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      extractors: [{ key: 'price', name: 'Price', selector: '.price', attribute: null }],
+    })
+    const site = fakeSite({
+      'https://example.com/': html('<p class="price"> 49 € </p><a href="/b">b</a>'),
+      'https://example.com/b': html('<p>No price</p>'),
+    })
+    const { crawl } = await crawlWith(site)
+    expect((await row(crawl.id, 'https://example.com/'))?.data?.extracted).toEqual({
+      price: ['49 €'],
+    })
+    expect((await row(crawl.id, 'https://example.com/b'))?.data?.extracted).toBeUndefined()
+  })
+
   it('keeps how each URL was found and where each link sits, and what was asked as a file stays one', async () => {
     const site = fakeSite({
       'https://example.com/': html(

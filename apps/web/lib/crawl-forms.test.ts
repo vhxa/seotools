@@ -1,6 +1,11 @@
 import { DEFAULT_CRAWL_SETTINGS } from '@seotools/core'
 import { describe, expect, it } from 'vitest'
-import { parseCrawlScheduleForm, parseCrawlSettingsForm, parseListCrawlForm } from './crawl-forms'
+import {
+  parseExtractors,
+  parseCrawlScheduleForm,
+  parseCrawlSettingsForm,
+  parseListCrawlForm,
+} from './crawl-forms'
 
 const formOf = (values: Record<string, string | undefined>) => {
   const form = new FormData()
@@ -233,5 +238,27 @@ it('reads scope and depth and rejects invalid values', () => {
   expect(parseCrawlSettingsForm(formOf({ ...validSettings, maxDepth: '101' }))).toEqual({
     ok: false,
     error: 'scope',
+  })
+})
+
+describe('parseExtractors', () => {
+  it('reads one extractor per line, with an optional attribute and a key from the name', () => {
+    expect(
+      parseExtractors('Price | meta[property="product:price"] | content\n\n Author | .author '),
+    ).toEqual([
+      {
+        key: 'price',
+        name: 'Price',
+        selector: 'meta[property="product:price"]',
+        attribute: 'content',
+      },
+      { key: 'author', name: 'Author', selector: '.author', attribute: null },
+    ])
+    expect(parseExtractors('')).toEqual([])
+  })
+
+  it('refuses a line without a name or with a selector that is not CSS', () => {
+    expect(parseExtractors(' | .price')).toBeNull()
+    expect(parseExtractors('Price | [broken')).toBeNull()
   })
 })

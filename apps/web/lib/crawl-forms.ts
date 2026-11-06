@@ -1,3 +1,4 @@
+import { extractorKey, extractorsSchema, type Extractor } from '@seotools/core/crawl/extraction'
 import {
   INDEXNOW_KEY,
   parsePriorityUrl,
@@ -14,6 +15,7 @@ import {
 
 export type CrawlSettingsFormError =
   | 'scope'
+  | 'extractors'
   | 'renderingUnavailable'
   | 'userAgent'
   | 'concurrency'
@@ -108,6 +110,8 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
       maxDepth: text(form, 'maxDepth') === '' ? null : integer(text(form, 'maxDepth')),
     })
   if (!scope.success) return { ok: false, error: 'scope' }
+  const extractors = parseExtractors(text(form, 'extractors'))
+  if (!extractors) return { ok: false, error: 'extractors' }
   const userAgent = text(form, 'userAgent')
   const parsed = crawlSettingsSchema.safeParse({
     ...scope.data,
@@ -120,12 +124,34 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
     maxUrls,
     retainCrawls,
     historyDays,
+    extractors,
     optionalFiles: OPTIONAL_CRAWL_FILES.filter((kind) => form.get(`file.${kind}`) === 'on'),
     indexNowKey: indexNowOn ? indexNowKey : null,
   })
   // Everything else was checked above, so the only way to get here is the User-Agent.
   if (!parsed.success) return { ok: false, error: 'userAgent' }
   return { ok: true, settings: parsed.data }
+}
+
+/**
+ * The custom extractors, one per line: `Name | CSS selector | attribute`, the attribute optional
+ * (the element's text when left out). `null` when a line does not check out. Keys come from the
+ * names, so a value keeps its column while its name stays the same.
+ */
+export function parseExtractors(value: string): Extractor[] | null {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const taken = new Set<string>()
+  const extractors: Extractor[] = []
+  for (const line of lines) {
+    const [name = '', selector = '', attribute = ''] = line.split('|').map((part) => part.trim())
+    const key = extractorKey(name, taken)
+    taken.add(key)
+    extractors.push({ key, name, selector, attribute: attribute === '' ? null : attribute })
+  }
+  return extractorsSchema.safeParse(extractors).success ? extractors : null
 }
 
 /** Validates the schedule form. Fields of other frequencies keep whatever value they hold. */

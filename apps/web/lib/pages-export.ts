@@ -1,5 +1,6 @@
 import { crawlUrlHash } from '@seotools/core'
 import { ANY_ACCEPTED, type FindingAcceptance } from '@seotools/core/crawl/acceptance'
+import type { Extractor } from '@seotools/core/crawl/extraction'
 import { evidenceKindOf } from '@seotools/core/crawl/evidence'
 import {
   PAGE_ISSUES,
@@ -192,6 +193,8 @@ export interface ExportContext {
   /** Whether the crawl was checked for findings: without it a URL with none is unknown, not clean. */
   analysed: boolean
   translate: Translate
+  /** The domain's custom extractors: one more column each in the pages file, named as they are. */
+  extractors?: readonly Extractor[]
 }
 
 /** A URL of the list with what the crawl concluded about it. */
@@ -526,12 +529,23 @@ const headersOf = (kind: ExportKind): readonly Column[] =>
         : REDIRECTS_COLUMNS
 
 export const exportHeader = (kind: ExportKind, context: ExportContext): string =>
-  csvRow(headersOf(kind).map((column) => tr(context, `Export.columns.${column.header}`)))
+  csvRow([
+    ...headersOf(kind).map((column) => tr(context, `Export.columns.${column.header}`)),
+    // Named by whoever set them up: the name is the header, as it is.
+    ...(kind === 'pages' ? (context.extractors ?? []).map((extractor) => extractor.name) : []),
+  ])
 
 /** The records a URL makes: one in the pages file, one per finding in the findings file. */
 export function exportRecords(kind: ExportKind, row: ExportUrl, context: ExportContext): string[] {
   if (kind === 'pages') {
-    return [csvRow(PAGES_COLUMNS.map((column) => column.cell(row, context)))]
+    return [
+      csvRow([
+        ...PAGES_COLUMNS.map((column) => column.cell(row, context)),
+        ...(context.extractors ?? []).map(
+          (extractor) => row.url.data?.extracted?.[extractor.key]?.join(' | ') ?? null,
+        ),
+      ]),
+    ]
   }
   if (kind === 'links') {
     return (row.links ?? []).map((link) =>

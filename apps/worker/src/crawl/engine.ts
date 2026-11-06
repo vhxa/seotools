@@ -219,6 +219,7 @@ export async function runCrawl(
       item,
       response,
       optionalFiles: settings.optionalFiles,
+      extractors: settings.extractors,
       log,
       discover: (url, kind, source = 'link', context) =>
         discover(found, item, url, kind, source, depth, context),

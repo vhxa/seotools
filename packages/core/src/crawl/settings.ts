@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { extractorsSchema, type Extractor } from './extraction'
 import { parseAuditSelector } from './audit'
 import { INDEXNOW_KEY, OPTIONAL_CRAWL_FILES, type OptionalCrawlFile } from './files'
 
@@ -32,6 +33,8 @@ export interface CrawlSettings {
    * results per URL are removed. `null` keeps it always.
    */
   historyDays: number | null
+  /** Values read from every page with a CSS selector (`@seotools/core/crawl/extraction`). */
+  extractors: Extractor[]
   /** Crawl files that are not requested unless asked for. */
   optionalFiles: OptionalCrawlFile[]
   /** The file holding it cannot be found without knowing it. `null`: not checked. */
@@ -52,6 +55,7 @@ export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
   // The latest crawl and the one before it, which is what a comparison needs.
   retainCrawls: 2,
   historyDays: 30,
+  extractors: [],
   optionalFiles: [],
   indexNowKey: null,
 }
@@ -109,6 +113,7 @@ export const crawlSettingsSchema = z.object({
   includePrefixes: prefixesSchema.default([]),
   excludePrefixes: prefixesSchema.default([]),
   maxDepth: z.number().int().min(1).max(100).nullable().default(null),
+  extractors: extractorsSchema.default([]),
   renderingMode: z.enum(CRAWL_RENDERING_MODES),
   userAgent: z
     .string()

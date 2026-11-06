@@ -1600,7 +1600,8 @@
       "indexNowKeyRequired": "Introduce la clave de IndexNow o desactiva IndexNow.",
       "historyDays": "Los días de historial deben estar entre {min} y {max}.",
       "scope": "Introduce hasta 100 prefijos válidos por lista y una profundidad de 1 a 100.",
-      "requestSecrets": "Credenciales o cabeceras no válidas (máximo 10; Host y cabeceras de transporte no permitidas)."
+      "requestSecrets": "Credenciales o cabeceras no válidas (máximo 10; Host y cabeceras de transporte no permitidas).",
+      "extractors": "Cada extracción necesita un nombre y un selector CSS válido, y puede haber {max} como máximo."
     },
     "includePrefixes": {
       "label": "Incluir rutas",
@@ -1622,6 +1623,11 @@
       "username": "Usuario de Basic Auth",
       "password": "Contraseña de Basic Auth",
       "clear": "Eliminar todas las credenciales"
+    },
+    "extractors": {
+      "label": "Extracción personalizada",
+      "placeholder": "Precio | meta[property=\"product:price:amount\"] | content",
+      "hint": "Una por línea: nombre | selector CSS | atributo (omítelo para leer el texto). Se lee de cada página desde el próximo rastreo."
     }
   },
   "CrawlFiles": {

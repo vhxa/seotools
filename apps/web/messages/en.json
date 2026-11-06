@@ -1600,7 +1600,8 @@
       "indexNowKeyRequired": "Enter the IndexNow key, or turn IndexNow off.",
       "historyDays": "The days of history must be between {min} and {max}.",
       "scope": "Enter up to 100 valid path prefixes per list and a depth from 1 to 100.",
-      "requestSecrets": "Invalid request credentials or headers (maximum 10; Host and transport headers are refused)."
+      "requestSecrets": "Invalid request credentials or headers (maximum 10; Host and transport headers are refused).",
+      "extractors": "Each extraction needs a name and a valid CSS selector, and there can be at most {max}."
     },
     "includePrefixes": {
       "label": "Include paths",
@@ -1622,6 +1623,11 @@
       "username": "Basic Auth username",
       "password": "Basic Auth password",
       "clear": "Remove all request credentials"
+    },
+    "extractors": {
+      "label": "Custom extraction",
+      "placeholder": "Price | meta[property=\"product:price:amount\"] | content",
+      "hint": "One per line: name | CSS selector | attribute (leave it out to read the text). Read from every page from the next crawl."
     }
   },
   "CrawlFiles": {

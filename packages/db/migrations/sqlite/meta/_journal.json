@@ -176,6 +176,13 @@
       "when": 1793945789427,
       "tag": "0024_crawl_configuration",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1793979904752,
+      "tag": "0025_custom_extraction",
+      "breakpoints": true
     }
   ]
 }

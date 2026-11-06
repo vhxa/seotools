@@ -2,6 +2,7 @@ import { AUDIT_CONDITIONS, intentOutcome } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import { CircleHelpIcon, ExternalLinkIcon } from 'lucide-react'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { getDb } from '@/lib/db'
 import type { ReactNode } from 'react'
 import {
   BlockerList,
@@ -86,6 +87,11 @@ export async function UrlDetail({
     getTranslations('AuditState'),
   ])
   const refOf = ruleRefsOf(crawl.auditSnapshot)
+  // Named as the domain names them now; a value whose extractor is gone keeps its key as a name.
+  const extractors = new Map(
+    (await (await getDb()).crawls.settings(crawl.domainId)).extractors.map((e) => [e.key, e.name]),
+  )
+  const extracted = Object.entries(url.data?.extracted ?? {})
   const notSet = <span className="text-muted-foreground">{t('notSet')}</span>
   const text = (value: string | null | undefined) => (value ? value : notSet)
 
@@ -336,6 +342,15 @@ export async function UrlDetail({
               )}
             </Field>
             <Field label={t('fields.canonical')}>{text(url.canonical)}</Field>
+            {extracted.map(([key, values]) => (
+              <Field key={key} label={extractors.get(key) ?? key}>
+                <ul className="grid gap-1">
+                  {values.map((value, index) => (
+                    <li key={index}>{value}</li>
+                  ))}
+                </ul>
+              </Field>
+            ))}
           </Fields>
         </Disclosure>
       )}
