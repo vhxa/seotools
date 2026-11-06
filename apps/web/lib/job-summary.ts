@@ -6,6 +6,7 @@ export type JobSummary =
   | { key: 'upToDate'; values: Record<string, never> }
   | { key: 'alertsSent'; values: { sent: number } }
   | { key: `alertsSkipped.${AlertSkip}`; values: Record<string, never> }
+  | { key: 'rechecked'; values: { done: number; urls: number } }
   | { key: 'emailSent'; values: Record<string, never> }
   | { key: 'emailSkipped'; values: Record<string, never> }
 
@@ -15,7 +16,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const count = (value: unknown) =>
-  typeof value === 'number' && Number.isFinite(value) ? value : null
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
 
 const SKIPS = ['nobody', 'archived', 'gone', 'not-applicable'] as const
 
@@ -33,6 +34,11 @@ export function summarizeJobResult(type: string, result: unknown): JobSummary | 
       if (pages === null || urls === null) return null
       const ended = result.status === 'completed' || result.status === 'incomplete'
       return { key: ended ? 'crawl' : 'crawlStopped', values: { pages, urls } }
+    }
+    case 'url.verify': {
+      const done = count(result.done)
+      const urls = count(result.urls)
+      return done === null || urls === null ? null : { key: 'rechecked', values: { done, urls } }
     }
     case 'audit.recompute': {
       const analysed = count(result.analysed)

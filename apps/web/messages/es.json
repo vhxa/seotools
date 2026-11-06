@@ -133,6 +133,7 @@
       "description": "Los últimos trabajos de la cola. Los trabajos viven en la base de datos y los procesa el worker."
     },
     "summary": {
+      "rechecked": "Solicitadas de nuevo: {done, number} de {urls, number} URL",
       "crawl": "{pages, number} páginas · {urls, number} URL",
       "crawlStopped": "Detenido tras {pages, number} páginas · {urls, number} URL",
       "recomputed": "Analizado de nuevo ({count, plural, one {# vez} other {# veces}})",

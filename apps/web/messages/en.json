@@ -133,6 +133,7 @@
       "description": "The latest jobs of the queue. Jobs live in the database and are processed by the worker."
     },
     "summary": {
+      "rechecked": "Requested again: {done, number} of {urls, number} URLs",
       "crawl": "{pages, number} pages · {urls, number} URLs",
       "crawlStopped": "Stopped after {pages, number} pages · {urls, number} URLs",
       "recomputed": "Analysed again ({count, plural, one {# time} other {# times}})",

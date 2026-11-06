@@ -27,6 +27,16 @@ describe('summarizeJobResult', () => {
     expect(summarizeJobResult('audit.recompute', { analysed: 1 })?.key).toBe('recomputed')
   })
 
+  it('summarizes rechecks and rejects invalid counters', () => {
+    expect(summarizeJobResult('url.verify', { done: 2, urls: 3 })).toEqual({
+      key: 'rechecked',
+      values: { done: 2, urls: 3 },
+    })
+    for (const done of [-1, 0.5, Infinity, '2']) {
+      expect(summarizeJobResult('url.verify', { done, urls: 3 })).toBeNull()
+    }
+  })
+
   it('summarizes email jobs', () => {
     expect(summarizeJobResult('access.email', { skipped: true })?.key).toBe('emailSkipped')
     expect(summarizeJobResult('mail.send', { messageId: null })?.key).toBe('emailSent')
