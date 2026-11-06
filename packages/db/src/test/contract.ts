@@ -1575,9 +1575,24 @@ export function describeDatabaseContract(
             },
           ])
           expect(await db.crawls.discoveryPath(id, deeper.urlHash)).toEqual([
-            { url: seed.url, urlHash: seed.urlHash, foundKind: null },
-            { url: target.url, urlHash: target.urlHash, foundKind: 'anchor' },
-            { url: deeper.url, urlHash: deeper.urlHash, foundKind: 'anchor' },
+            { url: seed.url, urlHash: seed.urlHash, foundKind: null, context: null },
+            {
+              url: target.url,
+              urlHash: target.urlHash,
+              foundKind: 'anchor',
+              context: {
+                text: 'ES',
+                element: 'a.dropdown-item',
+                region: 'nav',
+                snippet: '<a href="/es?utm_source=x">',
+              },
+            },
+            {
+              url: deeper.url,
+              urlHash: deeper.urlHash,
+              foundKind: 'anchor',
+              context: { text: 'CA' },
+            },
           ])
           expect(await db.crawls.discoveryPath(id, 'missing')).toEqual([])
         })

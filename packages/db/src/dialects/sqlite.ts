@@ -1894,34 +1894,55 @@ export function createSqliteDatabase(options: {
 
       async discoveryPath(crawlId, urlHash) {
         const steps: DiscoveryStep[] = []
+        const ref = refOf(crawlId)
+        const columns = {
+          url: crawlUrls.url,
+          urlHash: crawlUrls.urlHash,
+          seq: crawlUrls.seq,
+          foundFrom: crawlUrls.foundFrom,
+          foundKind: crawlUrls.foundKind,
+        }
         let row = db
-          .select({
-            url: crawlUrls.url,
-            urlHash: crawlUrls.urlHash,
-            foundFrom: crawlUrls.foundFrom,
-            foundKind: crawlUrls.foundKind,
-          })
+          .select(columns)
           .from(crawlUrls)
           .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, urlHash)))
           .get()
         const seen = new Set<string>()
         while (row && !seen.has(row.urlHash) && steps.length < MAX_DISCOVERY_STEPS) {
           seen.add(row.urlHash)
+          const from = row.foundFrom
+          const link =
+            from === null || ref === null || row.seq === null
+              ? undefined
+              : db
+                  .select({
+                    text: crawlUrlLinks.text,
+                    element: crawlUrlLinks.element,
+                    region: crawlUrlLinks.region,
+                    snippet: crawlUrlLinks.snippet,
+                  })
+                  .from(crawlUrlLinks)
+                  .where(
+                    and(
+                      eq(crawlUrlLinks.crawlRef, ref),
+                      eq(crawlUrlLinks.source, from),
+                      eq(crawlUrlLinks.target, row.seq),
+                      ...(row.foundKind ? [eq(crawlUrlLinks.kind, row.foundKind)] : []),
+                    ),
+                  )
+                  .limit(1)
+                  .get()
           steps.unshift({
             url: row.url,
             urlHash: row.urlHash,
-            foundKind: row.foundFrom === null ? null : (row.foundKind as CrawlLinkKind | null),
+            foundKind: from === null ? null : (row.foundKind as CrawlLinkKind | null),
+            context: link ? toLinkContext(link) : null,
           })
-          if (row.foundFrom === null) break
+          if (from === null) break
           row = db
-            .select({
-              url: crawlUrls.url,
-              urlHash: crawlUrls.urlHash,
-              foundFrom: crawlUrls.foundFrom,
-              foundKind: crawlUrls.foundKind,
-            })
+            .select(columns)
             .from(crawlUrls)
-            .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.seq, row.foundFrom)))
+            .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.seq, from)))
             .get()
         }
         return steps

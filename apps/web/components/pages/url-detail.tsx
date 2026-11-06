@@ -96,6 +96,7 @@ export async function UrlDetail({
   )
   const discovery = await (await getDb()).crawls.discoveryPath(crawl.id, url.urlHash)
   const tKinds = await getTranslations('LinkKinds')
+  const tRegions = await getTranslations('LinkRegions')
   const extracted = Object.entries(url.data?.extracted ?? {})
   const notSet = <span className="text-muted-foreground">{t('notSet')}</span>
   const text = (value: string | null | undefined) => (value ? value : notSet)
@@ -265,6 +266,17 @@ export async function UrlDetail({
                 <a className="break-all underline" href={hrefFor(step.urlHash)}>
                   {step.url}
                 </a>
+                {step.context && (
+                  <span className="block text-xs text-muted-foreground">
+                    {[
+                      step.context.text ? `“${step.context.text}”` : undefined,
+                      step.context.element,
+                      step.context.region ? tRegions(step.context.region) : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                )}
               </li>
             ))}
           </ol>

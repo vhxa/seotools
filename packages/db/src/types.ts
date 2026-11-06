@@ -544,6 +544,8 @@ export interface DiscoveryStep {
   urlHash: string
   /** How this URL was found from the step before. `null` for the first (a seed, a file). */
   foundKind: CrawlLinkKind | null
+  /** What the crawl stored of that link on the step before: its text, element, region. */
+  context: LinkContext | null
 }
 
 /** An issue found on a URL of a crawl. */
