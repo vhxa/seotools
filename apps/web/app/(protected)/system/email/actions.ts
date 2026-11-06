@@ -3,7 +3,9 @@
 import {
   alertLocaleOf,
   createMailer,
+  MAIL_PAUSED,
   getMailConfig,
+  readMailConfig,
   safeMailError,
   setMailConfig,
   testEmail,
@@ -12,6 +14,7 @@ import { isValidEmail, normalizeEmail } from '@seotools/db'
 import { revalidatePath } from 'next/cache'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { getDb } from '@/lib/db'
+import { getEnv } from '@/lib/env'
 import { parseMailForm, secretsOf } from '@/lib/mail-config'
 import { requireAdmin } from '@/lib/session'
 import { getSettings } from '@/lib/settings'
@@ -59,8 +62,22 @@ export async function sendTestEmailAction(
   const t = await getTranslations('Email.errors')
   const to = normalizeEmail(String(formData.get('to') ?? ''))
   if (!isValidEmail(to)) return { error: t('address') }
-  const config = await getMailConfig(await getSettings())
-  if (!config) return { error: t('notConfigured') }
+  if (getEnv().SEOTOOLS_PAUSE_AUTOMATION) {
+    await (
+      await getDb()
+    ).mail.record({
+      kind: 'test',
+      recipient: to,
+      status: 'unconfigured',
+      error: MAIL_PAUSED,
+    })
+    revalidatePath('/system/email')
+    return { error: t('paused') }
+  }
+  const read = await readMailConfig(await getSettings())
+  if (read.state === 'undecryptable') return { error: t('undecryptable') }
+  if (read.state === 'missing') return { error: t('notConfigured') }
+  const config = read.value
 
   const db = await getDb()
   const message = testEmail(alertLocaleOf(await getLocale()))

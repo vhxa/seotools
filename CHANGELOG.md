@@ -20,6 +20,16 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Added
+
+- `SEOTOOLS_PAUSE_AUTOMATION` (default `false`) for staging copies of a production database: the worker fires no scheduled crawls, runs no periodic refreshes or update checks and sends no email (each attempt is recorded as not sent, "automation paused"). Crawls and rechecks you start from the UI still run, and System shows a notice while it is on.
+
+### Fixed
+
+- Running the bundled worker scripts (`node apps/worker/dist/recover.mjs <email>`, `bootstrap.mjs`) outside Docker no longer needs `MIGRATIONS_DIR`: the migrations are found next to the repository, and when they are not, the error names the folders it looked in and says to set `MIGRATIONS_DIR`.
+- Crawl alerts no longer compare a crawl whose findings were never analysed (after waiting two hours for the analysis): only a crawl problem is reported if it applies, otherwise nothing is sent, and the worker logs a warning.
+- Every page under System answered with an error when the saved email settings could not be decrypted (the encryption key changed after saving them). They now render, System → Email and the warning in System say that the settings must be entered again, and the worker records the email as not sent instead of failing.
+
 ## [0.2.0-rc.1] - 2026-11-05
 
 ### Breaking

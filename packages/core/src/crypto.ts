@@ -2,6 +2,16 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:cr
 
 const VERSION = 'v1'
 
+/** A stored value that cannot be read with this key: the key changed since it was saved. */
+export class UndecryptableError extends Error {
+  constructor() {
+    super(
+      'Could not decrypt value: SETTINGS_ENCRYPTION_KEY / BETTER_AUTH_SECRET changed since it was saved',
+    )
+    this.name = 'UndecryptableError'
+  }
+}
+
 function deriveKey(secret: string): Buffer {
   return Buffer.from(hkdfSync('sha256', secret, 'seotools', 'settings-encryption', 32))
 }
@@ -23,8 +33,6 @@ export function decryptString(payload: string, secret: string): string {
   try {
     return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8')
   } catch {
-    throw new Error(
-      'Could not decrypt value: SETTINGS_ENCRYPTION_KEY / BETTER_AUTH_SECRET changed since it was saved',
-    )
+    throw new UndecryptableError()
   }
 }

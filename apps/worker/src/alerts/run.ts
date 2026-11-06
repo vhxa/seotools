@@ -96,14 +96,22 @@ export async function runCrawlAlerts(input: {
 
   // Findings come from the analysis that follows the end of the crawl.
   const needsFindings = status !== 'failed'
+  let unanalysed = false
   if (needsFindings && crawl.pagesByWorstIssue === null) {
     const finishedAt = crawl.finishedAt ?? crawl.createdAt
     if (now.getTime() - finishedAt.getTime() < ANALYSIS_WAIT_MS) {
       throw new JobDeferredError(DEFERRED_MS, 'The crawl has not been analysed yet')
     }
+    // Given up on: an unanalysed crawl has no findings to compare, so nothing about them is said.
+    unanalysed = true
+    log.warn(
+      { crawlId, status },
+      'the crawl was never analysed: its findings are not compared, only a crawl problem is reported',
+    )
   }
 
-  const comparison = needsFindings ? await compareWithPrevious({ db, target: crawl, signal }) : null
+  const comparison =
+    needsFindings && !unanalysed ? await compareWithPrevious({ db, target: crawl, signal }) : null
 
   let sent = 0
   let left = 0
@@ -116,8 +124,10 @@ export async function runCrawlAlerts(input: {
       left++
       continue
     }
-    const kinds = recipient.kinds.filter(
-      (kind) => kind !== 'important-findings' || (comparison?.important.length ?? 0) > 0,
+    const kinds = recipient.kinds.filter((kind) =>
+      unanalysed
+        ? kind === 'crawl-problem'
+        : kind !== 'important-findings' || (comparison?.important.length ?? 0) > 0,
     )
     const taken = kinds.length
       ? await db.alerts.claim({ crawlId, userId: recipient.userId, kinds })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readColumnWidths } from './table-columns'
+import { parseSavedObject, readColumnWidths } from './table-columns'
 
 describe('stored table widths', () => {
   const defaults = { url: 360, title: 280 }
@@ -18,5 +18,14 @@ describe('stored table widths', () => {
       title: 280,
     })
     expect(defaults).toEqual({ url: 360, title: 280 })
+  })
+})
+
+describe('parseSavedObject', () => {
+  it('returns objects only', () => {
+    expect(parseSavedObject('{"a":1}')).toEqual({ a: 1 })
+    for (const value of [null, '', '{', 'null', '[]', '3', '"x"']) {
+      expect(parseSavedObject(value)).toBeNull()
+    }
   })
 })

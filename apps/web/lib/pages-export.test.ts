@@ -28,12 +28,11 @@ import {
   type ExportSource,
   type Translate,
 } from './pages-export'
+import { dynamicTranslator } from './dynamic-translator'
 import { parseDetailQuery, unappliedFilters, exportHref, listingOf } from './pages-query'
 
 const translatorFor = (messages: typeof en | typeof es): Translate => {
-  const t = createTranslator({ locale: 'en', messages, onError: () => undefined })
-  return (key, values) =>
-    (t as unknown as (key: string, values?: Record<string, string | number>) => string)(key, values)
+  return dynamicTranslator(createTranslator({ locale: 'en', messages, onError: () => undefined }))
 }
 
 const SITE = 'https://example.com'
@@ -639,11 +638,7 @@ describe('the columns', () => {
       messages: locale === 'en' ? en : es,
       onError: (error) => missing.push(error.message),
     })
-    const translate: Translate = (key, values) =>
-      (t as unknown as (key: string, values?: Record<string, string | number>) => string)(
-        key,
-        values,
-      )
+    const translate: Translate = dynamicTranslator(t)
     for (const kind of EXPORT_KINDS) {
       const header = exportHeader(kind, context({ translate }))
       expect(header.endsWith('\r\n')).toBe(true)
@@ -658,11 +653,7 @@ describe('the columns', () => {
       messages: locale === 'en' ? en : es,
       onError: (error) => missing.push(error.message),
     })
-    const translate: Translate = (key, values) =>
-      (t as unknown as (key: string, values?: Record<string, string | number>) => string)(
-        key,
-        values,
-      )
+    const translate: Translate = dynamicTranslator(t)
     const c = context({ translate })
     for (const id of PAGE_ISSUE_IDS) {
       const url = crawlUrl('/')

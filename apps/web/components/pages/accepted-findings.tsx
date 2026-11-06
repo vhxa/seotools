@@ -8,6 +8,7 @@ import { IssueEvidenceView, RelatedUrls } from '@/components/pages/issue-evidenc
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { describeAcceptance } from '@/lib/acceptance-reason'
 import { ruleRefsOf } from '@/lib/audit-rules'
+import { dynamicTranslator } from '@/lib/dynamic-translator'
 import type { UrlDetailData } from '@/lib/url-detail'
 
 /**
@@ -30,10 +31,7 @@ export async function AcceptedFindings({
   ])
   const refOf = ruleRefsOf(crawl.auditSnapshot)
 
-  const translate = tAll as unknown as (
-    key: string,
-    values?: Record<string, string | number>,
-  ) => string
+  const translate = dynamicTranslator(tAll)
 
   return (
     <>

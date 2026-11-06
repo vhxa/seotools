@@ -167,6 +167,10 @@
       "running": "running",
       "completed": "completed",
       "failed": "failed"
+    },
+    "paused": {
+      "title": "Automation is paused",
+      "description": "SEOTOOLS_PAUSE_AUTOMATION is set: scheduled crawls, periodic refreshes, update checks and all email are off. What you start yourself still runs."
     }
   },
   "Updates": {
@@ -2823,6 +2827,11 @@
         "title": "The last email was not delivered",
         "description": "Check the settings, send a test email and read the recent problems.",
         "open": "See what failed"
+      },
+      "undecryptable": {
+        "title": "Saved email settings cannot be read",
+        "description": "The encryption key changed since they were saved. Enter the provider settings again: saving them replaces the old ones.",
+        "open": "Enter them again"
       }
     },
     "provider": {
@@ -2845,7 +2854,8 @@
       "fromHint": "The address emails come from, for example seo@example.com.",
       "save": "Save",
       "saving": "Saving…",
-      "saved": "Saved."
+      "saved": "Saved.",
+      "undecryptable": "The saved provider settings cannot be read with the current encryption key (SETTINGS_ENCRYPTION_KEY or BETTER_AUTH_SECRET changed after saving). Enter them again below: saving replaces the old ones."
     },
     "test": {
       "title": "Send a test email",
@@ -2890,7 +2900,9 @@
       "from": "Enter the address emails come from.",
       "apiKey": "Enter the API key.",
       "address": "Enter a valid email address.",
-      "notConfigured": "Save the settings first."
+      "notConfigured": "Save the settings first.",
+      "undecryptable": "The saved settings cannot be read with the current key. Enter them again and save.",
+      "paused": "Email is paused (SEOTOOLS_PAUSE_AUTOMATION is set), so nothing is sent."
     }
   },
   "AlertsSettings": {

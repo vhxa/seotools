@@ -26,6 +26,8 @@ export function createCrawlFileRefresher(options: {
   db: Database
   log: Logger
   createFetcher: (config: Omit<FetcherConfig, 'allowPrivateNetworks'>) => Fetcher
+  /** `SEOTOOLS_PAUSE_AUTOMATION`: a pass does nothing. */
+  paused?: boolean
   appVersion?: string
   now?: () => Date
   retryBaseMs?: number
@@ -116,7 +118,7 @@ export function createCrawlFileRefresher(options: {
 
   return {
     tick() {
-      if (stopping.signal.aborted) return Promise.resolve()
+      if (options.paused || stopping.signal.aborted) return Promise.resolve()
       running ??= pass()
         .catch((error) => log.error({ err: error }, 'crawl file refresh failed'))
         .finally(() => {

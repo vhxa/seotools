@@ -596,8 +596,23 @@ describe('the job', () => {
     const finishedAt = (await db.crawls.get(started!.id))!.finishedAt!
     await expect(run(started!.id, { now: finishedAt })).rejects.toBeInstanceOf(JobDeferredError)
     expect(sent).toEqual([])
+    // Given up on: findings were never analysed, so a change summary is not made up from nothing.
+    const late = new Date(finishedAt.getTime() + ANALYSIS_WAIT_MS + 1)
+    expect(await run(started!.id, { now: late })).toEqual({ sent: 0, left: 1 })
+    expect(sent).toEqual([])
+  })
+
+  it('still reports a crawl problem of a crawl that was never analysed, and nothing else', async () => {
+    const ana = await member()
+    await subscribe(ana, ['crawl-problem', 'change-summary', 'important-findings'])
+    const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    await db.crawls.finish(started!.id, { status: 'incomplete' })
+    const finishedAt = (await db.crawls.get(started!.id))!.finishedAt!
+    expect((await db.crawls.get(started!.id))!.pagesByWorstIssue).toBeNull()
     const late = new Date(finishedAt.getTime() + ANALYSIS_WAIT_MS + 1)
     expect(await run(started!.id, { now: late })).toEqual({ sent: 1, left: 0 })
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.subject).toBe('example.com: the crawl is incomplete')
   })
 
   it('is handed back when the worker is shutting down, without sending', async () => {

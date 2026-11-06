@@ -79,6 +79,7 @@ annotated list.
 | `JOB_LOCK_TIMEOUT_MS`            | `300000`                 | A job running longer than this is assumed orphaned and re-queued.        |
 | `CRAWL_CONCURRENCY`              | `2`                      | Crawls running in parallel, in slots separate from other jobs.           |
 | `CRAWLER_ALLOW_PRIVATE_NETWORKS` | `false`                  | Let the crawler reach private addresses, to audit sites on your network. |
+| `SEOTOOLS_PAUSE_AUTOMATION`      | `false`                  | Staging copies: no scheduled crawls, refreshes, update checks or email.  |
 | `SEOTOOLS_MODE`                  | `all`                    | Docker only: `all`, `web`, `worker` or `migrate` (see below).            |
 
 ### The admin account
