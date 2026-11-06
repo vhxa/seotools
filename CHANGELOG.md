@@ -43,6 +43,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Changed
 
+- Reorganize URL details into visible key facts and tabs, show discovery and link context, and compact URL finding counters.
+
 - Links take much less space: on a real site the database went from 1.1 GB to 133 MB after the
   first start. SQLite files are compacted on start when a removal left them mostly empty.
 - Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a
@@ -58,6 +60,8 @@ which moves the entries of `[Unreleased]` into the new version.
   and so are a missing `alt`, `nosnippet` and a possible soft 404; `noimageindex` is a low warning.
 
 ### Added
+
+- Add a bounded query-parameter report and persisted system, light and dark theme choices.
 
 - **Custom extraction** (Settings → Crawling): up to 10 values read from every page with a CSS
   selector, as text or from an attribute (a price, an author, a product id). They show in the
@@ -89,6 +93,8 @@ which moves the entries of `[Unreleased]` into the new version.
   noindex or a canonical elsewhere, which search engines cannot read.
 
 ### Fixed
+
+- Improve muted text contrast and spacing in URL detail disclosures.
 
 - A script, stylesheet or image that answers with an HTML error page (a missing `.js` on many
   sites) is a broken resource, no longer counted as a page.
