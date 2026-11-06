@@ -1,6 +1,7 @@
 'use server'
 
 import type { AuditSelector } from '@seotools/core'
+import { AUDIT_THRESHOLDS } from '@seotools/core/crawl/thresholds'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
 import {
@@ -15,6 +16,7 @@ import {
   type UrlConfigError,
 } from '@/lib/audit-forms'
 import { previewRule, type AuditPreview } from '@/lib/audit-preview'
+import { parseThresholdsForm } from '@/lib/threshold-forms'
 import { getDb } from '@/lib/db'
 import { archivedMessage, requireDomainEditor } from '@/lib/workspace'
 
@@ -198,6 +200,38 @@ export async function saveAuditLanguagesAction(
     await getDb()
   ).audit.setLanguages({ domainId: domain.id, languages: parsed.languages })
   if (!saved.ok) return { error: mutationError(t, saved.error) }
+  revalidateAudit(host)
+  return { saved: true }
+}
+
+export interface ThresholdsFormState {
+  error?: string
+  saved?: boolean
+}
+
+/**
+ * Sets the figures the checks of the domain compare with. Empty fields are the recommended ones.
+ * Changing them moves the version, so the latest crawl is analysed again.
+ */
+export async function saveAuditThresholdsAction(
+  host: string,
+  _previous: ThresholdsFormState,
+  formData: FormData,
+): Promise<ThresholdsFormState> {
+  const { domain } = await requireDomainEditor(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
+  const t = await getTranslations('AuditRules.thresholds.errors')
+  const parsed = parseThresholdsForm(formData)
+  if (!parsed.ok) {
+    if (parsed.error !== 'range' || !parsed.field) return { error: t(parsed.error) }
+    const { min, max } = AUDIT_THRESHOLDS[parsed.field]
+    const field = (await getTranslations('AuditRules.thresholds.fields'))(`${parsed.field}.label`)
+    return { error: t('range', { field, min, max }) }
+  }
+  const saved = await (
+    await getDb()
+  ).audit.setThresholds({ domainId: domain.id, thresholds: parsed.thresholds })
+  if (!saved.ok) return { error: mutationError(await errorMessages(), saved.error) }
   revalidateAudit(host)
   return { saved: true }
 }

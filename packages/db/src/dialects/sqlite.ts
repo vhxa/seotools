@@ -104,6 +104,7 @@ import {
   historyExpired,
   historyTrace,
   type LinkScope,
+  foldIssueCounts,
 } from '../mapping'
 import {
   AUDIT_SEMANTICS,
@@ -136,6 +137,10 @@ import {
   type AuditPlan,
   type AuditRuleRow,
   type PlanContext,
+  planThresholds,
+  thresholdColumns,
+  thresholdsOf,
+  type AuditStateRow,
 } from '../audit'
 import {
   alertColumns,
@@ -424,7 +429,11 @@ export function createSqliteDatabase(options: {
   /** Runs a change to the rules of a domain: see `AuditRepository`. */
   const changeRules = (
     domainId: string,
-    plan: (rows: AuditRuleRow[], context: PlanContext) => AuditPlan,
+    plan: (
+      rows: AuditRuleRow[],
+      context: PlanContext,
+      config: AuditStateRow | undefined,
+    ) => AuditPlan,
   ) =>
     db.transaction(
       (tx) => {
@@ -440,7 +449,11 @@ export function createSqliteDatabase(options: {
           .get()
         let version = config?.version ?? 0
         const rows = tx.select().from(auditRules).where(eq(auditRules.domainId, domainId)).all()
-        const decided = plan(rows, { now, newId: randomUUID, languages: languagesOf(config) })
+        const decided = plan(
+          rows,
+          { now, newId: randomUUID, languages: languagesOf(config) },
+          config,
+        )
         if (decided.ok && planChanges(decided)) {
           for (const change of inApplyOrder(decided.changes)) {
             if (change.op === 'delete')
@@ -457,6 +470,7 @@ export function createSqliteDatabase(options: {
               recomputeErrorVersion: null,
               updatedAt: now,
               ...(decided.languages ? languageColumns(decided.languages) : {}),
+              ...(decided.thresholds ? thresholdColumns(decided.thresholds) : {}),
             })
             .where(eq(domainAuditConfig.domainId, domainId))
             .run()
@@ -1976,12 +1990,23 @@ export function createSqliteDatabase(options: {
 
       async issueCounts(crawlId) {
         const rows = db
-          .select({ issue: crawlUrlIssues.issue, pages: sql<number>`count(*)` })
+          .select({
+            issue: crawlUrlIssues.issue,
+            indexability: crawlUrlAudit.indexability,
+            pages: sql<number>`count(*)`,
+          })
           .from(crawlUrlIssues)
+          .leftJoin(
+            crawlUrlAudit,
+            and(
+              eq(crawlUrlAudit.crawlId, crawlUrlIssues.crawlId),
+              eq(crawlUrlAudit.urlHash, crawlUrlIssues.urlHash),
+            ),
+          )
           .where(eq(crawlUrlIssues.crawlId, crawlId))
-          .groupBy(crawlUrlIssues.issue)
+          .groupBy(crawlUrlIssues.issue, crawlUrlAudit.indexability)
           .all()
-        return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
+        return foldIssueCounts(rows)
       },
 
       async issuesOf(crawlId, urlHashes) {
@@ -2429,6 +2454,12 @@ export function createSqliteDatabase(options: {
 
       async setLanguages({ domainId, languages }) {
         return changeRules(domainId, (_rows, context) => planLanguages(languages, context))
+      },
+
+      async setThresholds({ domainId, thresholds }) {
+        return changeRules(domainId, (_rows, _context, config) =>
+          planThresholds(thresholds, thresholdsOf(config)),
+        )
       },
 
       upgradeSemantics: upgradeAuditSemantics,

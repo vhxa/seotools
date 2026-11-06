@@ -59,6 +59,10 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **Thresholds per domain** (Settings → Audit → Thresholds): the figures some checks compare with
+  (title and meta description length, words for thin content, URL length, click depth, image
+  weight) can be set per domain; empty fields keep the recommended ones. Changing them analyses the
+  latest crawl again, and each analysis keeps the figures it used.
 - **Where each link is**: the text of the link, the element that holds it and the part of the page
   (menu, header, footer, main content, sidebar), and, where a link brings in query parameters the
   page does not have, the tag as the crawler read it. Each URL also records the page and the kind

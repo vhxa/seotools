@@ -64,6 +64,7 @@ export function withArchiveGuard(db: Database): Database {
       'setRulesEnabled',
       'deleteRules',
       'setLanguages',
+      'setThresholds',
     ]),
   }
 }

@@ -1743,8 +1743,8 @@ export function describeDatabaseContract(
           expect(
             (await db.crawls.issueCounts(id)).sort((x, y) => x.issue.localeCompare(y.issue)),
           ).toEqual([
-            { issue: 'http-error', pages: 1 },
-            { issue: 'missing-title', pages: 2 },
+            { issue: 'http-error', pages: 1, secondary: 0 },
+            { issue: 'missing-title', pages: 2, secondary: 0 },
           ])
           expect((await db.crawls.issuesOf(id, ['a', 'zzz'])).map((i) => i.issue).sort()).toEqual([
             'http-error',
@@ -1830,7 +1830,9 @@ export function describeDatabaseContract(
           })
 
           // What is pending knows nothing of them.
-          expect(await db.crawls.issueCounts(id)).toEqual([{ issue: 'title-missing', pages: 1 }])
+          expect(await db.crawls.issueCounts(id)).toEqual([
+            { issue: 'title-missing', pages: 1, secondary: 0 },
+          ])
           expect((await db.crawls.issuesOf(id, [b, c])).length).toBe(0)
           expect(
             (await db.crawls.acceptedCounts(id)).sort((x, y) => x.issue.localeCompare(y.issue)),
@@ -1969,7 +1971,7 @@ export function describeDatabaseContract(
             { issue: 'noindex', pages: 1 },
           ])
           expect(await db.crawls.issueCounts(newest.id)).toEqual([
-            { issue: 'missing-title', pages: 1 },
+            { issue: 'missing-title', pages: 1, secondary: 0 },
           ])
         })
 
@@ -2081,8 +2083,28 @@ export function describeDatabaseContract(
             version: 0,
             rules: [],
             languages: { prefixes: [], unprefixed: false },
+            thresholds: {},
             recomputeError: null,
           })
+        })
+
+        it('keeps the thresholds a domain sets, moving the version only when they change', async () => {
+          const domainId = await domain()
+          expect(
+            await db.audit.setThresholds({
+              domainId,
+              thresholds: { thinWords: 120, titleMax: 60 },
+            }),
+          ).toMatchObject({ ok: true, version: 1, changed: true })
+          expect((await db.audit.config(domainId)).thresholds).toEqual({ thinWords: 120 })
+          expect(
+            await db.audit.setThresholds({ domainId, thresholds: { thinWords: 120 } }),
+          ).toMatchObject({ version: 1, changed: false })
+          expect(await db.audit.setThresholds({ domainId, thresholds: {} })).toMatchObject({
+            version: 2,
+            changed: true,
+          })
+          expect((await db.audit.config(domainId)).thresholds).toEqual({})
         })
 
         it('creates, edits, switches and deletes rules, moving the version for each change', async () => {
@@ -3983,7 +4005,7 @@ export function describeDatabaseContract(
           const crawl = await analysedCrawl(2)
           expect(await save(crawl, { issue: 'title-missing' })).toBe(true)
           expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([
-            { issue: 'title-missing', pages: 1 },
+            { issue: 'title-missing', pages: 1, secondary: 0 },
           ])
           expect(await save(crawl)).toBe(true)
           expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([])
@@ -4007,7 +4029,7 @@ export function describeDatabaseContract(
             (await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart')]))[0]?.participation,
           ).toBe('audited')
           expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([
-            { issue: 'title-missing', pages: 1 },
+            { issue: 'title-missing', pages: 1, secondary: 0 },
           ])
         })
 

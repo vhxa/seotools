@@ -21,6 +21,11 @@
  * was.
  */
 import { z } from 'zod'
+import {
+  canonicalThresholds,
+  thresholdOverridesSchema,
+  type ThresholdOverrides,
+} from './thresholds'
 import { isInternalUrl, normalizeCrawlUrl } from './normalize'
 
 /**
@@ -784,6 +789,8 @@ export interface AuditSnapshot {
   semantics?: number
   /** The language directories shared rules looked at. Absent: there were none. */
   languages?: LanguageConfig
+  /** The figures the checks compared with, where they differed from the defaults. Absent: none did. */
+  thresholds?: ThresholdOverrides
 }
 
 /**
@@ -799,6 +806,7 @@ const snapshotSchema = z.object({
   rules: z.array(ruleSchema),
   semantics: z.number().int().min(1).optional(),
   languages: z.object({ prefixes: z.array(z.string()), unprefixed: z.boolean() }).optional(),
+  thresholds: thresholdOverridesSchema.optional(),
 })
 
 /** The configuration in force now: what a new analysis, and a recalculation, use. */
@@ -806,11 +814,14 @@ export function auditSnapshotOf(
   version: number,
   rules: readonly AuditRule[],
   languages: LanguageConfig = NO_LANGUAGES,
+  thresholds?: ThresholdOverrides,
 ): AuditSnapshot {
+  const figures = canonicalThresholds(thresholds)
   return {
     version,
     semantics: AUDIT_SEMANTICS,
     languages: canonicalLanguages(languages),
+    ...(Object.keys(figures).length > 0 ? { thresholds: figures } : {}),
     rules: rules
       .filter((rule) => rule.enabled)
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

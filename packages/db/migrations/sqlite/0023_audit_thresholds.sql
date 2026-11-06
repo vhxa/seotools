@@ -1,0 +1,1 @@
+ALTER TABLE `domain_audit_config` ADD `thresholds` text;

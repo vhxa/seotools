@@ -9,7 +9,7 @@ import {
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { analyseCrawl } from './analysis'
+import { analyseCrawl, currentAuditConfig } from './analysis'
 import { runCrawl } from './engine'
 import { fakeSite, moved, type Answer } from './fake-site'
 import { FetchError } from './fetcher'
@@ -1153,5 +1153,27 @@ describe('parseRobotsDirectives', () => {
 
   it('ignores what it does not know', () => {
     expect(parse('whatever, noindex')).toEqual(['noindex'])
+  })
+})
+
+describe('figures a domain sets for its checks', () => {
+  it('replace the recommended ones, and moving them analyses the latest crawl again', async () => {
+    const site = websiteOf({ at: '/x', pages: { '/x': page('/x', { text: words('/x', 150) }) } })
+    const id = await crawl(site)
+    expect((await issuesAt(id, '/x')).map((row) => row.issue)).toContain('content-thin')
+
+    const saved = await db.audit.setThresholds({ domainId, thresholds: { thinWords: 100 } })
+    expect(saved).toMatchObject({ ok: true, changed: true })
+    expect((await db.audit.config(domainId)).thresholds).toEqual({ thinWords: 100 })
+    await analyseCrawl(db, id, await currentAuditConfig(db, domainId))
+    expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('content-thin')
+    expect((await db.crawls.get(id))?.auditSnapshot?.thresholds).toEqual({ thinWords: 100 })
+
+    // Setting the same figures again changes nothing.
+    expect(
+      await db.audit.setThresholds({ domainId, thresholds: { thinWords: 100 } }),
+    ).toMatchObject({
+      changed: false,
+    })
   })
 })
