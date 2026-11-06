@@ -1,5 +1,6 @@
 import {
   INDEXNOW_KEY,
+  parsePriorityUrl,
   OPTIONAL_CRAWL_FILES,
   CRAWL_RENDERING_AVAILABLE,
   CRAWL_RENDERING_MODES,
@@ -12,6 +13,7 @@ import {
 } from '@seotools/core'
 
 export type CrawlSettingsFormError =
+  | 'scope'
   | 'renderingUnavailable'
   | 'userAgent'
   | 'concurrency'
@@ -92,8 +94,23 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
     if (!INDEXNOW_KEY.test(indexNowKey)) return { ok: false, error: 'indexNowKey' }
   }
 
+  const scope = crawlSettingsSchema
+    .pick({ includePrefixes: true, excludePrefixes: true, maxDepth: true })
+    .safeParse({
+      includePrefixes: text(form, 'includePrefixes')
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+      excludePrefixes: text(form, 'excludePrefixes')
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+      maxDepth: text(form, 'maxDepth') === '' ? null : integer(text(form, 'maxDepth')),
+    })
+  if (!scope.success) return { ok: false, error: 'scope' }
   const userAgent = text(form, 'userAgent')
   const parsed = crawlSettingsSchema.safeParse({
+    ...scope.data,
     renderingMode: mode,
     userAgent: userAgent === '' ? null : userAgent,
     concurrency,
@@ -124,4 +141,23 @@ export function parseCrawlScheduleForm(form: FormData): CrawlScheduleFormResult 
   })
   if (!parsed.success) return { ok: false }
   return { ok: true, enabled: form.get('enabled') === 'on', recurrence: parsed.data }
+}
+
+/** Validates the whole ad hoc list before any crawl is created. */
+export function parseListCrawlForm(
+  form: FormData,
+  host: string,
+):
+  | { ok: true; urls: string[] }
+  | { ok: false; error: 'limit' }
+  | { ok: false; error: 'invalid'; count: number } {
+  const lines = text(form, 'urls')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  if (!lines.length || lines.length > 1000) return { ok: false, error: 'limit' }
+  const parsed = lines.map((line) => parsePriorityUrl(line, host))
+  const count = parsed.filter((url) => url === null).length
+  if (count) return { ok: false, error: 'invalid', count }
+  return { ok: true, urls: [...new Set(parsed.filter((url): url is string => url !== null))] }
 }

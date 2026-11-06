@@ -108,6 +108,7 @@ export interface PageRow {
   kind: CrawlUrlKind
   statusCode: number | null
   error: string | null
+  notRequested?: 'excluded' | 'depth'
   depth: number
   responseTimeMs: number | null
   bytes: number | null
@@ -371,6 +372,7 @@ function Cell({
         <Muted>—</Muted>
       )
     case 'status':
+      if (row.notRequested) return <Muted>{t(`notRequested.${row.notRequested}`)}</Muted>
       return <StatusCell row={row} automaticCheck={row.automaticCheck} />
     case 'issueDetail':
       return row.issueDetails.length > 0 ? (

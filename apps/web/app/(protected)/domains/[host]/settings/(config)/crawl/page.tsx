@@ -29,6 +29,7 @@ export default async function CrawlSettingsPage({ params }: { params: Promise<{ 
         <CrawlSettingsForm
           host={domain.host}
           settings={settings}
+          secretsSaved={Boolean(await (await getDb()).crawls.requestSecrets(domain.id))}
           defaultUserAgent={defaultCrawlerUserAgent(process.env.APP_VERSION)}
         />
       </CardContent>

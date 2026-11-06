@@ -1,3 +1,4 @@
+import { siteHeaders } from './credentials'
 import {
   MAX_VERIFICATION_URLS,
   URL_SCOPED_ISSUES,
@@ -27,6 +28,7 @@ export const CRAWL_WAIT_MS = 30_000
 export const KEPT_VERIFICATIONS = 50
 
 export interface VerificationOptions {
+  settingsSecret?: string
   db: Database
   log: Logger
   /** Every request of a recheck goes through the fetcher this makes: see `createHttpFetcher`. */
@@ -124,6 +126,7 @@ export async function runVerification(
   const settings = await db.crawls.settings(domain.id)
   const config = await currentAuditConfig(db, domain.id)
   const fetcher = options.createFetcher({
+    siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
     userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
     timeoutMs: settings.timeoutMs,
     concurrency: settings.concurrency,

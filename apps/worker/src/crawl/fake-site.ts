@@ -1,5 +1,5 @@
 import type { CrawlEngineOptions } from './engine'
-import type { FetchedResponse, Fetcher } from './fetcher'
+import type { FetchedResponse, Fetcher, FetcherConfig } from './fetcher'
 
 /** For tests: a website in a map, and the helpers to write one. */
 
@@ -27,7 +27,7 @@ export const notFound: Partial<FetchedResponse> = {
 /** A website in a map. URLs that are not in it answer 404, like a real site would. */
 export function fakeSite(site: Record<string, Answer>, latencyMs = 1) {
   const requests: string[] = []
-  const configs: { userAgent: string; timeoutMs: number; concurrency: number }[] = []
+  const configs: Omit<FetcherConfig, 'allowPrivateNetworks'>[] = []
   let active = 0
   let peak = 0
   let closed = 0

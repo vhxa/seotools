@@ -277,7 +277,9 @@
       "alreadyRunning": "This domain already has a crawl in progress.",
       "noPriorityUrls": "There are no priority pages yet. Mark some in Pages first.",
       "invalidPriorityUrl": "Enter a URL of {host}, like /pricing or https://{host}/pricing.",
-      "invalidSchedule": "Check the frequency, day and time of the schedule."
+      "invalidSchedule": "Check the frequency, day and time of the schedule.",
+      "listLimit": "Enter between 1 and 1000 URLs.",
+      "listInvalid": "{count} URLs are invalid or outside this domain."
     }
   },
   "Verification": {
@@ -638,7 +640,11 @@
     "advancedFilters": "Advanced filters and issues",
     "filtersMenu": "Filters",
     "issuesMenu": "Issues",
-    "rowsShown": "{shown, number} of {matching, number} URLs shown"
+    "rowsShown": "{shown, number} of {matching, number} URLs shown",
+    "notRequested": {
+      "excluded": "Not requested: excluded by the crawl settings",
+      "depth": "Not requested: maximum depth exceeded"
+    }
   },
   "Export": {
     "menu": {
@@ -799,6 +805,10 @@
       "related": "{total, plural, one {# URL it points at} other {# URLs it points at}}",
       "elsewhereTitle": "Rules of this URL act on other URLs ({total, number})",
       "elsewhereNote": "What a rule declares of this URL accepts these findings of the URLs that point at it. The first ones:"
+    },
+    "notRequested": {
+      "excluded": "Not requested: excluded by the crawl settings",
+      "depth": "Not requested: maximum depth exceeded"
     }
   },
   "UrlLinks": {
@@ -1447,7 +1457,8 @@
         "started": "Last run started {when}.",
         "skipped-active": "Last run skipped {when}: another crawl was in progress.",
         "skipped-empty": "Last run skipped {when}: no priority pages marked."
-      }
+      },
+      "timeZone": "Time zone"
     },
     "history": {
       "title": "Recent crawls",
@@ -1463,6 +1474,12 @@
         "schedule": "Schedule"
       },
       "empty": "No crawls yet."
+    },
+    "list": {
+      "label": "Crawl a URL list",
+      "hint": "One URL per line, up to 1000; links are not followed.",
+      "start": "Start list crawl",
+      "started": "List crawl started."
     }
   },
   "DomainSettings": {
@@ -1581,7 +1598,30 @@
       "retainCrawls": "The number of crawls to keep must be between {min} and {max}.",
       "indexNowKey": "The IndexNow key must be 8 to 128 letters, numbers or dashes.",
       "indexNowKeyRequired": "Enter the IndexNow key, or turn IndexNow off.",
-      "historyDays": "The days of history must be between {min} and {max}."
+      "historyDays": "The days of history must be between {min} and {max}.",
+      "scope": "Enter up to 100 valid path prefixes per list and a depth from 1 to 100.",
+      "requestSecrets": "Invalid request credentials or headers (maximum 10; Host and transport headers are refused)."
+    },
+    "includePrefixes": {
+      "label": "Include paths",
+      "hint": "One prefix per line; empty includes every path."
+    },
+    "excludePrefixes": {
+      "label": "Exclude paths",
+      "hint": "One prefix per line; matches whole path segments."
+    },
+    "maxDepth": {
+      "label": "Maximum depth",
+      "hint": "Clicks from seeds (1–100); empty means unlimited."
+    },
+    "requestSecrets": {
+      "label": "Request credentials",
+      "saved": "Saved, hidden. Leave blank to keep saved values.",
+      "headers": "Custom headers",
+      "hint": "Up to 10 Name: Value lines; sent only to this site.",
+      "username": "Basic Auth username",
+      "password": "Basic Auth password",
+      "clear": "Remove all request credentials"
     }
   },
   "CrawlFiles": {

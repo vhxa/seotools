@@ -90,11 +90,13 @@ async function main() {
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,
+        settingsSecret: settingsKeyFrom(env),
       }),
       [JOB_TYPES.urlVerify]: createUrlVerifyHandler({
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,
+        settingsSecret: settingsKeyFrom(env),
       }),
     },
     concurrency: env.CRAWL_CONCURRENCY,
@@ -134,6 +136,7 @@ async function main() {
     db,
     log: log.child({ lane: 'favicon' }),
     appVersion: pkg.version,
+    settingsSecret: settingsKeyFrom(env),
     createFetcher,
     paused,
   })
@@ -144,6 +147,7 @@ async function main() {
     db,
     log: log.child({ lane: 'crawl-files' }),
     appVersion: pkg.version,
+    settingsSecret: settingsKeyFrom(env),
     createFetcher,
     paused,
   })

@@ -61,6 +61,7 @@ const toRow = (
   kind: url.kind,
   statusCode: url.statusCode,
   error: url.error,
+  notRequested: url.data?.notRequested,
   depth: url.depth,
   responseTimeMs: url.responseTimeMs,
   bytes: url.bytes,

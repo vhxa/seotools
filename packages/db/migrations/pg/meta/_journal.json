@@ -169,6 +169,13 @@
       "when": 1793944849828,
       "tag": "0023_audit_thresholds",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793945789738,
+      "tag": "0024_crawl_configuration",
+      "breakpoints": true
     }
   ]
 }

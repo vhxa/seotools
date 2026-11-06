@@ -323,6 +323,7 @@ export interface DomainRepository {
 }
 
 export interface Crawl {
+  seedUrls?: string[] | null
   id: string
   domainId: string
   type: CrawlType
@@ -380,6 +381,7 @@ export type CrawlCounts = Pick<
 >
 
 export interface NewCrawlUrl {
+  notRequested?: 'excluded' | 'depth'
   url: string
   urlHash: string
   scope: CrawlUrlScope
@@ -592,6 +594,8 @@ export interface SitemapHreflang {
 
 export interface CrawlRepository {
   /** The saved settings of a domain, or the defaults if it has none. */
+  requestSecrets(domainId: string): Promise<string | null>
+  saveRequestSecrets(domainId: string, encrypted: string | null): Promise<void>
   settings(domainId: string): Promise<CrawlSettings>
   saveSettings(domainId: string, settings: CrawlSettings): Promise<void>
   /** The extra crawl files each domain turned on, by domain id. Domains with none are left out. */
@@ -601,7 +605,12 @@ export interface CrawlRepository {
    * Creates a crawl and the job that runs it, together. A domain has one active crawl at most:
    * returns `null`, creating nothing, if it already has one.
    */
-  start(input: { domainId: string; type: CrawlType; trigger: CrawlTrigger }): Promise<Crawl | null>
+  start(input: {
+    domainId: string
+    type: CrawlType
+    trigger: CrawlTrigger
+    seedUrls?: string[]
+  }): Promise<Crawl | null>
   get(id: string): Promise<Crawl | null>
   /** The crawl with this id if it belongs to the domain; `null` for any other domain's, or none. */
   getInDomain(domainId: string, id: string): Promise<Crawl | null>

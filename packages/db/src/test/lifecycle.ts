@@ -80,6 +80,7 @@ export function describeLifecycle(
       const url = `https://${host}/`
       const other = `https://${host}/about`
       await db.crawls.saveSettings(domainId, { ...DEFAULT_CRAWL_SETTINGS, concurrency: 3 })
+      await db.crawls.saveRequestSecrets(domainId, 'v1:ciphertext')
       const member = await db.users.create({
         email: `member@${host}`,
         name: 'Member',
@@ -334,6 +335,7 @@ export function describeLifecycle(
         const rule = rules[0]!
 
         await refused(db.crawls.saveSettings(site.domainId, DEFAULT_CRAWL_SETTINGS))
+        await refused(db.crawls.saveRequestSecrets(site.domainId, 'v1:ciphertext'))
         await refused(
           db.crawlSchedules.save({
             ...recurrence,

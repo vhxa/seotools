@@ -1,5 +1,6 @@
 import {
   SITE_SCOPED_ISSUES,
+  domainRequestSettings,
   URL_SCOPED_ISSUES,
   compareWithCrawl,
   createLogger,
@@ -766,5 +767,25 @@ describe('rechecking findings with structured evidence', () => {
       expect(verified.findingsOf('/good')).toContain(issue)
     }
     expect(await crawlFindings(crawl.id, '/good')).toEqual(before)
+  })
+})
+
+it('uses encrypted domain credentials for rechecks too', async () => {
+  await fullCrawl(website())
+  const verification = await recheck(['/good'])
+  await domainRequestSettings(db.crawls, domainId, 'test-key').setJson(
+    'request',
+    {
+      headers: [{ name: 'Cookie', value: 'staging=yes' }],
+      username: '',
+      password: '',
+    },
+    { encrypted: true },
+  )
+  const { fake, result } = run(verification.id, website(), { settingsSecret: 'test-key' })
+  await result
+  expect(fake.configs[0]?.siteHeaders).toEqual({
+    host: 'example.com',
+    headers: { cookie: 'staging=yes' },
   })
 })

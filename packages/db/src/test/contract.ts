@@ -477,6 +477,9 @@ export function describeDatabaseContract(
           ...DEFAULT_CRAWL_SETTINGS,
           userAgent: 'MyBot/1.0',
           concurrency: 4,
+          includePrefixes: ['/shop'],
+          excludePrefixes: ['/shop/private'],
+          maxDepth: 5,
           maxUrls: null,
           retainCrawls: null,
         }
@@ -498,6 +501,17 @@ export function describeDatabaseContract(
           optionalFiles: ['ads', 'feed'],
           indexNowKey: 'abcd1234',
         })
+      })
+
+      it('keeps encrypted request configuration separate from browser settings', async () => {
+        const domainId = await domain()
+        await db.crawls.saveRequestSecrets(domainId, 'v1:encrypted')
+        expect(await db.crawls.requestSecrets(domainId)).toBe('v1:encrypted')
+        expect(await db.crawls.settings(domainId)).not.toHaveProperty('requestSecrets')
+        await db.crawls.saveSettings(domainId, DEFAULT_CRAWL_SETTINGS)
+        expect(await db.crawls.requestSecrets(domainId)).toBe('v1:encrypted')
+        await db.crawls.saveRequestSecrets(domainId, null)
+        expect(await db.crawls.requestSecrets(domainId)).toBeNull()
       })
 
       it('lists the extra files each domain turned on', async () => {
@@ -4389,7 +4403,7 @@ export function describeDatabaseContract(
             '/broke': { result: { statusCode: 404 } },
             '/gone': { result: { statusCode: 404 } },
           })
-          const ids = { domainId, baseId: older.id, targetId: newer.id }
+          const ids = { domainId, baseId: older!.id, targetId: newer!.id }
           const changed = async (view: 'pages' | 'other') =>
             paths(
               await db.crawls.compareUrls({ ...ids, change: 'status', view, limit: 50, offset: 0 }),

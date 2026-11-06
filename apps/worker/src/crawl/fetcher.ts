@@ -1,5 +1,6 @@
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns'
 import http from 'node:http'
+import { isInternalUrl } from '@seotools/core'
 import https from 'node:https'
 import { BlockList, isIP, type LookupFunction } from 'node:net'
 import { createBrotliDecompress, createGunzip, createInflate, gunzipSync } from 'node:zlib'
@@ -48,6 +49,7 @@ export interface Fetcher {
 }
 
 export interface FetcherConfig {
+  siteHeaders?: { host: string; headers: Record<string, string> }
   userAgent: string
   timeoutMs: number
   concurrency: number
@@ -205,6 +207,9 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
                 'User-Agent': config.userAgent,
                 Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Encoding': 'gzip, deflate, br',
+                ...(config.siteHeaders && isInternalUrl(url, config.siteHeaders.host)
+                  ? config.siteHeaders.headers
+                  : {}),
               },
             },
             (response) => {

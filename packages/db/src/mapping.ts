@@ -268,8 +268,9 @@ export function foldUsage(
 
 export type CrawlRow = Omit<
   Crawl,
-  'robots' | 'pagesByWorstIssue' | 'pagesWithType' | 'pagesAudit' | 'auditSnapshot'
+  'seedUrls' | 'robots' | 'pagesByWorstIssue' | 'pagesWithType' | 'pagesAudit' | 'auditSnapshot'
 > & {
+  seedUrls: string | null
   robots: string | null
   pagesWorstIssueCount: number | null
   pagesWorstWarningCount: number | null
@@ -298,6 +299,7 @@ export type CrawlUrlRow = Omit<
 export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
 
 export const toCrawl = ({
+  seedUrls,
   robots,
   pagesWorstIssueCount: issue,
   pagesWorstWarningCount: warning,
@@ -331,6 +333,7 @@ export const toCrawl = ({
       ? null
       : { audited, excluded, indexable, notIndexable, unknownIndexability },
   auditSnapshot: parseAuditSnapshot(auditSnapshot),
+  seedUrls: seedUrls === null ? null : (JSON.parse(seedUrls) as string[]),
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
 })
 
@@ -526,10 +529,11 @@ export const crawlRobotsColumn = (robots: CrawlRobotsFiles) =>
   )
 
 /** External URLs are recorded, not crawled, so they don't enter the queue. */
-export const newCrawlUrlRow = (crawlId: string, url: NewCrawlUrl) => ({
+export const newCrawlUrlRow = (crawlId: string, { notRequested, ...url }: NewCrawlUrl) => ({
   crawlId,
   ...url,
-  state: url.scope === 'internal' ? ('queued' as const) : ('skipped' as const),
+  data: notRequested ? JSON.stringify({ notRequested }) : null,
+  state: url.scope === 'internal' && !notRequested ? ('queued' as const) : ('skipped' as const),
 })
 
 /** A link as a row of `crawl_url_links`: its ends by `seq`, its crawl by `ref`, its context bounded. */
@@ -1275,8 +1279,14 @@ export function toDomainFavicon(row: {
 
 // --- crawl settings ------------------------------------------------------
 
-export type CrawlSettingsRow = Omit<CrawlSettings, 'optionalFiles'> & {
+export type CrawlSettingsRow = Omit<
+  CrawlSettings,
+  'optionalFiles' | 'includePrefixes' | 'excludePrefixes'
+> & {
   optionalFiles: string | null
+  requestSecrets: string | null
+  includePrefixes: string | null
+  excludePrefixes: string | null
   domainId: string
   updatedAt: Date
 }
@@ -1285,9 +1295,14 @@ export const toCrawlSettings = ({
   domainId: _domainId,
   updatedAt: _updatedAt,
   optionalFiles,
+  requestSecrets: _requestSecrets,
+  includePrefixes,
+  excludePrefixes,
   ...row
 }: CrawlSettingsRow): CrawlSettings => ({
   ...row,
+  includePrefixes: (parseJson(includePrefixes) ?? []) as string[],
+  excludePrefixes: (parseJson(excludePrefixes) ?? []) as string[],
   optionalFiles: (parseJson(optionalFiles) ?? []) as CrawlSettings['optionalFiles'],
 })
 
@@ -1301,9 +1316,16 @@ export function enabledFilesByDomain(rows: CrawlSettingsRow[]): Map<string, Extr
   return enabled
 }
 
-export const crawlSettingsColumns = ({ optionalFiles, ...settings }: CrawlSettings) => ({
+export const crawlSettingsColumns = ({
+  optionalFiles,
+  includePrefixes,
+  excludePrefixes,
+  ...settings
+}: CrawlSettings) => ({
   ...settings,
   optionalFiles: JSON.stringify(optionalFiles),
+  includePrefixes: JSON.stringify(includePrefixes),
+  excludePrefixes: JSON.stringify(excludePrefixes),
 })
 
 // --- crawl files ---------------------------------------------------------

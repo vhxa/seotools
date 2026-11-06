@@ -2,6 +2,10 @@
 
 import {
   CRAWL_SETTINGS_LIMITS,
+  domainRequestSettings,
+  requestSettingsSchema,
+  EMPTY_REQUEST_SETTINGS,
+  settingsKeyFrom,
   crawlUrlHash,
   nextScheduledRun,
   parsePriorityUrl,
@@ -9,8 +13,13 @@ import {
 } from '@seotools/core'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
-import { parseCrawlScheduleForm, parseCrawlSettingsForm } from '@/lib/crawl-forms'
+import {
+  parseCrawlScheduleForm,
+  parseCrawlSettingsForm,
+  parseListCrawlForm,
+} from '@/lib/crawl-forms'
 import { getDb } from '@/lib/db'
+import { getEnv } from '@/lib/env'
 import { archivedMessage, requireDomainEditor } from '@/lib/workspace'
 
 export interface ActionState {
@@ -150,6 +159,8 @@ export async function saveCrawlSettingsAction(
   const parsed = parseCrawlSettingsForm(formData)
   if (!parsed.ok) {
     switch (parsed.error) {
+      case 'scope':
+        return { error: t('scope') }
       case 'renderingUnavailable':
         return { error: t('renderingUnavailable') }
       case 'userAgent':
@@ -176,8 +187,34 @@ export async function saveCrawlSettingsAction(
   }
 
   const db = await getDb()
+  const secretStore = domainRequestSettings(db.crawls, domain.id, settingsKeyFrom(getEnv()))
+  const previousSecrets =
+    (await secretStore.getJson('request', requestSettingsSchema)) ?? EMPTY_REQUEST_SETTINGS
+  const headerText = String(formData.get('requestHeaders') ?? '').trim()
+  const headers = headerText
+    ? headerText.split(/\r?\n/).map((line) => {
+        const colon = line.indexOf(':')
+        return {
+          name: colon < 0 ? '' : line.slice(0, colon).trim(),
+          value: line.slice(colon + 1).trim(),
+        }
+      })
+    : previousSecrets.headers
+  const credentials = requestSettingsSchema.safeParse(
+    formData.get('clearRequestSecrets') === 'on'
+      ? EMPTY_REQUEST_SETTINGS
+      : {
+          headers,
+          username: String(formData.get('basicUsername') ?? '').trim() || previousSecrets.username,
+          password: String(formData.get('basicPassword') ?? '') || previousSecrets.password,
+        },
+  )
+  if (!credentials.success) return { error: t('requestSecrets') }
   const previous = await db.crawls.settings(domain.id)
   await db.crawls.saveSettings(domain.id, parsed.settings)
+  if (credentials.data.headers.length || credentials.data.username || credentials.data.password) {
+    await secretStore.setJson('request', credentials.data, { encrypted: true })
+  } else await secretStore.delete('request')
   // Whoever just turned a file on should not have to wait a day to see it.
   const filesChanged =
     previous.indexNowKey !== parsed.settings.indexNowKey ||
@@ -202,4 +239,26 @@ export async function refreshCrawlFilesAction(
   await db.crawlFiles.requestCheck({ domainId: domain.id, now: new Date() })
   revalidatePath(`/domains/${host}/crawl-files`, 'layout')
   return {}
+}
+
+export async function startListCrawlAction(
+  host: string,
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const { domain } = await requireDomainEditor(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
+  const t = await getTranslations('Crawl.errors')
+  const list = parseListCrawlForm(form, domain.host)
+  if (!list.ok)
+    return {
+      error: list.error === 'limit' ? t('listLimit') : t('listInvalid', { count: list.count }),
+    }
+  const seedUrls = list.urls
+  const crawl = await (
+    await getDb()
+  ).crawls.start({ domainId: domain.id, type: 'priority', trigger: 'manual', seedUrls })
+  if (!crawl) return { error: t('alreadyRunning') }
+  revalidateDomain(host)
+  return { saved: true }
 }

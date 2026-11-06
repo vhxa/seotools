@@ -285,6 +285,7 @@ export type IssueEvidence =
 
 /** Data extracted from a page that has no column of its own. */
 export interface CrawlPageData {
+  notRequested?: 'excluded' | 'depth'
   description?: string
   h1?: string[]
   hreflang?: HreflangEntry[]
