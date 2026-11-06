@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { SystemNav } from '@/components/system-nav'
 import { MailHealthNotice } from '@/components/email/mail-health-notice'
 import { requireAdmin } from '@/lib/session'
 
@@ -10,6 +11,7 @@ export default async function SystemLayout({ children }: { children: ReactNode }
   await requireAdmin()
   return (
     <div className="grid gap-6">
+      <SystemNav />
       <MailHealthNotice />
       {children}
     </div>

@@ -1,17 +1,14 @@
 'use client'
 
 import {
-  ActivityIcon,
-  ArrowUpCircleIcon,
-  BuildingIcon,
-  CalendarClockIcon,
   ChevronRightIcon,
+  CircleAlertIcon,
   FileCode2Icon,
   FileTextIcon,
   LayoutDashboardIcon,
-  MailIcon,
+  RadarIcon,
   SettingsIcon,
-  UsersIcon,
+  ShieldIcon,
   type LucideIcon,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -194,14 +191,19 @@ export function AppSidebar({
           icon: LayoutDashboardIcon,
           exact: true,
         },
+        { label: t('issues'), href: `/domains/${activeHost}/issues`, icon: CircleAlertIcon },
         {
-          label: t('pages'),
+          label: t('urls'),
+          href: `/domains/${activeHost}/pages/details`,
           icon: FileTextIcon,
+        },
+        {
+          label: t('crawls'),
+          icon: RadarIcon,
           links: [
-            { label: t('pagesOverview'), href: `/domains/${activeHost}/pages`, exact: true },
-            { label: t('pagesDetails'), href: `/domains/${activeHost}/pages/details` },
-            { label: t('pagesHistory'), href: `/domains/${activeHost}/pages/history` },
-            { label: t('pagesCompare'), href: `/domains/${activeHost}/pages/compare` },
+            { label: t('crawlsRun'), href: `/domains/${activeHost}/jobs` },
+            { label: t('crawlsHistory'), href: `/domains/${activeHost}/pages/history` },
+            { label: t('crawlsCompare'), href: `/domains/${activeHost}/pages/compare` },
           ],
         },
         {
@@ -218,47 +220,58 @@ export function AppSidebar({
             })),
           ],
         },
-        { label: t('scheduledJobs'), href: `/domains/${activeHost}/jobs`, icon: CalendarClockIcon },
         { label: t('settings'), href: `/domains/${activeHost}/settings`, icon: SettingsIcon },
       ]
     : []
-  const instanceItems: NavLink[] = [
-    { label: t('companies'), href: '/companies', icon: BuildingIcon },
-    { label: t('users'), href: '/system/users', icon: UsersIcon },
-    { label: t('system'), href: '/system', icon: ActivityIcon, exact: true },
-    { label: t('email'), href: '/system/email', icon: MailIcon },
-    { label: t('updates'), href: '/system/updates', icon: ArrowUpCircleIcon },
-  ]
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/" />} tooltip="seotools">
-              {/* `!` beats the button's `[&_svg]:size-4`, which is meant for icons. */}
-              <Logo className="size-8! shrink-0 rounded-lg" />
-              <span className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">seotools</span>
-                {version && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {t(development ? 'versionDevelopment' : 'versionRelease', { version })}
-                  </span>
-                )}
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <DomainSwitcher canManage={isAdmin} companies={companies} />
-      </SidebarHeader>
-      <SidebarContent>
-        {activeHost && <NavGroup label={activeHost} items={domainItems} pathname={pathname} />}
-        {isAdmin && <NavGroup label={t('instance')} items={instanceItems} pathname={pathname} />}
-      </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={user} />
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+    <nav aria-label={t('navLabel')} className="contents">
+      <Sidebar collapsible="icon">
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" render={<Link href="/" />} tooltip="seotools">
+                {/* `!` beats the button's `[&_svg]:size-4`, which is meant for icons. */}
+                <Logo className="size-8! shrink-0 rounded-lg" />
+                <span className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">seotools</span>
+                  {version && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {t(development ? 'versionDevelopment' : 'versionRelease', { version })}
+                    </span>
+                  )}
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <DomainSwitcher canManage={isAdmin} companies={companies} />
+        </SidebarHeader>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <SidebarContent>
+            {activeHost && <NavGroup label={activeHost} items={domainItems} pathname={pathname} />}
+          </SidebarContent>
+        </div>
+        <SidebarFooter>
+          {isAdmin && (
+            <nav aria-label={t('administration')}>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    render={<Link href="/system" />}
+                    isActive={pathname === '/system' || pathname.startsWith('/system/')}
+                    tooltip={t('administration')}
+                  >
+                    <ShieldIcon />
+                    <span>{t('administration')}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </nav>
+          )}
+          <NavUser user={user} />
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+    </nav>
   )
 }

@@ -16,5 +16,5 @@ export default async function HomePage() {
   const first = domains.find((domain) => !domain.archivedAt) ?? domains[0]
   if (first) redirect(`/domains/${first.host}`)
   if (viewer.role !== 'admin') redirect('/no-access')
-  redirect(companies.length > 0 ? '/companies' : '/onboarding')
+  redirect(companies.length > 0 ? '/system/companies' : '/onboarding')
 }

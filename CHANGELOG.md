@@ -43,6 +43,11 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Changed
 
+- Domain navigation now brings Overview, Issues and URLs together, with separate crawl trends
+  and a Crawls section. Administration groups status, companies, users, email and updates; old
+  company and pages-overview addresses redirect to their new locations. Status describes worker
+  health and job results in words, with the queue under Technical details.
+
 - Links take much less space: on a real site the database went from 1.1 GB to 133 MB after the
   first start. SQLite files are compacted on start when a removal left them mostly empty.
 - Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a

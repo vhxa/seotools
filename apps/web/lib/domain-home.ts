@@ -7,7 +7,8 @@ export function homePriorities(
   crawl: Pick<Crawl, 'pagesWithType' | 'pruned'> | null,
   state: AuditResultsState,
   counts: { issue: string; pages: number }[],
+  limit = 5,
 ) {
   if (!crawl || crawl.pruned || !crawl.pagesWithType || state.kind !== 'current') return null
-  return rankIssueCounts(counts.filter(({ pages }) => pages > 0)).slice(0, 3)
+  return rankIssueCounts(counts.filter(({ pages }) => pages > 0)).slice(0, limit)
 }

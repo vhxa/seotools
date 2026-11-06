@@ -13,7 +13,10 @@ export async function ArchivedNotice({ canManage }: { canManage: boolean }) {
       <AlertDescription>{t('notice')}</AlertDescription>
       {canManage && (
         <AlertAction>
-          <Link href="/companies" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+          <Link
+            href="/system/companies"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
             {t('manage')}
           </Link>
         </AlertAction>

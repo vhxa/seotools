@@ -152,11 +152,11 @@ export function DomainSwitcher({
                     <PlusIcon />
                     {t('addDomain')}
                   </DropdownMenuItem>
-                  <DropdownMenuItem render={<Link href="/companies/new" />}>
+                  <DropdownMenuItem render={<Link href="/system/companies/new" />}>
                     <PlusIcon />
                     {t('addCompany')}
                   </DropdownMenuItem>
-                  <DropdownMenuItem render={<Link href="/companies" />}>
+                  <DropdownMenuItem render={<Link href="/system/companies" />}>
                     <BuildingIcon />
                     {t('manageCompanies')}
                   </DropdownMenuItem>

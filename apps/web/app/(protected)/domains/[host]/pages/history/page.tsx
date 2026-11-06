@@ -1,6 +1,7 @@
 import { byAge } from '@seotools/core/crawl/compare'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { CrawlsContext } from '@/components/crawl/crawls-context'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { PairPicker } from '@/components/history/pair-picker'
 import { crawlConfigVersion, crawlMoment } from '@/components/history/crawl-stamp'
@@ -74,6 +75,7 @@ export default async function CrawlHistoryPage({ params }: { params: Promise<{ h
   return (
     <main className="grid gap-6">
       <div className="grid gap-1">
+        <CrawlsContext />
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
       </div>
 
