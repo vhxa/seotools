@@ -530,7 +530,7 @@ export function priorityUrlRow(domainId: string, url: string, now: Date) {
 
 /** Folds `count(*) group by scope, kind, state` into the counters of a crawl. */
 export function foldCrawlCounts(
-  rows: { scope: string; kind: string; state: string; count: unknown }[],
+  rows: { scope: string; kind: string; state: string; statusCode: number | null; count: unknown }[],
 ): CrawlCounts {
   const counts: CrawlCounts = { pagesCount: 0, urlsCount: 0, urlsDoneCount: 0, externalCount: 0 }
   for (const row of rows) {
@@ -541,17 +541,30 @@ export function foldCrawlCounts(
     }
     counts.urlsCount += count
     if (row.state === 'done') counts.urlsDoneCount += count
-    if (row.kind === 'page') counts.pagesCount += count
+    if (isPage(row)) counts.pagesCount += count
   }
   return counts
 }
 
+/** A URL of the site counted as a page: it answered with HTML and a 2xx (`URL_VIEWS`). */
+const isPage = (row: { kind: string; statusCode: number | null }) =>
+  row.kind === 'page' && row.statusCode !== null && row.statusCode >= 200 && row.statusCode < 300
+
+/** A URL of the site that answered 4xx/5xx or did not answer, whatever it was meant to be. */
+const isError = (row: { kind: string; state: string; statusCode: number | null }) =>
+  row.state === 'done' &&
+  row.kind !== 'redirect' &&
+  (row.statusCode === null || row.statusCode >= 400)
+
 /** Folds `count(*) group by scope, kind` into how many URLs each view starts from. */
-export function foldViewCounts(rows: { scope: string; kind: string; count: unknown }[]) {
+export function foldViewCounts(
+  rows: { scope: string; kind: string; state: string; statusCode: number | null; count: unknown }[],
+) {
   const counts: CrawlViewCounts = {
     pages: 0,
     resources: 0,
     redirects: 0,
+    errors: 0,
     other: 0,
     external: 0,
     all: 0,
@@ -563,10 +576,13 @@ export function foldViewCounts(rows: { scope: string; kind: string; count: unkno
       counts.external += count
       continue
     }
-    if (row.kind === 'page') counts.pages += count
+    if (isPage(row)) counts.pages += count
     else counts.other += count
-    if (row.kind === 'resource') counts.resources += count
+    if (row.kind === 'resource' && row.statusCode !== null && row.statusCode < 400) {
+      counts.resources += count
+    }
     if (row.kind === 'redirect') counts.redirects += count
+    if (isError(row)) counts.errors += count
   }
   return counts
 }
@@ -574,6 +590,7 @@ export function foldViewCounts(rows: { scope: string; kind: string; count: unkno
 /** The columns of `crawl_urls` that listing, filtering and ordering URLs look at. */
 export interface CrawlUrlColumns extends Record<CrawlUrlSort, AnyColumn> {
   crawlId: AnyColumn
+  state: AnyColumn
   scope: AnyColumn
   kind: AnyColumn
   urlHash: AnyColumn
@@ -634,13 +651,38 @@ export function crawlAuditWhere(
 export function crawlViewWhere(columns: CrawlUrlColumns, view: CrawlUrlView): SQL | undefined {
   switch (view) {
     case 'pages':
-      return and(eq(columns.scope, 'internal'), eq(columns.kind, 'page'))
+      return and(
+        eq(columns.scope, 'internal'),
+        eq(columns.kind, 'page'),
+        gte(columns.status, 200),
+        lt(columns.status, 300),
+      )
     case 'resources':
-      return and(eq(columns.scope, 'internal'), eq(columns.kind, 'resource'))
+      return and(
+        eq(columns.scope, 'internal'),
+        eq(columns.kind, 'resource'),
+        lt(columns.status, 400),
+      )
     case 'redirects':
       return and(eq(columns.scope, 'internal'), eq(columns.kind, 'redirect'))
+    case 'errors':
+      return and(
+        eq(columns.scope, 'internal'),
+        eq(columns.state, 'done'),
+        ne(columns.kind, 'redirect'),
+        or(gte(columns.status, 400), isNull(columns.status)),
+      )
     case 'other':
-      return and(eq(columns.scope, 'internal'), ne(columns.kind, 'page'))
+      // Everything of the site that is not a page: together with `pages`, every URL of the site.
+      return and(
+        eq(columns.scope, 'internal'),
+        or(
+          ne(columns.kind, 'page'),
+          isNull(columns.status),
+          lt(columns.status, 200),
+          gte(columns.status, 300),
+        ),
+      )
     case 'external':
       return eq(columns.scope, 'external')
     case 'all':

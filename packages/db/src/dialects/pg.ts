@@ -190,6 +190,7 @@ const {
 const MAX_LIMIT = 2_147_483_647
 
 const urlColumns = {
+  state: crawlUrls.state,
   crawlId: crawlUrls.crawlId,
   scope: crawlUrls.scope,
   kind: crawlUrls.kind,
@@ -1484,11 +1485,12 @@ export function createPgDatabase(options: {
             scope: crawlUrls.scope,
             kind: crawlUrls.kind,
             state: crawlUrls.state,
+            statusCode: crawlUrls.statusCode,
             count: sql<number>`count(*)`,
           })
           .from(crawlUrls)
           .where(eq(crawlUrls.crawlId, crawlId))
-          .groupBy(crawlUrls.scope, crawlUrls.kind, crawlUrls.state)
+          .groupBy(crawlUrls.scope, crawlUrls.kind, crawlUrls.state, crawlUrls.statusCode)
         return foldCrawlCounts(rows)
       },
 
@@ -1497,11 +1499,13 @@ export function createPgDatabase(options: {
           .select({
             scope: crawlUrls.scope,
             kind: crawlUrls.kind,
+            state: crawlUrls.state,
+            statusCode: crawlUrls.statusCode,
             count: sql<number>`count(*)`,
           })
           .from(crawlUrls)
           .where(eq(crawlUrls.crawlId, crawlId))
-          .groupBy(crawlUrls.scope, crawlUrls.kind)
+          .groupBy(crawlUrls.scope, crawlUrls.kind, crawlUrls.state, crawlUrls.statusCode)
         return foldViewCounts(rows)
       },
 

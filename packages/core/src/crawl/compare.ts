@@ -148,7 +148,8 @@ export function auditScopeKey(snapshot: AuditSnapshot): string {
  * another way, so that an upgrade does not make every crawl before it incomparable with the ones
  * after:
  * - 3 reads 2 the same unless a rule accepts `nofollow` through the expectation;
- * - 4 reads 3 the same unless a rule accepts a state that other URLs point at (`reachesRelations`).
+ * - 4 reads 3 the same unless a rule accepts a state that other URLs point at (`reachesRelations`);
+ * - 5 reads 4 the same unless it has such a rule: only who accepts it changed.
  */
 function meaningOf(snapshot: AuditSnapshot): number {
   let meaning = semanticsOf(snapshot)
@@ -161,6 +162,7 @@ function meaningOf(snapshot: AuditSnapshot): number {
     meaning = 3
   }
   if (meaning === 3 && !snapshot.rules.some(reachesRelations)) meaning = 4
+  if (meaning === 4 && !snapshot.rules.some(reachesRelations)) meaning = 5
   return meaning
 }
 
@@ -327,7 +329,6 @@ const PAGE_LOCAL_LIST = [
   'canonical-conflict',
   'canonical-fragment',
   'canonical-missing',
-  'canonicalised',
   'canonical-relative',
   'canonical-repeated',
   'title-missing',

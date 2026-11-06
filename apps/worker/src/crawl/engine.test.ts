@@ -62,7 +62,7 @@ async function crawlWith(
   return { crawl: (await db.crawls.get(crawl.id))!, summary }
 }
 
-const urls = async (crawlId: string, view: 'pages' | 'other' | 'external') =>
+const urls = async (crawlId: string, view: 'pages' | 'errors' | 'other' | 'external') =>
   (await db.crawls.listUrls({ crawlId, view, limit: 1000, offset: 0 })).map((u) => u.url).sort()
 const row = async (crawlId: string, url: string) =>
   (await db.crawls.latestResults(domainId, [crawlUrlHash(url)])).find((r) => r.crawlId === crawlId)
@@ -211,7 +211,7 @@ describe('full crawl', () => {
     )
   })
 
-  it('counts only HTML as pages; redirects, resources and failures are the rest of the site', async () => {
+  it('counts only HTML that answered 2xx as pages; redirects, resources and failures are the rest', async () => {
     const site = fakeSite({
       'https://example.com/': html(
         '<a href="/moved">m</a><a href="/doc.pdf">p</a><a href="/gone">g</a><a href="/down">d</a>',
@@ -230,13 +230,14 @@ describe('full crawl', () => {
 
     const pages = await urls(crawl.id, 'pages')
     expect(pages).toEqual(
-      expect.arrayContaining([
-        'https://example.com/',
-        'https://example.com/target',
-        'https://example.com/gone', // a broken page is still a page, with its status
-      ]),
+      expect.arrayContaining(['https://example.com/', 'https://example.com/target']),
+    )
+    // A broken page is an error, listed with the other failures, with its status.
+    expect(await urls(crawl.id, 'errors')).toEqual(
+      expect.arrayContaining(['https://example.com/gone', 'https://example.com/down']),
     )
     for (const url of [
+      'https://example.com/gone',
       'https://example.com/moved',
       'https://example.com/doc.pdf',
       'https://example.com/down',
@@ -402,9 +403,10 @@ describe('page issues', () => {
 
   it('checks every URL of a full crawl when it ends', async () => {
     const { crawl } = await crawlWith(site())
-    expect(crawl.pagesCount).toBe(6)
+    // The home page and /bare: /missing and what only the crawler tried answered 404.
+    expect(crawl.pagesCount).toBe(2)
     const counted = crawl.pagesByWorstIssue!
-    expect(counted.issue + counted.warning + counted.opportunity).toBeLessThanOrEqual(6)
+    expect(counted.issue + counted.warning + counted.opportunity).toBeLessThanOrEqual(2)
     expect(await issuesOf(crawl.id, 'https://example.com/bare')).toContain('title-missing')
     expect(await issuesOf(crawl.id, 'https://example.com/missing')).toEqual(['client-error'])
     // Only the crawler ever asked for this one.
@@ -415,10 +417,9 @@ describe('page issues', () => {
 
   it('sorts pages by the worst type of issue they have', async () => {
     const { crawl } = await crawlWith(site())
-    // The home page has no H1 and /bare no title, which are warnings, and /missing does not exist,
-    // which is an issue. The other three pages are what the site answered to URLs only the crawler
-    // tried, so they have nothing at all.
-    expect(crawl.pagesByWorstIssue).toEqual({ issue: 1, warning: 2, opportunity: 0 })
+    // The home page links to /missing, which does not exist: an issue. /bare has no title, a
+    // warning. /missing itself is an error, not a page, so it is not counted here.
+    expect(crawl.pagesByWorstIssue).toEqual({ issue: 1, warning: 1, opportunity: 0 })
   })
 
   it('counts a page under every type it has something of', async () => {
@@ -448,7 +449,7 @@ describe('page issues', () => {
       catalog: 'old',
     })
     const again = await analyseCrawl(db, crawl.id, EMPTY_AUDIT_SNAPSHOT)
-    expect(again.pages).toBe(6)
+    expect(again.pages).toBe(2)
     expect(again.pagesByWorstIssue).toEqual(before)
     expect((await db.crawls.get(crawl.id))?.pagesByWorstIssue).toEqual(before)
   })

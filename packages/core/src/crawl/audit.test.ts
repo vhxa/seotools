@@ -1277,7 +1277,7 @@ describe('what a configuration meant', () => {
   })
 
   it('reads a configuration of semantics 3 with the same rules as 4, and what the rules accept differs', () => {
-    expect(AUDIT_SEMANTICS).toBe(RELATIONS_SEMANTICS)
+    expect(AUDIT_SEMANTICS).toBeGreaterThan(RELATIONS_SEMANTICS)
     const rules = [intent(prefix('/blog'), 'not-indexable'), audit(prefix('/old'))]
     for (const semantics of [3, 4]) {
       // Resolving does not change: what changes is what the findings of other URLs make of it.

@@ -69,13 +69,25 @@ describe('how many URLs each view starts from', () => {
   it('splits the URLs of the site by what they turned out to be, and keeps external ones apart', () => {
     expect(
       foldViewCounts([
-        { scope: 'internal', kind: 'page', count: 5 },
-        { scope: 'internal', kind: 'resource', count: '3' },
-        { scope: 'internal', kind: 'redirect', count: 2 },
-        { scope: 'internal', kind: 'unknown', count: 1 },
-        { scope: 'external', kind: 'unknown', count: 4 },
+        { scope: 'internal', kind: 'page', state: 'done', statusCode: 200, count: 5 },
+        { scope: 'internal', kind: 'page', state: 'done', statusCode: 404, count: 2 },
+        { scope: 'internal', kind: 'resource', state: 'done', statusCode: 200, count: '3' },
+        { scope: 'internal', kind: 'resource', state: 'done', statusCode: 404, count: 1 },
+        { scope: 'internal', kind: 'redirect', state: 'done', statusCode: 301, count: 2 },
+        { scope: 'internal', kind: 'unknown', state: 'done', statusCode: null, count: 1 },
+        { scope: 'internal', kind: 'unknown', state: 'queued', statusCode: null, count: 1 },
+        { scope: 'external', kind: 'unknown', state: 'done', statusCode: 404, count: 4 },
       ]),
-    ).toEqual({ pages: 5, resources: 3, redirects: 2, other: 6, external: 4, all: 15 })
+    ).toEqual({
+      pages: 5,
+      resources: 3,
+      redirects: 2,
+      // A page, an image and a URL that never answered: whatever they were meant to be.
+      errors: 4,
+      other: 10,
+      external: 4,
+      all: 19,
+    })
   })
 
   it('is zero for a crawl with no URLs', () => {
@@ -83,6 +95,7 @@ describe('how many URLs each view starts from', () => {
       pages: 0,
       resources: 0,
       redirects: 0,
+      errors: 0,
       other: 0,
       external: 0,
       all: 0,

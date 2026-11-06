@@ -4,7 +4,7 @@ import {
   AUDIT_LIMITS,
   JOB_TYPES,
   NO_LANGUAGES,
-  RELATIONS_SEMANTICS,
+  ORIGIN_RELATIONS_SEMANTICS,
   canonicalLanguages,
   crawlUrlHash,
   reachesRelations,
@@ -482,9 +482,10 @@ function couldWinOver(a: AuditSelector, r: AuditSelector): boolean {
  *   (which is what a URL without a rule has, written down only where it is needed). The intent rules
  *   keep their expectation: an old `not-indexable` is never read as a required `noindex`. An
  *   exception that only accepted `nofollow` (`inherit`) leaves nothing but the condition.
- * - From 1, 2 or 3: nothing is written for what a URL declares of its own indexation reaching the
+ * - From 1, 2, 3 or 4: nothing is written for what a URL declares of its own indexation reaching the
  *   findings of the URLs that point at it (a required or allowed `noindex` or robots.txt block, an
- *   expectation of `not-indexable`). The rules are the same; what they accept is more, so a domain
+ *   expectation of `not-indexable`), nor for 5 taking that back from the destination of a relation.
+ *   The rules are the same; what they accept differs, so a domain
  *   that has one is analysed again, and one that has none reads the same under both.
  * Audit rules and the expectation of every other intent rule stay as they are. Running it again
  * finds nothing to change. The version moves for every domain from 1, whether or not a rule goes:
@@ -547,7 +548,7 @@ export function planUpgradeSemantics(
     }
   }
   const reached =
-    from < RELATIONS_SEMANTICS &&
+    from < ORIGIN_RELATIONS_SEMANTICS &&
     rows.some((row) => row.enabled && !gone.has(row.id) && reachesRelations(row))
   return { ok: true, changes, bump: from < 2 || changes.length > 0 || reached }
 }
