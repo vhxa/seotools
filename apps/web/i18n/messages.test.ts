@@ -89,7 +89,7 @@ describe('message syntax', () => {
   it.each(Object.entries(catalogs))('%s has only messages that parse as ICU', (locale, catalog) => {
     const invalid: string[] = []
     const t = createTranslator({
-      locale,
+      locale: locale as keyof typeof catalogs,
       messages: catalog,
       onError: (error) => {
         if (error.code === IntlErrorCode.INVALID_MESSAGE) invalid.push(error.message)
