@@ -791,7 +791,7 @@ export function describeDatabaseContract(
           for (let offset = 0; ; offset += size) {
             const batch = await db.crawls.listUrls({
               crawlId: id,
-              view: 'pages',
+              view: 'all',
               ...filter,
               limit: size,
               offset,
@@ -814,7 +814,7 @@ export function describeDatabaseContract(
         const narrowed = { status: '4xx' as const }
         const walked = await everything({ ...narrowed, sort: 'title' }, 3)
         expect(walked).toHaveLength(
-          await db.crawls.countListed({ crawlId: id, view: 'pages', ...narrowed }),
+          await db.crawls.countListed({ crawlId: id, view: 'all', ...narrowed }),
         )
         expect(new Set(walked).size).toBe(walked.length)
       })
@@ -866,7 +866,9 @@ export function describeDatabaseContract(
           (
             await db.crawls.listUrls({
               crawlId,
-              view: 'pages',
+              // Every HTML answer of the site, whatever its status: ordering is what is tested here.
+              view: 'all',
+              type: 'page',
               limit: 10,
               offset: 0,
               ...options,
@@ -876,6 +878,9 @@ export function describeDatabaseContract(
         it('orders by a column in either direction, leaving empty values last', async () => {
           const crawlId = await crawlOfPages()
           expect(await paths(crawlId)).toEqual(['/', '/about', '/gone', '/blog/50%_off'])
+          // A page that answered 404 is an error, not one of the pages.
+          expect(await paths(crawlId, { view: 'pages' })).toEqual(['/', '/about', '/blog/50%_off'])
+          expect(await paths(crawlId, { view: 'errors' })).toEqual(['/gone'])
           expect(await paths(crawlId, { sort: 'url' })).toEqual([
             '/',
             '/about',
@@ -939,12 +944,13 @@ export function describeDatabaseContract(
           expect(await paths(crawlId, { issue: 'http-error', search: 'about' })).toEqual([])
           expect(await paths(crawlId, { issue: 'unknown' })).toEqual([])
 
-          expect(await db.crawls.countListed({ crawlId, view: 'pages' })).toBe(4)
+          expect(await db.crawls.countListed({ crawlId, view: 'pages' })).toBe(3)
+          expect(await db.crawls.countListed({ crawlId, view: 'errors' })).toBe(1)
           expect(await db.crawls.countListed({ crawlId, view: 'pages', search: 'about' })).toBe(1)
           expect(
             await db.crawls.countListed({ crawlId, view: 'pages', issue: 'missing-title' }),
           ).toBe(2)
-          expect(await db.crawls.countListed({ crawlId, view: 'other' })).toBe(1)
+          expect(await db.crawls.countListed({ crawlId, view: 'other' })).toBe(2)
           expect(await db.crawls.countListed({ crawlId, view: 'external' })).toBe(1)
           expect(await db.crawls.countListed({ crawlId: 'missing', view: 'pages' })).toBe(0)
         })
@@ -1145,7 +1151,9 @@ export function describeDatabaseContract(
 
         it('has a view for pages, resources, redirects, external URLs and everything', async () => {
           const crawlId = await crawlOfEverything()
-          expect(await list(crawlId, { view: 'pages' })).toEqual(['/', '/boom', '/gone', '/hidden'])
+          expect(await list(crawlId, { view: 'pages' })).toEqual(['/', '/hidden'])
+          // Whatever it was meant to be, a URL that failed or never answered is an error.
+          expect(await list(crawlId, { view: 'errors' })).toEqual(['/boom', '/broken', '/gone'])
           expect(await list(crawlId, { view: 'resources' })).toEqual(['/logo.png'])
           expect(await list(crawlId, { view: 'redirects' })).toEqual(['/old'])
           expect(await list(crawlId, { view: 'external' })).toEqual([
@@ -1155,7 +1163,9 @@ export function describeDatabaseContract(
           ])
           // `other` keeps meaning the site's URLs that are not pages, for the links that exist.
           expect(await list(crawlId, { view: 'other' })).toEqual([
+            '/boom',
             '/broken',
+            '/gone',
             '/logo.png',
             '/never',
             '/old',
@@ -1179,10 +1189,11 @@ export function describeDatabaseContract(
         it('counts what each view starts from, to compare with what a filter leaves', async () => {
           const crawlId = await crawlOfEverything()
           expect(await db.crawls.viewCounts(crawlId)).toEqual({
-            pages: 4,
+            pages: 2,
             resources: 1,
             redirects: 1,
-            other: 4,
+            errors: 3,
+            other: 6,
             external: 3,
             all: 11,
           })
@@ -1190,6 +1201,7 @@ export function describeDatabaseContract(
             pages: 0,
             resources: 0,
             redirects: 0,
+            errors: 0,
             other: 0,
             external: 0,
             all: 0,
@@ -1199,6 +1211,7 @@ export function describeDatabaseContract(
             'pages',
             'resources',
             'redirects',
+            'errors',
             'other',
             'external',
             'all',
@@ -1274,7 +1287,7 @@ export function describeDatabaseContract(
           expect(await list(crawlId, { indexability: 'unknown' })).toEqual([])
           expect(await list(crawlId, { indexability: 'indexable' })).toEqual([])
           // The rest of what the crawl stored does not depend on the analysis.
-          expect(await list(crawlId, { view: 'pages', status: '4xx' })).toEqual(['/gone'])
+          expect(await list(crawlId, { view: 'errors', status: '4xx' })).toEqual(['/gone'])
         })
 
         it('adds filters up, with the search and the audit ones', async () => {

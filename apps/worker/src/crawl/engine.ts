@@ -232,7 +232,9 @@ export async function runCrawl(
     }
     await db.crawls.recordResult({ crawlId, urlHash: item.urlHash, result, ...found })
     doneCount++
-    if (result.kind === 'page') pagesCount++
+    // What counts as a page: HTML that answered 2xx (a page that fails is an error).
+    const ok = result.statusCode !== null && result.statusCode >= 200 && result.statusCode < 300
+    if (result.kind === 'page' && ok) pagesCount++
   }
 
   /**

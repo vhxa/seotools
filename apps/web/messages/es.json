@@ -490,14 +490,16 @@
       "pages": "Páginas",
       "resources": "Recursos",
       "redirects": "Redirecciones",
+      "errors": "Errores",
       "external": "Externas",
       "all": "Todas",
       "other": "Otras URLs"
     },
     "viewHints": {
-      "pages": "URLs de esta web que respondieron con HTML, sea cual sea su estado. Son las que cuentan como páginas.",
+      "pages": "URLs de esta web que respondieron con HTML y un 2xx. Son las que cuentan como páginas.",
       "resources": "URLs de esta web que respondieron con algo que no es una página ni una redirección: imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps…",
       "redirects": "URLs de esta web que respondieron con una redirección (3xx).",
+      "errors": "URLs de esta web que respondieron 4xx/5xx o no respondieron, fueran lo que fueran: páginas, scripts, imágenes…",
       "external": "URLs de otros sitios enlazadas desde esta web. Las de los enlaces '<a>' se piden una vez para saber si funcionan; ninguna cuenta como página.",
       "all": "Todas las URLs que registró el rastreo: páginas, recursos, redirecciones, URLs externas y URLs de esta web que no se pidieron o nunca respondieron, que ninguna otra vista lista. Filtra por tipo para encontrarlas.",
       "other": "Redirecciones, imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps y URLs que no respondieron."
@@ -609,6 +611,7 @@
         "pages": "en páginas",
         "resources": "en recursos",
         "redirects": "en redirecciones",
+        "errors": "en errores",
         "external": "externas",
         "all": "en todo el rastreo",
         "other": "en las otras URLs de la web"

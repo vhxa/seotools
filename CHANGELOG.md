@@ -24,6 +24,29 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - MySQL is no longer supported: seotools runs on SQLite (the default) or PostgreSQL. A `mysql://`
   `DATABASE_URL` (or `DATABASE_DIALECT=mysql`) now fails at startup with a message saying so.
+- **What counts as a page changed.** A page is a URL that answered with HTML and a 2xx. A page,
+  script or image that answers 4xx/5xx or does not answer is an **error**, listed in a new
+  **Errors** view of the pages table, and is no longer counted among the pages. Totals of earlier
+  crawls keep what they counted then, so comparing with them can show fewer pages.
+- **Relation findings follow only what the pointing page declares** (audit semantics 5). A
+  canonical or hreflang from a page expected to be indexable to a URL you declared out of the index
+  is reported again: pointing an indexable page at a URL meant to stay out is the problem. A page
+  that is itself expected out still excuses what it points at. Domains with such rules have their
+  latest crawl analysed again on upgrade; earlier analyses keep the meaning they had.
+
+### Changed
+
+- Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a
+  redirect**, or **a URL that cannot be indexed**. Only the last one follows the audit rules; a
+  broken or redirecting target is always reported.
+- "Canonicalised to another URL" is no longer a finding: it is a state of the URL's indexability.
+  What a page links to is reported on that page instead: **links to broken URLs**, **to redirects**,
+  **to canonicalised URLs** and **internal links with tracking parameters**.
+- Search-result findings (title, description, headings, thin or duplicate content, hreflang, URL
+  form) on a page that cannot be indexed are shown as secondary and no longer count among the pages
+  with findings. Accessibility, security, HTML and broken references always count.
+- Importance reviewed: a robots.txt block is a warning of medium importance (usually deliberate),
+  and so are a missing `alt`, `nosnippet` and a possible soft 404; `noimageindex` is a low warning.
 
 ### Added
 
@@ -31,6 +54,8 @@ which moves the entries of `[Unreleased]` into the new version.
   SQLite to an empty PostgreSQL database, keeping people signed in. See
   [Move from SQLite to PostgreSQL](docs/updating.md#move-from-sqlite-to-postgresql).
 - `SEOTOOLS_PAUSE_AUTOMATION` (default `false`) for staging copies of a production database: the worker fires no scheduled crawls, runs no periodic refreshes or update checks and sends no email (each attempt is recorded as not sent, "automation paused"). Crawls and rechecks you start from the UI still run, and System shows a notice while it is on.
+- **noindex or canonical hidden by robots.txt**: a page blocked by robots.txt that declares a
+  noindex or a canonical elsewhere, which search engines cannot read.
 
 ### Fixed
 

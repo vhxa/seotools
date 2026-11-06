@@ -490,14 +490,16 @@
       "pages": "Pages",
       "resources": "Resources",
       "redirects": "Redirects",
+      "errors": "Errors",
       "external": "External",
       "all": "All",
       "other": "Other URLs"
     },
     "viewHints": {
-      "pages": "URLs of this site that answered with HTML, whatever their status. These are the ones counted as pages.",
+      "pages": "URLs of this site that answered with HTML and a 2xx. These are the ones counted as pages.",
       "resources": "URLs of this site that answered with something other than a page or a redirect: images, stylesheets, scripts, PDFs, robots.txt, sitemaps…",
       "redirects": "URLs of this site that answered with a redirect (3xx).",
+      "errors": "URLs of this site that answered 4xx/5xx or did not answer, whatever they were: pages, scripts, images…",
       "external": "URLs on other sites linked from this one. Those of '<a>' links are requested once to find out whether they work; none counts as a page.",
       "all": "Every URL the crawl recorded: pages, resources, redirects, external URLs, and URLs of this site that were not requested or never answered, which no other view lists. Filter by type to find those.",
       "other": "Redirects, images, stylesheets, scripts, PDFs, robots.txt, sitemaps and URLs that did not answer."
@@ -609,6 +611,7 @@
         "pages": "in pages",
         "resources": "in resources",
         "redirects": "in redirects",
+        "errors": "in errors",
         "external": "in external URLs",
         "all": "in the whole crawl",
         "other": "in the other URLs of the site"

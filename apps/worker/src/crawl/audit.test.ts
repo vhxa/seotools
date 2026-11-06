@@ -275,8 +275,8 @@ describe('a URL excluded from the audit', () => {
       '/cart': page('/cart', { head: '<meta name="robots" content="noindex">' }),
     })
     const base = (await db.crawls.get((await crawl(noindexed)).id))!
-    // The cart is noindexed; so are the three URLs only the crawler tried, which answered 404.
-    expect(base.pagesAudit).toMatchObject({ indexable: 4, notIndexable: 4, unknownIndexability: 0 })
+    // The cart is noindexed. The three URLs only the crawler tried answered 404: errors, not pages.
+    expect(base.pagesAudit).toMatchObject({ indexable: 4, notIndexable: 1, unknownIndexability: 0 })
 
     await addRules([exclusion(exactPath('/cart')), exclusion(exactPath('/about'))])
     const excluded = (await db.crawls.get((await crawl(noindexed)).id))!
@@ -286,7 +286,7 @@ describe('a URL excluded from the audit', () => {
       audited: base.pagesCount - 2,
       excluded: 2,
       indexable: 4,
-      notIndexable: 4,
+      notIndexable: 1,
     })
     expect(excluded.pagesCount).toBe(base.pagesCount)
   })
@@ -479,7 +479,7 @@ describe('the indexation expected of a URL', () => {
       // It did not answer, so it is not a page, and it is not counted as one that cannot be indexed.
       const row = (await db.crawls.get(id))!
       expect(await stored(id, '/cart')).toMatchObject({ kind: 'unknown' })
-      expect(row.pagesAudit!.notIndexable).toBe(3)
+      expect(row.pagesAudit!.notIndexable).toBe(0)
     })
   })
 
@@ -979,7 +979,7 @@ describe('the catalog changing', () => {
     expect(after.pagesAudit).toMatchObject({
       audited: after.pagesCount,
       indexable: 5,
-      notIndexable: 3,
+      notIndexable: 0,
     })
   })
 })
