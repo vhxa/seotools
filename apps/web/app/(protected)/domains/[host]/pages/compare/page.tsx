@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Form from 'next/form'
 import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
+import { CrawlsContext } from '@/components/crawl/crawls-context'
 import { CompareTable } from '@/components/history/compare-table'
 import { crawlMoment, CrawlStamp } from '@/components/history/crawl-stamp'
 import { PairNotes } from '@/components/history/pair-notes'
@@ -70,6 +71,7 @@ export default async function ComparePage({
 
   const header = (
     <div className="grid gap-1">
+      <CrawlsContext />
       <h1 className="text-2xl font-semibold">{t('title')}</h1>
       <p className="text-sm text-muted-foreground">{t('description')}</p>
     </div>
