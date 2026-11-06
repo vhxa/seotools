@@ -20,7 +20,8 @@ export function IssueRows({
   rows: IssueCount[]
   hrefOf: (issue: PageIssueId) => string
   countLabel: (pages: number) => string
-  secondaryLabel?: (pages: number) => string
+  /** What the finding has on non-indexable pages; `alone` when nothing else has it. */
+  secondaryLabel?: (pages: number, alone: boolean) => string
 }) {
   const tIssues = useTranslations('PageIssues')
   const tCatalog = useTranslations('IssueCatalog')
@@ -38,10 +39,18 @@ export function IssueRows({
               {tCatalog(`categories.${PAGE_ISSUES[issue].category}`)}
             </span>
             <span className="ml-auto flex flex-col items-end tabular-nums">
-              <span>{countLabel(pages)}</span>
-              {secondary && secondaryLabel ? (
-                <span className="text-xs text-muted-foreground">{secondaryLabel(secondary)}</span>
-              ) : null}
+              {pages === 0 && secondary && secondaryLabel ? (
+                <span className="text-muted-foreground">{secondaryLabel(secondary, true)}</span>
+              ) : (
+                <>
+                  <span>{countLabel(pages)}</span>
+                  {secondary && secondaryLabel ? (
+                    <span className="text-xs text-muted-foreground">
+                      {secondaryLabel(secondary, false)}
+                    </span>
+                  ) : null}
+                </>
+              )}
             </span>
             <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           </Link>

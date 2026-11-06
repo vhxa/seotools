@@ -3148,6 +3148,7 @@
     "empty": "Nothing of this importance was found.",
     "urls": "{count, plural, one {# URL} other {# URLs}}",
     "secondary": "+{count, number} on non-indexable pages",
+    "secondaryOnly": "{count, plural, one {# URL} other {# URLs}} on non-indexable pages",
     "accepted": {
       "title": "Accepted by a rule",
       "help": "The crawl still sees these, and a rule says they are expected. They are not pending, and they are not fixed: remove the rule and they count again.",

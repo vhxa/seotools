@@ -3148,6 +3148,7 @@
     "empty": "No se encontró nada de esta importancia.",
     "urls": "{count, plural, one {# URL} other {# URL}}",
     "secondary": "+{count, number} en páginas no indexables",
+    "secondaryOnly": "{count, plural, one {# URL} other {# URLs}} en páginas no indexables",
     "accepted": {
       "title": "Aceptados por una regla",
       "help": "El rastreo sigue viéndolos y una regla dice que se esperan. No están pendientes ni arreglados: quita la regla y vuelven a contar.",

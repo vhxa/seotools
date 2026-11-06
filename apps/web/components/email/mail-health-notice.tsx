@@ -27,15 +27,18 @@ export async function MailHealthNotice() {
   if (health.state === 'ok') return null
   const t = await getTranslations('Email.health')
   return (
-    <Alert variant="destructive" className="grid-cols-[auto_1fr_auto] items-center">
+    <Alert variant="destructive" className="has-[>svg]:grid-cols-[auto_1fr_auto]">
       <TriangleAlertIcon />
-      <div className="grid gap-0.5">
-        <AlertTitle>{t(`${health.state}.title`)}</AlertTitle>
-        <AlertDescription>{t(`${health.state}.description`)}</AlertDescription>
-      </div>
+      <AlertTitle>{t(`${health.state}.title`)}</AlertTitle>
+      <AlertDescription className="col-start-2">
+        {t(`${health.state}.description`)}
+      </AlertDescription>
       <Link
         href="/system/email"
-        className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'row-span-2')}
+        className={cn(
+          buttonVariants({ variant: 'outline', size: 'sm' }),
+          'col-start-3 row-span-2 row-start-1 self-center',
+        )}
       >
         {t(`${health.state}.open`)}
       </Link>

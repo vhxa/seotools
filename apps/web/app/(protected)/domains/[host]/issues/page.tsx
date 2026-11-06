@@ -60,7 +60,10 @@ export default async function IssuesPage({ params }: { params: Promise<{ host: s
       ) : (
         <>
           {ISSUE_IMPORTANCES.map((importance) => {
-            const found = issues.filter(({ issue }) => PAGE_ISSUES[issue].importance === importance)
+            // What only non-indexable pages have goes after what is pending, keeping the rank.
+            const found = issues
+              .filter(({ issue }) => PAGE_ISSUES[issue].importance === importance)
+              .sort((a, b) => Number(a.pages === 0) - Number(b.pages === 0))
             return (
               <section key={importance} aria-labelledby={`importance-${importance}`}>
                 <h2
@@ -84,7 +87,9 @@ export default async function IssuesPage({ params }: { params: Promise<{ host: s
                     rows={found}
                     hrefOf={(issue) => detailHref(domain.host, query, { issue })}
                     countLabel={(pages) => t('urls', { count: pages })}
-                    secondaryLabel={(pages) => t('secondary', { count: pages })}
+                    secondaryLabel={(pages, alone) =>
+                      t(alone ? 'secondaryOnly' : 'secondary', { count: pages })
+                    }
                   />
                 )}
               </section>
