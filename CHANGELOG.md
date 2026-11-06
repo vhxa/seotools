@@ -20,6 +20,12 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Added
+
+- Crawl settings support path scope, maximum depth, encrypted request headers and Basic Auth. URLs outside the scope remain visible as not requested.
+- Editors can crawl an ad hoc list of up to 1000 URLs without following links.
+- Crawl schedules offer editable IANA time zones; daily, weekly and monthly runs shift missing DST times forward and use the earlier instant for repeated times. Hourly schedules run in each real hour.
+
 ### Breaking
 
 - **Old crawls keep a compact history instead of everything.** The full results (links, evidence,
@@ -83,6 +89,8 @@ which moves the entries of `[Unreleased]` into the new version.
 - Every page under System answered with an error when the saved email settings could not be decrypted (the encryption key changed after saving them). They now render, System → Email and the warning in System say that the settings must be entered again, and the worker records the email as not sent instead of failing.
 
 ### Upgrade notes
+
+- This update adds crawl configuration migrations. Going back requires restoring the database backup.
 
 - The first start after the update moves the results of older crawls to the compact history and,
   with SQLite, compacts the file: about 20 seconds for a 1 GB database. Take a backup first (see
