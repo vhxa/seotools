@@ -8,6 +8,7 @@
  * Pure on purpose (no Node imports): client components import it through
  * `@seotools/core/crawl/acceptance`.
  */
+import { z } from 'zod'
 import type { AuditCondition, Requirement } from './audit'
 import type { IndexabilityBlocker } from './indexability'
 
@@ -37,29 +38,31 @@ export function rulesOfAcceptance(acceptance: FindingAcceptance): string[] {
   return acceptance.rule === null ? [] : [acceptance.rule]
 }
 
-const isString = (value: unknown): value is string => typeof value === 'string'
-const isStringOrNull = (value: unknown) => value === null || isString(value)
+const stringOrNull = z.string().nullable()
+const strings = z.array(z.string())
+
+/**
+ * The stored shapes. Loose on purpose: anything else stored next to the known fields is kept, and the
+ * values of `condition` and `requirement` are only checked to be strings, as they always were.
+ */
+const acceptanceSchema = z.discriminatedUnion('kind', [
+  z.looseObject({
+    kind: z.literal('condition'),
+    condition: z.custom<AuditCondition>((value) => typeof value === 'string'),
+    requirement: z.custom<Requirement>((value) => typeof value === 'string'),
+    rule: stringOrNull,
+  }),
+  z.looseObject({ kind: z.literal('expectation'), rule: stringOrNull }),
+  z.looseObject({
+    kind: z.literal('relation'),
+    end: z.enum(['origin', 'destination']),
+    blockers: z.custom<IndexabilityBlocker[]>((value) => strings.safeParse(value).success),
+    rules: strings,
+  }),
+])
 
 /** Reads an acceptance back from storage. `null`: it does not check out. */
 export function parseFindingAcceptance(stored: unknown): FindingAcceptance | null {
-  if (typeof stored !== 'object' || stored === null) return null
-  const value = stored as Record<string, unknown>
-  switch (value.kind) {
-    case 'condition':
-      return isString(value.condition) && isString(value.requirement) && isStringOrNull(value.rule)
-        ? (value as unknown as FindingAcceptance)
-        : null
-    case 'expectation':
-      return isStringOrNull(value.rule) ? (value as unknown as FindingAcceptance) : null
-    case 'relation':
-      return (value.end === 'origin' || value.end === 'destination') &&
-        Array.isArray(value.blockers) &&
-        value.blockers.every(isString) &&
-        Array.isArray(value.rules) &&
-        value.rules.every(isString)
-        ? (value as unknown as FindingAcceptance)
-        : null
-    default:
-      return null
-  }
+  const parsed = acceptanceSchema.safeParse(stored)
+  return parsed.success ? parsed.data : null
 }

@@ -107,6 +107,39 @@ describe('parseIssueEvidence', () => {
     }
   })
 
+  it('refuses what is not an envelope, and reads fields that are missing or odd as absent', () => {
+    for (const bad of [
+      null,
+      [],
+      'x',
+      { kind: 'images', items: [] },
+      { kind: 'images', total: -1, items: [] },
+      { kind: 'images', total: 1.5, items: [] },
+      { kind: 'images', total: 1, items: 'x' },
+      { kind: 'nope', total: 1 },
+    ]) {
+      expect(parseIssueEvidence(bad)).toBeNull()
+    }
+    expect(
+      parseIssueEvidence({
+        kind: 'canonicals',
+        total: 1,
+        items: [{ raw: 'x', url: 5, inHead: 'yes', source: 'other' }, { raw: 3 }, 'x', []],
+      }),
+    ).toEqual({
+      kind: 'canonicals',
+      total: 1,
+      items: [{ raw: 'x', url: null, inHead: false, source: null }],
+    })
+    expect(
+      parseIssueEvidence({
+        kind: 'links',
+        total: 1,
+        items: [{ kind: 'anchor', url: 'https://a.test/', reason: 'other', text: 4 }],
+      }),
+    ).toEqual({ kind: 'links', total: 1, items: [{ kind: 'anchor', url: 'https://a.test/' }] })
+  })
+
   it('does not keep a related URL it was not given as text, nor a long one', () => {
     expect(
       parseIssueEvidence({
