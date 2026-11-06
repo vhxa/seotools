@@ -218,16 +218,69 @@ const INLINKS_WRONG = {
   'only-noindex-inlinks': (url: AuditedUrl) => url.anchorsIn > 0 && url.anchorsFromIndexable === 0,
 } as const
 
-/** The URL of the site a page's canonical leads to, when that one cannot be indexed. */
-function notIndexableCanonical(url: AuditedUrl, site: Site): AuditedUrl | null {
+/** The blockers that say how the index treats a URL, as opposed to how the URL answers. */
+const INDEXING_BLOCKERS: ReadonlySet<IndexabilityBlocker> = new Set([
+  'noindex',
+  'canonical',
+  'robots',
+])
+
+/** A URL of the site that answered with an error, or did not answer: a broken reference. */
+const fails = (target: AuditedUrl) =>
+  target.url.state === 'done' && (target.url.error !== null || statusIn(target, 400, 599))
+
+const redirects = (target: AuditedUrl) =>
+  target.url.state === 'done' && target.url.kind === 'redirect'
+
+/** What keeps a URL that answered from being indexed, leaving out how it answered. */
+const indexingBlockers = (target: AuditedUrl) =>
+  target.indexability.state === 'not-indexable'
+    ? target.indexability.blockers.filter((blocker) => INDEXING_BLOCKERS.has(blocker))
+    : []
+
+/** The other URL of the site a page's canonical leads to, if the crawl knows it. */
+function canonicalTarget(url: AuditedUrl, site: Site): AuditedUrl | null {
   const target = url.url.canonical ? site.get(url.url.canonical) : undefined
-  return target &&
-    target !== url &&
-    target.internal &&
-    target.indexability.state === 'not-indexable'
+  return target && target !== url && target.internal ? target : null
+}
+
+/**
+ * The URL a canonical leads to when it answered, but something in the index keeps it out: a
+ * `noindex`, its own canonical elsewhere, a robots.txt block. A failing or redirecting one is a
+ * broken reference (`canonical-broken`, `canonical-redirect`) instead.
+ */
+function notIndexableCanonical(url: AuditedUrl, site: Site): AuditedUrl | null {
+  const target = canonicalTarget(url, site)
+  return target && !fails(target) && !redirects(target) && indexingBlockers(target).length > 0
     ? target
     : null
 }
+
+/** The finding that a URL's reference leads to `target`, with it as the evidence. */
+const pointsAt = (target: AuditedUrl, details?: string[]): Found => {
+  const address = boundedUrl(target.url.url)
+  return {
+    ...backedBy({ kind: 'related-urls', total: 1, urls: address ? [address] : [] }),
+    ...(details ? { details } : {}),
+  }
+}
+
+/** The URLs of the site a page's anchors link to that `wrong` picks, once each, as evidence. */
+const linkedTargets =
+  (wrong: (target: AuditedUrl) => boolean): Check =>
+  (url) => {
+    if (!url.contentPage) return false
+    const picked = new Set<AuditedUrl>()
+    for (const target of url.linksTo) if (target !== url && wrong(target)) picked.add(target)
+    if (picked.size === 0) return false
+    const urls: string[] = []
+    for (const target of picked) {
+      if (urls.length >= MAX_EVIDENCE_ITEMS) break
+      const address = boundedUrl(target.url.url)
+      if (address) urls.push(address)
+    }
+    return backedBy({ kind: 'related-urls', total: picked.size, urls })
+  }
 
 /** A URL can have thousands of them, and looking for repeats is quadratic. */
 const MAX_PATH_SEGMENTS = 50
@@ -266,6 +319,9 @@ const TRACKING_PARAMETERS = new Set([
 const parameterNames = (url: AuditedUrl) =>
   [...url.parsed.searchParams.keys()].map((name) => name.toLowerCase())
 
+const hasTrackingParameters = (url: AuditedUrl) =>
+  parameterNames(url).some((name) => name.startsWith('utm_') || TRACKING_PARAMETERS.has(name))
+
 const SEARCH_PATH = new Set(['search', 'buscar', 'busqueda', 'b%c3%basqueda', 'suche', 'recherche'])
 const SEARCH_PARAMETERS = new Set(['s', 'q', 'query', 'search', 'keyword', 'keywords'])
 
@@ -282,7 +338,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
     url.intentRule !== null &&
     judgeable(url, site) &&
     url.indexability.state === 'not-indexable'
-      ? url.indexability.blockers.filter((blocker) => blocker in INDEXING_FINDING_OF)
+      ? url.indexability.blockers.filter((blocker) => INDEXING_BLOCKERS.has(blocker))
       : false,
   'expected-not-indexable-but-indexable': (url, site) =>
     url.intent === 'not-indexable' &&
@@ -342,6 +398,17 @@ export const CHECKS: Record<PageIssueId, Check> = {
       )
     )
   }),
+  // A robots.txt block keeps search engines from reading the page, so a noindex or a canonical
+  // elsewhere it declares is never seen: the URL can stay listed, and its signals do not go where
+  // the canonical says. Reported whatever is expected of the page.
+  'directives-unreadable': onPage((url) => {
+    if (!url.robotsBlocked) return false
+    const unread = [
+      ...(url.noindex ? ['noindex'] : []),
+      ...(url.canonicalised ? ['canonical'] : []),
+    ]
+    return unread
+  }),
   noindex: onPage((url) => url.noindex),
   nofollow: onPage((url) => url.nofollow),
   nosnippet: onPage(
@@ -362,6 +429,17 @@ export const CHECKS: Record<PageIssueId, Check> = {
   }),
 
   // --- canonicals ----------------------------------------------------------
+  // Where the canonical leads. A failing or redirecting URL is a broken reference whatever either
+  // end expects; one that cannot be indexed is not news where the page itself is expected out
+  // (`excusedBlockers`), and the blockers listed are what keeps it out of the index.
+  'canonical-broken': onPage((url, _, site) => {
+    const target = canonicalTarget(url, site)
+    return target && fails(target) ? pointsAt(target) : false
+  }),
+  'canonical-redirect': onPage((url, _, site) => {
+    const target = canonicalTarget(url, site)
+    return target && redirects(target) ? pointsAt(target) : false
+  }),
   'canonical-outside-head': onPage((_, facts) =>
     facts.canonicals.some((c) => !c.inHead) ? declarations(facts, (c) => !c.inHead) : false,
   ),
@@ -370,18 +448,12 @@ export const CHECKS: Record<PageIssueId, Check> = {
       ? declarations(facts, () => true)
       : false,
   ),
-  // The canonical leads to a URL that cannot be indexed. Not news where every blocker is what was
-  // declared of one end or the other (`excusedBlockers`); the blockers listed are all of them.
   'canonical-not-indexable': onPage((url, _, site) => {
     const target = notIndexableCanonical(url, site)
     if (!target) return false
+    const blockers = indexingBlockers(target)
     const excused = excusedBlockers(url, target, site)
-    if (target.indexability.blockers.every((blocker) => excused.has(blocker))) return false
-    const address = boundedUrl(target.url.url)
-    return {
-      ...backedBy({ kind: 'related-urls', total: 1, urls: address ? [address] : [] }),
-      details: target.indexability.blockers,
-    }
+    return blockers.every((blocker) => excused.has(blocker)) ? false : pointsAt(target, blockers)
   }),
   'canonical-fragment': onPage((_, facts) =>
     facts.canonicals.some((c) => c.raw.includes('#'))
@@ -391,7 +463,6 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'canonical-missing': onPage(
     (url, facts) => !url.noindex && facts.canonicals.length === 0 && url.url.canonical === null,
   ),
-  canonicalised: onPage((url) => url.canonicalised),
   'canonical-relative': onPage((_, facts) => {
     const relative = (c: DeclaredCanonical) => !/^https?:\/\//i.test(c.raw.trim())
     return facts.canonicals.some(relative) ? declarations(facts, relative) : false
@@ -415,14 +486,14 @@ export const CHECKS: Record<PageIssueId, Check> = {
   // Listed is a `<loc>` (`AuditedUrl.sitemaps`): an alternate or an image that an entry names does not
   // list it, and a URL that only a sitemap of unrecorded origin names (`sitemapsAmbiguous`) is not
   // claimed to be listed. What keeps it from being indexable is what the crawl stored of it.
+  // A sitemap lists a URL that fails or redirects (any file, pages or not), or a page that cannot be
+  // indexed, with what keeps it out. Files that are not pages are not meant to be indexed as pages.
+  'sitemap-broken': (url) => url.internal && url.sitemaps > 0 && fails(url),
+  'sitemap-redirect': (url) => url.internal && url.sitemaps > 0 && redirects(url),
   'sitemap-not-indexable': (url) => {
-    if (!url.internal || url.sitemaps === 0 || url.url.state !== 'done') return false
-    // Sitemaps list files that are not pages too, and those are not meant to be indexed as pages.
-    const flagged = url.url.kind === 'resource' ? statusIn(url, 400, 599) : !url.indexable
-    if (!flagged) return false
-    // Why, when the crawl knows: a URL that never answered has no blocker of its own to name.
-    const { blockers } = url.indexability
-    return blockers.length > 0 ? blockers : true
+    if (!url.internal || url.sitemaps === 0 || !url.contentPage) return false
+    const blockers = indexingBlockers(url)
+    return blockers.length > 0 ? blockers : false
   },
   'indexed-not-in-sitemap': (url) =>
     url.indexed === true && url.sitemaps === 0 && url.sitemapsAmbiguous === 0,
@@ -431,15 +502,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
     url.indexable && url.indexed !== true && url.sitemaps === 0 && url.sitemapsAmbiguous === 0,
 
   // --- hreflang ------------------------------------------------------------
-  'hreflang-unreachable': hreflang(
-    hreflangTargets(
-      (target) =>
-        target.url.state === 'done' && (target.url.error !== null || statusIn(target, 400, 599)),
-    ),
-  ),
-  'hreflang-redirect': hreflang(
-    hreflangTargets((target) => target.url.state === 'done' && target.url.kind === 'redirect'),
-  ),
+  'hreflang-unreachable': hreflang(hreflangTargets(fails)),
+  'hreflang-redirect': hreflang(hreflangTargets(redirects)),
   // App policy: omit a missing return where either end is intentionally not indexable.
   // This does not establish whether a search engine indexed or read either URL.
   'hreflang-no-return': hreflang(hreflangTargets(unexcused('hreflang-no-return'))),
@@ -541,6 +605,10 @@ export const CHECKS: Record<PageIssueId, Check> = {
 
   // --- links ---------------------------------------------------------------
   'link-to-localhost': linkProblem('localhost', (facts) => facts.localhostLinks),
+  'links-to-broken': linkedTargets(fails),
+  'links-to-redirect': linkedTargets(redirects),
+  'links-to-canonicalised': linkedTargets((target) => target.contentPage && target.canonicalised),
+  'links-tracking-parameters': linkedTargets(hasTrackingParameters),
   'uncrawlable-links': linkProblem('uncrawlable', (facts) => facts.uncrawlableLinks),
   // What links to a URL expected to be out of the index does not matter to it (`excusesInlinks`).
   'only-nofollow-inlinks': onPage(
@@ -561,9 +629,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   // --- URLs ----------------------------------------------------------------
   'url-multiple-slashes': onPage(({ parsed }) => parsed.pathname.includes('//')),
   'url-spaces': onPage(({ parsed }) => (parsed.pathname + parsed.search).includes('%20')),
-  'url-tracking': onPage((url) =>
-    parameterNames(url).some((name) => name.startsWith('utm_') || TRACKING_PARAMETERS.has(name)),
-  ),
+  'url-tracking': onPage(hasTrackingParameters),
   // Without the percent-encoding, whose hexadecimal digits are often in uppercase.
   'url-uppercase': onPage(({ parsed }) =>
     /[A-Z]/.test(parsed.pathname.replace(/%[0-9a-f]{2}/gi, '')),
@@ -618,7 +684,6 @@ export type AcceptedFinding = Finding & { by: AuditedUrl; acceptance: FindingAcc
  */
 const INDEXING_FINDING_OF = {
   noindex: 'noindex',
-  canonical: 'canonicalised',
   robots: 'robots-blocked',
 } as const satisfies Partial<Record<IndexabilityBlocker, PageIssueId>>
 
@@ -649,7 +714,6 @@ const GENERIC_OF: Record<AuditCondition, readonly PageIssueId[]> = {
  */
 const EXPECTED_WHEN_NOT_INDEXABLE: ReadonlyMap<PageIssueId, AuditCondition | undefined> = new Map([
   ['noindex', 'noindex'],
-  ['canonicalised', undefined],
   ['indexable-not-in-sitemap', 'sitemap'],
 ])
 
@@ -757,7 +821,7 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
 
   const canonical = url.facts && notIndexableCanonical(url, site)
   if (canonical) {
-    const { blockers } = canonical.indexability
+    const blockers = indexingBlockers(canonical)
     const excused = excusedBlockers(url, canonical, site)
     if (blockers.every((blocker) => excused.has(blocker))) {
       add('canonical-not-indexable', relationAcceptance(url, canonical, blockers), canonical)

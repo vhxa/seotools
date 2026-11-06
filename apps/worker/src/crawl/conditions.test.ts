@@ -1,4 +1,5 @@
 import {
+  RELATIONS_SEMANTICS,
   AUDIT_CONDITIONS,
   PAGE_ISSUES,
   auditSnapshotOf,
@@ -14,7 +15,7 @@ import {
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { analyseCrawl } from './analysis'
+import { analyseCrawl, currentAuditConfig } from './analysis'
 import { recomputeAudit } from './audit-recompute'
 import { presenceOf } from './conditions'
 import { runCrawl } from './engine'
@@ -310,9 +311,9 @@ describe('what an allowed condition leaves alone', () => {
     expect(own).toContain('directives-conflict')
   })
 
-  it('does not tell the pages that point at it about the noindex it allows', async () => {
+  it('does not tell the pages that point at it about the noindex it allows, under semantics 4', async () => {
     await addRules([asking(exactPath('/a'), 'noindex', 'allowed')])
-    const id = await crawl(
+    const crawled = await crawl(
       website({
         '/a': page('/a', { head: meta('noindex') }),
         '/b': page('/b', {
@@ -322,11 +323,15 @@ describe('what an allowed condition leaves alone', () => {
         '/c': page('/c', { canonical: `${SITE}/a` }),
       }),
     )
-    // A canonical or an hreflang to a page whose noindex was accepted is not a finding of its own.
+    // From semantics 5 only the pointing page's declarations excuse: both are still reported.
+    expect(await findings(crawled, '/c')).toContain('canonical-not-indexable')
+    expect(await findings(crawled, '/b')).toContain('hreflang-noindex')
+    const config = await currentAuditConfig(db, domainId)
+    await analyseCrawl(db, crawled, { ...config, semantics: RELATIONS_SEMANTICS })
+    const id = crawled
+    // Under 4, a canonical or an hreflang to a page whose noindex was accepted was not a finding.
     expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
     expect(await findings(id, '/b')).not.toContain('hreflang-noindex')
-    // The noindex is as expected, but the relations are still the pages' own: /c is canonicalised.
-    expect(await findings(id, '/c')).toContain('canonicalised')
     expect(await stateOf(id, '/a')).toMatchObject({ blockers: ['noindex'] })
   })
 

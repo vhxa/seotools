@@ -843,7 +843,7 @@
       "related-urls": "{total, plural, one {# otra página} other {# otras páginas}}"
     },
     "labels": {
-      "canonical-not-indexable": "Destino canonical (bloqueos indicados arriba)",
+      "canonical-not-indexable": "Destino del canonical (bloqueos indicados arriba)",
       "img-no-alt": "Imágenes sin atributo alt",
       "img-empty-alt": "Imágenes con el atributo alt vacío",
       "img-long-alt": "Imágenes con un texto alt largo",
@@ -865,7 +865,13 @@
       "insecure-form": "Formularios que envían por HTTP",
       "unsafe-cross-origin-links": "Enlaces a otro sitio en una pestaña nueva, sin rel=\"noopener\"",
       "anchor-empty": "Enlaces sin texto",
-      "anchor-vague": "Enlaces con un texto poco descriptivo"
+      "anchor-vague": "Enlaces con un texto poco descriptivo",
+      "canonical-broken": "Destino del canonical",
+      "canonical-redirect": "Destino del canonical",
+      "links-to-broken": "URLs rotas a las que enlaza",
+      "links-to-redirect": "URLs que redirigen a las que enlaza",
+      "links-to-canonicalised": "URLs canonicalizadas a las que enlaza",
+      "links-tracking-parameters": "URLs con parámetros de seguimiento a las que enlaza"
     },
     "images": {
       "noSource": "Sin dirección (falta src)",
@@ -927,7 +933,7 @@
     },
     "robots-blocked": {
       "name": "Bloqueada por robots.txt",
-      "description": "robots.txt no deja a Googlebot pedir esta URL. Este rastreador la pide igualmente para poder auditarla."
+      "description": "robots.txt no deja a Googlebot rastrear esta URL. Suele ser intencionado: comprueba que debe serlo. Este rastreador la pide igualmente para auditarla."
     },
     "redirect-3xx": {
       "name": "Redirección 3xx (interna)",
@@ -986,8 +992,8 @@
       "description": "Declara varios canonicals que apuntan a URLs distintas, así que los buscadores pueden ignorarlos todos."
     },
     "canonical-not-indexable": {
-      "name": "Apunta a URL no indexable",
-      "description": "El canonical lleva a una URL que redirige, da error, tiene noindex, está bloqueada por robots.txt o canonicaliza a otra, según los bloqueos indicados. No se señala cuando has declarado como esperado cada uno de ellos para esa URL, ni cuando esta página se espera fuera del índice; una redirección o un error siempre se señalan."
+      "name": "Canonical apunta a una URL no indexable",
+      "description": "El canonical lleva a una URL que responde pero no se puede indexar (noindex, bloqueo de robots.txt o un canonical a otra), según los bloqueos indicados. No se señala cuando esta página se espera fuera del índice."
     },
     "canonical-fragment": {
       "name": "Contiene fragmento",
@@ -996,10 +1002,6 @@
     "canonical-missing": {
       "name": "Ausente",
       "description": "La página no declara ningún canonical."
-    },
-    "canonicalised": {
-      "name": "Canonicalizada a otra URL",
-      "description": "El canonical apunta a otra URL, así que los buscadores indexarán aquella en lugar de esta."
     },
     "canonical-relative": {
       "name": "Relativo",
@@ -1014,8 +1016,8 @@
       "description": "Los buscadores ignoran lo que quede por encima de esos límites. Hay que dividirlo con un índice de sitemaps."
     },
     "sitemap-not-indexable": {
-      "name": "URL no indexable en el sitemap",
-      "description": "Un sitemap lista esta URL (su '<loc>') y algo impide indexarla, según los bloqueos indicados. Una alternativa (hreflang), imagen o vídeo que una entrada solo nombra no cuenta como listado. Un crawl anterior a que se registrara esto no puede saberlo, y no cuenta como listada una URL que un sitemap declaró como alternativa."
+      "name": "Página no indexable en el sitemap",
+      "description": "Un sitemap lista esta página (su <loc>) y algo la deja fuera del índice, según los bloqueos indicados. Una alternativa, imagen o vídeo que una entrada solo nombra no cuenta como listado."
     },
     "indexed-not-in-sitemap": {
       "name": "URL indexada fuera del sitemap",
@@ -1328,6 +1330,42 @@
     "sitemap-forbidden-present": {
       "name": "Incluida en un sitemap donde una regla lo prohíbe",
       "description": "Una regla prohíbe que esta URL esté en un sitemap y un sitemap la incluye."
+    },
+    "directives-unreadable": {
+      "name": "noindex o canonical ocultos por robots.txt",
+      "description": "robots.txt bloquea esta URL, así que los buscadores no pueden leer el noindex ni el canonical que declara: la URL puede seguir indexada y sus señales no se consolidan. Permite el rastreo para que la directiva funcione."
+    },
+    "canonical-broken": {
+      "name": "Canonical apunta a una URL rota",
+      "description": "El canonical lleva a una URL de esta web que responde 4xx/5xx o no responde. Los buscadores lo ignoran."
+    },
+    "canonical-redirect": {
+      "name": "Canonical apunta a una redirección",
+      "description": "El canonical lleva a una URL que redirige. Apúntalo a la URL final."
+    },
+    "sitemap-broken": {
+      "name": "URL rota en el sitemap",
+      "description": "Un sitemap lista esta URL y responde 4xx/5xx o no responde."
+    },
+    "sitemap-redirect": {
+      "name": "Redirección en el sitemap",
+      "description": "Un sitemap lista esta URL y redirige. Lista la URL final."
+    },
+    "links-to-broken": {
+      "name": "Enlaza a URLs rotas",
+      "description": "La página enlaza a URLs de esta web que responden 4xx/5xx o no responden. Corrige o quita esos enlaces."
+    },
+    "links-to-redirect": {
+      "name": "Enlaza a redirecciones",
+      "description": "La página enlaza a URLs que redirigen. Enlaza a la URL final."
+    },
+    "links-to-canonicalised": {
+      "name": "Enlaza a URLs canonicalizadas",
+      "description": "La página enlaza a URLs cuyo canonical es otra URL. Enlaza a la canónica."
+    },
+    "links-tracking-parameters": {
+      "name": "Enlaces internos con parámetros de seguimiento",
+      "description": "La página enlaza a URLs de esta web con parámetros de seguimiento (utm_*, gclid…), que crean URLs duplicadas y distorsionan la analítica."
     }
   },
   "LinkKinds": {

@@ -1,5 +1,6 @@
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import {
+  ORIGIN_RELATIONS_SEMANTICS,
   RELATIONS_SEMANTICS,
   semanticsOf,
   type IndexabilityBlocker,
@@ -33,12 +34,24 @@ import type { AuditedUrl, Site } from './site-audit'
  * canonical to one is a conflicting signal. The app takes what the user declared as the answer, and
  * reports it only where something else is wrong.
  *
+ * From semantics 5 (`ORIGIN_RELATIONS_SEMANTICS`) only the origin's declarations count: an origin
+ * expected out of the index excuses the indexing blockers of what it points at, but a destination's
+ * own declarations no longer excuse an origin expected to be indexable, since pointing an indexable
+ * page at a URL meant to stay out is itself the problem. Under 4 either end could.
+ *
  * A configuration of a meaning older than `RELATIONS_SEMANTICS` accepts none of it: an analysis is
  * read, and repeated, as it was made.
  */
 
 export const relationsApply = (site: Pick<Site, 'config'>) =>
   semanticsOf(site.config) >= RELATIONS_SEMANTICS
+
+/**
+ * Whether only the URL that points can excuse what it points at (semantics 5): a destination's own
+ * declarations no longer excuse an origin that is expected to be indexable.
+ */
+const originOnly = (site: Pick<Site, 'config'>) =>
+  semanticsOf(site.config) >= ORIGIN_RELATIONS_SEMANTICS
 
 type Declared = Pick<AuditedUrl, 'intent' | 'conditions'> & { indexability: Indexability }
 
@@ -106,6 +119,7 @@ export function excusedBlockers(
 ): ReadonlySet<IndexabilityBlocker> {
   if (!relationsApply(site)) return new Set()
   if (isExpectedOut(origin)) return new Set(INDEXING_BLOCKERS)
+  if (originOnly(site)) return new Set()
   const accepted = acceptedBlockers(destination)
   return new Set(INDEXING_BLOCKERS.filter((blocker) => accepted.has(blocker)))
 }

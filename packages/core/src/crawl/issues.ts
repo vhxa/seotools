@@ -44,10 +44,10 @@ const ISSUE_CATALOG = {
     'client-error': ['issue', 'high'],
     'redirect-loop': ['issue', 'high'],
     'soft-404-confirmed': ['warning', 'high'],
-    'soft-404-possible': ['warning', 'high'],
+    'soft-404-possible': ['warning', 'medium'],
     'redirect-chain': ['warning', 'medium'],
     'refresh-redirect': ['warning', 'medium'],
-    'robots-blocked': ['issue', 'high'],
+    'robots-blocked': ['warning', 'medium'],
     'redirect-3xx': ['warning', 'low'],
     'broken-external-link': ['warning', 'low'],
   },
@@ -66,26 +66,34 @@ const ISSUE_CATALOG = {
     'directive-outside-head': ['warning', 'low'],
     'directives-conflict': ['issue', 'high'],
     'directives-conflict-snippets': ['warning', 'medium'],
+    // A noindex or a canonical a robots.txt block keeps search engines from reading.
+    'directives-unreadable': ['issue', 'high'],
     noindex: ['issue', 'high'],
     nofollow: ['warning', 'medium'],
-    nosnippet: ['warning', 'high'],
+    nosnippet: ['warning', 'medium'],
     'max-snippet-limited': ['warning', 'medium'],
-    noimageindex: ['issue', 'medium'],
+    noimageindex: ['warning', 'low'],
     'unavailable-after-expired': ['issue', 'high'],
     'unavailable-after-future': ['warning', 'medium'],
   },
   canonicals: {
     'canonical-outside-head': ['issue', 'high'],
     'canonical-conflict': ['issue', 'high'],
+    // Where the canonical leads: a URL that fails, one that redirects, or one that cannot be indexed.
+    // The first two are broken references, whatever is expected of either end.
+    'canonical-broken': ['issue', 'high'],
+    'canonical-redirect': ['warning', 'medium'],
     'canonical-not-indexable': ['issue', 'high', 'indexability-blocker'],
     'canonical-fragment': ['warning', 'medium'],
     'canonical-missing': ['warning', 'low'],
-    canonicalised: ['warning', 'low'],
     'canonical-relative': ['warning', 'low'],
     'canonical-repeated': ['warning', 'low'],
   },
   sitemaps: {
     'sitemap-too-big': ['issue', 'high'],
+    // What a sitemap lists: a URL that fails, one that redirects, or one that cannot be indexed.
+    'sitemap-broken': ['issue', 'high'],
+    'sitemap-redirect': ['warning', 'medium'],
     'sitemap-not-indexable': ['issue', 'medium', 'indexability-blocker'],
     'indexed-not-in-sitemap': ['warning', 'high'],
     'indexable-not-in-sitemap': ['warning', 'low'],
@@ -134,7 +142,7 @@ const ISSUE_CATALOG = {
     'content-thin': ['opportunity', 'low'],
   },
   images: {
-    'img-no-alt': ['warning', 'high'],
+    'img-no-alt': ['warning', 'medium'],
     'img-empty-alt': ['opportunity', 'low'],
     'img-too-heavy': ['opportunity', 'low'],
     'img-no-size': ['opportunity', 'low'],
@@ -146,6 +154,11 @@ const ISSUE_CATALOG = {
   },
   links: {
     'link-to-localhost': ['issue', 'high'],
+    // What a page links to, reported where the link can be fixed.
+    'links-to-broken': ['issue', 'medium'],
+    'links-to-redirect': ['warning', 'low'],
+    'links-to-canonicalised': ['warning', 'low'],
+    'links-tracking-parameters': ['warning', 'medium'],
     'uncrawlable-links': ['issue', 'medium'],
     'only-nofollow-inlinks': ['warning', 'medium'],
     'only-noindex-inlinks': ['warning', 'medium'],
@@ -231,7 +244,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  *   what keeps the URL from being indexed. Analysing a crawl again does not repair one that stored
  *   every URL of a sitemap alike: it stops claiming a listing it cannot prove.
  */
-const CHECKS_REVISION = 7
+const CHECKS_REVISION = 8
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.
@@ -247,6 +260,56 @@ export const ISSUE_CATALOG_VERSION = (() => {
   }
   return `${CHECKS_REVISION}.${hash.toString(36)}`
 })()
+
+/**
+ * Findings about how a page would do in search results, which only matter where it can be indexed.
+ * On a page the crawl saw as not indexable they are still reported, as secondary: listed with the
+ * page, but out of what is pending and out of the counts of pages with findings. Indexation,
+ * broken references, accessibility, security and HTML findings are never secondary: a broken
+ * hreflang or an image without `alt` is a problem whatever happens to the page in an index.
+ */
+export const SEO_CONTENT_ISSUES: ReadonlySet<PageIssueId> = new Set<PageIssueId>([
+  'hreflang-no-return',
+  'hreflang-invalid-code',
+  'hreflang-outside-head',
+  'hreflang-non-canonical',
+  'hreflang-noindex',
+  'hreflang-same-language',
+  'hreflang-no-self',
+  'hreflang-no-x-default',
+  'title-duplicate',
+  'title-too-long',
+  'title-too-short',
+  'description-multiple',
+  'description-outside-head',
+  'description-missing',
+  'description-duplicate',
+  'description-too-long',
+  'description-too-short',
+  'h1-missing',
+  'h1-multiple',
+  'h2-missing',
+  'h1-duplicate',
+  'heading-too-long',
+  'content-duplicate',
+  'content-near-duplicate',
+  'content-thin',
+  'no-structured-data',
+  'deep-page',
+  'anchor-vague',
+  'url-multiple-slashes',
+  'url-spaces',
+  'url-tracking',
+  'url-uppercase',
+  'url-repetitive-path',
+  'url-internal-search',
+  'url-underscores',
+  'url-too-long',
+])
+
+/** Whether a finding is secondary: about search results, on a page that cannot be indexed. */
+export const isSecondaryFinding = (issue: PageIssueId, indexability: string | null) =>
+  indexability === 'not-indexable' && SEO_CONTENT_ISSUES.has(issue)
 
 export const isPageIssueId = (value: unknown): value is PageIssueId =>
   typeof value === 'string' && Object.hasOwn(PAGE_ISSUES, value)

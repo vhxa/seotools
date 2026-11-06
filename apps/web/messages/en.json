@@ -865,7 +865,13 @@
       "insecure-form": "Forms that send over HTTP",
       "unsafe-cross-origin-links": "Links to another site in a new tab, without rel=\"noopener\"",
       "anchor-empty": "Links with no text",
-      "anchor-vague": "Links with vague text"
+      "anchor-vague": "Links with vague text",
+      "canonical-broken": "Canonical target",
+      "canonical-redirect": "Canonical target",
+      "links-to-broken": "Broken URLs it links to",
+      "links-to-redirect": "Redirecting URLs it links to",
+      "links-to-canonicalised": "Canonicalised URLs it links to",
+      "links-tracking-parameters": "URLs with tracking parameters it links to"
     },
     "images": {
       "noSource": "No address (src is missing)",
@@ -927,7 +933,7 @@
     },
     "robots-blocked": {
       "name": "Blocked by robots.txt",
-      "description": "robots.txt does not let Googlebot request this URL. This crawler requests it all the same to audit it."
+      "description": "robots.txt does not let Googlebot crawl this URL. Usually deliberate: check that it is meant to be. This crawler requests it anyway to audit it."
     },
     "redirect-3xx": {
       "name": "3xx redirect (internal)",
@@ -986,8 +992,8 @@
       "description": "Declares several canonicals pointing at different URLs, so search engines may ignore them all."
     },
     "canonical-not-indexable": {
-      "name": "Points at a non-indexable URL",
-      "description": "The canonical leads to a URL that redirects, fails, has noindex, is blocked by robots.txt or canonicalises elsewhere, as the blockers shown say. Not reported when you declared every one of them as expected for that URL, or when this page is itself expected to be out of the index; a redirect or an error always is."
+      "name": "Canonical points at a non-indexable URL",
+      "description": "The canonical leads to a URL that answers but cannot be indexed (noindex, robots.txt block or a canonical elsewhere), as the blockers say. Not reported when this page is itself expected to stay out of the index."
     },
     "canonical-fragment": {
       "name": "Contains a fragment",
@@ -996,10 +1002,6 @@
     "canonical-missing": {
       "name": "Missing",
       "description": "The page does not declare a canonical."
-    },
-    "canonicalised": {
-      "name": "Canonicalised to another URL",
-      "description": "The canonical points at another URL, so search engines will index that one instead of this one."
     },
     "canonical-relative": {
       "name": "Relative",
@@ -1014,8 +1016,8 @@
       "description": "Search engines ignore what is past those limits. It should be split with a sitemap index."
     },
     "sitemap-not-indexable": {
-      "name": "Non-indexable URL in the sitemap",
-      "description": "A sitemap lists this URL (its '<loc>') and something keeps it from being indexed, as the blockers shown say. An alternate (hreflang), image or video that an entry only names is not a listing. A crawl from before that was recorded cannot tell, and does not count a URL that a sitemap declared as an alternate."
+      "name": "Non-indexable page in the sitemap",
+      "description": "A sitemap lists this page (its <loc>) and something keeps it out of the index, as the blockers say. An alternate, image or video that an entry only names is not a listing."
     },
     "indexed-not-in-sitemap": {
       "name": "Indexed URL not in a sitemap",
@@ -1328,6 +1330,42 @@
     "sitemap-forbidden-present": {
       "name": "Listed in a sitemap where a rule forbids it",
       "description": "A rule forbids this URL to be in a sitemap, and a sitemap lists it."
+    },
+    "directives-unreadable": {
+      "name": "noindex or canonical hidden by robots.txt",
+      "description": "robots.txt blocks this URL, so search engines cannot read the noindex or the canonical it declares: the URL can stay indexed and its signals are not consolidated. Allow crawling for the directive to work."
+    },
+    "canonical-broken": {
+      "name": "Canonical points at a broken URL",
+      "description": "The canonical leads to a URL of this site that answers 4xx/5xx or does not answer. Search engines ignore it."
+    },
+    "canonical-redirect": {
+      "name": "Canonical points at a redirect",
+      "description": "The canonical leads to a URL that redirects. Point it at the final URL."
+    },
+    "sitemap-broken": {
+      "name": "Broken URL in the sitemap",
+      "description": "A sitemap lists this URL and it answers 4xx/5xx or does not answer."
+    },
+    "sitemap-redirect": {
+      "name": "Redirect in the sitemap",
+      "description": "A sitemap lists this URL and it redirects. List the final URL instead."
+    },
+    "links-to-broken": {
+      "name": "Links to broken URLs",
+      "description": "The page links to URLs of this site that answer 4xx/5xx or do not answer. Fix or remove those links."
+    },
+    "links-to-redirect": {
+      "name": "Links to redirects",
+      "description": "The page links to URLs that redirect. Link to the final URL."
+    },
+    "links-to-canonicalised": {
+      "name": "Links to canonicalised URLs",
+      "description": "The page links to URLs whose canonical is another URL. Link to the canonical one."
+    },
+    "links-tracking-parameters": {
+      "name": "Internal links with tracking parameters",
+      "description": "The page links to URLs of this site with tracking parameters (utm_*, gclid…), which create duplicate URLs and distort analytics."
     }
   },
   "LinkKinds": {

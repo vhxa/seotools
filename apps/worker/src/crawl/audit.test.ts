@@ -1104,7 +1104,7 @@ describe('what is expected of a URL when nothing is declared', () => {
     })
     const found = await findings(id, '/product')
     expect(found).toContain('noindex')
-    expect(found).toContain('canonicalised')
+    // A canonical elsewhere is a state of the URL (its indexability says so), not a finding.
     expect(found).not.toContain('expected-indexable-blocked')
     expect(found.filter((issue) => issue === 'noindex')).toHaveLength(1)
   })

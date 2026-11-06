@@ -17,7 +17,7 @@ describe('the catalog', () => {
     // An id repeated across categories would be lost in `PAGE_ISSUES`.
     expect(new Set(listed).size).toBe(listed.length)
     expect([...listed].sort()).toEqual([...PAGE_ISSUE_IDS].sort())
-    expect(listed).toHaveLength(109)
+    expect(listed).toHaveLength(117)
   })
 
   it('knows the category of each issue', () => {
@@ -36,9 +36,21 @@ describe('the catalog', () => {
   })
 
   it('keeps issues for crawling and indexing, and warnings for the rest', () => {
-    for (const id of ['noindex', 'robots-blocked', 'client-error', 'canonical-conflict'] as const) {
+    for (const id of [
+      'noindex',
+      'client-error',
+      'canonical-conflict',
+      'canonical-broken',
+    ] as const) {
       expect(PAGE_ISSUES[id].type).toBe('issue')
     }
+    // Usually deliberate: worth a review, and it is the crawl that cannot read the page.
+    expect(PAGE_ISSUES['robots-blocked']).toMatchObject({ type: 'warning', importance: 'medium' })
+    // A noindex or canonical that the block hides is a real problem.
+    expect(PAGE_ISSUES['directives-unreadable']).toMatchObject({
+      type: 'issue',
+      importance: 'high',
+    })
     // Serious, but not a crawling or indexing problem.
     expect(PAGE_ISSUES['http-url']).toMatchObject({ type: 'warning', importance: 'high' })
     expect(PAGE_ISSUES['title-missing']).toMatchObject({ type: 'warning', importance: 'high' })

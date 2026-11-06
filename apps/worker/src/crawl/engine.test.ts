@@ -415,10 +415,10 @@ describe('page issues', () => {
 
   it('sorts pages by the worst type of issue they have', async () => {
     const { crawl } = await crawlWith(site())
-    // The home page has no H1 and /bare no title, which are warnings, and /missing does not exist,
-    // which is an issue. The other three pages are what the site answered to URLs only the crawler
-    // tried, so they have nothing at all.
-    expect(crawl.pagesByWorstIssue).toEqual({ issue: 1, warning: 2, opportunity: 0 })
+    // /missing does not exist, and the home page links to it: both are issues. /bare has no title,
+    // a warning. The other three pages are what the site answered to URLs only the crawler tried,
+    // so they have nothing at all.
+    expect(crawl.pagesByWorstIssue).toEqual({ issue: 2, warning: 1, opportunity: 0 })
   })
 
   it('counts a page under every type it has something of', async () => {
@@ -426,7 +426,7 @@ describe('page issues', () => {
     // Every page that has a warning also lacks a meta description, which is an opportunity: it is
     // not hidden because something worse was found.
     const withType = crawl.pagesWithType!
-    expect(withType.issue).toBe(1)
+    expect(withType.issue).toBe(2)
     expect(withType.warning).toBe(2)
     expect(withType.opportunity).toBeGreaterThan(crawl.pagesByWorstIssue!.opportunity)
   })

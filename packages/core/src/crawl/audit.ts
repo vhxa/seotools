@@ -77,11 +77,24 @@ export type AuditValue = (typeof AUDIT_VALUES)[number]
  *   the alternates of a URL that is deliberately out of the index. Before, a rule only replaced the
  *   generic finding of the URL itself and never what other pages said of it. Rules do not change;
  *   what they accept does, so an analysis of an older meaning is read as it was.
+ * - 5: only what the URL that points declares excuses what it points at. A destination declared
+ *   out of the index (a `noindex` it requires or allows, an expectation of `not-indexable`) no longer
+ *   excuses a canonical or hreflang to it from a URL expected to be indexable: pointing an indexable
+ *   page at a URL meant to stay out is the problem. A URL that is itself expected out still excuses
+ *   the indexing blockers of what it points at, and its own inbound findings. A failing or
+ *   redirecting destination is never excused.
  */
-export const AUDIT_SEMANTICS = 4
+export const AUDIT_SEMANTICS = 5
 
 /** The first meaning (`AUDIT_SEMANTICS`) in which the declared state of a URL reaches the URLs that point at it. */
 export const RELATIONS_SEMANTICS = 4
+
+/**
+ * The first meaning in which only the URL that points (the origin) can make a finding about the URL
+ * it points at expected: a destination declared out of the index no longer excuses an origin that
+ * is expected to be indexable.
+ */
+export const ORIGIN_RELATIONS_SEMANTICS = 5
 
 /**
  * Whether a rule is read differently from semantics 4 on (see `AUDIT_SEMANTICS`): the ones that
