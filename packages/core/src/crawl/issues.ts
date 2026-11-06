@@ -272,6 +272,9 @@ export const ISSUE_CATALOG_VERSION = (() => {
  * page, but out of what is pending and out of the counts of pages with findings. Indexation,
  * broken references, accessibility, security and HTML findings are never secondary: a broken
  * hreflang or an image without `alt` is a problem whatever happens to the page in an index.
+ * Duplicates (title, description, H1, content) are compared among indexable pages only, so they
+ * never arise on a page that cannot be indexed: a noindex page sharing a title with an indexable one
+ * harms neither, and reporting the indexable one for it would be noise.
  */
 export const SEO_CONTENT_ISSUES: ReadonlySet<PageIssueId> = new Set<PageIssueId>([
   'hreflang-no-return',

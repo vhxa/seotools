@@ -710,7 +710,8 @@
       "pending": "Pending",
       "accepted": "Accepted by a rule",
       "yes": "Yes",
-      "no": "No"
+      "no": "No",
+      "secondary": "Secondary (page not indexable)"
     },
     "filters": {
       "view": "View: {value}"
@@ -1037,7 +1038,7 @@
     },
     "sitemap-not-indexable": {
       "name": "Non-indexable page in the sitemap",
-      "description": "A sitemap lists this page (its <loc>) and something keeps it out of the index, as the blockers say. An alternate, image or video that an entry only names is not a listing."
+      "description": "A sitemap lists this page (its '<loc>') and something keeps it out of the index, as the blockers say. An alternate, image or video that an entry only names is not a listing."
     },
     "indexed-not-in-sitemap": {
       "name": "Indexed URL not in a sitemap",

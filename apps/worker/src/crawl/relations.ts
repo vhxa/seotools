@@ -125,15 +125,18 @@ export function excusedBlockers(
 }
 
 /**
- * Whether the destination of an alternate not linking back is no news: either end is expected to be
- * not to be indexable. The app treats the missing return as redundant under that policy.
+ * Whether the destination of an alternate not linking back is no news: the origin is expected to be
+ * out of the index (semantics 5), or, under semantics 4, either end is.
  */
 export function excusesMissingReturn(
   origin: AuditedUrl,
   destination: AuditedUrl,
   site: Pick<Site, 'config'>,
 ): boolean {
-  return relationsApply(site) && (isExpectedOut(origin) || isExpectedOut(destination))
+  return (
+    relationsApply(site) &&
+    (isExpectedOut(origin) || (!originOnly(site) && isExpectedOut(destination)))
+  )
 }
 
 /**

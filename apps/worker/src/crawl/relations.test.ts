@@ -191,11 +191,12 @@ describe('what a pair excuses', () => {
     expect(relationsApply({ config: EMPTY_AUDIT_SNAPSHOT })).toBe(false)
   })
 
-  it('excuses a missing return when either end is out on purpose, and only then', () => {
+  it('excuses a missing return when the origin is out on purpose (either end under 4)', () => {
     const out = { noindex: 'required', blockers: ['noindex'] } as const
     const missing = (o: Declared, d: Declared, site = NOW) =>
       excusesMissingReturn(declared(o), declared(d), site)
-    expect(missing({}, out)).toBe(true)
+    expect(missing({}, out)).toBe(false)
+    expect(missing({}, out, V4)).toBe(true)
     expect(missing(out, {})).toBe(true)
     expect(missing({}, {})).toBe(false)
     expect(missing({}, { blockers: ['noindex'] })).toBe(false)
@@ -589,10 +590,16 @@ describe('a missing return link', () => {
     ['required', [asking(exactPath('/t'), 'noindex', 'required')]],
     ['allowed', [asking(exactPath('/t'), 'noindex', 'allowed')]],
     ['expected', [expecting(exactPath('/t'), 'not-indexable')]],
-  ])('is not when the destination is out of the index on purpose (%s)', async (_, rules) => {
+  ])('was not, under semantics 4, when the destination is out on purpose (%s)', async (_, rules) => {
     await addRules(rules)
-    const id = await crawl(world({ target: { ...NOINDEX, returns: false } }))
+    const id = await asSemantics4(await crawl(world({ target: { ...NOINDEX, returns: false } })))
     expect(await findings(id, '/s')).not.toContain('hreflang-no-return')
+  })
+
+  it('is, from an indexable origin, whatever the destination declares', async () => {
+    await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
+    const id = await crawl(world({ target: { ...NOINDEX, returns: false } }))
+    expect(await findings(id, '/s')).toContain('hreflang-no-return')
   })
 
   it('is when the destination is out of the index by accident', async () => {

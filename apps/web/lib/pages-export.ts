@@ -5,6 +5,7 @@ import {
   PAGE_ISSUES,
   compareIssueSeverity,
   isPageIssueId,
+  isSecondaryFinding,
   type IssueType,
 } from '@seotools/core/crawl/issues'
 import type {
@@ -376,7 +377,18 @@ export const FINDINGS_COLUMNS: readonly FindingColumn[] = [
   { header: 'url', cell: ({ row }) => row.url.url },
   {
     header: 'findingState',
-    cell: ({ acceptance }, c) => tr(c, `Export.values.${acceptance ? 'accepted' : 'pending'}`),
+    cell: ({ acceptance, issue, row }, c) =>
+      tr(
+        c,
+        `Export.values.${
+          acceptance
+            ? 'accepted'
+            : isPageIssueId(issue.issue) &&
+                isSecondaryFinding(issue.issue, row.audit?.indexability ?? null)
+              ? 'secondary'
+              : 'pending'
+        }`,
+      ),
   },
   {
     header: 'acceptedBecause',
