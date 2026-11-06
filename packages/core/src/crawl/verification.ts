@@ -140,6 +140,8 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'img-long-alt': U,
   // structured data
   'json-ld-invalid': U,
+  'structured-data-required-missing': U,
+  'structured-data-recommended-missing': U,
   'no-structured-data': U,
   // links. The links a page has are its own; who links to it, and how far it is, are not.
   'link-to-localhost': U,

@@ -1369,6 +1369,14 @@
     "links-tracking-parameters": {
       "name": "Enlaces internos con parámetros de seguimiento",
       "description": "La página enlaza a URLs de esta web con parámetros de seguimiento (utm_*, gclid…), que crean URLs duplicadas y distorsionan la analítica."
+    },
+    "structured-data-required-missing": {
+      "name": "Datos estructurados sin propiedades obligatorias",
+      "description": "El JSON-LD declara un tipo que puede mostrarse como resultado enriquecido en Google pero le faltan propiedades que Google exige, según la lista (las alternativas van separadas por |). Sin ellas no es apto. Solo se revisa el JSON-LD."
+    },
+    "structured-data-recommended-missing": {
+      "name": "Datos estructurados sin propiedades recomendadas",
+      "description": "El JSON-LD declara un tipo que puede mostrarse como resultado enriquecido pero le faltan propiedades que Google recomienda, según la lista. Añadirlas puede enriquecer el resultado."
     }
   },
   "LinkKinds": {
@@ -1962,7 +1970,8 @@
     "detailColumns": {
       "hreflang-source": "Origen",
       "security-header": "Cabecera",
-      "indexability-blocker": "Impedimento"
+      "indexability-blocker": "Impedimento",
+      "structured-data-missing": "Faltan"
     },
     "hreflangSources": {
       "html": "HTML",

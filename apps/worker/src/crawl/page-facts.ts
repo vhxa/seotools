@@ -1,4 +1,5 @@
 import {
+  checkStructuredData,
   MAX_EVIDENCE_ITEMS,
   boundedText,
   boundedUrl,
@@ -11,6 +12,9 @@ import {
   type LinkProblem,
   type PageEvidenceFacts,
 } from '@seotools/core'
+
+/** JSON-LD blocks a page can have judged; the rest only count. */
+const MAX_JSON_LD_BLOCKS = 20
 import type { ExtractedLink } from './extract'
 import { simhash } from './fingerprint'
 
@@ -182,6 +186,8 @@ export class PageFactsCollector {
   private anchor: { text: string; named: boolean; url: string } | null = null
   private anchorDepth = 0
   private jsonLd: string | null = null
+  /** The JSON-LD blocks parsed so far, for `checkStructuredData`. */
+  private jsonLdBlocks: unknown[] = []
   private textLength = 0
   private readonly text: string[] = []
   private readonly invalidHead = new Set<string>()
@@ -303,7 +309,8 @@ export class PageFactsCollector {
 
     if (name === 'script' && this.jsonLd !== null) {
       try {
-        JSON.parse(this.jsonLd)
+        const parsed: unknown = JSON.parse(this.jsonLd)
+        if (this.jsonLdBlocks.length < MAX_JSON_LD_BLOCKS) this.jsonLdBlocks.push(parsed)
       } catch {
         this.facts.jsonLdInvalid++
       }
@@ -320,6 +327,9 @@ export class PageFactsCollector {
     const { facts } = this
     facts.invalidHeadElements = [...this.invalidHead].slice(0, MAX_INVALID_HEAD_ELEMENTS)
     facts.headNotFirst = facts.heads > 0 && this.firstElement !== 'head'
+    const structured = checkStructuredData(this.jsonLdBlocks)
+    facts.structuredDataTypes = structured.types
+    facts.structuredDataProblems = structured.problems
 
     const text = collapse(this.text.join(' '))
     const words = text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word))

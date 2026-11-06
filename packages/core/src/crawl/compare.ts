@@ -368,6 +368,8 @@ const PAGE_LOCAL_LIST = [
   'img-no-size',
   'img-long-alt',
   'json-ld-invalid',
+  'structured-data-required-missing',
+  'structured-data-recommended-missing',
   'no-structured-data',
   'link-to-localhost',
   'uncrawlable-links',

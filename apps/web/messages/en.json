@@ -1369,6 +1369,14 @@
     "links-tracking-parameters": {
       "name": "Internal links with tracking parameters",
       "description": "The page links to URLs of this site with tracking parameters (utm_*, gclid…), which create duplicate URLs and distort analytics."
+    },
+    "structured-data-required-missing": {
+      "name": "Structured data missing required properties",
+      "description": "The JSON-LD declares a type that can show as a rich result in Google but lacks properties Google requires for it, as listed (alternatives separated by |). Without them it is not eligible. Only JSON-LD is checked."
+    },
+    "structured-data-recommended-missing": {
+      "name": "Structured data missing recommended properties",
+      "description": "The JSON-LD declares a type that can show as a rich result but lacks properties Google recommends, as listed. Adding them can make the result richer."
     }
   },
   "LinkKinds": {
@@ -1962,7 +1970,8 @@
     "detailColumns": {
       "hreflang-source": "Source",
       "security-header": "Header",
-      "indexability-blocker": "Blocker"
+      "indexability-blocker": "Blocker",
+      "structured-data-missing": "Missing"
     },
     "hreflangSources": {
       "html": "HTML",

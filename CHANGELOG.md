@@ -59,6 +59,11 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- **Structured data checked against Google's rich result requirements**: for Product, Article,
+  BreadcrumbList, FAQPage, LocalBusiness (and common kinds), Event, Recipe, VideoObject,
+  JobPosting, Organization, SoftwareApplication, Review and AggregateRating, the JSON-LD of a page
+  is checked for the properties Google requires (a warning) and recommends (an opportunity), naming
+  what is missing. From the next crawl.
 - **Thresholds per domain** (Settings → Audit → Thresholds): the figures some checks compare with
   (title and meta description length, words for thin content, URL length, click depth, image
   weight) can be set per domain; empty fields keep the recommended ones. Changing them analyses the
