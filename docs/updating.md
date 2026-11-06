@@ -392,6 +392,52 @@ Point the deployment at the restored database, preserve the original keys, selec
 image, start and verify. Dokploy's `/data` backup does not back up an external database; arrange
 a database dump separately.
 
+## Move from SQLite to PostgreSQL
+
+SQLite is right for one machine; PostgreSQL is better on a server, and it lets web and worker run in
+separate containers. To change, copy the data once with `migrate-db.mjs`, which ships in the image.
+It copies every table (users, sessions, domains, rules, crawls, settings, jobs…) with the same ids,
+timestamps and text, so people stay signed in. MySQL is not supported.
+
+1. **Back up** the SQLite database and your keys, as in [SQLite (the default)](#sqlite-the-default).
+2. **Update first, on SQLite.** Deploy the image you will use with PostgreSQL while `DATABASE_URL`
+   still points at SQLite, and wait until it is healthy: this brings the schema up to date. The command
+   refuses a source that lacks a migration of its image, or has one the image does not know.
+3. **Stop the app** (`docker compose stop seotools`, or stop the application in Dokploy). Nothing may
+   write to the SQLite file while it is copied.
+4. **Create an empty PostgreSQL database** and a user that owns it. The command refuses a database
+   that already has rows.
+5. **Run the command** with the same image, in a one-off container that sees the `/data` volume and the
+   database. With Docker Compose:
+
+   ```bash
+   docker compose run --rm --no-deps --entrypoint node seotools \
+     /app/worker/dist/migrate-db.mjs \
+     --from file:/data/seotools.db \
+     --to postgres://seotools:secret@db:5432/seotools
+   ```
+
+   Replace the host (`db`) with how the container reaches PostgreSQL. In Dokploy, run it on the
+   server with `docker run --rm --entrypoint node`, the application's image, its `/data` volume
+   (`-v <volume>:/data`) and the network of the database (`--network <network>`), followed by the
+   same `/app/worker/dist/migrate-db.mjs --from … --to …`. The URLs are visible in the host's process
+   list while it runs; the command prints the addresses without passwords and never a password.
+
+   It applies the image's migrations to PostgreSQL, copies each table in a transaction, and prints the
+   number of rows of each table in both databases. It exits `0` only if every count matches. The
+   SQLite file is read, never changed.
+
+6. **Point the app at PostgreSQL**: set `DATABASE_URL` (`DATABASE_URL_DOCKER` in Compose) to the
+   PostgreSQL URL, keep `BETTER_AUTH_SECRET` and `SETTINGS_ENCRYPTION_KEY` unchanged, and deploy.
+   Check the startup log says `database selected` with `pg`, then open a domain and a crawl you know.
+
+If the command fails, nothing has switched: the app still has its SQLite file. Drop the PostgreSQL
+database, create it again empty, correct what it reported and run the command again.
+
+**Going back** to SQLite is not automatic: keep the SQLite file and the backup. Stop the app, point
+`DATABASE_URL` at the SQLite file again and deploy. Everything written to PostgreSQL after the move is
+lost, and there is no command that copies it back.
+
 ## History and evidence retention
 
 The default `retainCrawls` is **10 per crawl type per domain**, not permanent evidence storage.

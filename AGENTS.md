@@ -6,7 +6,7 @@ SEO Tools is an open-source application with a set of features for monitoring an
 
 ```
 apps/web/            # Next.js app: UI, login + first-run setup + onboarding, /api/health, better-auth routes, server actions
-apps/worker/         # Background job runner + handlers (example.echo, mail.send, access.email, crawl.alerts, crawl.run, audit.recompute), crawler, crawl scheduler, favicon and crawl file refreshers; also the bootstrap CLI (migrations)
+apps/worker/         # Background job runner + handlers (example.echo, mail.send, access.email, crawl.alerts, crawl.run, audit.recompute), crawler, crawl scheduler, favicon and crawl file refreshers; also the bootstrap CLI (migrations), `recover` and `migrate-db` (SQLite → PostgreSQL copy, `copySqliteToPostgres`)
 packages/core/       # Shared logic: env validation, logger, job types, settings encryption, mail (SMTP + Resend), crawl types and URL rules
 packages/db/         # Database layer: Drizzle schemas, migrations and repositories for SQLite and PostgreSQL
 docker/              # Container entrypoint and healthcheck
@@ -17,29 +17,29 @@ scripts/             # Release tooling (`node scripts/release.mjs`; its logic is
 
 The workspaces are:
 
-| Package            | Description                                                                        |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| `@seotools/web`    | Next.js (App Router) web app with shadcn/ui and multi-user, role-based auth        |
-| `@seotools/worker` | Job processor backed by the database (no Redis); bundled with tsdown               |
-| `@seotools/core`   | Env validation (zod), logger (pino), job types, encrypted settings, mail           |
+| Package            | Description                                                                 |
+| ------------------ | --------------------------------------------------------------------------- |
+| `@seotools/web`    | Next.js (App Router) web app with shadcn/ui and multi-user, role-based auth |
+| `@seotools/worker` | Job processor backed by the database (no Redis); bundled with tsdown        |
+| `@seotools/core`   | Env validation (zod), logger (pino), job types, encrypted settings, mail    |
 | `@seotools/db`     | Database abstraction (SQLite, PostgreSQL), migrations, first-admin creation |
 
 The most important third-party packages are:
 
-| Package                                | Used in      | Description                                                 |
-| -------------------------------------- | ------------ | ----------------------------------------------------------- |
-| `next`, `react`                        | web          | Web framework and UI runtime                                |
-| `better-auth`                          | web, db      | Email/password sessions, sign-up disabled                   |
-| `shadcn`, `@base-ui/react`             | web          | UI components                                               |
-| `next-intl`                            | web          | i18n (messages in `apps/web/messages`)                      |
-| `tailwindcss`                          | web          | Styling                                                     |
-| `drizzle-orm`, `drizzle-kit`           | db           | Query layer and migration generation for both dialects |
-| `better-sqlite3`, `postgres`           | db, worker   | Database drivers (`better-sqlite3` is the only native one)  |
-| `zod`                                  | core         | Environment validation                                      |
-| `pino`                                 | core         | Structured logging                                          |
-| `htmlparser2`                          | worker       | HTML and sitemap parsing in the crawler                     |
-| `nodemailer`, `resend`                 | core         | Email delivery (SMTP or Resend API)                         |
-| `turbo`, `vitest`, `tsdown`            | root, worker | Task orchestration, tests, worker bundling                  |
+| Package                      | Used in      | Description                                                |
+| ---------------------------- | ------------ | ---------------------------------------------------------- |
+| `next`, `react`              | web          | Web framework and UI runtime                               |
+| `better-auth`                | web, db      | Email/password sessions, sign-up disabled                  |
+| `shadcn`, `@base-ui/react`   | web          | UI components                                              |
+| `next-intl`                  | web          | i18n (messages in `apps/web/messages`)                     |
+| `tailwindcss`                | web          | Styling                                                    |
+| `drizzle-orm`, `drizzle-kit` | db           | Query layer and migration generation for both dialects     |
+| `better-sqlite3`, `postgres` | db, worker   | Database drivers (`better-sqlite3` is the only native one) |
+| `zod`                        | core         | Environment validation                                     |
+| `pino`                       | core         | Structured logging                                         |
+| `htmlparser2`                | worker       | HTML and sitemap parsing in the crawler                    |
+| `nodemailer`, `resend`       | core         | Email delivery (SMTP or Resend API)                        |
+| `turbo`, `vitest`, `tsdown`  | root, worker | Task orchestration, tests, worker bundling                 |
 
 ## Architecture
 
@@ -176,7 +176,7 @@ pnpm --filter @seotools/db generate --name <what_changed>   # generates sqlite +
 pnpm db:check                                               # migration files are consistent
 ```
 
-Schemas exist once per dialect (`packages/db/src/schema/{sqlite,pg}.ts`): change both. Never edit generated migrations by hand.
+Schemas exist once per dialect (`packages/db/src/schema/{sqlite,pg}.ts`): change both, with the same tables and columns (`copySqliteToPostgres` derives what it copies from the schemas and refuses if they differ). Never edit generated migrations by hand.
 
 ### Pre-PR checklist
 

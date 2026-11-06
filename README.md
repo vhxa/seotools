@@ -70,7 +70,7 @@ annotated list.
 | `TRUSTED_ORIGINS`                | —                        | Extra comma-separated origins allowed to call the auth API.              |
 | `SETTINGS_ENCRYPTION_KEY`        | `BETTER_AUTH_SECRET`     | Key for secrets saved from the admin panel (SMTP password, Resend key).  |
 | `DATABASE_URL`                   | `file:/data/seotools.db` | `file:…` (SQLite) or `postgres://…`.                                     |
-| `DATABASE_DIALECT`               | inferred                 | `sqlite` \| `pg`. Only if it can't be inferred from the URL.            |
+| `DATABASE_DIALECT`               | inferred                 | `sqlite` \| `pg`. Only if it can't be inferred from the URL.             |
 | `RUN_MIGRATIONS`                 | `true`                   | Apply pending migrations at startup.                                     |
 | `PORT`                           | `3000`                   | HTTP port (in Compose: the host port; the container always uses 3000).   |
 | `LOG_LEVEL`                      | `info`                   | `fatal` … `trace`, or `silent`.                                          |
@@ -238,16 +238,16 @@ cp .env.example .env
 pnpm dev          # applies migrations, then runs web (:3000) and worker with hot reload
 ```
 
-| Command                                                     | What it does                                           |
-| ----------------------------------------------------------- | ------------------------------------------------------ |
-| `pnpm dev`                                                  | Migrate, then run web + worker in watch mode           |
-| `pnpm build`                                                | Build everything (Next standalone + worker bundle)     |
-| `pnpm lint` / `pnpm typecheck`                              | ESLint / TypeScript                                    |
-| `pnpm format` / `pnpm format:check`                         | Prettier                                               |
-| `pnpm test`                                                 | Vitest                                                 |
-| `pnpm --filter @seotools/db generate --name <what_changed>` | Generate Drizzle migrations for **both** dialects    |
-| `pnpm db:check`                                             | Verify the migration files are consistent              |
-| `pnpm release:check`                                        | Package versions and `CHANGELOG.md` agree              |
+| Command                                                     | What it does                                       |
+| ----------------------------------------------------------- | -------------------------------------------------- |
+| `pnpm dev`                                                  | Migrate, then run web + worker in watch mode       |
+| `pnpm build`                                                | Build everything (Next standalone + worker bundle) |
+| `pnpm lint` / `pnpm typecheck`                              | ESLint / TypeScript                                |
+| `pnpm format` / `pnpm format:check`                         | Prettier                                           |
+| `pnpm test`                                                 | Vitest                                             |
+| `pnpm --filter @seotools/db generate --name <what_changed>` | Generate Drizzle migrations for **both** dialects  |
+| `pnpm db:check`                                             | Verify the migration files are consistent          |
+| `pnpm release:check`                                        | Package versions and `CHANGELOG.md` agree          |
 
 PostgreSQL tests are skipped unless you provide a database:
 

@@ -20,6 +20,22 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Breaking
+
+- MySQL is no longer supported: seotools runs on SQLite (the default) or PostgreSQL. A `mysql://`
+  `DATABASE_URL` (or `DATABASE_DIALECT=mysql`) now fails at startup with a message saying so.
+
+### Added
+
+- `node /app/worker/dist/migrate-db.mjs --from file:… --to postgres://…` copies an installation from
+  SQLite to an empty PostgreSQL database, keeping people signed in. See
+  [Move from SQLite to PostgreSQL](docs/updating.md#move-from-sqlite-to-postgresql).
+
+### Upgrade notes
+
+- MySQL was never in a stable release and nobody should be affected. An installation on MySQL must
+  stay on 0.2.0-rc.1 or move to PostgreSQL by exporting its data itself: there is no tool for that.
+
 ## [0.2.0-rc.1] - 2026-11-05
 
 ### Breaking
