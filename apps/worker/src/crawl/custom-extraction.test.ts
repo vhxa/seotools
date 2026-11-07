@@ -31,3 +31,32 @@ describe('extractCustom', () => {
     ).toEqual({})
   })
 })
+
+describe('extractCustom on a page built to break it', () => {
+  const nest = (depth: number, inner: string) =>
+    `<html><body>${'<div>'.repeat(depth)}${inner}${'</div>'.repeat(depth)}</body></html>`
+
+  it('never fails on elements nested thousands deep', () => {
+    const run = () =>
+      extractCustom(nest(20_000, 'deep text'), [
+        { key: 'text', name: 'Text', selector: 'body', attribute: null },
+      ])
+    expect(run).not.toThrow()
+  })
+
+  it('reads text through deep nesting within its budget', () => {
+    expect(
+      extractCustom(nest(5_000, 'deep text'), [
+        { key: 'text', name: 'Text', selector: 'body', attribute: null },
+      ]),
+    ).toEqual({ text: ['deep text'] })
+  })
+
+  it('still finds a match at the bottom of a deep page', () => {
+    expect(
+      extractCustom(nest(20_000, '<span class="price">9.99</span>'), [
+        { key: 'price', name: 'Price', selector: '.price', attribute: null },
+      ]),
+    ).toEqual({ price: ['9.99'] })
+  })
+})

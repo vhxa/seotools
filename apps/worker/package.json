@@ -19,7 +19,6 @@
     "@types/node": "^24.0.0",
     "css-select": "^6.0.0",
     "domhandler": "^6.0.1",
-    "domutils": "^4.0.2",
     "htmlparser2": "^12.0.0",
     "tsdown": "^0.23.4",
     "tsx": "^4.23.15"
