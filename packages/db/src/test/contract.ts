@@ -1460,6 +1460,28 @@ export function describeDatabaseContract(
         const pairs = (rows: { url: string; kind: string }[]) =>
           rows.map((row) => `${row.url.replace(site, '')} ${row.kind}`)
 
+        it('lists the internal addresses with a query string a page at a time', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const plain = newUrl(`${site}/`, { depth: 0 })
+          const first = newUrl(`${site}/a?utm_source=x`)
+          const external = newUrl('https://elsewhere.org/?ref=1', { scope: 'external' })
+          const second = newUrl(`${site}/b?page=2`)
+          await db.crawls.addUrls(id, [plain, first, external, second])
+          const all = await db.crawls.queryUrls(id, { after: null, limit: 10 })
+          expect(all).toEqual({ urls: [first.url, second.url], next: null })
+          const one = await db.crawls.queryUrls(id, { after: null, limit: 1 })
+          expect(one.urls).toEqual([first.url])
+          expect(one.next).not.toBeNull()
+          expect(await db.crawls.queryUrls(id, { after: one.next, limit: 1 })).toMatchObject({
+            urls: [second.url],
+          })
+          expect(await db.crawls.queryUrls('missing', { after: null, limit: 10 })).toEqual({
+            urls: [],
+            next: null,
+          })
+        })
+
         it('reads the links leaving a URL a page at a time, and URLs by their hash', async () => {
           const crawlId = await crawlWithLinks()
           const about = hashOf(url('/about'))

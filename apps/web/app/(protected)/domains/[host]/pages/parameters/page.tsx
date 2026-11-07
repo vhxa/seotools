@@ -4,14 +4,11 @@ import { getFormatter, getTranslations } from 'next-intl/server'
 import { selectCrawl } from '@/lib/crawl-history'
 import { getDb } from '@/lib/db'
 import { crawlMoment } from '@/lib/pages-export'
-import { countParameters } from '@/lib/query-parameters'
+import { PARAMETER_SCAN_LIMIT, parameterSummary } from '@/lib/query-parameters'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
 
-/** URLs with a query string read to count parameters, at most. */
-const SCAN_LIMIT = 100_000
-const BATCH = 1000
 const ENTRIES_PER_PAGE = 50
 
 export async function generateMetadata({ params }: { params: Promise<{ host: string }> }) {
@@ -80,24 +77,7 @@ export default async function ParametersPage({
   }
   const { crawl } = selection
 
-  const counts = new Map<string, number>()
-  let scanned = 0
-  while (scanned < SCAN_LIMIT) {
-    const rows = await db.crawls.listUrls({
-      crawlId: crawl.id,
-      view: 'all',
-      search: '?',
-      limit: BATCH,
-      offset: scanned,
-    })
-    countParameters(
-      rows.filter((row) => row.scope === 'internal').map((row) => row.url),
-      counts,
-    )
-    scanned += rows.length
-    if (rows.length < BATCH) break
-  }
-  const parameters = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const { parameters, bounded } = await parameterSummary(db.crawls, crawl.id)
 
   const rawPage = typeof query.page === 'string' ? Number(query.page) : 1
   const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 100_000) : 1
@@ -116,8 +96,10 @@ export default async function ParametersPage({
         <h2 id="parameters" className="text-lg font-medium">
           {t('names')}
         </h2>
-        {scanned >= SCAN_LIMIT && (
-          <p className="text-sm text-muted-foreground">{t('bounded', { count: SCAN_LIMIT })}</p>
+        {bounded && (
+          <p className="text-sm text-muted-foreground">
+            {t('bounded', { count: PARAMETER_SCAN_LIMIT })}
+          </p>
         )}
         {parameters.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('none')}</p>

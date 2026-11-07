@@ -16,6 +16,7 @@ import {
   max,
   isNotNull,
   isNull,
+  like,
   lt,
   lte,
   ne,
@@ -1845,6 +1846,29 @@ export function createSqliteDatabase(options: {
             ...toCrawlLinkRow(row),
           })),
           next: last && rows.length === limit ? { target: last.target, kind: last.kind } : null,
+        }
+      },
+
+      async queryUrls(crawlId, { after, limit }) {
+        const rows = db
+          .select({ url: crawlUrls.url, seq: crawlUrls.seq })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              isNotNull(crawlUrls.seq),
+              after === null ? undefined : gt(crawlUrls.seq, after),
+              eq(crawlUrls.scope, 'internal'),
+              like(crawlUrls.url, '%?%'),
+            ),
+          )
+          .orderBy(asc(crawlUrls.seq))
+          .limit(limit)
+          .all()
+        const last = rows.at(-1)
+        return {
+          urls: rows.map((row) => row.url),
+          next: last && last.seq !== null && rows.length === limit ? last.seq : null,
         }
       },
 

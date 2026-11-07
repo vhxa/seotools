@@ -704,6 +704,14 @@ export interface CrawlRepository {
     page: { after: OutLinkCursor | null; limit: number },
   ): Promise<{ links: OutLink[]; next: OutLinkCursor | null }>
   /**
+   * The addresses of internal URLs of a crawl that have a query string, in the order the crawler
+   * numbered them, a page at a time: `next` is where the following page starts, `null` after the last.
+   */
+  queryUrls(
+    crawlId: string,
+    page: { after: number | null; limit: number },
+  ): Promise<{ urls: string[]; next: number | null }>
+  /**
    * The links that bring query parameters their page does not have (they kept the tag as read,
    * `LinkContext.snippet`): where parameters enter the site. Ordered by target, then source.
    */
