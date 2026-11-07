@@ -80,9 +80,7 @@ describe('pages and routes', () => {
   it('of the instance are for administrators', () => {
     const instance = all.filter(
       (path) =>
-        path.includes(join('(protected)', 'system')) ||
-        path.includes(join('(protected)', 'companies')) ||
-        path.includes(join('domains', 'new')),
+        path.includes(join('(protected)', 'system')) || path.includes(join('domains', 'new')),
     )
     expect(instance.length).toBeGreaterThanOrEqual(5)
     for (const path of instance) {

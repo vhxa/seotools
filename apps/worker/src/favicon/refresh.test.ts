@@ -90,6 +90,12 @@ describe('createFaviconRefresher', () => {
     expect(configs).toHaveLength(1)
   })
 
+  it('does nothing when automation is paused', async () => {
+    await createFaviconRefresher({ db, log, createFetcher, now: () => clock, paused: true }).tick()
+    expect(configs).toEqual([])
+    expect(await db.favicons.get(domainId)).toBeNull()
+  })
+
   it('picks up a changed icon, and the loss of one', async () => {
     const r = refresher()
     await r.tick()
@@ -124,6 +130,9 @@ describe('createFaviconRefresher', () => {
 
   it('identifies itself like the crawler, honouring the domain settings, with a short timeout', async () => {
     await db.crawls.saveSettings(domainId, {
+      includePrefixes: [],
+      excludePrefixes: [],
+      maxDepth: null,
       renderingMode: 'http',
       userAgent: null,
       concurrency: 2,
@@ -132,6 +141,8 @@ describe('createFaviconRefresher', () => {
       maxRetries: 2,
       maxUrls: null,
       retainCrawls: null,
+      historyDays: null,
+      extractors: [],
       optionalFiles: [],
       indexNowKey: null,
     })
@@ -143,6 +154,9 @@ describe('createFaviconRefresher', () => {
     })
 
     await db.crawls.saveSettings(domainId, {
+      includePrefixes: [],
+      excludePrefixes: [],
+      maxDepth: null,
       renderingMode: 'http',
       userAgent: 'MyBot/9',
       concurrency: 2,
@@ -151,6 +165,8 @@ describe('createFaviconRefresher', () => {
       maxRetries: 2,
       maxUrls: null,
       retainCrawls: null,
+      historyDays: null,
+      extractors: [],
       optionalFiles: [],
       indexNowKey: null,
     })

@@ -26,6 +26,8 @@ import type {
   ExtraCrawlFileKind,
   CrawlFrequency,
   CrawlLinkKind,
+  LinkContext,
+  ThresholdOverrides,
   CrawlPageData,
   CrawlRecurrence,
   CrawlRobotsFiles,
@@ -52,7 +54,7 @@ import type {
   VerificationUrlState,
 } from '@seotools/core'
 
-export type Dialect = 'sqlite' | 'pg' | 'mysql'
+export type Dialect = 'sqlite' | 'pg'
 
 export interface ListJobsOptions {
   limit?: number
@@ -321,6 +323,7 @@ export interface DomainRepository {
 }
 
 export interface Crawl {
+  seedUrls?: string[] | null
   id: string
   domainId: string
   type: CrawlType
@@ -362,6 +365,10 @@ export interface Crawl {
   robots: CrawlRobotsFiles | null
   /** The results per URL were removed by the domain's retention setting; the counts remain. */
   pruned: boolean
+  /** Pruned, and what each URL was is still kept in the compact history (`urlHistory`). */
+  history: boolean
+  /** The crawl's number, unique: what its rows of links refer to. `null` only before 0019. */
+  ref: number | null
   error: string | null
   createdAt: Date
   startedAt: Date | null
@@ -374,11 +381,17 @@ export type CrawlCounts = Pick<
 >
 
 export interface NewCrawlUrl {
+  notRequested?: 'excluded' | 'depth'
   url: string
   urlHash: string
   scope: CrawlUrlScope
   source: CrawlUrlSource
   depth: number
+  /** Its number in the crawl, unique, given in the order it was found. */
+  seq: number
+  /** `seq` of the URL whose response it was first found in, and how. Absent: not found in one. */
+  foundFrom?: number | null
+  foundKind?: CrawlLinkKind | null
 }
 
 export interface CrawlUrlResult {
@@ -396,7 +409,12 @@ export interface CrawlUrlResult {
   data: CrawlPageData | null
 }
 
-export interface CrawlUrl extends NewCrawlUrl, CrawlUrlResult {
+export interface CrawlUrl
+  extends Omit<NewCrawlUrl, 'seq' | 'foundFrom' | 'foundKind'>, CrawlUrlResult {
+  /** `null` only for a URL stored before migration 0019 that it could not number. */
+  seq: number | null
+  foundFrom: number | null
+  foundKind: CrawlLinkKind | null
   crawlId: string
   state: CrawlUrlState
   fetchedAt: Date | null
@@ -406,6 +424,14 @@ export interface CrawlLink {
   sourceHash: string
   targetHash: string
   kind: CrawlLinkKind
+  /** Where in the source page it was found. Kept for the first occurrence only. */
+  context?: LinkContext
+  /**
+   * The `seq` of each end, when the writer knows them (the crawler does). Then the link is stored
+   * whether or not the other end's row is stored yet: concurrent results can commit in any order.
+   */
+  sourceSeq?: number
+  targetSeq?: number
 }
 
 /**
@@ -477,14 +503,17 @@ export interface CrawlLinkQuery {
 
 /**
  * One link of a URL, seen from it: the URL at the other end (where an incoming link starts, where
- * an outgoing one points), the type of the link, and what the crawl knows of that URL. It is what
- * was stored and nothing more: there is no anchor text, and no attribute but `rel="nofollow"`,
- * which is a type of its own. Several links of the same type between two URLs are one.
+ * an outgoing one points), the type of the link, where it sits in the page that has it, and what
+ * the crawl knows of that URL. It is what was stored and nothing more: crawls before the context
+ * was kept have none, and it is never made up. Several links of the same type between two URLs are
+ * one, with the context of the first.
  */
 export interface CrawlLinkRow {
   url: string
   urlHash: string
   kind: CrawlLinkKind
+  /** Where the link is in the page that has it. `null`: not kept (an older crawl, a header…). */
+  context: LinkContext | null
   /** Of the URL at the other end. */
   scope: CrawlUrlScope
   /** `unknown` when it was not requested, never answered, or is external: never a verdict. */
@@ -492,6 +521,37 @@ export interface CrawlLinkRow {
   state: CrawlUrlState
   statusCode: number | null
   error: string | null
+}
+
+/** A link leaving a URL, for an export of links. */
+export interface OutLink extends CrawlLinkRow {
+  sourceHash: string
+}
+
+/** Where a page of the links leaving a URL ended: the next page starts after it. */
+export interface OutLinkCursor {
+  target: number
+  kind: string
+}
+
+/** A link where query parameters enter the site. */
+export interface ParameterEntry {
+  sourceUrl: string
+  sourceHash: string
+  url: string
+  urlHash: string
+  kind: CrawlLinkKind
+  context: LinkContext | null
+}
+
+/** A step of how the crawler got to a URL. */
+export interface DiscoveryStep {
+  url: string
+  urlHash: string
+  /** How this URL was found from the step before. `null` for the first (a seed, a file). */
+  foundKind: CrawlLinkKind | null
+  /** What the crawl stored of that link on the step before: its text, element, region. */
+  context: LinkContext | null
 }
 
 /** An issue found on a URL of a crawl. */
@@ -548,6 +608,8 @@ export interface SitemapHreflang {
 
 export interface CrawlRepository {
   /** The saved settings of a domain, or the defaults if it has none. */
+  requestSecrets(domainId: string): Promise<string | null>
+  saveRequestSecrets(domainId: string, encrypted: string | null): Promise<void>
   settings(domainId: string): Promise<CrawlSettings>
   saveSettings(domainId: string, settings: CrawlSettings): Promise<void>
   /** The extra crawl files each domain turned on, by domain id. Domains with none are left out. */
@@ -557,7 +619,12 @@ export interface CrawlRepository {
    * Creates a crawl and the job that runs it, together. A domain has one active crawl at most:
    * returns `null`, creating nothing, if it already has one.
    */
-  start(input: { domainId: string; type: CrawlType; trigger: CrawlTrigger }): Promise<Crawl | null>
+  start(input: {
+    domainId: string
+    type: CrawlType
+    trigger: CrawlTrigger
+    seedUrls?: string[]
+  }): Promise<Crawl | null>
   get(id: string): Promise<Crawl | null>
   /** The crawl with this id if it belongs to the domain; `null` for any other domain's, or none. */
   getInDomain(domainId: string, id: string): Promise<Crawl | null>
@@ -582,15 +649,25 @@ export interface CrawlRepository {
   /**
    * Removes the results per URL of old crawls of a type, keeping the newest `keep` usable ones
    * (`null`: all of them). Results of failed or cancelled crawls are partial, so they always go.
+   * What each URL of a usable full crawl was stays in the compact history (`history`), until
+   * `expireHistory` removes it.
    */
   prune(input: { domainId: string; type: CrawlType; keep: number | null }): Promise<number>
+  /**
+   * Removes the compact history of crawls that finished more than their domain's `historyDays`
+   * ago (the default when the domain saved no settings; never when it chose to keep it). Returns
+   * how many crawls lost it. Their totals stay.
+   */
+  expireHistory(input: { now: Date; defaultDays: number }): Promise<number>
 
   /** Adds URLs to a crawl, ignoring those it already has. */
   addUrls(crawlId: string, urls: NewCrawlUrl[]): Promise<void>
   /** URLs waiting to be requested, shallowest first. */
   nextQueued(crawlId: string, limit: number): Promise<NewCrawlUrl[]>
   /** Every URL of the crawl, to pick up where a previous attempt left off. */
-  knownUrls(crawlId: string): Promise<{ urlHash: string; scope: CrawlUrlScope }[]>
+  knownUrls(
+    crawlId: string,
+  ): Promise<{ urlHash: string; scope: CrawlUrlScope; seq: number | null }[]>
   /** Stores what a request returned along with the URLs and links found in it, atomically. */
   recordResult(input: {
     crawlId: string
@@ -614,6 +691,40 @@ export interface CrawlRepository {
   viewCounts(crawlId: string): Promise<CrawlViewCounts>
   /** One URL of a crawl, or `null` if the crawl does not have it. */
   getUrl(crawlId: string, urlHash: string): Promise<CrawlUrl | null>
+  /** These URLs of a crawl that it has, in no particular order. */
+  urlsOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrl[]>
+  /**
+   * A page of the links that leave one URL of a crawl, with what is known of where they go, in the
+   * order the crawler numbered their targets. Paged by a cursor on the links' own key, so a URL with
+   * any number of links is read a bounded page at a time. `next` is `null` after the last page.
+   */
+  outlinksOf(
+    crawlId: string,
+    sourceHash: string,
+    page: { after: OutLinkCursor | null; limit: number },
+  ): Promise<{ links: OutLink[]; next: OutLinkCursor | null }>
+  /**
+   * The addresses of internal URLs of a crawl that have a query string, in the order the crawler
+   * numbered them, a page at a time: `next` is where the following page starts, `null` after the last.
+   */
+  queryUrls(
+    crawlId: string,
+    page: { after: number | null; limit: number },
+  ): Promise<{ urls: string[]; next: number | null }>
+  /**
+   * The links that bring query parameters their page does not have (they kept the tag as read,
+   * `LinkContext.snippet`): where parameters enter the site. Ordered by target, then source.
+   */
+  parameterEntries(
+    crawlId: string,
+    page: { limit: number; offset: number },
+  ): Promise<{ entries: ParameterEntry[]; total: number }>
+  /**
+   * How the crawler got to a URL: from the first URL it found it through, up to the URL itself,
+   * each with the kind of link that led on (`foundKind` of the next one). Empty: not found in the
+   * crawl. A URL found before this was recorded has only itself.
+   */
+  discoveryPath(crawlId: string, urlHash: string): Promise<DiscoveryStep[]>
   /** The URLs of a crawl that link to `targetHash`, sorted by URL. A home page has thousands. */
   linkSources(
     crawlId: string,
@@ -683,7 +794,11 @@ export interface CrawlRepository {
    */
   outdatedAnalyses(catalog: string, limit: number): Promise<Crawl[]>
   /** For each issue found in a crawl, how many URLs have it. Issues nobody has are left out. */
-  issueCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
+  /**
+   * URLs with each issue. `pages` leaves out the secondary ones (`isSecondaryFinding`: a
+   * search-result finding on a URL the crawl saw as not indexable), counted apart in `secondary`.
+   */
+  issueCounts(crawlId: string): Promise<{ issue: string; pages: number; secondary: number }[]>
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
   /** For each issue a rule accepts in a crawl, how many URLs it accepts it on. */
@@ -816,6 +931,8 @@ export interface AuditConfig {
   rules: AuditRuleRecord[]
   /** The language directories shared rules look at. None until the domain declares some. */
   languages: LanguageConfig
+  /** The figures the domain set for its checks, where they differ from the defaults. */
+  thresholds: ThresholdOverrides
   /** The last recalculation that gave up, if no change has been made since. */
   recomputeError: { message: string; version: number } | null
 }
@@ -909,6 +1026,11 @@ export interface AuditRepository {
    * these already.
    */
   setLanguages(input: { domainId: string; languages: LanguageConfig }): Promise<AuditMutation>
+  /**
+   * Sets the figures checks compare with (only those that differ from the defaults are kept). Like
+   * a change of rules: the version moves and the latest crawl is analysed again.
+   */
+  setThresholds(input: { domainId: string; thresholds: ThresholdOverrides }): Promise<AuditMutation>
   /**
    * Brings the rules of every domain to the current meaning of a configuration (`AUDIT_SEMANTICS`)
    * from the one they have (`planUpgradeSemantics`): the rules that said `none` go, accepting
@@ -1183,6 +1305,13 @@ export interface Database {
   ping(): Promise<void>
   /** Rejects if the database has a migration `migrationsDir` does not know (default: the bundled ones). */
   checkMigrations(migrationsDir?: string): Promise<void>
+  /**
+   * Gives back to the disk the space a large removal left unused (old crawl results pruned): in
+   * SQLite, a `VACUUM` when at least a quarter of the file and 64 MB are free; nothing in
+   * PostgreSQL, whose autovacuum does it. Returns the bytes freed, or `null` when nothing was done.
+   * Only while nothing else uses the database: bootstrap runs it before web and worker start.
+   */
+  compact(): Promise<number | null>
   /** Applies pending migrations from `migrationsDir` (default: the bundled ones). */
   migrate(migrationsDir?: string): Promise<void>
   close(): Promise<void>

@@ -25,6 +25,12 @@ import {
   type ConditionStates,
   type RecordedIntent,
 } from './audit'
+import {
+  canonicalThresholds,
+  resolveThresholds,
+  THRESHOLD_ISSUES,
+  type AuditThresholds,
+} from './thresholds'
 import { compareIssueSeverity, isPageIssueId, type PageIssueId } from './issues'
 import type { CrawlStatus, CrawlUrlKind, CrawlUrlState } from './types'
 
@@ -104,8 +110,10 @@ export interface CrawlLike {
   status: CrawlStatus
   createdAt: Date
   finishedAt: Date | null
-  /** The results per URL were removed by retention; only the totals remain. */
+  /** The results per URL were removed by retention. */
   pruned: boolean
+  /** Pruned, but what each URL was (answer, findings, audit state) is kept in the compact history. */
+  history?: boolean
   /** `null`: the crawl was never analysed, so it has no findings. */
   pagesByWorstIssue: unknown
   /** `null`: analysed before what was concluded about each URL was kept. */
@@ -114,6 +122,13 @@ export interface CrawlLike {
   auditVersion: number | null
   auditSnapshot: AuditSnapshot | null
 }
+
+/**
+ * Whether a crawl still says what each URL was: its full results, or the compact history that
+ * replaces them for a while. Links, evidence and the rest are only in the full results (`!pruned`).
+ */
+export const keepsUrlHistory = (crawl: Pick<CrawlLike, 'pruned' | 'history'>) =>
+  !crawl.pruned || crawl.history === true
 
 /** Crawls that finished with results worth browsing (`completed`, or `incomplete` at the URL limit). */
 export const isBrowsableStatus = (status: CrawlStatus) =>
@@ -135,10 +150,13 @@ export function auditScopeKey(snapshot: AuditSnapshot): string {
       ].join(' '),
     )
     .sort()
+  const thresholds = canonicalThresholds(snapshot.thresholds)
   return JSON.stringify({
     semantics: meaningOf(snapshot),
     languages: canonicalLanguages(snapshot.languages ?? NO_LANGUAGES),
     rules,
+    // Absent when the defaults applied, so that a key from before thresholds existed is the same.
+    ...(Object.keys(thresholds).length > 0 ? { thresholds } : {}),
   })
 }
 
@@ -148,7 +166,8 @@ export function auditScopeKey(snapshot: AuditSnapshot): string {
  * another way, so that an upgrade does not make every crawl before it incomparable with the ones
  * after:
  * - 3 reads 2 the same unless a rule accepts `nofollow` through the expectation;
- * - 4 reads 3 the same unless a rule accepts a state that other URLs point at (`reachesRelations`).
+ * - 4 reads 3 the same unless a rule accepts a state that other URLs point at (`reachesRelations`);
+ * - 5 reads 4 the same unless it has such a rule: only who accepts it changed.
  */
 function meaningOf(snapshot: AuditSnapshot): number {
   let meaning = semanticsOf(snapshot)
@@ -161,6 +180,7 @@ function meaningOf(snapshot: AuditSnapshot): number {
     meaning = 3
   }
   if (meaning === 3 && !snapshot.rules.some(reachesRelations)) meaning = 4
+  if (meaning === 4 && !snapshot.rules.some(reachesRelations)) meaning = 5
   return meaning
 }
 
@@ -177,8 +197,14 @@ export function crawlAuditScope(crawl: CrawlLike): string | null {
 
 /** What a crawl can vouch for when its findings are compared with those of another. */
 export interface CrawlFacts {
-  /** Its results per URL are still stored. */
+  /** Its full results per URL are still stored: links, evidence, everything a comparison reads. */
   retained: boolean
+  /**
+   * What each URL was (answer, findings, audit state) can still be read: its full results or the
+   * compact history that replaces them for a while. Enough for the history of a URL, not for a
+   * comparison of two crawls.
+   */
+  observable: boolean
   /** It has findings (it was analysed). */
   analysed: boolean
   /** It requested every URL it found, instead of stopping at the URL limit. */
@@ -189,16 +215,22 @@ export interface CrawlFacts {
   scope: string | null
   /** The analysis kept whether each URL was audited. Without it, nothing says what was left out. */
   perUrlAudit: boolean
+  /** The figures it was analysed with (`null` when it was not analysed). */
+  thresholds: AuditThresholds | null
 }
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
   return {
     retained: !crawl.pruned,
+    observable: keepsUrlHistory(crawl),
     analysed: crawl.pagesByWorstIssue !== null,
     complete: crawl.status === 'completed',
     catalog: crawl.issueCatalog,
     scope: crawlAuditScope(crawl),
     perUrlAudit: crawl.pagesAudit !== null,
+    // A snapshot without figures used the defaults: they are the values the checks always had.
+    thresholds:
+      crawl.pagesByWorstIssue === null ? null : resolveThresholds(crawl.auditSnapshot?.thresholds),
   }
 }
 
@@ -327,7 +359,6 @@ const PAGE_LOCAL_LIST = [
   'canonical-conflict',
   'canonical-fragment',
   'canonical-missing',
-  'canonicalised',
   'canonical-relative',
   'canonical-repeated',
   'title-missing',
@@ -354,6 +385,8 @@ const PAGE_LOCAL_LIST = [
   'img-no-size',
   'img-long-alt',
   'json-ld-invalid',
+  'structured-data-required-missing',
+  'structured-data-recommended-missing',
   'no-structured-data',
   'link-to-localhost',
   'uncrawlable-links',
@@ -424,6 +457,7 @@ interface Basis {
   intent: string
   conditions: string
   scope: string | null
+  thresholds: AuditThresholds | null
 }
 
 export type Observation =
@@ -437,7 +471,7 @@ const unknown = (reason: UnknownReason): Observation => ({ presence: 'unknown', 
  * at other URLs) the crawl reached every URL it found.
  */
 export function observe(issue: string, { crawl, url }: Evidence): Observation {
-  if (!crawl.retained) return unknown('pruned')
+  if (!crawl.observable) return unknown('pruned')
   if (!crawl.analysed) return unknown('unanalysed')
   if (!url) return unknown('not-seen')
   if (!url.requested) return unknown('not-requested')
@@ -453,6 +487,7 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
       intent: url.intent ?? 'unknown',
       conditions: url.conditions,
       scope: crawl.scope,
+      thresholds: crawl.thresholds,
     },
   }
 }
@@ -464,6 +499,14 @@ function incomparable(issue: string, a: Basis, b: Basis): UnknownReason | null {
   // keeps and which it raises (`applyAuditPolicy`).
   if (a.intent !== b.intent || a.conditions !== b.conditions) return 'audit'
   if (!isPageLocalIssue(issue) && (a.scope === null || a.scope !== b.scope)) return 'audit'
+  // A page-local issue decided by a figure the domain sets: a new figure is not a change of the site.
+  const figures = THRESHOLD_ISSUES[issue]
+  if (
+    figures &&
+    figures.some((key) => a.thresholds === null || a.thresholds[key] !== b.thresholds?.[key])
+  ) {
+    return 'audit'
+  }
   return null
 }
 

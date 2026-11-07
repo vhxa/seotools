@@ -8,6 +8,7 @@
  * Pure on purpose (no Node imports): client components import it through
  * `@seotools/core/crawl/evidence`.
  */
+import { z } from 'zod'
 import type { PageIssueId } from './issues'
 import {
   CRAWL_LINK_KINDS,
@@ -38,7 +39,13 @@ export const ISSUE_EVIDENCE = {
   'h1-duplicate': 'related-urls',
   'content-duplicate': 'related-urls',
   'content-near-duplicate': 'related-urls',
+  'canonical-broken': 'related-urls',
+  'canonical-redirect': 'related-urls',
   'canonical-not-indexable': 'related-urls',
+  'links-to-broken': 'related-urls',
+  'links-to-redirect': 'related-urls',
+  'links-to-canonicalised': 'related-urls',
+  'links-tracking-parameters': 'related-urls',
   'canonical-conflict': 'canonicals',
   'canonical-repeated': 'canonicals',
   'canonical-outside-head': 'canonicals',
@@ -74,61 +81,77 @@ export const boundedUrl = (url: string | null | undefined): string | null =>
 
 const LINK_KINDS: ReadonlySet<string> = new Set(CRAWL_LINK_KINDS)
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+// What was stored is untrusted: every field is read on its own, bounded again, and a field that is
+// not what it should be is left out rather than failing the whole item.
+const text = z
+  .string()
+  .transform((value) => boundedText(value))
+  .catch('')
+const url = z
+  .string()
+  .transform((value) => boundedUrl(value))
+  .catch(null)
 
-const text = (value: unknown, max = MAX_EVIDENCE_TEXT): string | undefined =>
-  typeof value === 'string' ? boundedText(value, max) : undefined
-
-const url = (value: unknown): string | null =>
-  typeof value === 'string' ? boundedUrl(value) : null
-
-function image(value: unknown): ImageEvidence | null {
-  if (!isRecord(value) || typeof value.src !== 'string') return null
-  const id = text(value.id)
-  const className = text(value.class)
-  const alt = text(value.alt)
-  return {
-    src: boundedText(value.src),
-    url: url(value.url),
+const imageSchema = z
+  .object({
+    src: z.string().transform((value) => boundedText(value)),
+    url,
+    id: text,
+    class: text,
+    alt: text,
+  })
+  .transform(({ src, url, id, class: className, alt }): ImageEvidence => ({
+    src,
+    url,
     ...(id ? { id } : {}),
     ...(className ? { class: className } : {}),
     ...(alt ? { alt } : {}),
-  }
-}
+  }))
 
-function link(value: unknown): LinkEvidence | null {
-  if (!isRecord(value) || typeof value.kind !== 'string') return null
-  if (value.kind !== 'form' && !LINK_KINDS.has(value.kind)) return null
-  const raw = text(value.raw)
-  const label = text(value.text)
-  const reason =
-    value.reason === 'javascript-url' || value.reason === 'scripted' ? value.reason : undefined
-  return {
-    kind: value.kind as CrawlLinkKind | 'form',
-    url: url(value.url),
+const linkSchema = z
+  .object({
+    kind: z.string().refine((kind) => kind === 'form' || LINK_KINDS.has(kind)),
+    url,
+    raw: text,
+    text,
+    reason: z.enum(['javascript-url', 'scripted']).optional().catch(undefined),
+  })
+  .transform(({ kind, url, raw, text: label, reason }): LinkEvidence => ({
+    kind: kind as CrawlLinkKind | 'form',
+    url,
     ...(raw ? { raw } : {}),
     ...(label ? { text: label } : {}),
     ...(reason ? { reason } : {}),
-  }
-}
+  }))
 
-function canonical(value: unknown): CanonicalEvidence | null {
-  if (!isRecord(value) || typeof value.raw !== 'string') return null
-  return {
-    raw: boundedText(value.raw),
-    url: url(value.url),
-    inHead: value.inHead === true,
-    source: value.source === 'html' || value.source === 'header' ? value.source : null,
-  }
-}
+const canonicalSchema = z
+  .object({
+    raw: z.string().transform((value) => boundedText(value)),
+    url,
+    inHead: z.unknown().optional(),
+    source: z.enum(['html', 'header']).nullable().catch(null),
+  })
+  .transform(({ raw, url, inHead, source }): CanonicalEvidence => ({
+    raw,
+    url,
+    inHead: inHead === true,
+    source,
+  }))
 
-function items<T>(value: unknown, read: (item: unknown) => T | null): T[] | null {
+const envelopeSchema = z.object({
+  kind: z.string(),
+  total: z.number().int().nonnegative(),
+  items: z.unknown().optional(),
+  urls: z.unknown().optional(),
+  atLeast: z.unknown().optional(),
+})
+
+function items<T>(value: unknown, schema: z.ZodType<T>): T[] | null {
   if (!Array.isArray(value)) return null
   const kept: T[] = []
   for (const item of value.slice(0, MAX_EVIDENCE_ITEMS)) {
-    const parsed = read(item)
-    if (parsed) kept.push(parsed)
+    const parsed = schema.safeParse(item)
+    if (parsed.success) kept.push(parsed.data)
   }
   return kept
 }
@@ -138,32 +161,32 @@ function items<T>(value: unknown, read: (item: unknown) => T | null): T[] | null
  * later version's kind, or a damaged value. The finding then simply has no evidence to show.
  */
 export function parseIssueEvidence(value: unknown): IssueEvidence | null {
-  if (!isRecord(value)) return null
-  const { total } = value
-  if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0) return null
-  switch (value.kind) {
+  const envelope = envelopeSchema.safeParse(value)
+  if (!envelope.success) return null
+  const { total } = envelope.data
+  switch (envelope.data.kind) {
     case 'images': {
-      const list = items(value.items, image)
+      const list = items(envelope.data.items, imageSchema)
       return list && { kind: 'images', total, items: list }
     }
     case 'links': {
-      const list = items(value.items, link)
+      const list = items(envelope.data.items, linkSchema)
       return list && { kind: 'links', total, items: list }
     }
     case 'canonicals': {
-      const list = items(value.items, canonical)
+      const list = items(envelope.data.items, canonicalSchema)
       return list && { kind: 'canonicals', total, items: list }
     }
     case 'related-urls': {
-      if (!Array.isArray(value.urls)) return null
-      const urls = value.urls
-        .slice(0, MAX_EVIDENCE_ITEMS)
-        .flatMap((item) => (typeof item === 'string' && boundedUrl(item) ? [item] : []))
+      const { urls } = envelope.data
+      if (!Array.isArray(urls)) return null
       return {
         kind: 'related-urls',
         total,
-        ...(value.atLeast === true ? { atLeast: true as const } : {}),
-        urls,
+        ...(envelope.data.atLeast === true ? { atLeast: true as const } : {}),
+        urls: urls
+          .slice(0, MAX_EVIDENCE_ITEMS)
+          .flatMap((item) => (typeof item === 'string' && boundedUrl(item) ? [item] : [])),
       }
     }
     default:

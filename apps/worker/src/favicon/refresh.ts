@@ -1,3 +1,4 @@
+import { siteHeaders } from '../crawl/credentials'
 import { defaultCrawlerUserAgent, type Logger } from '@seotools/core'
 import type { Database } from '@seotools/db'
 import type { Fetcher, FetcherConfig } from '../crawl/fetcher'
@@ -28,7 +29,10 @@ export function createFaviconRefresher(options: {
   db: Database
   log: Logger
   createFetcher: (config: Omit<FetcherConfig, 'allowPrivateNetworks'>) => Fetcher
+  /** `SEOTOOLS_PAUSE_AUTOMATION`: a pass does nothing. */
+  paused?: boolean
   appVersion?: string
+  settingsSecret?: string
   now?: () => Date
 }): FaviconRefresher {
   const { db, log, createFetcher } = options
@@ -39,6 +43,7 @@ export function createFaviconRefresher(options: {
   async function check(domain: { id: string; host: string }) {
     const settings = await db.crawls.settings(domain.id)
     const fetcher = createFetcher({
+      siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
       userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
       timeoutMs: Math.min(settings.timeoutMs, MAX_TIMEOUT_MS),
       concurrency: 1,
@@ -94,7 +99,7 @@ export function createFaviconRefresher(options: {
 
   return {
     tick() {
-      if (stopping.signal.aborted) return Promise.resolve()
+      if (options.paused || stopping.signal.aborted) return Promise.resolve()
       running ??= pass()
         .catch((error) => log.error({ err: error }, 'favicon refresh failed'))
         .finally(() => {

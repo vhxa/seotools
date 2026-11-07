@@ -1,10 +1,12 @@
 import {
+  canonicalThresholds,
+  parseThresholdOverrides,
   AUDIT_CONDITIONS,
   AUDIT_DIMENSIONS,
   AUDIT_LIMITS,
   JOB_TYPES,
   NO_LANGUAGES,
-  RELATIONS_SEMANTICS,
+  ORIGIN_RELATIONS_SEMANTICS,
   canonicalLanguages,
   crawlUrlHash,
   reachesRelations,
@@ -20,6 +22,7 @@ import {
   type QuerySelector,
   type Requirement,
   type SelectorScope,
+  type ThresholdOverrides,
 } from '@seotools/core'
 import type {
   AuditConfig,
@@ -122,6 +125,8 @@ export type AuditPlan =
       changes: RuleChange[]
       /** The language directories are changing to these. */
       languages?: LanguageConfig
+      /** The figures of the checks are changing to these. */
+      thresholds?: ThresholdOverrides
       /** The version moves even if no rule or language does: what the rules mean changed. */
       bump?: boolean
       result?: string
@@ -444,6 +449,18 @@ export function planDeleteMany(
 }
 
 /** Changes the language directories of the domain, if they are not these already. */
+/** The figures of the checks, which change the configuration only when they differ. */
+export function planThresholds(
+  thresholds: ThresholdOverrides,
+  current: ThresholdOverrides,
+): AuditPlan {
+  const next = canonicalThresholds(thresholds)
+  if (JSON.stringify(next) === JSON.stringify(canonicalThresholds(current))) {
+    return { ok: true, changes: [] }
+  }
+  return { ok: true, changes: [], thresholds: next }
+}
+
 export function planLanguages(languages: LanguageConfig, context: PlanContext): AuditPlan {
   const next = canonicalLanguages(languages)
   if (sameLanguages(next, context.languages)) return { ok: true, changes: [] }
@@ -482,9 +499,10 @@ function couldWinOver(a: AuditSelector, r: AuditSelector): boolean {
  *   (which is what a URL without a rule has, written down only where it is needed). The intent rules
  *   keep their expectation: an old `not-indexable` is never read as a required `noindex`. An
  *   exception that only accepted `nofollow` (`inherit`) leaves nothing but the condition.
- * - From 1, 2 or 3: nothing is written for what a URL declares of its own indexation reaching the
+ * - From 1, 2, 3 or 4: nothing is written for what a URL declares of its own indexation reaching the
  *   findings of the URLs that point at it (a required or allowed `noindex` or robots.txt block, an
- *   expectation of `not-indexable`). The rules are the same; what they accept is more, so a domain
+ *   expectation of `not-indexable`), nor for 5 taking that back from the destination of a relation.
+ *   The rules are the same; what they accept differs, so a domain
  *   that has one is analysed again, and one that has none reads the same under both.
  * Audit rules and the expectation of every other intent rule stay as they are. Running it again
  * finds nothing to change. The version moves for every domain from 1, whether or not a rule goes:
@@ -547,7 +565,7 @@ export function planUpgradeSemantics(
     }
   }
   const reached =
-    from < RELATIONS_SEMANTICS &&
+    from < ORIGIN_RELATIONS_SEMANTICS &&
     rows.some((row) => row.enabled && !gone.has(row.id) && reachesRelations(row))
   return { ok: true, changes, bump: from < 2 || changes.length > 0 || reached }
 }
@@ -591,7 +609,10 @@ export function mutationResult(
 
 /** Whether a plan changes anything that makes the version move. */
 export const planChanges = (plan: Extract<AuditPlan, { ok: true }>) =>
-  plan.changes.length > 0 || plan.languages !== undefined || plan.bump === true
+  plan.changes.length > 0 ||
+  plan.languages !== undefined ||
+  plan.thresholds !== undefined ||
+  plan.bump === true
 
 export interface AuditStateRow {
   version: number
@@ -599,6 +620,7 @@ export interface AuditStateRow {
   recomputeErrorVersion: number | null
   languagePrefixes: string | null
   languageUnprefixed: boolean
+  thresholds: string | null
 }
 
 /** The language directories as the configuration row keeps them. */
@@ -614,6 +636,23 @@ export function languagesOf(
     // A column nobody but this code writes: if it is garbage, no language is declared.
   }
   return canonicalLanguages({ prefixes, unprefixed: row.languageUnprefixed })
+}
+
+/** The figures a domain set, from its row; anything unreadable is the defaults. */
+export function thresholdsOf(
+  row: Pick<AuditStateRow, 'thresholds'> | undefined,
+): ThresholdOverrides {
+  if (!row?.thresholds) return {}
+  try {
+    return parseThresholdOverrides(JSON.parse(row.thresholds))
+  } catch {
+    return {}
+  }
+}
+
+export const thresholdColumns = (thresholds: ThresholdOverrides) => {
+  const kept = canonicalThresholds(thresholds)
+  return { thresholds: Object.keys(kept).length > 0 ? JSON.stringify(kept) : null }
 }
 
 export const languageColumns = (languages: LanguageConfig) => ({
@@ -641,6 +680,7 @@ export async function readAuditConfig(read: {
       return {
         version: before?.version ?? 0,
         languages: languagesOf(before),
+        thresholds: thresholdsOf(before),
         rules: rules.map(toAuditRule),
         recomputeError:
           after?.recomputeError != null && after.recomputeErrorVersion != null

@@ -186,7 +186,14 @@ describe('moving the rules to the meaning that reads relations', () => {
     expect(written([], 1).plan.bump).toBe(true)
   })
 
+  it('moves, from 4, a domain whose rules the origin-only meaning reads another way', () => {
+    expect(written([rows('noindex', 'allowed')], 4).plan.bump).toBe(true)
+    expect(written([rows('intent', 'not-indexable')], 4).plan.bump).toBe(true)
+    expect(written([rows('noindex', 'forbidden')], 4).plan.bump).toBe(false)
+    expect(written([], 4).plan.bump).toBe(false)
+  })
+
   it('finds nothing to change once it is at the current meaning', () => {
-    expect(written([rows('noindex', 'allowed')], 4).plan.bump).toBe(false)
+    expect(written([rows('noindex', 'allowed')], 5).plan.bump).toBe(false)
   })
 })

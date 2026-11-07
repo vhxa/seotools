@@ -15,6 +15,7 @@ import {
 } from '@/lib/pages-export'
 import { listingOf, parseDetailQuery, unappliedFilters } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
+import { dynamicTranslator } from '@/lib/dynamic-translator'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,8 +45,7 @@ export async function GET(
   if (!isExportKind(kind)) return text(404, 'Not found')
 
   const [t, db] = await Promise.all([getTranslations(), getDb()])
-  const translate: Translate = (key, values) =>
-    (t as unknown as (key: string, values?: Record<string, string | number>) => string)(key, values)
+  const translate: Translate = dynamicTranslator(t)
 
   const query = parseDetailQuery(rawParamsOf(new URL(request.url).searchParams))
   // The crawl in the address if it is one of this domain's, the latest one otherwise.
@@ -76,6 +76,7 @@ export async function GET(
       onlyAccepted: query.accepted,
       analysed: crawl.pagesByWorstIssue !== null,
       translate,
+      extractors: (await db.crawls.settings(domain.id)).extractors,
     },
   })
 

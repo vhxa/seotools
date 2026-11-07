@@ -20,6 +20,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { ThemeChoices } from '@/components/theme-choices'
 import { authClient } from '@/lib/auth-client'
 import { getInitials } from '@/lib/initials'
 
@@ -77,6 +78,8 @@ export function NavUser({ user }: { user: NavUserData }) {
                 <UserSummary user={user} />
               </DropdownMenuLabel>
             </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <ThemeChoices />
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem render={<Link href="/account" />}>

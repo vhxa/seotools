@@ -61,6 +61,7 @@ const toRow = (
   kind: url.kind,
   statusCode: url.statusCode,
   error: url.error,
+  notRequested: url.data?.notRequested,
   depth: url.depth,
   responseTimeMs: url.responseTimeMs,
   bytes: url.bytes,
@@ -186,6 +187,7 @@ export default async function PagesDetailsPage({
   const hrefForCrawl = (id: string) =>
     detailHref(host, query, { crawl: id === latestId ? null : id, page: 1, url: null })
 
+  const tParameters = await getTranslations('Parameters')
   return (
     <main
       data-wide
@@ -200,6 +202,14 @@ export default async function PagesDetailsPage({
           <h1 className="text-2xl font-semibold">{t('title')}</h1>
           {!selected && <p className="text-sm text-muted-foreground">{t('neverCrawled')}</p>}
         </div>
+        {selected && (
+          <Link
+            href={`/domains/${host}/pages/parameters${browsable ? `?crawl=${browsable.id}` : ''}`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            {tParameters('title')}
+          </Link>
+        )}
       </div>
       {selected && (
         <>

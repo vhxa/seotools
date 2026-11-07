@@ -19,11 +19,16 @@ import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/accep
 import {
   ALERT_KINDS,
   JOB_TYPES,
+  LINK_CONTEXT_LIMITS,
+  LINK_REGIONS,
   MAX_DELIVERY_ERROR_LENGTH,
   MAX_VERIFICATION_URLS,
   alertLocaleOf,
   crawlUrlHash,
   enabledExtraFiles,
+  extractorsSchema,
+  isPageIssueId,
+  isSecondaryFinding,
   parseAuditSnapshot,
   parseIssueEvidence,
   readUrlAuditState,
@@ -45,7 +50,9 @@ import {
   type ExtraCrawlFileKind,
   type Job,
   type JobStatus,
+  type LinkContext,
   type LinkDirection,
+  type LinkRegion,
   type PagesAudit,
   type FieldChange,
   type PagesByWorstIssue,
@@ -262,8 +269,9 @@ export function foldUsage(
 
 export type CrawlRow = Omit<
   Crawl,
-  'robots' | 'pagesByWorstIssue' | 'pagesWithType' | 'pagesAudit' | 'auditSnapshot'
+  'seedUrls' | 'robots' | 'pagesByWorstIssue' | 'pagesWithType' | 'pagesAudit' | 'auditSnapshot'
 > & {
+  seedUrls: string | null
   robots: string | null
   pagesWorstIssueCount: number | null
   pagesWorstWarningCount: number | null
@@ -278,7 +286,11 @@ export type CrawlRow = Omit<
   pagesUnknownIndexabilityCount: number | null
   auditSnapshot: string | null
 }
-export type CrawlUrlRow = Omit<CrawlUrl, 'data' | 'source' | 'scope' | 'kind' | 'state'> & {
+export type CrawlUrlRow = Omit<
+  CrawlUrl,
+  'data' | 'source' | 'scope' | 'kind' | 'state' | 'foundKind'
+> & {
+  foundKind: string | null
   data: string | null
   source: string
   scope: string
@@ -288,6 +300,7 @@ export type CrawlUrlRow = Omit<CrawlUrl, 'data' | 'source' | 'scope' | 'kind' | 
 export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
 
 export const toCrawl = ({
+  seedUrls,
   robots,
   pagesWorstIssueCount: issue,
   pagesWorstWarningCount: warning,
@@ -321,6 +334,7 @@ export const toCrawl = ({
       ? null
       : { audited, excluded, indexable, notIndexable, unknownIndexability },
   auditSnapshot: parseAuditSnapshot(auditSnapshot),
+  seedUrls: seedUrls === null ? null : (JSON.parse(seedUrls) as string[]),
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
 })
 
@@ -516,13 +530,45 @@ export const crawlRobotsColumn = (robots: CrawlRobotsFiles) =>
   )
 
 /** External URLs are recorded, not crawled, so they don't enter the queue. */
-export const newCrawlUrlRow = (crawlId: string, url: NewCrawlUrl) => ({
+export const newCrawlUrlRow = (crawlId: string, { notRequested, ...url }: NewCrawlUrl) => ({
   crawlId,
   ...url,
-  state: url.scope === 'internal' ? ('queued' as const) : ('skipped' as const),
+  data: notRequested ? JSON.stringify({ notRequested }) : null,
+  state: url.scope === 'internal' && !notRequested ? ('queued' as const) : ('skipped' as const),
 })
 
-export const newCrawlLinkRow = (crawlId: string, link: CrawlLink) => ({ crawlId, ...link })
+/** A link as a row of `crawl_url_links`: its ends by `seq`, its crawl by `ref`, its context bounded. */
+export function newCrawlLinkRow(crawlRef: number, source: number, target: number, link: CrawlLink) {
+  const { context } = link
+  return {
+    crawlRef,
+    source,
+    target,
+    kind: link.kind,
+    text: cleanText(context?.text, LINK_CONTEXT_LIMITS.text),
+    element: cleanText(context?.element, LINK_CONTEXT_LIMITS.element),
+    region: context?.region && LINK_REGIONS.includes(context.region) ? context.region : null,
+    snippet: cleanText(context?.snippet, LINK_CONTEXT_LIMITS.snippet),
+  }
+}
+
+/** The context of a stored link, or `null` when none was kept. */
+export function toLinkContext(row: {
+  text: string | null
+  element: string | null
+  region: string | null
+  snippet: string | null
+}): LinkContext | null {
+  const context: LinkContext = {
+    ...(row.text ? { text: row.text } : {}),
+    ...(row.element ? { element: row.element } : {}),
+    ...(row.region && (LINK_REGIONS as readonly string[]).includes(row.region)
+      ? { region: row.region as LinkRegion }
+      : {}),
+    ...(row.snippet ? { snippet: row.snippet } : {}),
+  }
+  return Object.keys(context).length > 0 ? context : null
+}
 
 export function priorityUrlRow(domainId: string, url: string, now: Date) {
   return { domainId, url, urlHash: crawlUrlHash(url), createdAt: now }
@@ -530,7 +576,7 @@ export function priorityUrlRow(domainId: string, url: string, now: Date) {
 
 /** Folds `count(*) group by scope, kind, state` into the counters of a crawl. */
 export function foldCrawlCounts(
-  rows: { scope: string; kind: string; state: string; count: unknown }[],
+  rows: { scope: string; kind: string; state: string; statusCode: number | null; count: unknown }[],
 ): CrawlCounts {
   const counts: CrawlCounts = { pagesCount: 0, urlsCount: 0, urlsDoneCount: 0, externalCount: 0 }
   for (const row of rows) {
@@ -541,17 +587,30 @@ export function foldCrawlCounts(
     }
     counts.urlsCount += count
     if (row.state === 'done') counts.urlsDoneCount += count
-    if (row.kind === 'page') counts.pagesCount += count
+    if (isPage(row)) counts.pagesCount += count
   }
   return counts
 }
 
+/** A URL of the site counted as a page: it answered with HTML and a 2xx (`URL_VIEWS`). */
+const isPage = (row: { kind: string; statusCode: number | null }) =>
+  row.kind === 'page' && row.statusCode !== null && row.statusCode >= 200 && row.statusCode < 300
+
+/** A URL of the site that answered 4xx/5xx or did not answer, whatever it was meant to be. */
+const isError = (row: { kind: string; state: string; statusCode: number | null }) =>
+  row.state === 'done' &&
+  row.kind !== 'redirect' &&
+  (row.statusCode === null || row.statusCode >= 400)
+
 /** Folds `count(*) group by scope, kind` into how many URLs each view starts from. */
-export function foldViewCounts(rows: { scope: string; kind: string; count: unknown }[]) {
+export function foldViewCounts(
+  rows: { scope: string; kind: string; state: string; statusCode: number | null; count: unknown }[],
+) {
   const counts: CrawlViewCounts = {
     pages: 0,
     resources: 0,
     redirects: 0,
+    errors: 0,
     other: 0,
     external: 0,
     all: 0,
@@ -563,10 +622,13 @@ export function foldViewCounts(rows: { scope: string; kind: string; count: unkno
       counts.external += count
       continue
     }
-    if (row.kind === 'page') counts.pages += count
+    if (isPage(row)) counts.pages += count
     else counts.other += count
-    if (row.kind === 'resource') counts.resources += count
+    if (row.kind === 'resource' && row.statusCode !== null && row.statusCode < 400) {
+      counts.resources += count
+    }
     if (row.kind === 'redirect') counts.redirects += count
+    if (isError(row)) counts.errors += count
   }
   return counts
 }
@@ -574,6 +636,7 @@ export function foldViewCounts(rows: { scope: string; kind: string; count: unkno
 /** The columns of `crawl_urls` that listing, filtering and ordering URLs look at. */
 export interface CrawlUrlColumns extends Record<CrawlUrlSort, AnyColumn> {
   crawlId: AnyColumn
+  state: AnyColumn
   scope: AnyColumn
   kind: AnyColumn
   urlHash: AnyColumn
@@ -634,13 +697,38 @@ export function crawlAuditWhere(
 export function crawlViewWhere(columns: CrawlUrlColumns, view: CrawlUrlView): SQL | undefined {
   switch (view) {
     case 'pages':
-      return and(eq(columns.scope, 'internal'), eq(columns.kind, 'page'))
+      return and(
+        eq(columns.scope, 'internal'),
+        eq(columns.kind, 'page'),
+        gte(columns.status, 200),
+        lt(columns.status, 300),
+      )
     case 'resources':
-      return and(eq(columns.scope, 'internal'), eq(columns.kind, 'resource'))
+      return and(
+        eq(columns.scope, 'internal'),
+        eq(columns.kind, 'resource'),
+        lt(columns.status, 400),
+      )
     case 'redirects':
       return and(eq(columns.scope, 'internal'), eq(columns.kind, 'redirect'))
+    case 'errors':
+      return and(
+        eq(columns.scope, 'internal'),
+        eq(columns.state, 'done'),
+        ne(columns.kind, 'redirect'),
+        or(gte(columns.status, 400), isNull(columns.status)),
+      )
     case 'other':
-      return and(eq(columns.scope, 'internal'), ne(columns.kind, 'page'))
+      // Everything of the site that is not a page: together with `pages`, every URL of the site.
+      return and(
+        eq(columns.scope, 'internal'),
+        or(
+          ne(columns.kind, 'page'),
+          isNull(columns.status),
+          lt(columns.status, 200),
+          gte(columns.status, 300),
+        ),
+      )
     case 'external':
       return eq(columns.scope, 'external')
     case 'all':
@@ -716,12 +804,18 @@ export function crawlUrlOrder(
   ]
 }
 
-/** The columns of `crawl_links` that listing the links of a URL looks at. */
+/** The columns of `crawl_url_links` that listing the links of a URL looks at. */
 export interface CrawlLinkColumns {
-  crawlId: AnyColumn
-  sourceHash: AnyColumn
-  targetHash: AnyColumn
+  crawlRef: AnyColumn
+  source: AnyColumn
+  target: AnyColumn
   kind: AnyColumn
+}
+
+/** Where the links of one URL of a crawl are: the crawl's `ref` and the URL's `seq`. */
+export interface LinkScope {
+  ref: number
+  seq: number
 }
 
 /**
@@ -731,17 +825,17 @@ export interface CrawlLinkColumns {
  */
 export function crawlLinkEnds(columns: CrawlLinkColumns, direction: LinkDirection) {
   return direction === 'in'
-    ? { self: columns.targetHash, other: columns.sourceHash }
-    : { self: columns.sourceHash, other: columns.targetHash }
+    ? { self: columns.target, other: columns.source }
+    : { self: columns.source, other: columns.target }
 }
 
 /** Joins each link to the `crawl_urls` row of its other end, within the same crawl. */
 export const crawlLinkJoin = (
   columns: CrawlLinkColumns,
-  urls: { crawlId: AnyColumn; urlHash: AnyColumn },
+  urls: { crawlId: AnyColumn; seq: AnyColumn },
   direction: LinkDirection,
-) =>
-  and(eq(urls.crawlId, columns.crawlId), eq(urls.urlHash, crawlLinkEnds(columns, direction).other))
+  crawlId: string,
+) => and(eq(urls.crawlId, crawlId), eq(urls.seq, crawlLinkEnds(columns, direction).other))
 
 /**
  * The condition that selects the links of a query, within its crawl. `otherUrl` is the address of
@@ -751,12 +845,13 @@ export const crawlLinkJoin = (
 export function crawlLinkWhere(
   columns: CrawlLinkColumns,
   otherUrl: AnyColumn,
-  query: CrawlLinkQuery,
+  query: Omit<CrawlLinkQuery, 'crawlId' | 'urlHash'>,
+  scope: LinkScope,
 ): SQL | undefined {
   const pattern = query.search ? containsPattern(query.search) : null
   return and(
-    eq(columns.crawlId, query.crawlId),
-    eq(crawlLinkEnds(columns, query.direction).self, query.urlHash),
+    eq(columns.crawlRef, scope.ref),
+    eq(crawlLinkEnds(columns, query.direction).self, scope.seq),
     query.kinds ? inArray(columns.kind, [...query.kinds]) : undefined,
     pattern ? sql`lower(${otherUrl}) like ${pattern} escape '!'` : undefined,
   )
@@ -773,7 +868,13 @@ export const crawlLinkOrder = (otherUrl: AnyColumn, otherHash: AnyColumn, kind: 
 ]
 
 /** A row of `listLinks`, as the repository returns it. */
-export const toCrawlLinkRow = (row: {
+export const toCrawlLinkRow = ({
+  text,
+  element,
+  region,
+  snippet,
+  ...row
+}: {
   url: string
   urlHash: string
   kind: string
@@ -782,7 +883,128 @@ export const toCrawlLinkRow = (row: {
   state: string
   statusCode: number | null
   error: string | null
-}) => row as CrawlLinkRow
+  text: string | null
+  element: string | null
+  region: string | null
+  snippet: string | null
+}): CrawlLinkRow =>
+  ({ ...row, context: toLinkContext({ text, element, region, snippet }) }) as CrawlLinkRow
+
+/**
+ * What a URL of a crawl was, compact: the row of `crawl_url_history` that keeps it once its
+ * results per URL are removed. `audit` is the row `crawlAuditRows` writes, read back with
+ * `toCrawlUrlAudit`.
+ */
+export function crawlHistoryRow(
+  crawlId: string,
+  url: SnapshotRow & { urlHash: string; url: string },
+  issues: readonly string[],
+  accepted: readonly string[],
+  audit: Omit<ReturnType<typeof crawlAuditRows>[number], 'crawlId'> | null,
+) {
+  return {
+    crawlId,
+    urlHash: url.urlHash,
+    url: url.url,
+    state: url.state ?? 'queued',
+    kind: url.kind ?? 'unknown',
+    statusCode: url.statusCode,
+    redirectTo: url.redirectTo,
+    title: url.title,
+    canonical: url.canonical,
+    metaRobots: url.metaRobots,
+    xRobotsTag: url.xRobotsTag,
+    error: url.error,
+    depth: url.depth ?? 0,
+    issues: issues.length > 0 ? JSON.stringify([...new Set(issues)]) : null,
+    accepted: accepted.length > 0 ? JSON.stringify([...new Set(accepted)]) : null,
+    audit: audit ? JSON.stringify(audit) : null,
+  }
+}
+
+/** Folds issue counts by the URL's indexability into what is pending and what is secondary. */
+export function foldIssueCounts(
+  rows: { issue: string; indexability: string | null; pages: unknown }[],
+): { issue: string; pages: number; secondary: number }[] {
+  const counts = new Map<string, { issue: string; pages: number; secondary: number }>()
+  for (const row of rows) {
+    const entry = counts.get(row.issue) ?? { issue: row.issue, pages: 0, secondary: 0 }
+    const secondary = isPageIssueId(row.issue) && isSecondaryFinding(row.issue, row.indexability)
+    if (secondary) entry.secondary += Number(row.pages)
+    else entry.pages += Number(row.pages)
+    counts.set(row.issue, entry)
+  }
+  return [...counts.values()]
+}
+
+/** Issues by URL, as the history keeps them. */
+export function groupIssues(rows: { urlHash: string; issue: string }[]) {
+  const grouped = new Map<string, string[]>()
+  for (const { urlHash, issue } of rows)
+    grouped.set(urlHash, [...(grouped.get(urlHash) ?? []), issue])
+  return grouped
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * Whether the compact history of a crawl is past its domain's `historyDays`: the default when the
+ * domain saved no settings (`saved` is null), never when it chose to keep it (`days` is null).
+ */
+export function historyExpired(
+  row: { finishedAt: Date | null; createdAt: Date; saved: string | null; days: number | null },
+  now: Date,
+  defaultDays: number,
+): boolean {
+  const days = row.saved === null ? defaultDays : row.days
+  if (days === null) return false
+  return (row.finishedAt ?? row.createdAt).getTime() < now.getTime() - days * DAY_MS
+}
+
+/** A row of `crawl_url_history` as the trace of a URL in that crawl (see `foldTraces`). */
+export function historyTrace(row: {
+  crawlId: string
+  urlHash: string
+  url: string
+  state: string
+  kind: string
+  statusCode: number | null
+  redirectTo: string | null
+  title: string | null
+  canonical: string | null
+  metaRobots: string | null
+  xRobotsTag: string | null
+  error: string | null
+  depth: number
+  issues: string | null
+  accepted: string | null
+  audit: string | null
+}): CrawlUrlTrace | null {
+  const snapshot = toUrlSnapshot(row)
+  if (!snapshot) return null
+  const list = (raw: string | null) => {
+    const parsed = raw === null ? [] : parseJson(raw)
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : []
+  }
+  const audit = row.audit === null ? null : parseJson(row.audit)
+  return {
+    crawlId: row.crawlId,
+    urlHash: row.urlHash,
+    url: row.url,
+    snapshot,
+    issues: list(row.issues).map((issue) => ({ urlHash: row.urlHash, issue })),
+    accepted: list(row.accepted),
+    audit:
+      audit && typeof audit === 'object'
+        ? toCrawlUrlAudit({
+            ...(audit as Parameters<typeof toCrawlUrlAudit>[0]),
+            urlHash: row.urlHash,
+          })
+        : null,
+  }
+}
 
 /**
  * What an issue row keeps in its `details` column. Rows written before evidence existed hold a JSON
@@ -1058,8 +1280,15 @@ export function toDomainFavicon(row: {
 
 // --- crawl settings ------------------------------------------------------
 
-export type CrawlSettingsRow = Omit<CrawlSettings, 'optionalFiles'> & {
+export type CrawlSettingsRow = Omit<
+  CrawlSettings,
+  'optionalFiles' | 'includePrefixes' | 'excludePrefixes' | 'extractors'
+> & {
   optionalFiles: string | null
+  extractors: string | null
+  requestSecrets: string | null
+  includePrefixes: string | null
+  excludePrefixes: string | null
   domainId: string
   updatedAt: Date
 }
@@ -1068,9 +1297,17 @@ export const toCrawlSettings = ({
   domainId: _domainId,
   updatedAt: _updatedAt,
   optionalFiles,
+  requestSecrets: _requestSecrets,
+  includePrefixes,
+  excludePrefixes,
+  extractors,
   ...row
 }: CrawlSettingsRow): CrawlSettings => ({
   ...row,
+  // Read back through its schema: an extractor that no longer checks out is dropped, not run.
+  extractors: extractorsSchema.catch([]).parse(parseJson(extractors) ?? []),
+  includePrefixes: (parseJson(includePrefixes) ?? []) as string[],
+  excludePrefixes: (parseJson(excludePrefixes) ?? []) as string[],
   optionalFiles: (parseJson(optionalFiles) ?? []) as CrawlSettings['optionalFiles'],
 })
 
@@ -1084,9 +1321,18 @@ export function enabledFilesByDomain(rows: CrawlSettingsRow[]): Map<string, Extr
   return enabled
 }
 
-export const crawlSettingsColumns = ({ optionalFiles, ...settings }: CrawlSettings) => ({
+export const crawlSettingsColumns = ({
+  optionalFiles,
+  includePrefixes,
+  excludePrefixes,
+  extractors,
+  ...settings
+}: CrawlSettings) => ({
   ...settings,
+  extractors: extractors.length > 0 ? JSON.stringify(extractors) : null,
   optionalFiles: JSON.stringify(optionalFiles),
+  includePrefixes: JSON.stringify(includePrefixes),
+  excludePrefixes: JSON.stringify(excludePrefixes),
 })
 
 // --- crawl files ---------------------------------------------------------
@@ -1159,9 +1405,6 @@ export type Differs = (a: AnyColumn, b: AnyColumn, text?: boolean) => SQL
 
 export const sqliteDiffers: Differs = (a, b) => sql`${a} is not ${b}`
 export const pgDiffers: Differs = (a, b) => sql`${a} is distinct from ${b}`
-/** MySQL compares text without regard to case or accents unless told to: here a change is a change. */
-export const mysqlDiffers: Differs = (a, b, text) =>
-  text ? sql`not (binary ${a} <=> binary ${b})` : sql`not (${a} <=> ${b})`
 
 /** What the findings of two crawls differ in, for a dialect to build (they need its own `db`). */
 export interface FindingDifferences {
@@ -1205,13 +1448,24 @@ export function changeCondition(
   }
 }
 
-/** URLs that are pages (`pages`) or are not (`other`), by the kind a crawl gave them. */
-export const compareViewOf = (kind: AnyColumn, view: 'pages' | 'other') =>
-  view === 'pages' ? eq(kind, 'page') : ne(kind, 'page')
+type PageColumns = { kind: AnyColumn; statusCode: AnyColumn }
 
-/** A URL that is a page in either crawl (`pages`), or in neither (`other`). */
-export const compareViewEither = (a: AnyColumn, b: AnyColumn, view: 'pages' | 'other') =>
-  view === 'pages' ? or(eq(a, 'page'), eq(b, 'page')) : and(ne(a, 'page'), ne(b, 'page'))
+/** A page: HTML that answered 2xx (`URL_VIEWS`), as the listing counts them. */
+const isPageSql = ({ kind, statusCode }: PageColumns) =>
+  and(eq(kind, 'page'), gte(statusCode, 200), lt(statusCode, 300))
+const notPageSql = ({ kind, statusCode }: PageColumns) =>
+  or(ne(kind, 'page'), isNull(statusCode), lt(statusCode, 200), gte(statusCode, 300))
+
+/** URLs that are pages (`pages`) or are not (`other`) in the crawl they come from. */
+export const compareViewOf = (url: PageColumns, view: 'pages' | 'other') =>
+  view === 'pages' ? isPageSql(url) : notPageSql(url)
+
+/**
+ * A URL that is a page in either crawl (`pages`: a page that broke or appeared is a change of a
+ * page), or in neither (`other`).
+ */
+export const compareViewEither = (a: PageColumns, b: PageColumns, view: 'pages' | 'other') =>
+  view === 'pages' ? or(isPageSql(a), isPageSql(b)) : and(notPageSql(a), notPageSql(b))
 
 /** The URL or the title contains the text, whatever its case. */
 export const compareSearch = (url: AnyColumn, title: AnyColumn, search: string | undefined) => {
@@ -1250,7 +1504,7 @@ export function compareWhere(
     return and(
       eq(main.crawlId, plan.mainCrawlId),
       eq(main.scope, 'internal'),
-      compareViewOf(main.kind, query.view),
+      compareViewOf(main, query.view),
       isNull(other.urlHash),
       search,
     )
@@ -1262,7 +1516,7 @@ export function compareWhere(
     eq(other.scope, 'internal'),
     eq(main.state, 'done'),
     eq(other.state, 'done'),
-    compareViewEither(main.kind, other.kind, query.view),
+    compareViewEither(main, other, query.view),
     search,
     changeCondition(query.change, { target: main, base: other }, differs, findings, query.issue),
   )

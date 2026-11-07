@@ -68,6 +68,8 @@ function declared({ intent = 'indexable', noindex, robots, blockers = [] }: Decl
 
 const NOW = { config: auditSnapshotOf(1, []) }
 const OLD = { config: { ...auditSnapshotOf(1, []), semantics: 3 } }
+/** The meaning in which a destination's own declarations also excused the origin. */
+const V4 = { config: { ...auditSnapshotOf(1, []), semantics: RELATIONS_SEMANTICS } }
 
 describe('what a URL accepts of its own indexation', () => {
   it('accepts nothing by default', () => {
@@ -127,17 +129,28 @@ describe('what a pair excuses', () => {
   const excused = (origin: Declared, destination: Declared, site = NOW) =>
     [...excusedBlockers(declared(origin), declared(destination), site)].sort()
 
-  it('excuses what the destination accepts, and only that', () => {
-    expect(excused({}, { noindex: 'allowed', blockers: ['noindex'] })).toEqual(['noindex'])
-    expect(excused({}, { noindex: 'allowed', robots: 'forbidden', blockers: ['noindex'] })).toEqual(
-      ['noindex'],
-    )
-    expect(excused({}, { intent: 'not-indexable', blockers: ['canonical'] })).toEqual([
+  it('excused what the destination accepts, and only that, under semantics 4', () => {
+    expect(excused({}, { noindex: 'allowed', blockers: ['noindex'] }, V4)).toEqual(['noindex'])
+    expect(
+      excused({}, { noindex: 'allowed', robots: 'forbidden', blockers: ['noindex'] }, V4),
+    ).toEqual(['noindex'])
+    expect(excused({}, { intent: 'not-indexable', blockers: ['canonical'] }, V4)).toEqual([
       'canonical',
       'noindex',
     ])
-    expect(excused({}, { blockers: ['noindex'] })).toEqual([])
-    expect(excused({}, { noindex: 'forbidden', blockers: ['noindex'] })).toEqual([])
+    expect(excused({}, { blockers: ['noindex'] }, V4)).toEqual([])
+    expect(excused({}, { noindex: 'forbidden', blockers: ['noindex'] }, V4)).toEqual([])
+  })
+
+  it('excuses nothing for what only the destination declares, from semantics 5', () => {
+    expect(excused({}, { noindex: 'allowed', blockers: ['noindex'] })).toEqual([])
+    expect(excused({}, { intent: 'not-indexable', blockers: ['canonical'] })).toEqual([])
+    expect(
+      excused(
+        { intent: 'not-indexable', blockers: ['canonical'] },
+        { intent: 'not-indexable', blockers: ['noindex'] },
+      ),
+    ).toEqual(['canonical', 'noindex', 'robots'])
   })
 
   it('never excuses how the destination answers', () => {
@@ -178,11 +191,12 @@ describe('what a pair excuses', () => {
     expect(relationsApply({ config: EMPTY_AUDIT_SNAPSHOT })).toBe(false)
   })
 
-  it('excuses a missing return when either end is out on purpose, and only then', () => {
+  it('excuses a missing return when the origin is out on purpose (either end under 4)', () => {
     const out = { noindex: 'required', blockers: ['noindex'] } as const
     const missing = (o: Declared, d: Declared, site = NOW) =>
       excusesMissingReturn(declared(o), declared(d), site)
-    expect(missing({}, out)).toBe(true)
+    expect(missing({}, out)).toBe(false)
+    expect(missing({}, out, V4)).toBe(true)
     expect(missing(out, {})).toBe(true)
     expect(missing({}, {})).toBe(false)
     expect(missing({}, { blockers: ['noindex'] })).toBe(false)
@@ -284,8 +298,17 @@ const detailsOf = async (crawlId: string, path: string, issue: PageIssueId) =>
 const stateOf = async (crawlId: string, path: string) =>
   (await db.crawls.auditOf(crawlId, [hashOf(path)]))[0]
 
+/** Analyses a crawl again under semantics 4, when a destination's declarations also excused. */
+async function asSemantics4(crawlId: string) {
+  const config = await currentAuditConfig(db, domainId)
+  await analyseCrawl(db, crawlId, { ...config, semantics: RELATIONS_SEMANTICS })
+  return crawlId
+}
+
 /** The findings that are about a relation to another URL, which is what the matrix decides. */
 const RELATIONS = [
+  'canonical-broken',
+  'canonical-redirect',
   'canonical-not-indexable',
   'hreflang-noindex',
   'hreflang-non-canonical',
@@ -294,6 +317,8 @@ const RELATIONS = [
   'hreflang-unreachable',
   'only-noindex-inlinks',
   'only-nofollow-inlinks',
+  'sitemap-broken',
+  'sitemap-redirect',
   'sitemap-not-indexable',
 ] as const satisfies PageIssueId[]
 const relationsOf = async (crawlId: string, path: string) =>
@@ -358,9 +383,9 @@ describe('the destination of a canonical or an hreflang that is not indexed', ()
     ['allowed', [asking(exactPath('/t'), 'noindex', 'allowed')]],
     ['inherited from a broader rule', [asking(prefix('/'), 'noindex', 'allowed')]],
     ['expected not to be indexable', [expecting(exactPath('/t'), 'not-indexable')]],
-  ])('is not when its noindex is %s', async (_, rules) => {
+  ])('was not, under semantics 4, when its noindex is %s', async (_, rules) => {
     await addRules(rules)
-    const id = await crawl(world({ target: NOINDEX }))
+    const id = await asSemantics4(await crawl(world({ target: NOINDEX })))
     expect(await findings(id, '/s')).not.toContain('hreflang-noindex')
     expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
     // The facts are the same: it still cannot be indexed, and says why.
@@ -368,6 +393,18 @@ describe('the destination of a canonical or an hreflang that is not indexed', ()
       indexability: 'not-indexable',
       blockers: ['noindex'],
     })
+  })
+
+  it.each<[string, NewAuditRule[]]>([
+    ['required', [asking(exactPath('/t'), 'noindex', 'required')]],
+    ['allowed', [asking(exactPath('/t'), 'noindex', 'allowed')]],
+    ['expected not to be indexable', [expecting(exactPath('/t'), 'not-indexable')]],
+  ])('is to an origin expected to be indexable, when its noindex is %s', async (_, rules) => {
+    await addRules(rules)
+    const id = await crawl(world({ target: NOINDEX }))
+    expect(await findings(id, '/s')).toContain('hreflang-noindex')
+    expect(await findings(id, '/c')).toContain('canonical-not-indexable')
+    expect(await detailsOf(id, '/c', 'canonical-not-indexable')).toEqual(['noindex'])
   })
 
   it.each<[string, NewAuditRule[]]>([
@@ -400,19 +437,21 @@ describe('the destination of a canonical or an hreflang that is not indexed', ()
     expect(await findings(id, '/c')).toContain('canonical-not-indexable')
   })
 
-  it('is excused by a rule that an exception of its own does not undo', async () => {
+  it('was excused, under semantics 4, by a rule that an exception of its own does not undo', async () => {
     await addRules([
       asking(prefix('/'), 'noindex', 'allowed'),
       asking(exactPath('/t'), 'noindex', 'forbidden', false),
     ])
-    const id = await crawl(world({ target: NOINDEX }))
+    const id = await asSemantics4(await crawl(world({ target: NOINDEX })))
     expect(await findings(id, '/s')).not.toContain('hreflang-noindex')
     expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
   })
 
   it('does not accept a robots.txt block because a noindex was allowed', async () => {
     await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
-    const id = await crawl(world({ target: NOINDEX, robots: 'User-agent: *\nDisallow: /t' }))
+    const id = await asSemantics4(
+      await crawl(world({ target: NOINDEX, robots: 'User-agent: *\nDisallow: /t' })),
+    )
     // The hreflang finding is about the noindex, which was accepted.
     expect(await findings(id, '/s')).not.toContain('hreflang-noindex')
     // The canonical leads to a URL that is also blocked, and nobody accepted that.
@@ -431,12 +470,14 @@ describe('the destination of a canonical or an hreflang that is not indexed', ()
     expect(await detailsOf(id, '/c', 'canonical-not-indexable')).toEqual(['robots'])
   })
 
-  it('accepts both when both were allowed', async () => {
+  it('accepted both, under semantics 4, when both were allowed', async () => {
     await addRules([
       asking(exactPath('/t'), 'noindex', 'allowed'),
       asking(exactPath('/t'), 'robots', 'allowed'),
     ])
-    const id = await crawl(world({ target: NOINDEX, robots: 'User-agent: *\nDisallow: /t' }))
+    const id = await asSemantics4(
+      await crawl(world({ target: NOINDEX, robots: 'User-agent: *\nDisallow: /t' })),
+    )
     expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
     expect(await findings(id, '/t')).not.toContain('robots-blocked')
   })
@@ -457,18 +498,17 @@ describe('the destination of a canonical or an hreflang that is not indexed', ()
       }),
     )
     expect(await findings(id, '/s')).toContain('hreflang-unreachable')
-    expect(await findings(id, '/c')).toContain('canonical-not-indexable')
-    expect((await detailsOf(id, '/c', 'canonical-not-indexable'))?.sort()).toEqual([
-      'http-error',
-      'noindex',
-    ])
+    // A broken reference, not a matter of the index: nothing declared of either end changes it.
+    expect(await findings(id, '/c')).toContain('canonical-broken')
+    expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
   })
 
   it('is still reported when the URL redirects', async () => {
     await addRules([expecting(exactPath('/t'), 'not-indexable')])
     const id = await crawl(world({ target: { answer: moved('/s') } }))
     expect(await findings(id, '/s')).toContain('hreflang-redirect')
-    expect(await detailsOf(id, '/c', 'canonical-not-indexable')).toEqual(['redirect'])
+    expect(await findings(id, '/c')).toContain('canonical-redirect')
+    expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
   })
 })
 
@@ -550,10 +590,19 @@ describe('a missing return link', () => {
     ['required', [asking(exactPath('/t'), 'noindex', 'required')]],
     ['allowed', [asking(exactPath('/t'), 'noindex', 'allowed')]],
     ['expected', [expecting(exactPath('/t'), 'not-indexable')]],
-  ])('is not when the destination is out of the index on purpose (%s)', async (_, rules) => {
-    await addRules(rules)
+  ])(
+    'was not, under semantics 4, when the destination is out on purpose (%s)',
+    async (_, rules) => {
+      await addRules(rules)
+      const id = await asSemantics4(await crawl(world({ target: { ...NOINDEX, returns: false } })))
+      expect(await findings(id, '/s')).not.toContain('hreflang-no-return')
+    },
+  )
+
+  it('is, from an indexable origin, whatever the destination declares', async () => {
+    await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
     const id = await crawl(world({ target: { ...NOINDEX, returns: false } }))
-    expect(await findings(id, '/s')).not.toContain('hreflang-no-return')
+    expect(await findings(id, '/s')).toContain('hreflang-no-return')
   })
 
   it('is when the destination is out of the index by accident', async () => {
@@ -576,10 +625,16 @@ describe('a hreflang to a URL whose canonical is elsewhere', () => {
     expect(await findings(id, '/s')).toContain('hreflang-non-canonical')
   })
 
-  it('is not when the destination is expected not to be indexable', async () => {
+  it('was not, under semantics 4, when the destination is expected not to be indexable', async () => {
+    await addRules([expecting(exactPath('/t'), 'not-indexable')])
+    const id = await asSemantics4(await crawl(world({ target: elsewhere })))
+    expect(await findings(id, '/s')).not.toContain('hreflang-non-canonical')
+  })
+
+  it('is to an origin expected to be indexable, whatever the destination expects', async () => {
     await addRules([expecting(exactPath('/t'), 'not-indexable')])
     const id = await crawl(world({ target: elsewhere }))
-    expect(await findings(id, '/s')).not.toContain('hreflang-non-canonical')
+    expect(await findings(id, '/s')).toContain('hreflang-non-canonical')
   })
 
   it('is when only its noindex was accepted: a canonical elsewhere is not a noindex', async () => {
@@ -661,7 +716,7 @@ describe('a URL left out of the audit', () => {
 
   it('still follows what was declared of it, which is a different statement', async () => {
     await addRules([excluding(exactPath('/t')), asking(exactPath('/t'), 'noindex', 'allowed')])
-    const id = await crawl(world({ target: NOINDEX }))
+    const id = await asSemantics4(await crawl(world({ target: NOINDEX })))
     expect(await findings(id, '/s')).not.toContain('hreflang-noindex')
     expect(await findings(id, '/t')).toEqual([])
     expect(await stateOf(id, '/t')).toMatchObject({
@@ -704,7 +759,7 @@ describe('a finding a rule accepts', () => {
 
   it('on a canonical is on the origin, with the destination as what accepts it and as evidence', async () => {
     await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
-    const id = await crawl(world({ target: NOINDEX }))
+    const id = await asSemantics4(await crawl(world({ target: NOINDEX })))
 
     expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
     const [rule] = await ruleIds()
@@ -720,7 +775,7 @@ describe('a finding a rule accepts', () => {
 
   it('on an hreflang says what it points at, and shows on the destination as acting on others', async () => {
     await addRules([asking(exactPath('/t'), 'noindex', 'required')])
-    const id = await crawl(world({ target: NOINDEX }))
+    const id = await asSemantics4(await crawl(world({ target: NOINDEX })))
 
     expect(await findings(id, '/s')).not.toContain('hreflang-noindex')
     expect(
@@ -766,7 +821,7 @@ describe('a finding a rule accepts', () => {
     ).toBe(false)
 
     await addRules([asking(exactPath('/t'), 'robots', 'allowed')])
-    const accepted = await crawl(world({ target: {}, robots }))
+    const accepted = await asSemantics4(await crawl(world({ target: {}, robots })))
     expect(await findings(accepted, '/c')).not.toContain('canonical-not-indexable')
     expect(
       (await acceptedOf(accepted, '/c')).find(({ issue }) => issue === 'canonical-not-indexable'),
@@ -783,10 +838,10 @@ describe('a finding a rule accepts', () => {
     const id = await crawl(
       world({ target: { answer: { statusCode: 500, headers: {}, body: Buffer.from('') } } }),
     )
-    expect(await findings(id, '/c')).toContain('canonical-not-indexable')
-    expect(
-      (await acceptedOf(id, '/c')).some(({ issue }) => issue === 'canonical-not-indexable'),
-    ).toBe(false)
+    expect(await findings(id, '/c')).toContain('canonical-broken')
+    expect((await acceptedOf(id, '/c')).some(({ issue }) => issue.startsWith('canonical-'))).toBe(
+      false,
+    )
   })
 
   it('is nothing at all when nobody declared anything, or the URL is left out of the audit', async () => {
@@ -800,7 +855,7 @@ describe('a finding a rule accepts', () => {
 
   it('goes away when the rule does, and the finding is pending again', async () => {
     await addRules([asking(exactPath('/t'), 'noindex', 'allowed')])
-    const id = await crawl(world({ target: NOINDEX }))
+    const id = await asSemantics4(await crawl(world({ target: NOINDEX })))
     expect(await findings(id, '/c')).not.toContain('canonical-not-indexable')
 
     const [rule] = await ruleIds()
@@ -840,7 +895,15 @@ describe('an analysis made before the meaning that reads relations', () => {
     expect(before).toEqual({ s: ['hreflang-noindex'], c: ['canonical-not-indexable'] })
     expect((await db.crawls.get(id))?.auditSnapshot?.semantics).toBe(3)
 
-    expect(await analysedAs(id, now)).toEqual({ s: [], c: [] })
+    // Under 4 the destination's allowed noindex excused both origins.
+    expect(await analysedAs(id, { ...now, semantics: RELATIONS_SEMANTICS })).toEqual({
+      s: [],
+      c: [],
+    })
+    expect((await db.crawls.get(id))?.auditSnapshot?.semantics).toBe(RELATIONS_SEMANTICS)
+
+    // Under the current meaning only the origin's own declarations do, and both are indexable.
+    expect(await analysedAs(id, now)).toEqual(before)
     expect((await db.crawls.get(id))?.auditSnapshot?.semantics).toBe(AUDIT_SEMANTICS)
   })
 

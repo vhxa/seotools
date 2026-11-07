@@ -6,6 +6,8 @@ import {
   type CrawlPageData,
   type CrawlUrlKind,
   type CrawlUrlSource,
+  type Extractor,
+  type LinkContext,
   type Logger,
 } from '@seotools/core'
 import type { CrawlUrlResult } from '@seotools/db'
@@ -20,6 +22,7 @@ import {
   type ParsedSitemap,
 } from './extract'
 import { decodeSitemapBody, decodeText, type FetchError, type FetchedResponse } from './fetcher'
+import { extractCustom } from './custom-extraction'
 import { readTextFile } from './files'
 import { missingSecurityHeaders, withResponseFacts } from './page-facts'
 import { isRedirect } from './requests'
@@ -72,16 +75,27 @@ export function analyseResponse(input: {
   response: FetchedResponse
   /** The domain's optional crawl files: a feed or OpenSearch link in a home page is one. */
   optionalFiles: readonly string[]
+  /** The domain's custom extractors, run on every HTML page. */
+  extractors?: readonly Extractor[]
   log: Logger
-  discover: (url: string, kind: CrawlLinkKind, source?: CrawlUrlSource) => void
+  discover: (
+    url: string,
+    kind: CrawlLinkKind,
+    source?: CrawlUrlSource,
+    context?: LinkContext,
+  ) => void
 }): AnalysedResponse {
   const { item, response, log } = input
   const { statusCode, headers, body } = response
   const contentType = headers['content-type'] ?? null
-  const fromHere = (url: string, kind: CrawlLinkKind, source: CrawlUrlSource = 'link') =>
-    input.discover(url, kind, source)
+  const fromHere = (
+    url: string,
+    kind: CrawlLinkKind,
+    source: CrawlUrlSource = 'link',
+    context?: LinkContext,
+  ) => input.discover(url, kind, source, context)
   const addAll = (links: ExtractedLink[]) => {
-    for (const { url, kind } of links) fromHere(url, kind)
+    for (const { url, kind, context } of links) fromHere(url, kind, 'link', context)
   }
 
   let kind: CrawlUrlKind = 'resource'
@@ -157,7 +171,10 @@ export function analyseResponse(input: {
   } else if (contentType && HTML.test(contentType)) {
     kind = 'page'
     if (body) {
-      const page = extractHtml(decodeText(body, contentType), item.url)
+      const html = decodeText(body, contentType)
+      const page = extractHtml(html, item.url)
+      const extracted = extractCustom(html, input.extractors ?? [])
+      if (Object.keys(extracted).length > 0) data.extracted = extracted
       // Before the links, which include them: the first source a URL is found under is the one.
       if (item.source === 'seed' || item.source === 'redirect') {
         const wanted = input.optionalFiles

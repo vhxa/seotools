@@ -1,4 +1,6 @@
 import {
+  isUnavailableMailer,
+  MailUnavailableError,
   safeMailError,
   type Logger,
   type Mailer,
@@ -51,11 +53,19 @@ export async function deliver(input: {
     throw new Error(NOT_CONFIGURED)
   }
   try {
+    // Before making the content: nothing (a password link) is made for a message that cannot go.
+    if (isUnavailableMailer(mailer)) throw mailer.unavailable
     const content = typeof input.content === 'function' ? await input.content() : input.content
     const sent = await mailer.send({ to: input.to, ...content })
     await record('sent')
     return sent
   } catch (error) {
+    if (error instanceof MailUnavailableError) {
+      // Nothing was handed to a provider: not sent, which is not a provider failure.
+      await record('unconfigured', safeMailError(error))
+      if (!error.retry) return {}
+      throw error
+    }
     await record('failed', safeMailError(error))
     throw error
   }

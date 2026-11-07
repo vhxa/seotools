@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 
 // pnpm forwards a literal `--` when invoked as `pnpm db:generate -- --name x`.
 const extra = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === '--'))
-for (const dialect of ['sqlite', 'pg', 'mysql']) {
+for (const dialect of ['sqlite', 'pg']) {
   const result = spawnSync(
     'drizzle-kit',
     ['generate', '--config', `drizzle.${dialect}.config.ts`, ...extra],

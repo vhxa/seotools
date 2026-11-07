@@ -1,13 +1,16 @@
 import { auditResultsState } from '@seotools/core/crawl/audit'
+import { TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
+import { InfoHelp } from '@/components/help'
 import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
-import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { TrendChart } from '@/components/pages/trend-chart'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { trendFigures, trendPoints } from '@/lib/dashboard'
 import { getDb } from '@/lib/db'
 import { homePriorities } from '@/lib/domain-home'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
@@ -15,95 +18,71 @@ import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
 
+/** Full crawls the history goes back to. */
+const HISTORY_CRAWLS = 100
+
 export async function generateMetadata({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
-  const t = await getTranslations('DomainHome')
+  const t = await getTranslations('Dashboard')
   return { title: t('metaTitle', { host }) }
 }
 
-export default async function DomainPage({ params }: { params: Promise<{ host: string }> }) {
+/** The one dashboard of a domain: its last crawl, the figures, how they moved and what to fix. */
+export default async function DomainDashboardPage({
+  params,
+}: {
+  params: Promise<{ host: string }>
+}) {
   const { host } = await params
-  const { domain, company } = await requireDomain(host)
-  const [t, format] = await Promise.all([getTranslations('DomainHome'), getFormatter()])
+  const { domain } = await requireDomain(host)
+  const [t, format] = await Promise.all([getTranslations('Dashboard'), getFormatter()])
   const db = await getDb()
-  const [active, latest, attempts, config] = await Promise.all([
+  const [active, latest, crawls, config] = await Promise.all([
     db.crawls.active(domain.id),
     db.crawls.latestWithResults(domain.id, 'full'),
-    db.crawls.list(domain.id, { type: 'full', limit: 1 }),
+    db.crawls.list(domain.id, { type: 'full', limit: HISTORY_CRAWLS }),
     db.audit.config(domain.id),
   ])
   const state = auditResultsState(latest, config)
-  const counts =
-    latest?.pagesWithType && state.kind === 'current' ? await db.crawls.issueCounts(latest.id) : []
-  const priorities = homePriorities(latest, state, counts)
-  const lastAttempt = attempts[0]
+  const lastAttempt = crawls[0]
   const unsuccessful =
     lastAttempt && (lastAttempt.status === 'failed' || lastAttempt.status === 'cancelled')
+  const figures = latest ? trendFigures(latest) : null
+  const points = trendPoints(crawls)
+  const counts =
+    latest && figures && state.kind === 'current' ? await db.crawls.issueCounts(latest.id) : []
+  const priorities = homePriorities(latest, state, counts)
+  const query = parseDetailQuery({})
   const base = `/domains/${domain.host}`
+  const number = (value: number | null | undefined) =>
+    value === null || value === undefined ? '—' : format.number(value)
+  const audited = latest?.pagesAudit?.audited ?? null
+
+  const tiles = [
+    { key: 'crawled', value: latest ? latest.pagesCount : null, base: null },
+    { key: 'indexable', value: figures?.indexable ?? null, base: latest?.pagesCount ?? null },
+    { key: 'issues', value: figures?.issues ?? null, base: audited },
+    { key: 'warnings', value: figures?.warnings ?? null, base: audited },
+    { key: 'opportunities', value: figures?.opportunities ?? null, base: audited },
+  ] as const
 
   return (
-    <main className="grid gap-6">
+    <main className="grid gap-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="grid gap-1">
-          <h1 className="text-2xl font-semibold">{domain.host}</h1>
-          <p className="text-sm text-muted-foreground">{t('company', { company: company.name })}</p>
-        </div>
-        <StartCrawlButton
-          host={domain.host}
-          type="full"
-          disabled={active !== null || domain.archivedAt !== null}
-        />
-      </div>
-
-      {active && <ActiveCrawl host={domain.host} crawl={active} />}
-      <AuditResultsNotice host={domain.host} state={state} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('crawlTitle')}</CardTitle>
-          <CardDescription>
-            {latest
-              ? t('lastCrawl', {
-                  when: format.dateTime(latest.finishedAt ?? latest.createdAt, {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  }),
-                })
-              : t('noCrawl')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          {latest && (
-            <>
-              <div className="flex flex-wrap items-center gap-3">
+        <div className="grid min-w-0 gap-1">
+          <h1 className="text-2xl font-semibold break-words">{domain.host}</h1>
+          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            {latest ? (
+              <>
                 <CrawlStatusBadge status={latest.status} />
-                <p className="text-sm">
-                  {t('coverage', {
-                    done: latest.urlsDoneCount,
-                    total: latest.urlsCount,
-                    pages: latest.pagesCount,
-                  })}
-                </p>
-              </div>
-              {latest.pagesAudit && (
-                <p className="text-sm text-muted-foreground">
-                  {t('auditCoverage', {
-                    audited: latest.pagesAudit.audited,
-                    excluded: latest.pagesAudit.excluded,
-                    unknown: latest.pagesAudit.unknownIndexability,
-                  })}
-                </p>
-              )}
-              {latest.status === 'incomplete' && (
-                <p className="text-sm text-muted-foreground">
-                  {t('incomplete')}{' '}
-                  <Link href={`${base}/settings/crawl`} className="underline">
-                    {t('crawlSettings')}
-                  </Link>
-                </p>
-              )}
-            </>
-          )}
+                {t('lastCrawl', {
+                  when: format.relativeTime(latest.finishedAt ?? latest.createdAt),
+                })}
+              </>
+            ) : (
+              t('neverCrawled')
+            )}
+          </p>
           {unsuccessful && (
             <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               {t('lastAttempt')}
@@ -113,60 +92,128 @@ export default async function DomainPage({ params }: { params: Promise<{ host: s
               </Link>
             </p>
           )}
-          <nav aria-label={t('linksLabel')} className="flex flex-wrap gap-2">
-            <Link href={`${base}/pages`} className={buttonVariants({ variant: 'outline' })}>
-              {t('overview')}
-            </Link>
-            <Link href={`${base}/pages/history`} className={buttonVariants({ variant: 'ghost' })}>
-              {t('history')}
-            </Link>
-          </nav>
-        </CardContent>
-      </Card>
+        </div>
+        <StartCrawlButton
+          host={domain.host}
+          type="full"
+          disabled={active !== null || domain.archivedAt !== null}
+        />
+      </div>
 
-      {latest && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('prioritiesTitle')}</CardTitle>
-            <CardDescription>{t('prioritiesDescription')}</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {priorities === null ? (
-              <p className="text-sm text-muted-foreground">
-                {t(
-                  latest.pruned
-                    ? 'pruned'
-                    : state.kind === 'pending' || state.kind === 'failed'
-                      ? 'stale'
-                      : 'notChecked',
-                )}
-              </p>
-            ) : priorities.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('noPriorities')}</p>
-            ) : (
-              <ul className="divide-y">
-                {priorities.map(({ issue, pages }) => (
-                  <li key={issue}>
-                    <Link
-                      href={detailHref(domain.host, parseDetailQuery({}), { issue })}
-                      className="flex flex-wrap items-center gap-2 rounded-md py-3 text-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <IssueLabel issue={issue} />
-                      <IssueMark issue={issue} />
-                      <span className="ml-auto text-muted-foreground">
-                        {t('affectedUrls', { count: pages })}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Link href={`${base}/pages`} className="text-sm underline">
-              {t('allFindings')}
-            </Link>
-          </CardContent>
-        </Card>
+      {active && <ActiveCrawl host={domain.host} crawl={active} />}
+
+      {latest?.status === 'incomplete' && (
+        <Alert>
+          <TriangleAlertIcon />
+          <AlertTitle>{t('incomplete.title')}</AlertTitle>
+          <AlertDescription>
+            <p>
+              {t('incomplete.description', { urls: latest.urlsCount })}{' '}
+              <Link href={`${base}/settings/crawl`} className="underline">
+                {t('incomplete.settings')}
+              </Link>
+            </p>
+          </AlertDescription>
+        </Alert>
       )}
+
+      <AuditResultsNotice host={domain.host} state={state} />
+
+      <section aria-labelledby="figures" className="grid gap-3">
+        <h2 id="figures" className="flex items-center text-lg font-medium">
+          {t('figures')}
+          <InfoHelp label={t('figures')}>{t('figuresHelp')}</InfoHelp>
+        </h2>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
+          {tiles.map(({ key, value, base: of }) => (
+            <div key={key} className="grid min-w-0 content-start gap-0.5">
+              <dt className="text-sm text-muted-foreground">{t(`tiles.${key}`)}</dt>
+              <dd className="text-3xl font-semibold tabular-nums">{number(value)}</dd>
+              <dd className="text-xs text-muted-foreground">
+                {latest && !figures && key !== 'crawled'
+                  ? t('notChecked')
+                  : value === null && key !== 'crawled'
+                    ? t('notAvailable')
+                    : of === null
+                      ? null
+                      : t(key === 'indexable' ? 'ofCrawled' : 'ofAudited', { count: of })}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {latest?.pagesAudit && latest.pagesAudit.unknownIndexability > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {t('unknownIndexability', { count: latest.pagesAudit.unknownIndexability })}
+          </p>
+        )}
+      </section>
+
+      {latest && figures && (
+        <section aria-labelledby="trend" className="grid gap-4">
+          <h2 id="trend" className="text-lg font-medium">
+            {t('trend')}
+          </h2>
+          <div className="grid gap-2">
+            <h3 className="flex items-center text-sm font-medium">
+              {t('trendFindings')}
+              <InfoHelp label={t('trendFindings')}>{t('trendFindingsHelp')}</InfoHelp>
+            </h3>
+            <TrendChart series={['issues', 'warnings', 'opportunities']} points={points} />
+          </div>
+          {points.some((point) => point.indexable !== null) && (
+            <div className="grid gap-2">
+              <h3 className="flex items-center text-sm font-medium">
+                {t('trendIndexable')}
+                <InfoHelp label={t('trendIndexable')}>{t('trendIndexableHelp')}</InfoHelp>
+              </h3>
+              <TrendChart series={['indexable']} points={points} compact />
+            </div>
+          )}
+        </section>
+      )}
+
+      <section aria-labelledby="priorities" className="grid gap-2">
+        <h2 id="priorities" className="text-lg font-medium">
+          {t('prioritiesTitle')}
+        </h2>
+        {!latest ? (
+          <p className="text-sm text-muted-foreground">{t('noCrawl')}</p>
+        ) : priorities === null ? (
+          <p className="text-sm text-muted-foreground">
+            {t(
+              latest.pruned
+                ? 'pruned'
+                : state.kind === 'pending' || state.kind === 'failed'
+                  ? 'stale'
+                  : 'notCheckedFindings',
+            )}
+          </p>
+        ) : priorities.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('noPriorities')}</p>
+        ) : (
+          <ul className="grid divide-y">
+            {priorities.map(({ issue, pages }) => (
+              <li key={issue}>
+                <Link
+                  href={detailHref(domain.host, query, { issue })}
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-3 text-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <IssueMark issue={issue} />
+                  <IssueLabel issue={issue} />
+                  <span className="ml-auto text-muted-foreground">
+                    {t('affectedUrls', { count: pages })}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        {latest && (
+          <Link href={`${base}/issues`} className="text-sm underline underline-offset-4">
+            {t('allIssues')}
+          </Link>
+        )}
+      </section>
     </main>
   )
 }

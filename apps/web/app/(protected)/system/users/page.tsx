@@ -16,7 +16,7 @@ import { grantTarget } from '@/lib/user-forms'
 export const dynamic = 'force-dynamic'
 
 export async function generateMetadata() {
-  return { title: (await getTranslations('Users'))('title') }
+  return { title: (await getTranslations('Users'))('metaTitle') }
 }
 
 /** Who can use this instance and what each can reach. Only administrators see it. */

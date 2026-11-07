@@ -3,6 +3,8 @@ import type { CrawlSchedule } from '@seotools/db'
 import Link from 'next/link'
 import { getFormatter, getLocale, getTranslations } from 'next-intl/server'
 import { cancelCrawlAction } from '@/app/(protected)/domains/[host]/actions'
+import { ListCrawlForm } from '@/components/crawl/list-crawl-form'
+import { CrawlsContext } from '@/components/crawl/crawls-context'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { ScheduleForm, type ScheduleFormValues } from '@/components/crawl/schedule-form'
@@ -87,11 +89,14 @@ export default async function JobsPage({ params }: { params: Promise<{ host: str
   return (
     <main className="grid gap-6">
       <div className="grid gap-1">
+        <CrawlsContext />
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
       </div>
 
       {active && <ActiveCrawl host={domain.host} crawl={active} />}
       <RecheckBanner host={domain.host} domainId={domain.id} />
+
+      <ListCrawlForm host={domain.host} />
 
       {CRAWL_TYPES.map((type) => {
         const schedule = schedules.find((s) => s.type === type)

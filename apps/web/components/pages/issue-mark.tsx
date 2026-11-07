@@ -22,8 +22,8 @@ export const ISSUE_TYPE_STYLES: Record<
   },
   warning: {
     icon: TriangleAlertIcon,
-    text: 'text-amber-600 dark:text-amber-400',
-    badge: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+    text: 'text-amber-800 dark:text-amber-300',
+    badge: 'bg-amber-500/15 text-amber-800 dark:text-amber-300',
   },
   opportunity: {
     icon: LightbulbIcon,

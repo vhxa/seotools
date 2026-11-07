@@ -37,9 +37,18 @@ const config: NextConfig = {
   // Workspace packages ship TypeScript sources.
   transpilePackages: ['@seotools/core', '@seotools/db'],
   // Native / driver packages must be required at runtime, not bundled.
-  serverExternalPackages: ['better-sqlite3', 'postgres', 'mysql2', 'pino', 'nodemailer', 'resend'],
+  serverExternalPackages: ['better-sqlite3', 'postgres', 'pino', 'nodemailer', 'resend'],
   env: { APP_VERSION: pkg.version },
   poweredByHeader: false,
+  // Old addresses keep working: companies moved under Administration and the pages overview became
+  // the dashboard of the domain.
+  async redirects() {
+    return [
+      { source: '/companies', destination: '/system/companies', permanent: false },
+      { source: '/companies/new', destination: '/system/companies/new', permanent: false },
+      { source: '/domains/:host/pages', destination: '/domains/:host', permanent: false },
+    ]
+  },
 }
 
 // Reads ./i18n/request.ts, where the locale and its messages are resolved per request.

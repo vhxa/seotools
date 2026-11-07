@@ -5,6 +5,7 @@ import {
   ISSUE_TYPES,
   PAGE_ISSUE_IDS,
 } from '@seotools/core/crawl/issues'
+import { IntlErrorCode, createTranslator } from 'next-intl'
 import { describe, expect, it } from 'vitest'
 import en from '../messages/en.json'
 import es from '../messages/es.json'
@@ -81,5 +82,25 @@ describe('messages of the registries in @seotools/core', () => {
     const kinds = catalog.LinkKinds as Record<string, string>
     for (const kind of CRAWL_LINK_KINDS)
       expect({ kind, name: kinds[kind] }).not.toEqual({ kind, name: undefined })
+  })
+})
+
+describe('message syntax', () => {
+  it.each(Object.entries(catalogs))('%s has only messages that parse as ICU', (locale, catalog) => {
+    const invalid: string[] = []
+    const t = createTranslator({
+      locale: locale as keyof typeof catalogs,
+      messages: catalog,
+      onError: (error) => {
+        if (error.code === IntlErrorCode.INVALID_MESSAGE) invalid.push(error.message)
+      },
+      getMessageFallback: ({ key }) => key,
+    })
+    const translate = t as unknown as (key: string, values?: Record<string, unknown>) => string
+    for (const key of Object.keys(flatten(catalog))) {
+      // Rich text tags are rendered with a function that returns their text.
+      translate(key, new Proxy({}, { get: () => (chunks: unknown) => String(chunks) }))
+    }
+    expect(invalid).toEqual([])
   })
 })

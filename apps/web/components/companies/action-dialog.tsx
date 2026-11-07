@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 import { useEffect, useState, type ReactNode } from 'react'
-import type { ManageState } from '@/app/(protected)/companies/actions'
+import type { ManageState } from '@/app/(protected)/system/companies/actions'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

@@ -13,6 +13,7 @@ import { describeAcceptance } from '@/lib/acceptance-reason'
 import { groupDetailFindings } from '@/lib/url-detail-findings'
 import { useTranslations } from 'next-intl'
 import type { UrlDetailData } from '@/lib/url-detail'
+import { dynamicTranslator } from '@/lib/dynamic-translator'
 
 function IssueRow({
   issue,
@@ -54,10 +55,7 @@ export async function UrlRecheck({ data }: { data: UrlDetailData }) {
     getFormatter(),
     getTranslations(),
   ])
-  const translate = tAll as unknown as (
-    key: string,
-    values?: Record<string, string | number>,
-  ) => string
+  const translate = dynamicTranslator(tAll)
   const { view } = recheck
   const crawledAt = crawl.finishedAt ?? crawl.createdAt
   const when = (date: Date) => format.dateTime(date, { dateStyle: 'medium', timeStyle: 'short' })

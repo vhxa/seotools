@@ -12,6 +12,7 @@ import {
   type FindingChange,
   type PageIssueId,
   type PairNoteName,
+  keepsUrlHistory,
 } from '@seotools/core'
 import type { Crawl, Database } from '@seotools/db'
 
@@ -132,7 +133,7 @@ export async function compareWithPrevious(input: {
     audited: 0,
   }
   const important = new Map<PageIssueId, FindingTally>()
-  const crawlIds = history.filter((crawl) => !crawl.pruned).map((crawl) => crawl.id)
+  const crawlIds = history.filter(keepsUrlHistory).map((crawl) => crawl.id)
 
   for (const view of VIEWS) {
     for (const change of ['gained', 'lost'] as const) {

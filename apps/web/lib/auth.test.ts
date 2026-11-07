@@ -10,6 +10,7 @@ const env = {
   BETTER_AUTH_SECRET: 'x'.repeat(40),
   BETTER_AUTH_URL: 'http://localhost:3000',
   TRUSTED_ORIGINS: [],
+  SEOTOOLS_PAUSE_AUTOMATION: false,
 }
 const admin = { name: 'Admin', email: 'admin@example.com', password: 'a-long-admin-password' }
 

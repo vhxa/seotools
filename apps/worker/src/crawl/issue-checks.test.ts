@@ -3,13 +3,14 @@ import {
   PAGE_ISSUE_IDS,
   crawlUrlHash,
   createLogger,
+  type CrawlPageFacts,
   type NewAuditRule,
   type PageIssueId,
 } from '@seotools/core'
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { analyseCrawl } from './analysis'
+import { analyseCrawl, currentAuditConfig } from './analysis'
 import { runCrawl } from './engine'
 import { fakeSite, moved, type Answer } from './fake-site'
 import { FetchError } from './fetcher'
@@ -185,6 +186,12 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
       }),
     },
   },
+  'directives-unreadable': {
+    at: '/x',
+    pages: { '/x': page('/x', { head: '<meta name="robots" content="noindex">' }) },
+    robots: 'User-agent: *\nDisallow: /x\n',
+    details: ['noindex'],
+  },
   noindex: {
     at: '/x',
     pages: { '/x': page('/x', { head: '<meta name="robots" content="noindex">' }) },
@@ -227,6 +234,17 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     at: '/x',
     pages: { '/x': page('/x', { head: '<link rel="canonical" href="/about">' }) },
   },
+  'canonical-broken': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', { canonical: `${SITE}/y` }),
+      '/y': { statusCode: 404, headers: {} },
+    },
+  },
+  'canonical-redirect': {
+    at: '/x',
+    pages: { '/x': page('/x', { canonical: `${SITE}/y` }), '/y': moved('/about') },
+  },
   'canonical-not-indexable': {
     at: '/x',
     pages: {
@@ -236,7 +254,6 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   },
   'canonical-fragment': { at: '/x', pages: { '/x': page('/x', { canonical: `${SITE}/x#top` }) } },
   'canonical-missing': { at: '/x', pages: { '/x': page('/x', { canonical: null }) } },
-  canonicalised: { at: '/x', pages: { '/x': page('/x', { canonical: `${SITE}/about` }) } },
   'canonical-relative': { at: '/x', pages: { '/x': page('/x', { canonical: '/x' }) } },
   'canonical-repeated': {
     at: '/x',
@@ -246,6 +263,8 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   // --- sitemaps ------------------------------------------------------------
   // Fifty thousand URLs would take a while to crawl. See the test of its own below.
   'sitemap-too-big': { at: '/sitemap.xml' },
+  'sitemap-broken': { at: '/x', pages: { '/x': { statusCode: 410, headers: {} } } },
+  'sitemap-redirect': { at: '/x', pages: { '/x': moved('/about') } },
   'sitemap-not-indexable': {
     at: '/x',
     pages: { '/x': page('/x', { head: '<meta name="robots" content="noindex">' }) },
@@ -448,6 +467,24 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   },
 
   // --- structured data -----------------------------------------------------
+  'structured-data-required-missing': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', {
+        head: '<script type="application/ld+json">{"@type":"Product","name":"Robe"}</script>',
+      }),
+    },
+    details: ['Product: offers | review | aggregateRating'],
+  },
+  'structured-data-recommended-missing': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', {
+        head: '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Aire","url":"https://example.com"}]}</script>',
+      }),
+    },
+    details: ['Organization: logo'],
+  },
   'json-ld-invalid': {
     at: '/x',
     pages: { '/x': page('/x', { head: '<script type="application/ld+json">{not json</script>' }) },
@@ -517,6 +554,16 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   // --- URLs ----------------------------------------------------------------
   'url-multiple-slashes': { at: '/a//b', pages: { '/a//b': page('/a//b') } },
   'url-spaces': { at: '/a%20b', pages: { '/a%20b': page('/a%20b') } },
+  'links-to-broken': { at: '/', pages: { '/x': { statusCode: 404, headers: {} } } },
+  'links-to-redirect': { at: '/', pages: { '/x': moved('/about') } },
+  'links-to-canonicalised': {
+    at: '/',
+    pages: { '/x': page('/x', { canonical: `${SITE}/about` }) },
+  },
+  'links-tracking-parameters': {
+    at: '/',
+    pages: { '/a?utm_source=x': page('/a?utm_source=x') },
+  },
   'url-tracking': { at: '/a?utm_source=x', pages: { '/a?utm_source=x': page('/a?utm_source=x') } },
   'url-uppercase': { at: '/Abc', pages: { '/Abc': page('/Abc') } },
   'url-repetitive-path': { at: '/a/b/a/b', pages: { '/a/b/a/b': page('/a/b/a/b') } },
@@ -666,6 +713,24 @@ describe('each issue', () => {
     expect((await issuesAt(crawlId, '/sitemap.xml')).map((row) => row.issue)).toContain(
       'sitemap-too-big',
     )
+  })
+})
+
+describe('facts stored by an older crawl', () => {
+  it('lack fields added since, which read as not seen instead of failing the analysis', async () => {
+    const crawlId = await crawl(websiteOf({ at: '/' }))
+    const hash = crawlUrlHash(`${SITE}/`)
+    const stored = await db.crawls.getUrl(crawlId, hash)
+    const { notFoundHeadline: _headline, notFoundText: _text, ...older } = stored!.data!.facts!
+    await db.crawls.recordResult({
+      crawlId,
+      urlHash: hash,
+      result: { ...stored!, data: { ...stored!.data, facts: older as CrawlPageFacts } },
+    })
+    await expect(analyseCrawl(db, crawlId, EMPTY_AUDIT_SNAPSHOT)).resolves.toBeDefined()
+    const issues = (await issuesAt(crawlId, '/')).map((row) => row.issue)
+    expect(issues).not.toContain('soft-404-confirmed')
+    expect(issues).not.toContain('soft-404-possible')
   })
 })
 
@@ -1125,5 +1190,27 @@ describe('parseRobotsDirectives', () => {
 
   it('ignores what it does not know', () => {
     expect(parse('whatever, noindex')).toEqual(['noindex'])
+  })
+})
+
+describe('figures a domain sets for its checks', () => {
+  it('replace the recommended ones, and moving them analyses the latest crawl again', async () => {
+    const site = websiteOf({ at: '/x', pages: { '/x': page('/x', { text: words('/x', 150) }) } })
+    const id = await crawl(site)
+    expect((await issuesAt(id, '/x')).map((row) => row.issue)).toContain('content-thin')
+
+    const saved = await db.audit.setThresholds({ domainId, thresholds: { thinWords: 100 } })
+    expect(saved).toMatchObject({ ok: true, changed: true })
+    expect((await db.audit.config(domainId)).thresholds).toEqual({ thinWords: 100 })
+    await analyseCrawl(db, id, await currentAuditConfig(db, domainId))
+    expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('content-thin')
+    expect((await db.crawls.get(id))?.auditSnapshot?.thresholds).toEqual({ thinWords: 100 })
+
+    // Setting the same figures again changes nothing.
+    expect(
+      await db.audit.setThresholds({ domainId, thresholds: { thinWords: 100 } }),
+    ).toMatchObject({
+      changed: false,
+    })
   })
 })

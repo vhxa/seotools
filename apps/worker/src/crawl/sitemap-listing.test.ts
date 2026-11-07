@@ -162,10 +162,12 @@ describe('a crawl that records what a sitemap did with each URL', () => {
       }),
     )
     const rows = await db.crawls.issuesOf(id, [hashOf('/a'), hashOf('/b')])
-    const of = (path: string) =>
-      rows.find((row) => row.urlHash === hashOf(path) && row.issue === 'sitemap-not-indexable')
+    const of = (path: string, issue = 'sitemap-not-indexable') =>
+      rows.find((row) => row.urlHash === hashOf(path) && row.issue === issue)
     expect(of('/a')?.details?.sort()).toEqual(['canonical', 'noindex'])
-    expect(of('/b')?.details).toEqual(['redirect'])
+    // A listed URL that redirects is a broken reference of the sitemap, apart.
+    expect(of('/b')).toBeUndefined()
+    expect(of('/b', 'sitemap-redirect')).toBeDefined()
   })
 
   it('does not take an alternate for being listed when a rule requires or forbids the listing', async () => {

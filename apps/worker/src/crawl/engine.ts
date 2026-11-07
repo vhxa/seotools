@@ -1,12 +1,16 @@
+import { siteHeaders } from './credentials'
 import {
+  DEFAULT_CRAWL_SETTINGS,
   crawlFileKindOf,
   crawlFileRequests,
   crawlFileSource,
   crawlUrlHash,
+  crawlSkipReason,
   defaultCrawlerUserAgent,
   isInternalUrl,
   normalizeCrawlUrl,
   type CrawlLinkKind,
+  type LinkContext,
   type CrawlRobotsFiles,
   type CrawlSettings,
   type CrawlUrlSource,
@@ -37,6 +41,7 @@ const PROGRESS_INTERVAL_MS = 2000
 const EXTERNAL_BODY_BYTES = 1
 
 export interface CrawlEngineOptions {
+  settingsSecret?: string
   db: Database
   log: Logger
   createFetcher: (config: Omit<FetcherConfig, 'allowPrivateNetworks'>) => Fetcher
@@ -60,6 +65,12 @@ interface Discovered {
   links: CrawlLink[]
 }
 
+/** How a URL can be asked for that makes it a resource, whatever its server answers. */
+const RESOURCE_REFERENCES: ReadonlySet<CrawlLinkKind> = new Set(['script', 'style', 'image'])
+
+/** Days of compact history when the default setting keeps it always (it does not today). */
+const HISTORY_DAYS_FALLBACK = 30
+
 /** Runs a crawl to its end, resuming from its stored queue if an earlier attempt was cut short. */
 export async function runCrawl(
   crawlId: string,
@@ -79,6 +90,7 @@ export async function runCrawl(
   const followLinks = crawl.type === 'full'
   const log = parentLog.child({ crawlId, host, crawlType: crawl.type })
   const fetcher = options.createFetcher({
+    siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
     userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
     timeoutMs: settings.timeoutMs,
     concurrency: settings.concurrency,
@@ -88,11 +100,14 @@ export async function runCrawl(
   const stop = new AbortController()
   const stopSignal = AbortSignal.any([signal, stop.signal])
 
-  const seen = new Set<string>()
+  /** Every URL of the crawl by hash, with its number (`seq`). */
+  const seen = new Map<string, number>()
+  let lastSeq = 0
   let internalCount = 0
   let externalCount = 0
   for (const known of await db.crawls.knownUrls(crawlId)) {
-    seen.add(known.urlHash)
+    seen.set(known.urlHash, known.seq ?? 0)
+    lastSeq = Math.max(lastSeq, known.seq ?? 0)
     if (known.scope === 'internal') internalCount++
     else externalCount++
   }
@@ -101,36 +116,65 @@ export async function runCrawl(
   let doneCount = counts.urlsDoneCount
   const robots: CrawlRobotsFiles = { ...(crawl.robots ?? {}) }
   // A resumed crawl that was already at the limit has lost track of what it left out.
-  let truncated = settings.maxUrls !== null && internalCount >= settings.maxUrls
+  let truncated = !crawl.seedUrls && settings.maxUrls !== null && internalCount >= settings.maxUrls
 
   /** Adds a URL to the crawl unless it is known, or the limit says otherwise. `false` if dropped. */
-  function admit(url: string, source: CrawlUrlSource, depth: number, out: NewCrawlUrl[]): boolean {
+  function admit(
+    url: string,
+    source: CrawlUrlSource,
+    depth: number,
+    out: NewCrawlUrl[],
+    from?: { seq: number; kind: CrawlLinkKind },
+  ): boolean {
     const urlHash = crawlUrlHash(url)
     if (seen.has(urlHash)) return true
     const scope = isInternalUrl(url, host) ? 'internal' : 'external'
     const current = scope === 'internal' ? internalCount : externalCount
-    if (settings.maxUrls !== null && current >= settings.maxUrls) {
+    if (!crawl!.seedUrls && settings.maxUrls !== null && current >= settings.maxUrls) {
       truncated = true
       return false
     }
-    seen.add(urlHash)
+    const seq = ++lastSeq
+    seen.set(urlHash, seq)
     if (scope === 'internal') internalCount++
     else externalCount++
-    out.push({ url, urlHash, scope, source, depth })
+    out.push({
+      url,
+      urlHash,
+      scope,
+      source,
+      depth,
+      ...(scope === 'internal' && depth > 0
+        ? { notRequested: crawlSkipReason(url, depth, settings) }
+        : {}),
+      seq,
+      ...(from ? { foundFrom: from.seq, foundKind: from.kind } : {}),
+    })
     return true
   }
 
   function discover(
     into: Discovered,
-    sourceHash: string,
+    from: NewCrawlUrl,
     url: string,
     kind: CrawlLinkKind,
     source: CrawlUrlSource,
     depth: number,
+    context?: LinkContext,
   ) {
     if (!followLinks) return
-    if (admit(url, source, depth, into.urls)) {
-      into.links.push({ sourceHash, targetHash: crawlUrlHash(url), kind })
+    if (admit(url, source, depth, into.urls, { seq: from.seq, kind })) {
+      const targetHash = crawlUrlHash(url)
+      const targetSeq = seen.get(targetHash)
+      into.links.push({
+        sourceHash: from.urlHash,
+        targetHash,
+        kind,
+        // Unnumbered (queued before 0019): the database looks the ends up instead.
+        ...(from.seq ? { sourceSeq: from.seq } : {}),
+        ...(targetSeq ? { targetSeq } : {}),
+        ...(context ? { context } : {}),
+      })
     }
   }
 
@@ -145,7 +189,8 @@ export async function runCrawl(
         admit(url, crawlFileSource(kind), 0, urls)
       }
     }
-    for (const { url } of await db.priorityUrls.list(crawl!.domainId)) {
+    for (const { url } of crawl!.seedUrls?.map((url) => ({ url })) ??
+      (await db.priorityUrls.list(crawl!.domainId))) {
       admit(url, 'priority', 0, urls)
     }
     await db.crawls.addUrls(crawlId, urls)
@@ -174,9 +219,10 @@ export async function runCrawl(
       item,
       response,
       optionalFiles: settings.optionalFiles,
+      extractors: settings.extractors,
       log,
-      discover: (url, kind, source = 'link') =>
-        discover(found, item.urlHash, url, kind, source, depth),
+      discover: (url, kind, source = 'link', context) =>
+        discover(found, item, url, kind, source, depth, context),
     })
     return { result, found, sitemap }
   }
@@ -190,6 +236,11 @@ export async function runCrawl(
       result = failureResult(outcome)
     } else {
       ;({ result, found, sitemap } = analyse(item, outcome))
+      // Asked for as a script, stylesheet, image or media file, it is one, whatever it answered:
+      // a missing `.js` that answers with an HTML error page is a broken resource, not a page.
+      if (result.kind === 'page' && item.foundKind && RESOURCE_REFERENCES.has(item.foundKind)) {
+        result = { ...result, kind: 'resource' }
+      }
     }
     const fileKind = crawlFileKindOf(item.source)
     if (fileKind) {
@@ -232,7 +283,9 @@ export async function runCrawl(
     }
     await db.crawls.recordResult({ crawlId, urlHash: item.urlHash, result, ...found })
     doneCount++
-    if (result.kind === 'page') pagesCount++
+    // What counts as a page: HTML that answered 2xx (a page that fails is an error).
+    const ok = result.statusCode !== null && result.statusCode >= 200 && result.statusCode < 300
+    if (result.kind === 'page' && ok) pagesCount++
   }
 
   /**
@@ -285,8 +338,10 @@ export async function runCrawl(
   }
 
   const inFlight = new Map<string, Promise<void>>()
+  const inFlightDepth = new Map<string, number>()
   let fatal: unknown
   const start = (item: NewCrawlUrl, handle: (item: NewCrawlUrl) => Promise<void>) => {
+    inFlightDepth.set(item.urlHash, item.depth)
     const task: Promise<void> = handle(item)
       .catch((error) => {
         // Being stopped leaves the URL queued, for whoever resumes the crawl.
@@ -294,7 +349,10 @@ export async function runCrawl(
         fatal ??= error
         stop.abort()
       })
-      .finally(() => inFlight.delete(item.urlHash))
+      .finally(() => {
+        inFlight.delete(item.urlHash)
+        inFlightDepth.delete(item.urlHash)
+      })
     inFlight.set(item.urlHash, task)
   }
 
@@ -333,7 +391,12 @@ export async function runCrawl(
         await waitForProgress()
         continue
       }
-      if (inFlight.size >= settings.concurrency) {
+      // Finish a breadth level before starting the next: depth is the shortest discovered path,
+      // even when a slow sibling links directly to something a fast branch also reaches.
+      if (
+        inFlight.size >= settings.concurrency ||
+        (settings.maxDepth !== null && item.depth > Math.min(...inFlightDepth.values()))
+      ) {
         await waitForProgress()
         continue
       }
@@ -401,6 +464,11 @@ export async function runCrawl(
       domainId: crawl.domainId,
       type: crawl.type,
       keep: settings.retainCrawls,
+    })
+    // History past the domain's days goes too, whether or not anything was pruned now.
+    await db.crawls.expireHistory({
+      now: new Date(),
+      defaultDays: DEFAULT_CRAWL_SETTINGS.historyDays ?? HISTORY_DAYS_FALLBACK,
     })
   } catch (error) {
     log.warn({ err: error }, 'could not prune old crawl results')

@@ -1,3 +1,5 @@
+import type { Extracted } from './extraction'
+import type { StructuredDataProblem } from './structured-data'
 export const CRAWL_TYPES = ['full', 'priority'] as const
 export type CrawlType = (typeof CRAWL_TYPES)[number]
 
@@ -79,6 +81,32 @@ export const CRAWL_LINK_KINDS = [
   'other',
 ] as const
 export type CrawlLinkKind = (typeof CRAWL_LINK_KINDS)[number]
+
+/**
+ * The part of a page a link sits in, from the landmark around it: `<nav>`, `<header>`, `<footer>`,
+ * `<main>`, `<aside>` or the ARIA role that means the same. Absent: none of them.
+ */
+export const LINK_REGIONS = ['nav', 'header', 'footer', 'main', 'aside'] as const
+export type LinkRegion = (typeof LINK_REGIONS)[number]
+
+/** Longest anchor text, element description and snippet kept for a link. */
+export const LINK_CONTEXT_LIMITS = { text: 100, element: 80, snippet: 300 } as const
+
+/**
+ * Where a link was found in the page that has it, so that someone can find it in the HTML: what
+ * the crawl read, bounded, never made up. Only the first occurrence of a link of a kind is kept.
+ * - `text`: the anchor text (with the `alt` of images inside it), for anchors.
+ * - `element`: the element that holds it, e.g. `a.dropdown-item[role=menuitem]`.
+ * - `region`: the landmark it sits in.
+ * - `snippet`: the opening tag as read, only where the link brings in query parameters the page
+ *   itself does not have (where those parameters enter the site).
+ */
+export interface LinkContext {
+  text?: string
+  element?: string
+  region?: LinkRegion
+  snippet?: string
+}
 
 /** Where a hreflang was declared. */
 export const HREFLANG_SOURCES = ['html', 'header', 'sitemap'] as const
@@ -205,6 +233,12 @@ export interface CrawlPageFacts {
   jsonLdInvalid: number
   /** JSON-LD blocks and elements with microdata or RDFa. */
   structuredData: number
+  /**
+   * The `@type`s the JSON-LD declares, and what Google asks of them that is missing
+   * (`checkStructuredData`). Absent: parsed before this was kept, so nothing is known.
+   */
+  structuredDataTypes?: string[]
+  structuredDataProblems?: StructuredDataProblem[]
   localhostLinks: number
   uncrawlableLinks: number
   emptyAnchors: number
@@ -252,6 +286,9 @@ export type IssueEvidence =
 
 /** Data extracted from a page that has no column of its own. */
 export interface CrawlPageData {
+  notRequested?: 'excluded' | 'depth'
+  /** What the domain's custom extractors read from the page, by extractor key. */
+  extracted?: Extracted
   description?: string
   h1?: string[]
   hreflang?: HreflangEntry[]

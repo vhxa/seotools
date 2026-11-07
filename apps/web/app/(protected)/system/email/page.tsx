@@ -1,7 +1,9 @@
-import { getMailConfig } from '@seotools/core'
+import { readMailConfig } from '@seotools/core'
+import { TriangleAlertIcon } from 'lucide-react'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { MailConfigForm } from '@/components/email/mail-config-form'
 import { TestEmailForm } from '@/components/email/test-email-form'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -31,11 +33,12 @@ export default async function EmailPage() {
   const session = await requireAdmin()
   const [t, format] = await Promise.all([getTranslations('Email'), getFormatter()])
   const db = await getDb()
-  const [config, problems, sends] = await Promise.all([
-    getSettings().then(getMailConfig),
+  const [read, problems, sends] = await Promise.all([
+    getSettings().then(readMailConfig),
     db.mail.recent({ limit: RECENT, outcome: 'problems' }),
     db.mail.recent({ limit: RECENT, outcome: 'sent' }),
   ])
+  const config = read.state === 'ready' ? read.value : null
   const when = (date: Date) => format.dateTime(date, { dateStyle: 'medium', timeStyle: 'short' })
 
   const deliveries = (rows: typeof problems, empty: string) => (
@@ -90,7 +93,13 @@ export default async function EmailPage() {
           <CardTitle>{t('provider.title')}</CardTitle>
           <CardDescription>{t('provider.description')}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="grid gap-4">
+          {read.state === 'undecryptable' && (
+            <Alert variant="destructive">
+              <TriangleAlertIcon />
+              <AlertDescription>{t('provider.undecryptable')}</AlertDescription>
+            </Alert>
+          )}
           <MailConfigForm view={viewOf(config)} />
         </CardContent>
       </Card>

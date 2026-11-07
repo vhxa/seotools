@@ -248,3 +248,20 @@ describe('decoding', () => {
     expect(decodeText(Buffer.from('café'), 'text/html; charset=nonsense')).toBe('café')
   })
 })
+
+it('never sends site credentials on non-site requests, including non-default ports', async () => {
+  const f = fetcher({
+    siteHeaders: {
+      host: '127.0.0.1',
+      headers: { authorization: 'secret', cookie: 'secret', 'x-stage': 'secret' },
+    },
+  })
+  try {
+    await f.fetch(`${origin}/redirect`, { signal })
+    expect(lastHeaders.authorization).toBeUndefined()
+    expect(lastHeaders.cookie).toBeUndefined()
+    expect(lastHeaders['x-stage']).toBeUndefined()
+  } finally {
+    f.close()
+  }
+})

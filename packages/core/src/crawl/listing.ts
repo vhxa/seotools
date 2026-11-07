@@ -7,14 +7,17 @@ import type { CrawlUrlKind } from './types'
 
 /**
  * The views the pages offer, each one a plain statement about what the crawl recorded:
- * - `pages`: URLs of the site that answered with HTML.
- * - `resources`: URLs of the site that answered with anything else: images, CSS, PDFs, robots.txt…
+ * - `pages`: URLs of the site that answered with HTML and a 2xx. These are what counts as pages.
+ * - `resources`: URLs of the site that answered with anything else (images, CSS, PDFs,
+ *   robots.txt…) and did not fail.
  * - `redirects`: URLs of the site that answered with a 3xx.
+ * - `errors`: URLs of the site that answered 4xx/5xx or did not answer, whatever they were meant to
+ *   be: a page, a script or an image that fails is here, and in no other view but `all`.
  * - `external`: URLs on other sites.
  * - `all`: every URL the crawl recorded, whatever it turned out to be, including the ones of the
  *   site that never answered or were never requested (kind `unknown`), which no other view lists.
  */
-export const URL_VIEWS = ['pages', 'resources', 'redirects', 'external', 'all'] as const
+export const URL_VIEWS = ['pages', 'resources', 'redirects', 'errors', 'external', 'all'] as const
 
 /**
  * Every view the database understands. `other` is the URLs of the site that are not pages
@@ -33,7 +36,8 @@ export const VIEW_KINDS: Record<CrawlUrlView, readonly CrawlUrlKind[]> = {
   pages: ['page'],
   resources: ['resource'],
   redirects: ['redirect'],
-  other: ['redirect', 'resource', 'unknown'],
+  errors: ['page', 'resource', 'unknown'],
+  other: ['page', 'redirect', 'resource', 'unknown'],
   external: [],
   all: ['page', 'redirect', 'resource', 'unknown'],
 }

@@ -3,6 +3,7 @@ import {
   ISSUE_CATALOG_VERSION,
   PAGE_ISSUES,
   auditSnapshotOf,
+  isSecondaryFinding,
   worstIssueType,
   type AuditSnapshot,
   type PagesAudit,
@@ -36,8 +37,8 @@ export interface CrawlAnalysis {
 
 /** The audit configuration of a domain as it is now, in one consistent read. */
 export async function currentAuditConfig(db: Database, domainId: string): Promise<AuditSnapshot> {
-  const { version, rules, languages } = await db.audit.config(domainId)
-  return auditSnapshotOf(version, rules, languages)
+  const { version, rules, languages, thresholds } = await db.audit.config(domainId)
+  return auditSnapshotOf(version, rules, languages, thresholds)
 }
 
 /**
@@ -109,7 +110,8 @@ export async function analyseCrawl(
       indexability: url.indexability.state,
       blockers: url.indexability.blockers,
     })
-    if (url.url.kind !== 'page') continue
+    // A page is HTML that answered 2xx: a page that fails is an error, counted with the errors.
+    if (!url.contentPage) continue
 
     // Indexability is a fact about the page: it counts whether or not the page is audited.
     if (url.indexability.state === 'indexable') audit.indexable++
@@ -121,9 +123,13 @@ export async function analyseCrawl(
       continue
     }
     audit.audited++
-    const worst = worstIssueType(found.map((finding) => finding.issue))
+    // Secondary findings (search-result matters on a page that cannot be indexed) are listed, not counted.
+    const counted = found.filter(
+      (finding) => !isSecondaryFinding(finding.issue, url.indexability.state),
+    )
+    const worst = worstIssueType(counted.map((finding) => finding.issue))
     if (worst) pagesByWorstIssue[worst]++
-    for (const type of new Set(found.map((finding) => PAGE_ISSUES[finding.issue].type))) {
+    for (const type of new Set(counted.map((finding) => PAGE_ISSUES[finding.issue].type))) {
       pagesWithType[type]++
     }
   }

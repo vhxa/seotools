@@ -1,4 +1,5 @@
 'use client'
+import { extractorsText } from '@/lib/crawl-extractors'
 
 import {
   EXTRA_CRAWL_FILES,
@@ -25,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { useFormActionState } from '@/hooks/use-form-action-state'
 
@@ -77,10 +79,12 @@ export function CrawlSettingsForm({
   host,
   settings,
   defaultUserAgent,
+  secretsSaved,
 }: {
   host: string
   settings: CrawlSettings
   defaultUserAgent: string
+  secretsSaved: boolean
 }) {
   const t = useTranslations('CrawlSettings')
   const canEdit = useCanEdit()
@@ -187,6 +191,42 @@ export function CrawlSettingsForm({
         />
       </div>
 
+      {(['includePrefixes', 'excludePrefixes'] as const).map((name) => (
+        <div key={name} className="grid gap-2">
+          <Label htmlFor={name}>{t(`${name}.label`)}</Label>
+          <Textarea
+            id={name}
+            name={name}
+            defaultValue={settings[name].join('\n')}
+            disabled={!canEdit}
+          />
+          <p className="text-xs text-muted-foreground">{t(`${name}.hint`)}</p>
+        </div>
+      ))}
+      <div className="grid gap-2">
+        <Label htmlFor="extractors">{t('extractors.label')}</Label>
+        <Textarea
+          id="extractors"
+          name="extractors"
+          defaultValue={extractorsText(settings.extractors)}
+          placeholder={t('extractors.placeholder')}
+          disabled={!canEdit}
+          className="font-mono"
+          spellCheck={false}
+        />
+        <p className="text-xs text-muted-foreground">{t('extractors.hint')}</p>
+      </div>
+      <NumberField
+        name="maxDepth"
+        label={t('maxDepth.label')}
+        hint={t('maxDepth.hint')}
+        defaultValue={settings.maxDepth ?? ''}
+        min={1}
+        max={100}
+        required={false}
+        disabled={!canEdit}
+      />
+
       <NumberField
         name="maxUrls"
         label={t('maxUrls.label')}
@@ -225,12 +265,55 @@ export function CrawlSettingsForm({
             name="retainCrawls"
             label={t('retention.countLabel')}
             hint={t('retention.countHint')}
-            defaultValue={settings.retainCrawls ?? 10}
+            defaultValue={settings.retainCrawls ?? 2}
             disabled={!canEdit}
             {...limits.retainCrawls}
           />
         )}
+        <NumberField
+          name="historyDays"
+          label={t('retention.historyLabel')}
+          hint={t('retention.historyHint')}
+          defaultValue={settings.historyDays ?? ''}
+          disabled={!canEdit}
+          required={false}
+          {...limits.historyDays}
+        />
       </div>
+
+      <fieldset className="grid gap-4">
+        <legend className="text-sm font-medium">{t('requestSecrets.label')}</legend>
+        {secretsSaved && (
+          <p className="text-xs text-muted-foreground">{t('requestSecrets.saved')}</p>
+        )}
+        <div className="grid gap-2">
+          <Label htmlFor="requestHeaders">{t('requestSecrets.headers')}</Label>
+          <Textarea
+            id="requestHeaders"
+            name="requestHeaders"
+            disabled={!canEdit}
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">{t('requestSecrets.hint')}</p>
+        </div>
+        {(['username', 'password'] as const).map((field) => (
+          <div key={field} className="grid gap-2">
+            <Label htmlFor={`basic-${field}`}>{t(`requestSecrets.${field}`)}</Label>
+            <Input
+              id={`basic-${field}`}
+              name={field === 'username' ? 'basicUsername' : 'basicPassword'}
+              type={field === 'password' ? 'password' : 'text'}
+              disabled={!canEdit}
+              autoComplete="off"
+              maxLength={4096}
+            />
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <Switch id="clearRequestSecrets" name="clearRequestSecrets" disabled={!canEdit} />
+          <Label htmlFor="clearRequestSecrets">{t('requestSecrets.clear')}</Label>
+        </div>
+      </fieldset>
 
       <fieldset className="grid gap-4">
         <div className="grid gap-1">

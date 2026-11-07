@@ -4,7 +4,10 @@ import { MoreHorizontalIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { deleteCompanyAction, renameCompanyAction } from '@/app/(protected)/companies/actions'
+import {
+  deleteCompanyAction,
+  renameCompanyAction,
+} from '@/app/(protected)/system/companies/actions'
 import { ActionDialog } from '@/components/companies/action-dialog'
 import { UsageList, type UsageCounts } from '@/components/companies/usage-list'
 import { Button } from '@/components/ui/button'

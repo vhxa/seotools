@@ -3,6 +3,7 @@ import {
   ISSUE_CATALOG_VERSION,
   createLogger,
   crawlUrlHash,
+  domainRequestSettings,
 } from '@seotools/core'
 import { createCompany, deleteDomain } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
@@ -62,12 +63,69 @@ async function crawlWith(
   return { crawl: (await db.crawls.get(crawl.id))!, summary }
 }
 
-const urls = async (crawlId: string, view: 'pages' | 'other' | 'external') =>
+const urls = async (crawlId: string, view: 'pages' | 'errors' | 'other' | 'external') =>
   (await db.crawls.listUrls({ crawlId, view, limit: 1000, offset: 0 })).map((u) => u.url).sort()
 const row = async (crawlId: string, url: string) =>
   (await db.crawls.latestResults(domainId, [crawlUrlHash(url)])).find((r) => r.crawlId === crawlId)
 
 describe('full crawl', () => {
+  it('reads what the custom extractors ask from every page', async () => {
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      extractors: [{ key: 'price', name: 'Price', selector: '.price', attribute: null }],
+    })
+    const site = fakeSite({
+      'https://example.com/': html('<p class="price"> 49 € </p><a href="/b">b</a>'),
+      'https://example.com/b': html('<p>No price</p>'),
+    })
+    const { crawl } = await crawlWith(site)
+    expect((await row(crawl.id, 'https://example.com/'))?.data?.extracted).toEqual({
+      price: ['49 €'],
+    })
+    expect((await row(crawl.id, 'https://example.com/b'))?.data?.extracted).toBeUndefined()
+  })
+
+  it('keeps how each URL was found and where each link sits, and what was asked as a file stays one', async () => {
+    const site = fakeSite({
+      'https://example.com/': html(
+        `<head><script src="/gone.js"></script></head>
+        <body><nav><a class="menu-item" href="/about">About us</a></nav></body>`,
+      ),
+      'https://example.com/about': html('<title>About</title>'),
+      // A missing script answered with the site's HTML error page.
+      'https://example.com/gone.js': {
+        statusCode: 404,
+        headers: { 'content-type': 'text/html' },
+        body: Buffer.from('<html><title>Not found</title></html>'),
+      },
+    })
+    const { crawl } = await crawlWith(site)
+    const home = await row(crawl.id, 'https://example.com/')
+    const about = await row(crawl.id, 'https://example.com/about')
+    expect(about).toMatchObject({ foundFrom: home!.seq, foundKind: 'anchor' })
+    expect(await row(crawl.id, 'https://example.com/gone.js')).toMatchObject({
+      kind: 'resource',
+      statusCode: 404,
+      foundKind: 'script',
+    })
+    expect(await urls(crawl.id, 'pages')).not.toContain('https://example.com/gone.js')
+    expect(await urls(crawl.id, 'errors')).toContain('https://example.com/gone.js')
+
+    const [link] = await db.crawls.listLinks({
+      crawlId: crawl.id,
+      urlHash: crawlUrlHash('https://example.com/'),
+      direction: 'out',
+      kinds: ['anchor'],
+      limit: 10,
+      offset: 0,
+    })
+    expect(link).toMatchObject({
+      url: 'https://example.com/about',
+      context: { text: 'About us', element: 'a.menu-item', region: 'nav' },
+    })
+    expect(crawl.ref).toBeGreaterThan(0)
+  })
+
   it('reaches every URL from the homepage, the sitemap and everything linked', async () => {
     const site = fakeSite({
       'https://example.com/': html(`
@@ -211,7 +269,7 @@ describe('full crawl', () => {
     )
   })
 
-  it('counts only HTML as pages; redirects, resources and failures are the rest of the site', async () => {
+  it('counts only HTML that answered 2xx as pages; redirects, resources and failures are the rest', async () => {
     const site = fakeSite({
       'https://example.com/': html(
         '<a href="/moved">m</a><a href="/doc.pdf">p</a><a href="/gone">g</a><a href="/down">d</a>',
@@ -230,13 +288,14 @@ describe('full crawl', () => {
 
     const pages = await urls(crawl.id, 'pages')
     expect(pages).toEqual(
-      expect.arrayContaining([
-        'https://example.com/',
-        'https://example.com/target',
-        'https://example.com/gone', // a broken page is still a page, with its status
-      ]),
+      expect.arrayContaining(['https://example.com/', 'https://example.com/target']),
+    )
+    // A broken page is an error, listed with the other failures, with its status.
+    expect(await urls(crawl.id, 'errors')).toEqual(
+      expect.arrayContaining(['https://example.com/gone', 'https://example.com/down']),
     )
     for (const url of [
+      'https://example.com/gone',
       'https://example.com/moved',
       'https://example.com/doc.pdf',
       'https://example.com/down',
@@ -402,23 +461,23 @@ describe('page issues', () => {
 
   it('checks every URL of a full crawl when it ends', async () => {
     const { crawl } = await crawlWith(site())
-    expect(crawl.pagesCount).toBe(6)
+    // The home page and /bare: /missing and what only the crawler tried answered 404.
+    expect(crawl.pagesCount).toBe(2)
     const counted = crawl.pagesByWorstIssue!
-    expect(counted.issue + counted.warning + counted.opportunity).toBeLessThanOrEqual(6)
+    expect(counted.issue + counted.warning + counted.opportunity).toBeLessThanOrEqual(2)
     expect(await issuesOf(crawl.id, 'https://example.com/bare')).toContain('title-missing')
     expect(await issuesOf(crawl.id, 'https://example.com/missing')).toEqual(['client-error'])
     // Only the crawler ever asked for this one.
     expect(await issuesOf(crawl.id, 'https://www.example.com/')).toEqual([])
     const counts = await db.crawls.issueCounts(crawl.id)
-    expect(counts).toContainEqual({ issue: 'client-error', pages: 1 })
+    expect(counts).toContainEqual({ issue: 'client-error', pages: 1, secondary: 0 })
   })
 
   it('sorts pages by the worst type of issue they have', async () => {
     const { crawl } = await crawlWith(site())
-    // The home page has no H1 and /bare no title, which are warnings, and /missing does not exist,
-    // which is an issue. The other three pages are what the site answered to URLs only the crawler
-    // tried, so they have nothing at all.
-    expect(crawl.pagesByWorstIssue).toEqual({ issue: 1, warning: 2, opportunity: 0 })
+    // The home page links to /missing, which does not exist: an issue. /bare has no title, a
+    // warning. /missing itself is an error, not a page, so it is not counted here.
+    expect(crawl.pagesByWorstIssue).toEqual({ issue: 1, warning: 1, opportunity: 0 })
   })
 
   it('counts a page under every type it has something of', async () => {
@@ -448,7 +507,7 @@ describe('page issues', () => {
       catalog: 'old',
     })
     const again = await analyseCrawl(db, crawl.id, EMPTY_AUDIT_SNAPSHOT)
-    expect(again.pages).toBe(6)
+    expect(again.pages).toBe(2)
     expect(again.pagesByWorstIssue).toEqual(before)
     expect((await db.crawls.get(crawl.id))?.pagesByWorstIssue).toEqual(before)
   })
@@ -1082,5 +1141,90 @@ describe('crawl files', () => {
     await crawlWith(fakeSite({ 'https://example.com/llms.txt': text('# Acme') }))
     const [file] = (await filesOf(['llms'])).filter((row) => row.statusCode === 200)
     expect(file?.body).toBe('# Acme')
+  })
+})
+
+describe('crawl configuration', () => {
+  it('records scope and depth skips without requesting, auditing or counting errors', async () => {
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      includePrefixes: ['/allowed'],
+      excludePrefixes: ['/allowed/private'],
+      maxDepth: 1,
+    })
+    const site = fakeSite({
+      'https://example.com/': html(
+        '<a href="/allowed">a</a><a href="/outside">b</a><a href="/allowed/private">c</a>',
+      ),
+      'https://example.com/allowed': html('<a href="/allowed/deep">deep</a>'),
+    })
+    const { crawl } = await crawlWith(site)
+    for (const [path, reason] of [
+      ['/outside', 'excluded'],
+      ['/allowed/private', 'excluded'],
+      ['/allowed/deep', 'depth'],
+    ]) {
+      const url = await db.crawls.getUrl(crawl.id, crawlUrlHash(`https://example.com${path}`))
+      expect(url).toMatchObject({
+        state: 'skipped',
+        kind: 'unknown',
+        statusCode: null,
+        error: null,
+        data: { notRequested: reason },
+      })
+      expect(site.requests).not.toContain(`https://example.com${path}`)
+      expect(
+        await db.crawls.issuesOf(crawl.id, [crawlUrlHash(`https://example.com${path}`)]),
+      ).toEqual([])
+    }
+    expect(site.requests).toContain('https://example.com/robots.txt')
+    expect(crawl.pagesCount).toBe(2)
+    expect(await urls(crawl.id, 'errors')).not.toContain('https://example.com/outside')
+    expect(crawl.pagesAudit?.audited).toBe(2)
+  })
+
+  it('persists ad hoc priority seeds and requests exactly the list without following links', async () => {
+    await db.crawls.saveSettings(domainId, { ...(await db.crawls.settings(domainId)), maxUrls: 1 })
+    await db.priorityUrls.add({ domainId, url: 'https://example.com/saved' })
+    const crawl = await db.crawls.start({
+      domainId,
+      type: 'priority',
+      trigger: 'manual',
+      seedUrls: ['https://example.com/list', 'https://example.com/list2'],
+    })
+    if (!crawl) throw new Error('not started')
+    const site = fakeSite({ 'https://example.com/list': html('<a href="/other">other</a>') })
+    await runCrawl(crawl.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+    })
+    expect(site.requests.sort()).toEqual(['https://example.com/list', 'https://example.com/list2'])
+    expect((await db.crawls.get(crawl.id))?.seedUrls).toEqual([
+      'https://example.com/list',
+      'https://example.com/list2',
+    ])
+    expect((await db.priorityUrls.list(domainId)).map((u) => u.url)).toEqual([
+      'https://example.com/saved',
+    ])
+  })
+})
+
+it('loads encrypted credentials for a crawl without exposing them as crawl settings', async () => {
+  await domainRequestSettings(db.crawls, domainId, 'test-key').setJson(
+    'request',
+    {
+      headers: [{ name: 'Cookie', value: 'secret-cookie' }],
+      username: 'stage',
+      password: 'secret',
+    },
+    { encrypted: true },
+  )
+  const site = fakeSite({ 'https://example.com/': html('hello') })
+  await crawlWith(site, 'full', { settingsSecret: 'test-key' })
+  expect(site.configs[0]?.siteHeaders).toEqual({
+    host: 'example.com',
+    headers: { cookie: 'secret-cookie', authorization: 'Basic c3RhZ2U6c2VjcmV0' },
   })
 })

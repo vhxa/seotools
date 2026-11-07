@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { UndecryptableError } from './crypto'
 import { createSettings, type SettingsStore, type StoredSetting } from './settings'
 
 function memoryStore() {
@@ -38,5 +39,18 @@ describe('settings', () => {
     expect(await settings.getJson('missing', schema)).toBeNull()
     rows.set('bad', { value: '{"nope":1}', encrypted: false })
     await expect(settings.getJson('bad', schema)).rejects.toThrow()
+  })
+
+  it('reads a value saved with another key as a state, while getJson still throws', async () => {
+    const { store } = memoryStore()
+    await createSettings(store, 'a'.repeat(32)).setJson('a', { token: 't' }, { encrypted: true })
+    const other = createSettings(store, 'b'.repeat(32))
+    await expect(other.getJson('a', schema)).rejects.toBeInstanceOf(UndecryptableError)
+    expect(await other.readJson('a', schema)).toEqual({ state: 'undecryptable' })
+    expect(await other.readJson('none', schema)).toEqual({ state: 'missing' })
+    expect(await createSettings(store, 'a'.repeat(32)).readJson('a', schema)).toEqual({
+      state: 'ready',
+      value: { token: 't' },
+    })
   })
 })

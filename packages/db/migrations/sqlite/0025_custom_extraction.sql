@@ -1,0 +1,1 @@
+ALTER TABLE `crawl_settings` ADD `extractors` text;

@@ -7,7 +7,12 @@
       "failed": "La petición falló",
       "noResponse": "Sin respuesta"
     },
-    "account": "Cuenta"
+    "account": "Cuenta",
+    "theme": {
+      "system": "Tema del sistema",
+      "light": "Tema claro",
+      "dark": "Tema oscuro"
+    }
   },
   "NotFound": {
     "title": "Página no encontrada",
@@ -92,67 +97,66 @@
     "mobileTitle": "Navegación",
     "mobileDescription": "Navegación principal y selector de dominio.",
     "overview": "Resumen",
-    "pages": "Páginas",
     "crawlFiles": "Archivos de rastreo",
     "robots": "robots.txt",
     "sitemaps": "Sitemaps",
     "llms": "llms.txt",
-    "scheduledJobs": "Tareas programadas",
     "settings": "Ajustes",
-    "instance": "Instancia",
-    "system": "Sistema",
-    "pagesOverview": "Resumen",
-    "pagesDetails": "Detalle",
-    "pagesHistory": "Historial",
-    "pagesCompare": "Comparar",
-    "updates": "Actualizaciones",
     "versionRelease": "v{version}",
     "versionDevelopment": "v{version} · desarrollo",
-    "companies": "Empresas",
-    "users": "Usuarios",
-    "email": "Correo"
+    "issues": "Problemas",
+    "urls": "URLs",
+    "crawls": "Rastreos",
+    "crawlsRun": "Ejecutar y programar",
+    "crawlsHistory": "Historial",
+    "crawlsCompare": "Comparar",
+    "administration": "Administración",
+    "navLabel": "Principal"
   },
   "ProtectedShell": {
     "skipToContent": "Saltar al contenido principal"
   },
-  "DomainHome": {
-    "metaTitle": "{host} · seotools",
-    "company": "Empresa: {company}",
-    "crawlTitle": "Último rastreo completo disponible",
-    "lastCrawl": "Resultados guardados del {when}.",
-    "noCrawl": "Todavía no hay resultados de un rastreo completo. Inicia uno para recopilar páginas y hallazgos de auditoría.",
-    "coverage": "{done, number} de {total, number} URL descubiertas procesadas · {pages, number} páginas encontradas",
-    "auditCoverage": "En este análisis: {audited, number} páginas auditadas · {excluded, number} excluidas · {unknown, number} con indexabilidad desconocida",
-    "incomplete": "Este rastreo alcanzó su límite de URL. La cobertura y los hallazgos son parciales.",
-    "crawlSettings": "Revisar límites de rastreo",
-    "lastAttempt": "Intento de rastreo completo más reciente:",
-    "jobs": "Ver trabajos",
-    "linksLabel": "Explorar resultados del dominio",
-    "overview": "Resumen de páginas",
-    "history": "Historial de rastreos",
-    "prioritiesTitle": "Hallazgos que revisar primero",
-    "prioritiesDescription": "Los principales hallazgos de este rastreo.",
-    "pruned": "Ya no se conservan los resultados detallados de este rastreo. Sus totales siguen disponibles en el historial.",
-    "stale": "Los hallazgos prioritarios estarán disponibles cuando el análisis refleje la configuración de auditoría actual.",
-    "notChecked": "Este rastreo no tiene el análisis necesario para mostrar hallazgos prioritarios. Inicia un nuevo rastreo completo para obtener datos actuales.",
-    "noPriorities": "No se registraron hallazgos en este análisis.",
-    "affectedUrls": "{count, plural, one {# URL} other {# URL}}",
-    "allFindings": "Ver todos los hallazgos"
-  },
   "System": {
-    "metaTitle": "Sistema · seotools",
+    "metaTitle": "Estado · Administración · seotools",
+    "title": "Estado",
+    "health": "Salud",
     "database": "Base de datos",
-    "connected": "conectada",
+    "databaseOk": "Conectada ({dialect})",
     "worker": "Worker",
-    "online": "en línea",
-    "offline": "sin conexión",
-    "seen": "visto {when}",
-    "never": "nunca",
+    "workerOk": "En marcha",
+    "workerDown": "Sin respuesta",
+    "heartbeat": "Último latido {when}",
     "jobs": "Trabajos",
-    "jobCounts": "{pending} pendientes · {running} en curso · {completed} completados · {failed} fallidos",
-    "queueTitle": "Cola de trabajos",
-    "queueDescription": "Los trabajos viven en la base de datos y los procesa el worker. No hace falta Redis.",
-    "enqueue": "Encolar trabajo de ejemplo",
+    "jobStates": {
+      "pending": "En espera",
+      "running": "En curso",
+      "completed": "Hechos",
+      "failed": "Fallidos"
+    },
+    "technical": {
+      "title": "Detalles técnicos",
+      "description": "Los últimos trabajos de la cola. Los trabajos viven en la base de datos y los procesa el worker."
+    },
+    "summary": {
+      "rechecked": "Solicitadas de nuevo: {done, number} de {urls, number} URL",
+      "crawl": "{pages, number} páginas · {urls, number} URL",
+      "crawlStopped": "Detenido tras {pages, number} páginas · {urls, number} URL",
+      "recomputed": "Analizado de nuevo ({count, plural, one {# vez} other {# veces}})",
+      "upToDate": "Ya estaba al día",
+      "alertsSent": "{sent, plural, one {# correo enviado} other {# correos enviados}}",
+      "alertsSkipped": {
+        "nobody": "Omitido: nadie está suscrito",
+        "archived": "Omitido: el dominio está archivado",
+        "gone": "Omitido: el rastreo ya no existe",
+        "not-applicable": "Omitido: nada que avisar"
+      },
+      "emailSent": "Correo enviado",
+      "emailSkipped": "Omitido: la persona ya no puede recibirlo"
+    },
+    "paused": {
+      "title": "La automatización está en pausa",
+      "description": "SEOTOOLS_PAUSE_AUTOMATION está activada: los rastreos programados, las actualizaciones periódicas, la búsqueda de versiones y todo el correo están desactivados. Lo que inicias tú sigue funcionando."
+    },
     "columns": {
       "job": "Trabajo",
       "type": "Tipo",
@@ -167,10 +171,12 @@
       "running": "en curso",
       "completed": "completado",
       "failed": "fallido"
-    }
+    },
+    "enqueue": "Encolar trabajo de ejemplo",
+    "never": "nunca"
   },
   "Updates": {
-    "metaTitle": "Actualizaciones · seotools",
+    "metaTitle": "Actualizaciones · Administración · seotools",
     "title": "Actualizaciones",
     "description": "Qué versión está instalada y si existe una versión más reciente. Buscar actualizaciones no las instala.",
     "status": {
@@ -273,7 +279,9 @@
       "alreadyRunning": "Este dominio ya tiene un rastreo en curso.",
       "noPriorityUrls": "Todavía no hay páginas prioritarias. Márcalas primero en Páginas.",
       "invalidPriorityUrl": "Introduce una URL de {host}, como /precios o https://{host}/precios.",
-      "invalidSchedule": "Revisa la frecuencia, el día y la hora de la programación."
+      "invalidSchedule": "Revisa la frecuencia, el día y la hora de la programación.",
+      "listLimit": "Introduce entre 1 y 1000 URL.",
+      "listInvalid": "{count} URL no son válidas o no pertenecen a este dominio."
     }
   },
   "Verification": {
@@ -477,8 +485,8 @@
     }
   },
   "PagesDetails": {
-    "metaTitle": "Detalle de páginas · {host} · seotools",
-    "title": "Detalle de páginas",
+    "metaTitle": "URLs · {host} · seotools",
+    "title": "URLs",
     "description": "Todas las URLs del último rastreo completo. Selecciona varias para actuar sobre ellas a la vez.",
     "neverCrawled": "Este dominio todavía no se ha rastreado. Lanza un rastreo completo desde el resumen de páginas.",
     "viewsLabel": "Vistas",
@@ -486,14 +494,16 @@
       "pages": "Páginas",
       "resources": "Recursos",
       "redirects": "Redirecciones",
+      "errors": "Errores",
       "external": "Externas",
       "all": "Todas",
       "other": "Otras URLs"
     },
     "viewHints": {
-      "pages": "URLs de esta web que respondieron con HTML, sea cual sea su estado. Son las que cuentan como páginas.",
+      "pages": "URLs de esta web que respondieron con HTML y un 2xx. Son las que cuentan como páginas.",
       "resources": "URLs de esta web que respondieron con algo que no es una página ni una redirección: imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps…",
       "redirects": "URLs de esta web que respondieron con una redirección (3xx).",
+      "errors": "URLs de esta web que respondieron 4xx/5xx o no respondieron, fueran lo que fueran: páginas, scripts, imágenes…",
       "external": "URLs de otros sitios enlazadas desde esta web. Las de los enlaces '<a>' se piden una vez para saber si funcionan; ninguna cuenta como página.",
       "all": "Todas las URLs que registró el rastreo: páginas, recursos, redirecciones, URLs externas y URLs de esta web que no se pidieron o nunca respondieron, que ninguna otra vista lista. Filtra por tipo para encontrarlas.",
       "other": "Redirecciones, imágenes, hojas de estilo, scripts, PDFs, robots.txt, sitemaps y URLs que no respondieron."
@@ -519,7 +529,8 @@
       "audit": "Auditoría",
       "intent": "Intención de indexación",
       "indexability": "Estado técnico",
-      "origin": "Origen de la configuración"
+      "origin": "Origen de la configuración",
+      "actions": "Acciones"
     },
     "sortBy": "Ordenar por {column}",
     "sortedAscending": "Orden ascendente, haz clic para ordenar de forma descendente",
@@ -605,6 +616,7 @@
         "pages": "en páginas",
         "resources": "en recursos",
         "redirects": "en redirecciones",
+        "errors": "en errores",
         "external": "externas",
         "all": "en todo el rastreo",
         "other": "en las otras URLs de la web"
@@ -631,7 +643,12 @@
     "advancedFilters": "Filtros avanzados e incidencias",
     "filtersMenu": "Filtros",
     "issuesMenu": "Incidencias",
-    "rowsShown": "{shown, number} de {matching, number} URLs mostradas"
+    "rowsShown": "{shown, number} de {matching, number} URLs mostradas",
+    "notRequested": {
+      "excluded": "No solicitada: excluida por la configuración de rastreo",
+      "depth": "No solicitada: profundidad máxima superada"
+    },
+    "secondaryFinding": "En una página no indexable"
   },
   "Export": {
     "menu": {
@@ -642,7 +659,11 @@
       "findings": "Hallazgos",
       "findingsHint": "Una fila por hallazgo, con su importancia y lo que lo respalda.",
       "notAnalysed": "Este rastreo no se ha revisado en busca de hallazgos.",
-      "scope": "Todo lo que dejan los filtros, no solo esta página."
+      "scope": "Todo lo que dejan los filtros, no solo esta página.",
+      "links": "Enlaces",
+      "linksHint": "Una fila por enlace que sale de las URLs listadas, con dónde está.",
+      "redirects": "Redirecciones",
+      "redirectsHint": "Una fila por redirección listada, con dónde termina su cadena."
     },
     "errors": {
       "missing": "Este rastreo no existe en este dominio.",
@@ -678,7 +699,18 @@
       "evidenceSamples": "Ejemplos de evidencia",
       "findingState": "Estado",
       "acceptedBecause": "Motivo de la aceptación",
-      "acceptedFindings": "Aceptados por una regla"
+      "acceptedFindings": "Aceptados por una regla",
+      "linkTo": "Enlaza a",
+      "linkKind": "Tipo de enlace",
+      "linkStatus": "Estado de la URL enlazada",
+      "linkText": "Texto del enlace",
+      "linkElement": "Elemento",
+      "linkRegion": "Parte de la página",
+      "redirectTo": "Redirige a",
+      "finalUrl": "URL final",
+      "finalStatus": "Estado de la URL final",
+      "hops": "Redirecciones en la cadena",
+      "loop": "Bucle"
     },
     "values": {
       "internal": "Este sitio",
@@ -686,14 +718,17 @@
       "atLeast": "Al menos {total, number}",
       "evidenceNotStored": "No guardada en este rastreo",
       "pending": "Pendiente",
-      "accepted": "Aceptado por una regla"
+      "accepted": "Aceptado por una regla",
+      "yes": "Sí",
+      "no": "No",
+      "secondary": "Secundario (página no indexable)"
     },
     "filters": {
       "view": "Vista: {value}"
     }
   },
   "UrlDetail": {
-    "back": "Volver al detalle",
+    "back": "Volver a URLs",
     "openFullScreen": "Abrir en pantalla completa",
     "openUrl": "Abrir en una pestaña nueva",
     "close": "Cerrar",
@@ -774,7 +809,25 @@
       "related": "{total, plural, one {# URL a la que apunta} other {# URLs a las que apunta}}",
       "elsewhereTitle": "Las reglas de esta URL afectan a otras URLs ({total, number})",
       "elsewhereNote": "Lo que una regla declara de esta URL acepta estos hallazgos de las URLs que apuntan a ella. Los primeros:"
-    }
+    },
+    "notRequested": {
+      "excluded": "No solicitada: excluida por la configuración de rastreo",
+      "depth": "No solicitada: profundidad máxima superada"
+    },
+    "keyFacts": "Datos clave",
+    "characters": "({count} caracteres)",
+    "self": "Propia",
+    "discovery": "Cómo se encontró",
+    "tabs": {
+      "findings": "Hallazgos",
+      "links": "Enlaces",
+      "indexing": "Indexación",
+      "history": "Historial",
+      "technical": "Técnico"
+    },
+    "words": "Palabras",
+    "inbound": "Enlaces entrantes",
+    "viewHistory": "Ver historial de la URL"
   },
   "UrlLinks": {
     "in": {
@@ -839,7 +892,7 @@
       "related-urls": "{total, plural, one {# otra página} other {# otras páginas}}"
     },
     "labels": {
-      "canonical-not-indexable": "Destino canonical (bloqueos indicados arriba)",
+      "canonical-not-indexable": "Destino del canonical (bloqueos indicados arriba)",
       "img-no-alt": "Imágenes sin atributo alt",
       "img-empty-alt": "Imágenes con el atributo alt vacío",
       "img-long-alt": "Imágenes con un texto alt largo",
@@ -861,7 +914,13 @@
       "insecure-form": "Formularios que envían por HTTP",
       "unsafe-cross-origin-links": "Enlaces a otro sitio en una pestaña nueva, sin rel=\"noopener\"",
       "anchor-empty": "Enlaces sin texto",
-      "anchor-vague": "Enlaces con un texto poco descriptivo"
+      "anchor-vague": "Enlaces con un texto poco descriptivo",
+      "canonical-broken": "Destino del canonical",
+      "canonical-redirect": "Destino del canonical",
+      "links-to-broken": "URLs rotas a las que enlaza",
+      "links-to-redirect": "URLs que redirigen a las que enlaza",
+      "links-to-canonicalised": "URLs canonicalizadas a las que enlaza",
+      "links-tracking-parameters": "URLs con parámetros de seguimiento a las que enlaza"
     },
     "images": {
       "noSource": "Sin dirección (falta src)",
@@ -923,7 +982,7 @@
     },
     "robots-blocked": {
       "name": "Bloqueada por robots.txt",
-      "description": "robots.txt no deja a Googlebot pedir esta URL. Este rastreador la pide igualmente para poder auditarla."
+      "description": "robots.txt no deja a Googlebot rastrear esta URL. Suele ser intencionado: comprueba que debe serlo. Este rastreador la pide igualmente para auditarla."
     },
     "redirect-3xx": {
       "name": "Redirección 3xx (interna)",
@@ -982,8 +1041,8 @@
       "description": "Declara varios canonicals que apuntan a URLs distintas, así que los buscadores pueden ignorarlos todos."
     },
     "canonical-not-indexable": {
-      "name": "Apunta a URL no indexable",
-      "description": "El canonical lleva a una URL que redirige, da error, tiene noindex, está bloqueada por robots.txt o canonicaliza a otra, según los bloqueos indicados. No se señala cuando has declarado como esperado cada uno de ellos para esa URL, ni cuando esta página se espera fuera del índice; una redirección o un error siempre se señalan."
+      "name": "Canonical apunta a una URL no indexable",
+      "description": "El canonical lleva a una URL que responde pero no se puede indexar (noindex, bloqueo de robots.txt o un canonical a otra), según los bloqueos indicados. No se señala cuando esta página se espera fuera del índice."
     },
     "canonical-fragment": {
       "name": "Contiene fragmento",
@@ -992,10 +1051,6 @@
     "canonical-missing": {
       "name": "Ausente",
       "description": "La página no declara ningún canonical."
-    },
-    "canonicalised": {
-      "name": "Canonicalizada a otra URL",
-      "description": "El canonical apunta a otra URL, así que los buscadores indexarán aquella en lugar de esta."
     },
     "canonical-relative": {
       "name": "Relativo",
@@ -1010,8 +1065,8 @@
       "description": "Los buscadores ignoran lo que quede por encima de esos límites. Hay que dividirlo con un índice de sitemaps."
     },
     "sitemap-not-indexable": {
-      "name": "URL no indexable en el sitemap",
-      "description": "Un sitemap lista esta URL (su '<loc>') y algo impide indexarla, según los bloqueos indicados. Una alternativa (hreflang), imagen o vídeo que una entrada solo nombra no cuenta como listado. Un crawl anterior a que se registrara esto no puede saberlo, y no cuenta como listada una URL que un sitemap declaró como alternativa."
+      "name": "Página no indexable en el sitemap",
+      "description": "Un sitemap lista esta página (su '<loc>') y algo la deja fuera del índice, según los bloqueos indicados. Una alternativa, imagen o vídeo que una entrada solo nombra no cuenta como listado."
     },
     "indexed-not-in-sitemap": {
       "name": "URL indexada fuera del sitemap",
@@ -1324,6 +1379,50 @@
     "sitemap-forbidden-present": {
       "name": "Incluida en un sitemap donde una regla lo prohíbe",
       "description": "Una regla prohíbe que esta URL esté en un sitemap y un sitemap la incluye."
+    },
+    "directives-unreadable": {
+      "name": "noindex o canonical ocultos por robots.txt",
+      "description": "robots.txt bloquea esta URL, así que los buscadores no pueden leer el noindex ni el canonical que declara: la URL puede seguir indexada y sus señales no se consolidan. Permite el rastreo para que la directiva funcione."
+    },
+    "canonical-broken": {
+      "name": "Canonical apunta a una URL rota",
+      "description": "El canonical lleva a una URL de esta web que responde 4xx/5xx o no responde. Los buscadores lo ignoran."
+    },
+    "canonical-redirect": {
+      "name": "Canonical apunta a una redirección",
+      "description": "El canonical lleva a una URL que redirige. Apúntalo a la URL final."
+    },
+    "sitemap-broken": {
+      "name": "URL rota en el sitemap",
+      "description": "Un sitemap lista esta URL y responde 4xx/5xx o no responde."
+    },
+    "sitemap-redirect": {
+      "name": "Redirección en el sitemap",
+      "description": "Un sitemap lista esta URL y redirige. Lista la URL final."
+    },
+    "links-to-broken": {
+      "name": "Enlaza a URLs rotas",
+      "description": "La página enlaza a URLs de esta web que responden 4xx/5xx o no responden. Corrige o quita esos enlaces."
+    },
+    "links-to-redirect": {
+      "name": "Enlaza a redirecciones",
+      "description": "La página enlaza a URLs que redirigen. Enlaza a la URL final."
+    },
+    "links-to-canonicalised": {
+      "name": "Enlaza a URLs canonicalizadas",
+      "description": "La página enlaza a URLs cuyo canonical es otra URL. Enlaza a la canónica."
+    },
+    "links-tracking-parameters": {
+      "name": "Enlaces internos con parámetros de seguimiento",
+      "description": "La página enlaza a URLs de esta web con parámetros de seguimiento (utm_*, gclid…), que crean URLs duplicadas y distorsionan la analítica."
+    },
+    "structured-data-required-missing": {
+      "name": "Datos estructurados sin propiedades obligatorias",
+      "description": "El JSON-LD declara un tipo que puede mostrarse como resultado enriquecido en Google pero le faltan propiedades que Google exige, según la lista (las alternativas van separadas por |). Sin ellas no es apto. Solo se revisa el JSON-LD."
+    },
+    "structured-data-recommended-missing": {
+      "name": "Datos estructurados sin propiedades recomendadas",
+      "description": "El JSON-LD declara un tipo que puede mostrarse como resultado enriquecido pero le faltan propiedades que Google recomienda, según la lista. Añadirlas puede enriquecer el resultado."
     }
   },
   "LinkKinds": {
@@ -1347,8 +1446,8 @@
     "anchor-nofollow": "Enlace nofollow"
   },
   "Jobs": {
-    "metaTitle": "Tareas programadas · {host} · seotools",
-    "title": "Tareas programadas",
+    "metaTitle": "Ejecutar y programar · {host} · seotools",
+    "title": "Ejecutar y programar",
     "description": "Lanza cada tipo de rastreo ahora o de forma recurrente. Un dominio ejecuta un solo rastreo a la vez.",
     "typeDescriptions": {
       "full": "Pide todas las URLs de la web: desde la portada, los sitemaps y todo lo enlazado en cualquier parte, sin hacer caso a robots.txt ni a meta robots.",
@@ -1376,7 +1475,8 @@
         "started": "La última ejecución empezó {when}.",
         "skipped-active": "La última ejecución se omitió {when}: había otro rastreo en curso.",
         "skipped-empty": "La última ejecución se omitió {when}: no hay páginas prioritarias marcadas."
-      }
+      },
+      "timeZone": "Zona horaria"
     },
     "history": {
       "title": "Rastreos recientes",
@@ -1392,6 +1492,12 @@
         "schedule": "Programación"
       },
       "empty": "Todavía no hay rastreos."
+    },
+    "list": {
+      "label": "Rastrear una lista de URL",
+      "hint": "Una URL por línea, hasta 1000; no se siguen enlaces.",
+      "start": "Iniciar rastreo de lista",
+      "started": "Rastreo de lista iniciado."
     }
   },
   "DomainSettings": {
@@ -1455,7 +1561,9 @@
         "all": "Conserva los resultados de todos los rastreos completados e incompletos; la base de datos crece sin límite."
       },
       "countLabel": "Cuántos de cada tipo",
-      "countHint": "Los rastreos antiguos solo conservan totales; se eliminan sus resultados por URL, enlaces y evidencias."
+      "countHint": "Los rastreos antiguos solo conservan totales; se eliminan sus resultados por URL, enlaces y evidencias.",
+      "historyLabel": "Días de historial de URLs",
+      "historyHint": "Cuando se borran los resultados completos de un rastreo antiguo, lo que fue cada URL (su respuesta y sus hallazgos) se guarda este tiempo. Déjalo vacío para guardarlo siempre."
     },
     "optionalFiles": {
       "label": "Otros archivos de rastreo",
@@ -1507,7 +1615,37 @@
       "maxUrls": "El límite de URLs debe estar entre {min} y {max}, o vacío para no poner límite.",
       "retainCrawls": "El número de rastreos que se conservan debe estar entre {min} y {max}.",
       "indexNowKey": "La clave de IndexNow debe tener de 8 a 128 letras, números o guiones.",
-      "indexNowKeyRequired": "Introduce la clave de IndexNow o desactiva IndexNow."
+      "indexNowKeyRequired": "Introduce la clave de IndexNow o desactiva IndexNow.",
+      "historyDays": "Los días de historial deben estar entre {min} y {max}.",
+      "scope": "Introduce hasta 100 prefijos válidos por lista y una profundidad de 1 a 100.",
+      "requestSecrets": "Credenciales o cabeceras no válidas (máximo 10; Host y cabeceras de transporte no permitidas).",
+      "extractors": "Cada extracción necesita un nombre y un selector CSS válido, y puede haber {max} como máximo."
+    },
+    "includePrefixes": {
+      "label": "Incluir rutas",
+      "hint": "Un prefijo por línea; vacío incluye todas las rutas."
+    },
+    "excludePrefixes": {
+      "label": "Excluir rutas",
+      "hint": "Un prefijo por línea; coincide por segmentos completos."
+    },
+    "maxDepth": {
+      "label": "Profundidad máxima",
+      "hint": "Clics desde las semillas (1–100); vacío sin límite."
+    },
+    "requestSecrets": {
+      "label": "Credenciales de solicitud",
+      "saved": "Guardadas y ocultas. Deja los campos vacíos para conservarlas.",
+      "headers": "Cabeceras personalizadas",
+      "hint": "Hasta 10 líneas Nombre: Valor; solo se envían a este sitio.",
+      "username": "Usuario de Basic Auth",
+      "password": "Contraseña de Basic Auth",
+      "clear": "Eliminar todas las credenciales"
+    },
+    "extractors": {
+      "label": "Extracción personalizada",
+      "placeholder": "Precio | meta[property=\"product:price:amount\"] | content",
+      "hint": "Una por línea: nombre | selector CSS | atributo (omítelo para leer el texto). Se lee de cada página desde el próximo rastreo."
     }
   },
   "CrawlFiles": {
@@ -1914,7 +2052,8 @@
     "detailColumns": {
       "hreflang-source": "Origen",
       "security-header": "Cabecera",
-      "indexability-blocker": "Impedimento"
+      "indexability-blocker": "Impedimento",
+      "structured-data-missing": "Faltan"
     },
     "hreflangSources": {
       "html": "HTML",
@@ -2021,7 +2160,8 @@
     "tabs": {
       "label": "Configuración de auditoría",
       "rules": "Reglas",
-      "languages": "Directorios de idioma"
+      "languages": "Directorios de idioma",
+      "thresholds": "Umbrales"
     },
     "create": "Crear regla",
     "sections": {
@@ -2171,6 +2311,52 @@
         "reason": "El motivo es demasiado largo."
       },
       "statements": "Elige al menos una cosa que diga la regla: si las URLs forman parte de la auditoría, una condición o la indexación esperada."
+    },
+    "thresholds": {
+      "title": "Umbrales",
+      "description": "Las cifras con las que se comparan algunos checks. Son convenciones, no hechos: deja un campo vacío para usar la cifra recomendada. Cambiarlas vuelve a analizar el último rastreo.",
+      "recommended": "Recomendado: {value}",
+      "save": "Guardar umbrales",
+      "saved": "Guardado. El último rastreo se está analizando de nuevo.",
+      "errors": {
+        "range": "{field} debe estar entre {min} y {max}.",
+        "title": "El title más corto debe ser menor que el más largo.",
+        "description": "La meta description más corta debe ser menor que la más larga."
+      },
+      "fields": {
+        "titleMin": {
+          "label": "Title más corto",
+          "unit": "Caracteres"
+        },
+        "titleMax": {
+          "label": "Title más largo",
+          "unit": "Caracteres"
+        },
+        "descriptionMin": {
+          "label": "Meta description más corta",
+          "unit": "Caracteres"
+        },
+        "descriptionMax": {
+          "label": "Meta description más larga",
+          "unit": "Caracteres"
+        },
+        "thinWords": {
+          "label": "Mínimo de palabras para no ser contenido escaso",
+          "unit": "Palabras de texto"
+        },
+        "urlMax": {
+          "label": "URL más larga",
+          "unit": "Caracteres"
+        },
+        "clickDepthMax": {
+          "label": "Página más profunda",
+          "unit": "Clics desde la página de inicio"
+        },
+        "imageMaxKb": {
+          "label": "Imagen más pesada",
+          "unit": "Kilobytes"
+        }
+      }
     }
   },
   "AuditDialog": {
@@ -2280,7 +2466,9 @@
         "title": "Hallazgos a lo largo del tiempo",
         "description": "Cada cuadrado es un rastreo, del más antiguo al más reciente. Un hallazgo solo se llama nuevo, resuelto o reaparecido cuando los rastreos de ambos lados podían haberlo detectado con el mismo catálogo de problemas y las mismas reglas de auditoría.",
         "legend": "Rojo: detectado. Verde: no detectado por un rastreo que podía haberlo detectado. Discontinuo: el rastreo no puede saberlo (podado, sin analizar, URL no encontrada o no solicitada, excluida de la auditoría, o con otro catálogo o configuración)."
-      }
+      },
+      "compact": "Solo resumen",
+      "compactHint": "Rastreo antiguo: se guarda lo que era la URL durante un tiempo, sin sus enlaces ni evidencias."
     }
   },
   "CrawlCompare": {
@@ -2574,7 +2762,7 @@
     "sitemap-forbidden-present": "Elimina la entrada de la URL de los sitemaps afectados o corrige la regla si debe figurar en ellos. Ejecuta un rastreo completo para verificar el cambio."
   },
   "Companies": {
-    "metaTitle": "Empresas · seotools",
+    "metaTitle": "Empresas · Administración · seotools",
     "title": "Empresas",
     "addCompany": "Añadir empresa",
     "empty": "Todavía no hay empresas.",
@@ -2666,6 +2854,7 @@
     "description": "Tu cuenta no tiene ninguna empresa ni dominio. Pide acceso a un administrador."
   },
   "Users": {
+    "metaTitle": "Usuarios · Administración · seotools",
     "title": "Usuarios",
     "close": "Cerrar",
     "actions": "Acciones de {name}",
@@ -2810,7 +2999,7 @@
     }
   },
   "Email": {
-    "metaTitle": "Correo · seotools",
+    "metaTitle": "Correo · Administración · seotools",
     "title": "Correo",
     "description": "Cómo envía correo la aplicación: invitaciones, enlaces de contraseña y alertas de rastreo.",
     "health": {
@@ -2823,6 +3012,11 @@
         "title": "El último correo no se entregó",
         "description": "Revisa los ajustes, envía un correo de prueba y mira los problemas recientes.",
         "open": "Ver qué ha fallado"
+      },
+      "undecryptable": {
+        "title": "No se pueden leer los ajustes de correo guardados",
+        "description": "La clave de cifrado cambió después de guardarlos. Vuelve a escribir los ajustes del proveedor: al guardarlos sustituyen a los anteriores.",
+        "open": "Escribirlos de nuevo"
       }
     },
     "provider": {
@@ -2845,7 +3039,8 @@
       "fromHint": "La dirección desde la que salen los correos, por ejemplo seo@example.com.",
       "save": "Guardar",
       "saving": "Guardando…",
-      "saved": "Guardado."
+      "saved": "Guardado.",
+      "undecryptable": "Los ajustes guardados del proveedor no se pueden leer con la clave de cifrado actual (SETTINGS_ENCRYPTION_KEY o BETTER_AUTH_SECRET cambió después de guardarlos). Vuelve a escribirlos abajo: al guardar sustituyen a los anteriores."
     },
     "test": {
       "title": "Enviar un correo de prueba",
@@ -2890,7 +3085,9 @@
       "from": "Escribe la dirección desde la que salen los correos.",
       "apiKey": "Escribe la clave de API.",
       "address": "Escribe una dirección de correo válida.",
-      "notConfigured": "Guarda primero los ajustes."
+      "notConfigured": "Guarda primero los ajustes.",
+      "undecryptable": "Los ajustes guardados no se pueden leer con la clave actual. Vuelve a escribirlos y guarda.",
+      "paused": "El correo está en pausa (SEOTOOLS_PAUSE_AUTOMATION está activada), así que no se envía nada."
     }
   },
   "AlertsSettings": {
@@ -2901,5 +3098,110 @@
     "none": "No recibes correo sobre este dominio.",
     "archived": "Este dominio está archivado: no se envían alertas.",
     "manage": "Elegir mis alertas"
+  },
+  "LinkRegions": {
+    "nav": "Navegación",
+    "header": "Cabecera",
+    "footer": "Pie",
+    "main": "Contenido principal",
+    "aside": "Lateral"
+  },
+  "Dashboard": {
+    "metaTitle": "{host} · seotools",
+    "lastCrawl": "Último rastreo completo terminado {when}.",
+    "neverCrawled": "Este dominio todavía no se ha rastreado.",
+    "lastAttempt": "Intento de rastreo completo más reciente:",
+    "jobs": "Ver rastreos",
+    "incomplete": {
+      "title": "El último rastreo se detuvo en su límite de URL",
+      "description": "Pidió {urls, number} URL y había más. Estas cifras no cubren todo el sitio.",
+      "settings": "Sube el límite en los ajustes de rastreo."
+    },
+    "figures": "Último rastreo completo",
+    "figuresHelp": "Las páginas indexables se cuentan entre todas las páginas rastreadas y solo dicen lo que vio el rastreo: no dependen de la auditoría. Las páginas con problemas, avisos y oportunidades se cuentan solo entre las auditadas, y una página cuenta en cada grupo del que tenga algo.",
+    "tiles": {
+      "crawled": "Páginas rastreadas",
+      "indexable": "Páginas indexables",
+      "issues": "Páginas con problemas",
+      "warnings": "Páginas con avisos",
+      "opportunities": "Páginas con oportunidades"
+    },
+    "ofCrawled": "de {count, number} rastreadas",
+    "ofAudited": "de {count, number} auditadas",
+    "notChecked": "Aún sin comprobar",
+    "notAvailable": "No disponible para este rastreo",
+    "unknownIndexability": "{count, plural, one {# página tiene} other {# páginas tienen}} pocos datos para saber si se puede indexar.",
+    "trend": "Evolución",
+    "trendFindings": "Páginas con hallazgos",
+    "trendFindingsHelp": "Páginas auditadas que tienen algo de cada tipo tras cada rastreo completo. Una página puede estar en varios.",
+    "trendIndexable": "Páginas indexables",
+    "trendIndexableHelp": "Páginas a las que el rastreo no vio nada que lo impida, entre todas las rastreadas. Se cuenta aparte porque su total no son las páginas auditadas.",
+    "series": {
+      "indexable": "Páginas indexables",
+      "issues": "Problemas",
+      "warnings": "Avisos",
+      "opportunities": "Oportunidades"
+    },
+    "chartEmpty": "El historial empieza con el próximo rastreo completo: se revisa en busca de problemas al terminar.",
+    "chartCaption": "{series}, tras cada rastreo completo",
+    "chartDate": "Rastreo terminado",
+    "prioritiesTitle": "Hallazgos que revisar primero",
+    "noCrawl": "Los hallazgos aparecen aquí cuando el dominio se haya rastreado.",
+    "pruned": "Ya no se conservan los resultados detallados de este rastreo. Sus totales siguen disponibles en el historial.",
+    "stale": "Los hallazgos prioritarios estarán disponibles cuando el análisis refleje la configuración de auditoría actual.",
+    "noPriorities": "No se registraron hallazgos en este análisis.",
+    "affectedUrls": "{count, plural, one {# URL} other {# URL}}",
+    "allIssues": "Todos los problemas",
+    "notCheckedFindings": "Este rastreo no tiene el análisis necesario para mostrar hallazgos. Inicia un nuevo rastreo completo para obtener datos actuales."
+  },
+  "Issues": {
+    "metaTitle": "Problemas · {host} · seotools",
+    "title": "Problemas",
+    "description": "Todo lo que encontró el último rastreo completo, por importancia.",
+    "noCrawl": "Los problemas aparecen aquí cuando el dominio se haya rastreado.",
+    "pruned": "Ya no se conservan los resultados detallados de este rastreo.",
+    "notChecked": "El último rastreo completo no se ha revisado en busca de problemas. Inicia un nuevo rastreo completo para verlos aquí.",
+    "importance": {
+      "high": "Importancia alta",
+      "medium": "Importancia media",
+      "low": "Importancia baja"
+    },
+    "importanceLabel": "importancia y tipos",
+    "empty": "No se encontró nada de esta importancia.",
+    "urls": "{count, plural, one {# URL} other {# URL}}",
+    "secondary": "+{count, number} en páginas no indexables",
+    "secondaryOnly": "{count, plural, one {# URL} other {# URLs}} en páginas no indexables",
+    "accepted": {
+      "title": "Aceptados por una regla",
+      "help": "El rastreo sigue viéndolos y una regla dice que se esperan. No están pendientes ni arreglados: quita la regla y vuelven a contar.",
+      "viewAll": "Ver todas las URL con un hallazgo aceptado"
+    }
+  },
+  "SystemNav": {
+    "label": "Secciones de administración",
+    "status": "Estado",
+    "companies": "Empresas",
+    "users": "Usuarios",
+    "email": "Correo",
+    "updates": "Actualizaciones"
+  },
+  "Parameters": {
+    "metaTitle": "Parámetros de consulta · {host} · seotools",
+    "back": "← URL",
+    "title": "Parámetros de consulta",
+    "crawl": "Rastreo completo del {date}",
+    "empty": "Los parámetros aparecen aquí cuando el dominio tenga un rastreo completo.",
+    "pruned": "Los resultados detallados de este rastreo ya no se conservan.",
+    "names": "Parámetros encontrados",
+    "bounded": "Contados sobre las primeras {count, number} URL con parámetros.",
+    "name": "Parámetro",
+    "count": "URL",
+    "none": "Ninguna URL interna de este rastreo tiene parámetros de consulta.",
+    "entries": "Por dónde entran en el sitio",
+    "entriesHelp": "Enlaces desde una URL sin el parámetro a una URL que lo tiene.",
+    "noContext": "Este rastreo no guardó puntos de entrada. Los rastreos anteriores a esta versión no los conservaban.",
+    "pagination": "Páginas de puntos de entrada",
+    "previous": "Anterior",
+    "next": "Siguiente"
   }
 }

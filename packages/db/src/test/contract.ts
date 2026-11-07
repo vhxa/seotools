@@ -18,6 +18,8 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createFirstAdmin, needsSetup } from '../admin'
 import type {
+  OutLink,
+  OutLinkCursor,
   CrawlUrlResult,
   Database,
   NewCrawlFile,
@@ -34,7 +36,7 @@ const minutes = (n: number) => n * 60_000
 
 /**
  * Behaviour every dialect must provide. `reset` must leave all tables empty.
- * SQLite runs it always; Postgres/MySQL run it when TEST_POSTGRES_URL / TEST_MYSQL_URL are set.
+ * SQLite runs it always; Postgres runs it when TEST_POSTGRES_URL is set.
  */
 /** What only an older version of the code wrote, put into the database as it was. */
 export interface LegacyWrites {
@@ -397,7 +399,10 @@ export function describeDatabaseContract(
     })
 
     describe('crawls', () => {
+      // Each URL gets a number of its own, as the crawler gives them: unique within a crawl.
+      let lastSeq = 0
       const newUrl = (url: string, overrides: Partial<NewCrawlUrl> = {}): NewCrawlUrl => ({
+        seq: ++lastSeq,
         url,
         urlHash: crawlUrlHash(url),
         scope: 'internal',
@@ -474,6 +479,9 @@ export function describeDatabaseContract(
           ...DEFAULT_CRAWL_SETTINGS,
           userAgent: 'MyBot/1.0',
           concurrency: 4,
+          includePrefixes: ['/shop'],
+          excludePrefixes: ['/shop/private'],
+          maxDepth: 5,
           maxUrls: null,
           retainCrawls: null,
         }
@@ -495,6 +503,17 @@ export function describeDatabaseContract(
           optionalFiles: ['ads', 'feed'],
           indexNowKey: 'abcd1234',
         })
+      })
+
+      it('keeps encrypted request configuration separate from browser settings', async () => {
+        const domainId = await domain()
+        await db.crawls.saveRequestSecrets(domainId, 'v1:encrypted')
+        expect(await db.crawls.requestSecrets(domainId)).toBe('v1:encrypted')
+        expect(await db.crawls.settings(domainId)).not.toHaveProperty('requestSecrets')
+        await db.crawls.saveSettings(domainId, DEFAULT_CRAWL_SETTINGS)
+        expect(await db.crawls.requestSecrets(domainId)).toBe('v1:encrypted')
+        await db.crawls.saveRequestSecrets(domainId, null)
+        expect(await db.crawls.requestSecrets(domainId)).toBeNull()
       })
 
       it('lists the extra files each domain turned on', async () => {
@@ -791,7 +810,7 @@ export function describeDatabaseContract(
           for (let offset = 0; ; offset += size) {
             const batch = await db.crawls.listUrls({
               crawlId: id,
-              view: 'pages',
+              view: 'all',
               ...filter,
               limit: size,
               offset,
@@ -814,7 +833,7 @@ export function describeDatabaseContract(
         const narrowed = { status: '4xx' as const }
         const walked = await everything({ ...narrowed, sort: 'title' }, 3)
         expect(walked).toHaveLength(
-          await db.crawls.countListed({ crawlId: id, view: 'pages', ...narrowed }),
+          await db.crawls.countListed({ crawlId: id, view: 'all', ...narrowed }),
         )
         expect(new Set(walked).size).toBe(walked.length)
       })
@@ -866,7 +885,9 @@ export function describeDatabaseContract(
           (
             await db.crawls.listUrls({
               crawlId,
-              view: 'pages',
+              // Every HTML answer of the site, whatever its status: ordering is what is tested here.
+              view: 'all',
+              type: 'page',
               limit: 10,
               offset: 0,
               ...options,
@@ -876,6 +897,9 @@ export function describeDatabaseContract(
         it('orders by a column in either direction, leaving empty values last', async () => {
           const crawlId = await crawlOfPages()
           expect(await paths(crawlId)).toEqual(['/', '/about', '/gone', '/blog/50%_off'])
+          // A page that answered 404 is an error, not one of the pages.
+          expect(await paths(crawlId, { view: 'pages' })).toEqual(['/', '/about', '/blog/50%_off'])
+          expect(await paths(crawlId, { view: 'errors' })).toEqual(['/gone'])
           expect(await paths(crawlId, { sort: 'url' })).toEqual([
             '/',
             '/about',
@@ -939,12 +963,13 @@ export function describeDatabaseContract(
           expect(await paths(crawlId, { issue: 'http-error', search: 'about' })).toEqual([])
           expect(await paths(crawlId, { issue: 'unknown' })).toEqual([])
 
-          expect(await db.crawls.countListed({ crawlId, view: 'pages' })).toBe(4)
+          expect(await db.crawls.countListed({ crawlId, view: 'pages' })).toBe(3)
+          expect(await db.crawls.countListed({ crawlId, view: 'errors' })).toBe(1)
           expect(await db.crawls.countListed({ crawlId, view: 'pages', search: 'about' })).toBe(1)
           expect(
             await db.crawls.countListed({ crawlId, view: 'pages', issue: 'missing-title' }),
           ).toBe(2)
-          expect(await db.crawls.countListed({ crawlId, view: 'other' })).toBe(1)
+          expect(await db.crawls.countListed({ crawlId, view: 'other' })).toBe(2)
           expect(await db.crawls.countListed({ crawlId, view: 'external' })).toBe(1)
           expect(await db.crawls.countListed({ crawlId: 'missing', view: 'pages' })).toBe(0)
         })
@@ -1145,7 +1170,9 @@ export function describeDatabaseContract(
 
         it('has a view for pages, resources, redirects, external URLs and everything', async () => {
           const crawlId = await crawlOfEverything()
-          expect(await list(crawlId, { view: 'pages' })).toEqual(['/', '/boom', '/gone', '/hidden'])
+          expect(await list(crawlId, { view: 'pages' })).toEqual(['/', '/hidden'])
+          // Whatever it was meant to be, a URL that failed or never answered is an error.
+          expect(await list(crawlId, { view: 'errors' })).toEqual(['/boom', '/broken', '/gone'])
           expect(await list(crawlId, { view: 'resources' })).toEqual(['/logo.png'])
           expect(await list(crawlId, { view: 'redirects' })).toEqual(['/old'])
           expect(await list(crawlId, { view: 'external' })).toEqual([
@@ -1155,7 +1182,9 @@ export function describeDatabaseContract(
           ])
           // `other` keeps meaning the site's URLs that are not pages, for the links that exist.
           expect(await list(crawlId, { view: 'other' })).toEqual([
+            '/boom',
             '/broken',
+            '/gone',
             '/logo.png',
             '/never',
             '/old',
@@ -1179,10 +1208,11 @@ export function describeDatabaseContract(
         it('counts what each view starts from, to compare with what a filter leaves', async () => {
           const crawlId = await crawlOfEverything()
           expect(await db.crawls.viewCounts(crawlId)).toEqual({
-            pages: 4,
+            pages: 2,
             resources: 1,
             redirects: 1,
-            other: 4,
+            errors: 3,
+            other: 6,
             external: 3,
             all: 11,
           })
@@ -1190,6 +1220,7 @@ export function describeDatabaseContract(
             pages: 0,
             resources: 0,
             redirects: 0,
+            errors: 0,
             other: 0,
             external: 0,
             all: 0,
@@ -1199,6 +1230,7 @@ export function describeDatabaseContract(
             'pages',
             'resources',
             'redirects',
+            'errors',
             'other',
             'external',
             'all',
@@ -1274,7 +1306,7 @@ export function describeDatabaseContract(
           expect(await list(crawlId, { indexability: 'unknown' })).toEqual([])
           expect(await list(crawlId, { indexability: 'indexable' })).toEqual([])
           // The rest of what the crawl stored does not depend on the analysis.
-          expect(await list(crawlId, { view: 'pages', status: '4xx' })).toEqual(['/gone'])
+          expect(await list(crawlId, { view: 'errors', status: '4xx' })).toEqual(['/gone'])
         })
 
         it('adds filters up, with the search and the audit ones', async () => {
@@ -1427,6 +1459,176 @@ export function describeDatabaseContract(
           })
         const pairs = (rows: { url: string; kind: string }[]) =>
           rows.map((row) => `${row.url.replace(site, '')} ${row.kind}`)
+
+        it('lists the internal addresses with a query string a page at a time', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const plain = newUrl(`${site}/`, { depth: 0 })
+          const first = newUrl(`${site}/a?utm_source=x`)
+          const external = newUrl('https://elsewhere.org/?ref=1', { scope: 'external' })
+          const second = newUrl(`${site}/b?page=2`)
+          await db.crawls.addUrls(id, [plain, first, external, second])
+          const all = await db.crawls.queryUrls(id, { after: null, limit: 10 })
+          expect(all).toEqual({ urls: [first.url, second.url], next: null })
+          const one = await db.crawls.queryUrls(id, { after: null, limit: 1 })
+          expect(one.urls).toEqual([first.url])
+          expect(one.next).not.toBeNull()
+          expect(await db.crawls.queryUrls(id, { after: one.next, limit: 1 })).toMatchObject({
+            urls: [second.url],
+          })
+          expect(await db.crawls.queryUrls('missing', { after: null, limit: 10 })).toEqual({
+            urls: [],
+            next: null,
+          })
+        })
+
+        it('reads the links leaving a URL a page at a time, and URLs by their hash', async () => {
+          const crawlId = await crawlWithLinks()
+          const about = hashOf(url('/about'))
+          const all = await db.crawls.outlinksOf(crawlId, about, { after: null, limit: 100 })
+          expect(all.next).toBeNull()
+          expect(pairs(all.links).sort()).toEqual(['/ anchor', '/logo.png image'])
+          expect(all.links.every((link) => link.sourceHash === about)).toBe(true)
+
+          // One at a time: every link once, in the same order, and the cursor ends.
+          const paged: string[] = []
+          let after: OutLinkCursor | null = null
+          for (let i = 0; i < 5; i++) {
+            const page: { links: OutLink[]; next: OutLinkCursor | null } =
+              await db.crawls.outlinksOf(crawlId, about, { after, limit: 1 })
+            paged.push(...pairs(page.links))
+            if (!page.next) break
+            after = page.next
+          }
+          expect(paged).toEqual(pairs(all.links))
+
+          expect(
+            (await db.crawls.urlsOf(crawlId, [hashOf(home), 'missing'])).map((u) => u.url),
+          ).toEqual([home])
+          expect(
+            await db.crawls.outlinksOf('missing', hashOf(home), { after: null, limit: 10 }),
+          ).toEqual({ links: [], next: null })
+          expect(
+            await db.crawls.outlinksOf(crawlId, 'missing', { after: null, limit: 10 }),
+          ).toEqual({ links: [], next: null })
+        })
+
+        it('keeps a link whose target is not stored yet, when the crawler numbered both ends', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const home = newUrl(`${site}/`, { depth: 0 })
+          const later = newUrl(`${site}/later`)
+          await db.crawls.addUrls(id, [home])
+          // Another response admitted /later and has not committed yet: this one only links to it.
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: home.urlHash,
+            result: result('page'),
+            links: [
+              {
+                sourceHash: home.urlHash,
+                targetHash: later.urlHash,
+                kind: 'anchor',
+                sourceSeq: home.seq,
+                targetSeq: later.seq,
+              },
+            ],
+          })
+          await db.crawls.addUrls(id, [later])
+          const out = await db.crawls.listLinks({
+            crawlId: id,
+            urlHash: home.urlHash,
+            direction: 'out',
+            limit: 10,
+            offset: 0,
+          })
+          expect(out.map((row) => row.url)).toEqual([later.url])
+        })
+
+        it('says where parameters enter the site, and how each URL was found', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const seed = newUrl(`${site}/`, { depth: 0 })
+          const target = newUrl(`${site}/es?utm_source=x`, {
+            foundFrom: seed.seq,
+            foundKind: 'anchor',
+          })
+          const deeper = newUrl(`${site}/ca?utm_source=x`, {
+            foundFrom: target.seq,
+            foundKind: 'anchor',
+          })
+          await db.crawls.addUrls(id, [seed, target, deeper])
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: seed.urlHash,
+            result: result('page'),
+            links: [
+              {
+                sourceHash: seed.urlHash,
+                targetHash: target.urlHash,
+                kind: 'anchor',
+                context: {
+                  text: 'ES',
+                  element: 'a.dropdown-item',
+                  region: 'nav',
+                  snippet: '<a href="/es?utm_source=x">',
+                },
+              },
+            ],
+          })
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash: target.urlHash,
+            result: result('page'),
+            // Same parameters as its page: not where they enter.
+            links: [
+              {
+                sourceHash: target.urlHash,
+                targetHash: deeper.urlHash,
+                kind: 'anchor',
+                context: { text: 'CA' },
+              },
+            ],
+          })
+          const { entries, total } = await db.crawls.parameterEntries(id, { limit: 10, offset: 0 })
+          expect(total).toBe(1)
+          expect(entries).toEqual([
+            {
+              sourceUrl: seed.url,
+              sourceHash: seed.urlHash,
+              url: target.url,
+              urlHash: target.urlHash,
+              kind: 'anchor',
+              context: {
+                text: 'ES',
+                element: 'a.dropdown-item',
+                region: 'nav',
+                snippet: '<a href="/es?utm_source=x">',
+              },
+            },
+          ])
+          expect(await db.crawls.discoveryPath(id, deeper.urlHash)).toEqual([
+            { url: seed.url, urlHash: seed.urlHash, foundKind: null, context: null },
+            {
+              url: target.url,
+              urlHash: target.urlHash,
+              foundKind: 'anchor',
+              context: {
+                text: 'ES',
+                element: 'a.dropdown-item',
+                region: 'nav',
+                snippet: '<a href="/es?utm_source=x">',
+              },
+            },
+            {
+              url: deeper.url,
+              urlHash: deeper.urlHash,
+              foundKind: 'anchor',
+              context: { text: 'CA' },
+            },
+          ])
+          expect(await db.crawls.discoveryPath(id, 'missing')).toEqual([])
+        })
 
         it('lists each direction on its own, by address and then by type', async () => {
           const crawlId = await crawlWithLinks()
@@ -1727,8 +1929,8 @@ export function describeDatabaseContract(
           expect(
             (await db.crawls.issueCounts(id)).sort((x, y) => x.issue.localeCompare(y.issue)),
           ).toEqual([
-            { issue: 'http-error', pages: 1 },
-            { issue: 'missing-title', pages: 2 },
+            { issue: 'http-error', pages: 1, secondary: 0 },
+            { issue: 'missing-title', pages: 2, secondary: 0 },
           ])
           expect((await db.crawls.issuesOf(id, ['a', 'zzz'])).map((i) => i.issue).sort()).toEqual([
             'http-error',
@@ -1814,7 +2016,9 @@ export function describeDatabaseContract(
           })
 
           // What is pending knows nothing of them.
-          expect(await db.crawls.issueCounts(id)).toEqual([{ issue: 'title-missing', pages: 1 }])
+          expect(await db.crawls.issueCounts(id)).toEqual([
+            { issue: 'title-missing', pages: 1, secondary: 0 },
+          ])
           expect((await db.crawls.issuesOf(id, [b, c])).length).toBe(0)
           expect(
             (await db.crawls.acceptedCounts(id)).sort((x, y) => x.issue.localeCompare(y.issue)),
@@ -1953,7 +2157,7 @@ export function describeDatabaseContract(
             { issue: 'noindex', pages: 1 },
           ])
           expect(await db.crawls.issueCounts(newest.id)).toEqual([
-            { issue: 'missing-title', pages: 1 },
+            { issue: 'missing-title', pages: 1, secondary: 0 },
           ])
         })
 
@@ -2065,8 +2269,28 @@ export function describeDatabaseContract(
             version: 0,
             rules: [],
             languages: { prefixes: [], unprefixed: false },
+            thresholds: {},
             recomputeError: null,
           })
+        })
+
+        it('keeps the thresholds a domain sets, moving the version only when they change', async () => {
+          const domainId = await domain()
+          expect(
+            await db.audit.setThresholds({
+              domainId,
+              thresholds: { thinWords: 120, titleMax: 60 },
+            }),
+          ).toMatchObject({ ok: true, version: 1, changed: true })
+          expect((await db.audit.config(domainId)).thresholds).toEqual({ thinWords: 120 })
+          expect(
+            await db.audit.setThresholds({ domainId, thresholds: { thinWords: 120 } }),
+          ).toMatchObject({ version: 1, changed: false })
+          expect(await db.audit.setThresholds({ domainId, thresholds: {} })).toMatchObject({
+            version: 2,
+            changed: true,
+          })
+          expect((await db.audit.config(domainId)).thresholds).toEqual({})
         })
 
         it('creates, edits, switches and deletes rules, moving the version for each change', async () => {
@@ -3967,7 +4191,7 @@ export function describeDatabaseContract(
           const crawl = await analysedCrawl(2)
           expect(await save(crawl, { issue: 'title-missing' })).toBe(true)
           expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([
-            { issue: 'title-missing', pages: 1 },
+            { issue: 'title-missing', pages: 1, secondary: 0 },
           ])
           expect(await save(crawl)).toBe(true)
           expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([])
@@ -3991,7 +4215,7 @@ export function describeDatabaseContract(
             (await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart')]))[0]?.participation,
           ).toBe('audited')
           expect(await db.crawls.issueCounts(crawl.crawlId)).toEqual([
-            { issue: 'title-missing', pages: 1 },
+            { issue: 'title-missing', pages: 1, secondary: 0 },
           ])
         })
 
@@ -4247,6 +4471,30 @@ export function describeDatabaseContract(
             ...options,
           })
 
+        it('compares as pages what answered HTML 2xx in either crawl, and a page failing in both as the rest', async () => {
+          const domainId = await domain()
+          const older = await crawlOf(domainId, {
+            '/': { result: { title: 'Home' } },
+            '/broke': { result: { title: 'Broke' } },
+            '/gone': { result: { statusCode: 404 } },
+          })
+          const newer = await crawlOf(domainId, {
+            '/': { result: { title: 'Home' } },
+            '/broke': { result: { statusCode: 404 } },
+            '/gone': { result: { statusCode: 404 } },
+          })
+          const ids = { domainId, baseId: older!.id, targetId: newer!.id }
+          const changed = async (view: 'pages' | 'other') =>
+            paths(
+              await db.crawls.compareUrls({ ...ids, change: 'status', view, limit: 50, offset: 0 }),
+            )
+          // A page that broke is a change of a page; one that failed both times is not a page.
+          expect(await changed('pages')).toEqual(['/broke'])
+          expect((await db.crawls.compareCounts({ ...ids, view: 'pages' }))?.compared).toBe(2)
+          expect((await db.crawls.compareCounts({ ...ids, view: 'other' }))?.compared).toBe(1)
+          expect(await changed('other')).toEqual([])
+        })
+
         it('counts what was added, is missing and changed, apart from the external URLs', async () => {
           const ids = await pair()
           expect(await db.crawls.compareCounts({ ...ids, view: 'pages' })).toEqual({
@@ -4479,7 +4727,18 @@ export function describeDatabaseContract(
             ).toEqual(['base/old', 'target/new'])
           })
 
-          it('leaves out external URLs, other domains, other types and pruned crawls', async () => {
+          it('keeps the history of an archived domain past its days', async () => {
+            const ids = await pair()
+            await crawlOf(ids.domainId, target)
+            await db.crawls.prune({ domainId: ids.domainId, type: 'full', keep: 2 })
+            await db.domains.archive(ids.domainId)
+            const later = new Date(Date.now() + 365 * 86_400_000)
+            expect(await db.crawls.expireHistory({ now: later, defaultDays: 30 })).toBe(0)
+            await db.domains.unarchive(ids.domainId)
+            expect(await db.crawls.expireHistory({ now: later, defaultDays: 30 })).toBe(1)
+          })
+
+          it('leaves out external URLs, other domains, other types and crawls with nothing kept', async () => {
             const ids = await pair()
             const newest = await crawlOf(ids.domainId, target)
             const other = await domain('other.com')
@@ -4494,11 +4753,29 @@ export function describeDatabaseContract(
               crawlIds: [ids.baseId, ids.targetId, newest.id, foreign.id, priority.id],
               urlHashes: hashes,
             })
-            // The oldest was pruned; the foreign and priority crawls are not full crawls of the domain.
+            // The oldest was pruned to its compact history, which still says what the URL was; the
+            // foreign and priority crawls are not full crawls of the domain.
             expect(history.map((entry) => entry.crawlId).sort()).toEqual(
-              [ids.targetId, newest.id].sort(),
+              [ids.baseId, ids.targetId, newest.id].sort(),
             )
             expect(history.every((entry) => entry.urlHash === hashOf('/'))).toBe(true)
+            const base = history.find((entry) => entry.crawlId === ids.baseId)
+            expect(base?.snapshot).toMatchObject({ state: 'done' })
+            // Once its history expires, nothing of it is left but the totals.
+            expect(
+              await db.crawls.expireHistory({
+                now: new Date(Date.now() + 365 * 86_400_000),
+                defaultDays: 30,
+              }),
+            ).toBe(1)
+            const after = await db.crawls.urlHistory({
+              domainId: ids.domainId,
+              crawlIds: [ids.baseId, ids.targetId, newest.id],
+              urlHashes: hashes,
+            })
+            expect(after.map((entry) => entry.crawlId).sort()).toEqual(
+              [ids.targetId, newest.id].sort(),
+            )
             // Asked with another domain, the same crawls give nothing.
             expect(
               await db.crawls.urlHistory({

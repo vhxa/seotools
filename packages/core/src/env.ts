@@ -11,12 +11,17 @@ const bool = z.enum(['true', 'false', '1', '0']).transform((v) => v === 'true' |
 const int = (def: number, min = 1) => z.coerce.number().int().min(min).default(def)
 
 export const commonEnvSchema = z.object({
+  /**
+   * For staging copies of a production database: the worker fires no schedules, runs no periodic
+   * refreshers or update checks and sends no email. Manual actions from the UI still run.
+   */
+  SEOTOOLS_PAUSE_AUTOMATION: bool.default(false),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  /** `file:` (SQLite, default), `postgres://…` or `mysql://…`. */
+  /** `file:` (SQLite, default), or `postgres://…`. */
   DATABASE_URL: z.string().min(1).default('file:./data/seotools.db'),
   /** Only needed when the dialect can't be inferred from DATABASE_URL. */
-  DATABASE_DIALECT: z.enum(['sqlite', 'pg', 'mysql']).optional(),
+  DATABASE_DIALECT: z.enum(['sqlite', 'pg']).optional(),
   /** Used to sign sessions (better-auth) and, by default, to encrypt stored settings. */
   BETTER_AUTH_SECRET: z
     .string()

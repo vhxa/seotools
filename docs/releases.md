@@ -133,8 +133,7 @@ A release is a pull request and a tag. Nothing is published until the tag is pus
      [updating.md](updating.md#update-with-docker-compose): the migrations apply, the data is
      there, `/api/health` is `ok`, the Updates page and the sidebar say what they should.
    - If it has migrations, read the diff of `packages/db/migrations/*` for what could hurt data on
-     the three dialects, and run the database contract on PostgreSQL and MySQL
-     (`TEST_POSTGRES_URL`, `TEST_MYSQL_URL`).
+     both dialects, and run the database contract on PostgreSQL (`TEST_POSTGRES_URL`).
    - Walk through the release notes as if you had never seen the code.
 5. **Merge** (squash). `main` now builds `edge` with the new version number, as a development
    build: it is not the release yet.

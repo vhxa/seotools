@@ -2,13 +2,12 @@ import { ArrowLeftIcon } from 'lucide-react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
-import { byAge } from '@seotools/core/crawl/compare'
+import { byAge, keepsUrlHistory } from '@seotools/core/crawl/compare'
 import { CrawlBanner } from '@/components/history/crawl-banner'
 import { CrawlSwitcher } from '@/components/history/crawl-switcher'
 import { UrlHistory } from '@/components/history/url-history'
 import { UrlDetail } from '@/components/pages/url-detail'
 import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { browsableCrawls, selectCrawl } from '@/lib/crawl-history'
 import { getDb } from '@/lib/db'
 import { isCrawlId, isUrlHash } from '@/lib/pages-query'
@@ -71,7 +70,7 @@ export default async function UrlPage({
     data.url.scope === 'internal'
       ? await db.crawls.urlHistory({
           domainId: domain.id,
-          crawlIds: crawls.filter((crawl) => !crawl.pruned).map((crawl) => crawl.id),
+          crawlIds: crawls.filter(keepsUrlHistory).map((crawl) => crawl.id),
           urlHashes: [hash],
         })
       : []
@@ -89,44 +88,43 @@ export default async function UrlPage({
         </Link>
         <h1 className="font-mono text-lg font-semibold break-all">{data.url.url}</h1>
       </div>
-      <Card>
-        <CardContent>
-          <UrlDetail
-            host={domain.host}
-            data={data}
-            context={
-              <CrawlBanner
-                crawl={selected}
-                historical={historical}
-                currentVersion={config.version}
-                latestHref={historical ? `/domains/${domain.host}/pages/details/${hash}` : null}
-                picker={
-                  <CrawlSwitcher
-                    crawls={history}
-                    selected={selected}
-                    latestId={latestId}
-                    hrefFor={(crawl) =>
-                      `/domains/${domain.host}/pages/details/${hash}${crawlParam(crawl.id)}`
-                    }
-                  />
+
+      <UrlDetail
+        host={domain.host}
+        data={data}
+        history={
+          data.url.scope === 'internal' && (
+            <UrlHistory
+              host={domain.host}
+              urlHash={hash}
+              crawls={crawls}
+              traces={traces}
+              viewingId={selected.id}
+            />
+          )
+        }
+        context={
+          <CrawlBanner
+            crawl={selected}
+            historical={historical}
+            currentVersion={config.version}
+            latestHref={historical ? `/domains/${domain.host}/pages/details/${hash}` : null}
+            picker={
+              <CrawlSwitcher
+                crawls={history}
+                selected={selected}
+                latestId={latestId}
+                hrefFor={(crawl) =>
+                  `/domains/${domain.host}/pages/details/${hash}${crawlParam(crawl.id)}`
                 }
               />
             }
-            hrefFor={(urlHash) =>
-              `/domains/${domain.host}/pages/details/${urlHash}${crawlParam(selected.id)}`
-            }
           />
-        </CardContent>
-      </Card>
-      {data.url.scope === 'internal' && (
-        <UrlHistory
-          host={domain.host}
-          urlHash={hash}
-          crawls={crawls}
-          traces={traces}
-          viewingId={selected.id}
-        />
-      )}
+        }
+        hrefFor={(urlHash) =>
+          `/domains/${domain.host}/pages/details/${urlHash}${crawlParam(selected.id)}`
+        }
+      />
     </main>
   )
 }

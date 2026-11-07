@@ -51,7 +51,7 @@ function guard<R extends object>(db: Database, repository: R, names: readonly (k
 export function withArchiveGuard(db: Database): Database {
   return {
     ...db,
-    crawls: guard(db, db.crawls, ['saveSettings']),
+    crawls: guard(db, db.crawls, ['saveSettings', 'saveRequestSecrets']),
     crawlSchedules: guard(db, db.crawlSchedules, ['save']),
     priorityUrls: guard(db, db.priorityUrls, ['add', 'remove']),
     crawlFiles: guard(db, db.crawlFiles, ['requestCheck']),
@@ -64,6 +64,7 @@ export function withArchiveGuard(db: Database): Database {
       'setRulesEnabled',
       'deleteRules',
       'setLanguages',
+      'setThresholds',
     ]),
   }
 }

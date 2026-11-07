@@ -178,3 +178,12 @@ describe('runDueSchedules', () => {
     expect(await db.crawls.active(domainId)).toBeNull()
   })
 })
+
+describe('runDueSchedules when automation is paused', () => {
+  it('fires nothing and leaves the schedule due', async () => {
+    await schedule('full')
+    await runDueSchedules(db, log, now, { paused: true })
+    expect(await db.crawls.active(domainId)).toBeNull()
+    expect(await db.crawlSchedules.due({ now, limit: 10 })).toHaveLength(1)
+  })
+})

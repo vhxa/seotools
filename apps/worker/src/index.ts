@@ -1,6 +1,7 @@
 import { hostname } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import {
+  DEFAULT_CRAWL_SETTINGS,
   EnvError,
   JOB_TYPES,
   MAIL_DELIVERIES_KEEP,
@@ -8,7 +9,9 @@ import {
   WORKER_HEARTBEAT_INTERVAL_MS,
   createLogger,
   createSettings,
+  MAIL_PAUSED,
   getMailer,
+  unavailableMailer,
   parseWorkerEnv,
   settingsKeyFrom,
 } from '@seotools/core'
@@ -39,6 +42,12 @@ async function main() {
   const log = createLogger('worker', env.LOG_LEVEL)
   const db = await createDatabase({ url: env.DATABASE_URL, dialect: env.DATABASE_DIALECT })
   const settings = createSettings(db.settings, settingsKeyFrom(env))
+  const paused = env.SEOTOOLS_PAUSE_AUTOMATION
+  if (paused) {
+    log.warn(
+      'SEOTOOLS_PAUSE_AUTOMATION is set: no scheduled crawls, refreshers, update checks or email will run',
+    )
+  }
 
   const workerId = `${hostname()}-${process.pid}-${randomBytes(2).toString('hex')}`
   const startedAt = new Date()
@@ -52,7 +61,8 @@ async function main() {
   const shared = {
     db,
     workerId,
-    getMailer: () => getMailer(settings),
+    getMailer: async () =>
+      paused ? unavailableMailer(MAIL_PAUSED, { retry: false }) : getMailer(settings),
     pollIntervalMs: env.WORKER_POLL_INTERVAL_MS,
     lockTimeoutMs: env.JOB_LOCK_TIMEOUT_MS,
   }
@@ -80,11 +90,13 @@ async function main() {
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,
+        settingsSecret: settingsKeyFrom(env),
       }),
       [JOB_TYPES.urlVerify]: createUrlVerifyHandler({
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,
+        settingsSecret: settingsKeyFrom(env),
       }),
     },
     concurrency: env.CRAWL_CONCURRENCY,
@@ -94,7 +106,9 @@ async function main() {
   crawlRunner.start()
 
   const tickScheduler = () =>
-    runDueSchedules(db, log).catch((err) => log.error({ err }, 'crawl scheduler failed'))
+    runDueSchedules(db, log, new Date(), { paused }).catch((err) =>
+      log.error({ err }, 'crawl scheduler failed'),
+    )
   // The record of sent email is capped by count and age, so it cannot grow forever.
   const pruneDeliveries = () =>
     db.mail
@@ -102,7 +116,14 @@ async function main() {
         before: new Date(Date.now() - MAIL_DELIVERIES_MAX_AGE_MS),
         keep: MAIL_DELIVERIES_KEEP,
       })
-      .catch((err) => log.error({ err }, 'could not prune the record of sent email'))
+      .then(() =>
+        // The compact history of old crawls goes after its domain's days, crawl or no crawl.
+        db.crawls.expireHistory({
+          now: new Date(),
+          defaultDays: DEFAULT_CRAWL_SETTINGS.historyDays ?? 30,
+        }),
+      )
+      .catch((err) => log.error({ err }, 'could not prune the record of sent email or old history'))
   void pruneDeliveries()
   const deliveriesTimer = setInterval(() => void pruneDeliveries(), PRUNE_INTERVAL_MS)
   void tickScheduler()
@@ -115,7 +136,9 @@ async function main() {
     db,
     log: log.child({ lane: 'favicon' }),
     appVersion: pkg.version,
+    settingsSecret: settingsKeyFrom(env),
     createFetcher,
+    paused,
   })
   void favicons.tick()
   const faviconTimer = setInterval(() => void favicons.tick(), SCHEDULER_INTERVAL_MS)
@@ -124,13 +147,15 @@ async function main() {
     db,
     log: log.child({ lane: 'crawl-files' }),
     appVersion: pkg.version,
+    settingsSecret: settingsKeyFrom(env),
     createFetcher,
+    paused,
   })
   void crawlFiles.tick()
   const crawlFilesTimer = setInterval(() => void crawlFiles.tick(), SCHEDULER_INTERVAL_MS)
 
   // Only if an administrator asked for it: otherwise this reads one setting and returns.
-  const updates = createUpdateChecker({ settings, log: log.child({ lane: 'updates' }) })
+  const updates = createUpdateChecker({ settings, log: log.child({ lane: 'updates' }), paused })
   void updates.tick()
   const updatesTimer = setInterval(() => void updates.tick(), SCHEDULER_INTERVAL_MS)
 

@@ -1,4 +1,9 @@
-import { assessPair, type FindingChange, type PairAssessment } from '@seotools/core/crawl/compare'
+import {
+  assessPair,
+  keepsUrlHistory,
+  type FindingChange,
+  type PairAssessment,
+} from '@seotools/core/crawl/compare'
 import type {
   Crawl,
   CrawlComparisonCounts,
@@ -80,7 +85,7 @@ export async function loadComparison(input: {
     const traces = indexTraces(
       await crawls.urlHistory({
         domainId,
-        crawlIds: history.filter((crawl) => !crawl.pruned).map((crawl) => crawl.id),
+        crawlIds: history.filter(keepsUrlHistory).map((crawl) => crawl.id),
         urlHashes: listed.map((row) => row.urlHash),
       }),
     )

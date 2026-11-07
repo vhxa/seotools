@@ -74,6 +74,19 @@ afterEach(async () => {
 })
 
 describe('createCrawlFileRefresher', () => {
+  it('does nothing when automation is paused', async () => {
+    const paused = createCrawlFileRefresher({
+      db,
+      log,
+      createFetcher,
+      now: () => clock,
+      retryBaseMs: 1,
+      paused: true,
+    })
+    await paused.tick()
+    expect(await db.crawlFiles.list(domainId)).toEqual([])
+  })
+
   it('fetches the files of a new domain, walking what robots.txt and sitemaps point to', async () => {
     site = {
       'https://example.com/robots.txt': text('Sitemap: https://example.com/index.xml'),

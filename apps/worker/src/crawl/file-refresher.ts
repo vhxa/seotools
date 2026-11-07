@@ -1,3 +1,4 @@
+import { siteHeaders } from './credentials'
 import { defaultCrawlerUserAgent, type Logger } from '@seotools/core'
 import type { Database } from '@seotools/db'
 import type { Fetcher, FetcherConfig } from './fetcher'
@@ -26,7 +27,10 @@ export function createCrawlFileRefresher(options: {
   db: Database
   log: Logger
   createFetcher: (config: Omit<FetcherConfig, 'allowPrivateNetworks'>) => Fetcher
+  /** `SEOTOOLS_PAUSE_AUTOMATION`: a pass does nothing. */
+  paused?: boolean
   appVersion?: string
+  settingsSecret?: string
   now?: () => Date
   retryBaseMs?: number
 }): CrawlFileRefresher {
@@ -57,6 +61,7 @@ export function createCrawlFileRefresher(options: {
     const startedAt = now()
     const settings = await db.crawls.settings(domain.id)
     const fetcher = createFetcher({
+      siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
       userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
       timeoutMs: settings.timeoutMs,
       concurrency: 1,
@@ -116,7 +121,7 @@ export function createCrawlFileRefresher(options: {
 
   return {
     tick() {
-      if (stopping.signal.aborted) return Promise.resolve()
+      if (options.paused || stopping.signal.aborted) return Promise.resolve()
       running ??= pass()
         .catch((error) => log.error({ err: error }, 'crawl file refresh failed'))
         .finally(() => {

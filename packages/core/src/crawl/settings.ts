@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { extractorsSchema, type Extractor } from './extraction'
+import { parseAuditSelector } from './audit'
 import { INDEXNOW_KEY, OPTIONAL_CRAWL_FILES, type OptionalCrawlFile } from './files'
 
 /**
@@ -10,6 +12,9 @@ export type CrawlRenderingMode = (typeof CRAWL_RENDERING_MODES)[number]
 export const CRAWL_RENDERING_AVAILABLE: readonly CrawlRenderingMode[] = ['http']
 
 export interface CrawlSettings {
+  includePrefixes: string[]
+  excludePrefixes: string[]
+  maxDepth: number | null
   renderingMode: CrawlRenderingMode
   /** `null` uses `defaultCrawlerUserAgent`. */
   userAgent: string | null
@@ -23,6 +28,13 @@ export interface CrawlSettings {
   maxUrls: number | null
   /** Successful crawls of each type whose per-URL results are kept. `null` keeps them all. */
   retainCrawls: number | null
+  /**
+   * Days the compact history of older crawls (what each URL was, its findings) is kept once their
+   * results per URL are removed. `null` keeps it always.
+   */
+  historyDays: number | null
+  /** Values read from every page with a CSS selector (`@seotools/core/crawl/extraction`). */
+  extractors: Extractor[]
   /** Crawl files that are not requested unless asked for. */
   optionalFiles: OptionalCrawlFile[]
   /** The file holding it cannot be found without knowing it. `null`: not checked. */
@@ -30,6 +42,9 @@ export interface CrawlSettings {
 }
 
 export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
+  includePrefixes: [],
+  excludePrefixes: [],
+  maxDepth: null,
   renderingMode: 'http',
   userAgent: null,
   concurrency: 2,
@@ -37,7 +52,10 @@ export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
   timeoutMs: 30_000,
   maxRetries: 2,
   maxUrls: 100_000,
-  retainCrawls: 10,
+  // The latest crawl and the one before it, which is what a comparison needs.
+  retainCrawls: 2,
+  historyDays: 30,
+  extractors: [],
   optionalFiles: [],
   indexNowKey: null,
 }
@@ -49,6 +67,7 @@ export const CRAWL_SETTINGS_LIMITS = {
   maxRetries: { min: 0, max: 5 },
   maxUrls: { min: 1, max: 10_000_000 },
   retainCrawls: { min: 1, max: 1000 },
+  historyDays: { min: 1, max: 3650 },
   userAgentLength: 255,
 } as const
 
@@ -57,7 +76,44 @@ const between = ({ min, max }: { min: number; max: number }) => z.number().int()
 /** What an HTTP header value may hold: printable ASCII, so no header injection. */
 const USER_AGENT = /^[\x20-\x7e]+$/
 
+const prefixesSchema = z
+  .array(z.string())
+  .max(100)
+  .transform((values, ctx) => {
+    const paths: string[] = []
+    for (const value of values) {
+      const parsed = parseAuditSelector({ kind: 'prefix', value, query: 'any' }, 'example.com')
+      if (!parsed.ok || parsed.selector.kind !== 'prefix') {
+        ctx.addIssue({ code: 'custom', message: 'Invalid path prefix' })
+        return z.NEVER
+      }
+      paths.push(parsed.selector.path)
+    }
+    return [...new Set(paths)]
+  })
+
+/** Seeds bypass scope and depth; all other URLs remain visible even when not requested. */
+export function crawlSkipReason(
+  url: string,
+  depth: number,
+  settings: Pick<CrawlSettings, 'includePrefixes' | 'excludePrefixes' | 'maxDepth'>,
+): 'excluded' | 'depth' | undefined {
+  const path = new URL(url).pathname
+  const covers = (prefix: string) =>
+    prefix === '/' || path === prefix || path.startsWith(`${prefix}/`)
+  if (
+    settings.excludePrefixes.some(covers) ||
+    (settings.includePrefixes.length > 0 && !settings.includePrefixes.some(covers))
+  )
+    return 'excluded'
+  if (settings.maxDepth !== null && depth > settings.maxDepth) return 'depth'
+}
+
 export const crawlSettingsSchema = z.object({
+  includePrefixes: prefixesSchema.default([]),
+  excludePrefixes: prefixesSchema.default([]),
+  maxDepth: z.number().int().min(1).max(100).nullable().default(null),
+  extractors: extractorsSchema.default([]),
   renderingMode: z.enum(CRAWL_RENDERING_MODES),
   userAgent: z
     .string()
@@ -75,6 +131,7 @@ export const crawlSettingsSchema = z.object({
   maxRetries: between(CRAWL_SETTINGS_LIMITS.maxRetries),
   maxUrls: between(CRAWL_SETTINGS_LIMITS.maxUrls).nullable(),
   retainCrawls: between(CRAWL_SETTINGS_LIMITS.retainCrawls).nullable(),
+  historyDays: between(CRAWL_SETTINGS_LIMITS.historyDays).nullable(),
   optionalFiles: z.array(z.enum(OPTIONAL_CRAWL_FILES)),
   indexNowKey: z.string().regex(INDEXNOW_KEY).nullable(),
 })

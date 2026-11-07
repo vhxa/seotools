@@ -14,19 +14,21 @@ import {
 
 describe('views', () => {
   it('offer pages, resources, redirects, external URLs and everything, and keep "other" for links', () => {
-    expect(URL_VIEWS).toEqual(['pages', 'resources', 'redirects', 'external', 'all'])
+    expect(URL_VIEWS).toEqual(['pages', 'resources', 'redirects', 'errors', 'external', 'all'])
     expect(CRAWL_URL_VIEWS).toEqual([...URL_VIEWS, 'other'])
   })
 
   it('say what a URL of the site can be in each, and nothing for external URLs', () => {
     expect(VIEW_KINDS.pages).toEqual(['page'])
-    expect(VIEW_KINDS.other).not.toContain('page')
+    // A page that fails is not counted as a page: it is the rest of the site, and an error.
+    expect(VIEW_KINDS.other).toContain('page')
+    expect([...VIEW_KINDS.errors].sort()).toEqual(['page', 'resource', 'unknown'])
     expect(VIEW_KINDS.external).toEqual([])
     expect([...VIEW_KINDS.all].sort()).toEqual([...URL_TYPES].sort())
   })
 
   it('only offer a type to pick where there is more than one', () => {
-    expect(CRAWL_URL_VIEWS.filter(viewHasTypes)).toEqual(['all', 'other'])
+    expect(CRAWL_URL_VIEWS.filter(viewHasTypes)).toEqual(['errors', 'all', 'other'])
   })
 
   it('audit everything but external URLs', () => {

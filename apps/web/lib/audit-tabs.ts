@@ -5,7 +5,7 @@
  * Exclusions and expected indexing were tabs of their own when a rule said one thing; a rule says
  * several now, in one list. The addresses of those tabs still work.
  */
-export const AUDIT_TABS = ['rules', 'languages'] as const
+export const AUDIT_TABS = ['rules', 'languages', 'thresholds'] as const
 export type AuditTab = (typeof AUDIT_TABS)[number]
 
 export const DEFAULT_AUDIT_TAB: AuditTab = 'rules'

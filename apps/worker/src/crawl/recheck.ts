@@ -171,6 +171,9 @@ export function recheckSubject(
 ): { url: AuditedUrl; site: Site } {
   const row: CrawlUrl = {
     ...input.answer,
+    seq: null,
+    foundFrom: null,
+    foundKind: null,
     crawlId: 'recheck',
     url: input.url,
     urlHash: crawlUrlHash(input.url),

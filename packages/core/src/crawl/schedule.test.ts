@@ -95,3 +95,10 @@ describe('crawlRecurrenceSchema', () => {
     expect(crawlRecurrenceSchema.safeParse({ ...base, timeZone: 'Mars/Base' }).success).toBe(false)
   })
 })
+
+it('shifts a missing local time forward and uses only the earlier repeated time', () => {
+  const zone = { timeZone: 'Europe/Madrid', hour: 2, minute: 30 }
+  expect(next(zone, '2026-03-29T00:00:00Z')).toBe('2026-03-29T01:30:00.000Z')
+  expect(next(zone, '2026-10-24T23:00:00Z')).toBe('2026-10-25T00:30:00.000Z')
+  expect(next(zone, '2026-10-25T00:30:00Z')).toBe('2026-10-26T01:30:00.000Z')
+})

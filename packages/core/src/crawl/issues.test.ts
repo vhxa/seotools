@@ -5,6 +5,7 @@ import {
   PAGE_ISSUE_IDS,
   compareIssueSeverity,
   isPageIssueId,
+  isSecondaryFinding,
   issuesOfCategory,
   worstIssueType,
 } from './issues'
@@ -17,7 +18,7 @@ describe('the catalog', () => {
     // An id repeated across categories would be lost in `PAGE_ISSUES`.
     expect(new Set(listed).size).toBe(listed.length)
     expect([...listed].sort()).toEqual([...PAGE_ISSUE_IDS].sort())
-    expect(listed).toHaveLength(109)
+    expect(listed).toHaveLength(119)
   })
 
   it('knows the category of each issue', () => {
@@ -36,9 +37,21 @@ describe('the catalog', () => {
   })
 
   it('keeps issues for crawling and indexing, and warnings for the rest', () => {
-    for (const id of ['noindex', 'robots-blocked', 'client-error', 'canonical-conflict'] as const) {
+    for (const id of [
+      'noindex',
+      'client-error',
+      'canonical-conflict',
+      'canonical-broken',
+    ] as const) {
       expect(PAGE_ISSUES[id].type).toBe('issue')
     }
+    // Usually deliberate: worth a review, and it is the crawl that cannot read the page.
+    expect(PAGE_ISSUES['robots-blocked']).toMatchObject({ type: 'warning', importance: 'medium' })
+    // A noindex or canonical that the block hides is a real problem.
+    expect(PAGE_ISSUES['directives-unreadable']).toMatchObject({
+      type: 'issue',
+      importance: 'high',
+    })
     // Serious, but not a crawling or indexing problem.
     expect(PAGE_ISSUES['http-url']).toMatchObject({ type: 'warning', importance: 'high' })
     expect(PAGE_ISSUES['title-missing']).toMatchObject({ type: 'warning', importance: 'high' })
@@ -113,5 +126,25 @@ describe('compareIssueSeverity', () => {
 
   it('never lets the type bury something serious', () => {
     expect(compareIssueSeverity('mixed-content', 'uncrawlable-links')).toBeLessThan(0)
+  })
+})
+
+describe('isSecondaryFinding', () => {
+  it('makes every title finding secondary on a page that cannot be indexed', () => {
+    for (const id of PAGE_ISSUE_IDS.filter((issue) => issue.startsWith('title-'))) {
+      expect(isSecondaryFinding(id, 'not-indexable'), id).toBe(true)
+    }
+  })
+
+  it('never makes a finding secondary on an indexable page or one the crawl could not judge', () => {
+    expect(isSecondaryFinding('title-missing', 'indexable')).toBe(false)
+    expect(isSecondaryFinding('title-missing', 'unknown')).toBe(false)
+    expect(isSecondaryFinding('title-missing', null)).toBe(false)
+  })
+
+  it('keeps accessibility, security and broken references primary on any page', () => {
+    for (const id of ['img-no-alt', 'links-to-broken', 'canonical-broken'] as const) {
+      expect(isSecondaryFinding(id, 'not-indexable'), id).toBe(false)
+    }
   })
 })

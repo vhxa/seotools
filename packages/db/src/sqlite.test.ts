@@ -43,7 +43,7 @@ describeDatabaseContract('sqlite', async () => {
     reset: async () => {
       const raw = (db.orm.db as { $client: { exec: (sql: string) => void } }).$client
       raw.exec(
-        'delete from jobs; delete from alert_notices; delete from alert_subscriptions; delete from mail_deliveries; delete from worker_heartbeats; delete from settings; delete from user_tokens; delete from user_access; delete from user; delete from crawl_url_audit; delete from crawl_url_accepted_issues; delete from crawl_url_issues; delete from crawl_sitemap_hreflang; delete from crawl_links; delete from crawl_urls; delete from crawls; delete from crawl_schedules; delete from crawl_settings; delete from url_verification_urls; delete from url_verifications; delete from priority_urls; delete from domain_favicons; delete from crawl_files; delete from crawl_file_checks; delete from audit_rules; delete from domain_audit_config; delete from domains; delete from companies;',
+        'delete from jobs; delete from alert_notices; delete from alert_subscriptions; delete from mail_deliveries; delete from worker_heartbeats; delete from settings; delete from user_tokens; delete from user_access; delete from user; delete from crawl_url_audit; delete from crawl_url_accepted_issues; delete from crawl_url_issues; delete from crawl_sitemap_hreflang; delete from crawl_url_links; delete from crawl_url_history; delete from crawl_urls; delete from crawls; delete from crawl_schedules; delete from crawl_settings; delete from url_verification_urls; delete from url_verifications; delete from priority_urls; delete from domain_favicons; delete from crawl_files; delete from crawl_file_checks; delete from audit_rules; delete from domain_audit_config; delete from domains; delete from companies;',
       )
     },
   }
@@ -56,8 +56,6 @@ describe('detectDialect', () => {
     [':memory:', 'sqlite'],
     ['postgres://u:p@h:5432/db', 'pg'],
     ['postgresql://u:p@h/db', 'pg'],
-    ['mysql://u:p@h:3306/db', 'mysql'],
-    ['mariadb://u:p@h/db', 'mysql'],
   ])('%s → %s', (url, dialect) => {
     expect(detectDialect(url)).toBe(dialect)
   })
@@ -65,6 +63,18 @@ describe('detectDialect', () => {
   it('honours an explicit dialect and rejects unknown schemes', () => {
     expect(detectDialect('whatever', 'pg')).toBe('pg')
     expect(() => detectDialect('mongodb://localhost/x')).toThrow(/DATABASE_DIALECT/)
+  })
+
+  it.each(['mysql://u:p@h:3306/db', 'mysql2://u:p@h/db', 'mariadb://u:p@h/db'])(
+    'refuses %s: MySQL is no longer supported',
+    (url) => {
+      expect(() => detectDialect(url)).toThrow(/MySQL is no longer supported.*PostgreSQL/)
+      expect(() => detectDialect(url, 'pg')).toThrow(/MySQL is no longer supported/)
+    },
+  )
+
+  it('keeps the message free of credentials', () => {
+    expect(() => detectDialect('mysql://root:hunter2@h/db')).not.toThrow(/hunter2/)
   })
 })
 

@@ -48,6 +48,17 @@ describe('env', () => {
     expect(parseBootstrapEnv({ ...boot, RUN_MIGRATIONS: 'false' }).RUN_MIGRATIONS).toBe(false)
   })
 
+  it('pauses automation only when asked to', () => {
+    const base = { BETTER_AUTH_SECRET: secret }
+    expect(parseWorkerEnv(base).SEOTOOLS_PAUSE_AUTOMATION).toBe(false)
+    expect(
+      parseWorkerEnv({ ...base, SEOTOOLS_PAUSE_AUTOMATION: 'true' }).SEOTOOLS_PAUSE_AUTOMATION,
+    ).toBe(true)
+    expect(parseWebEnv({ ...base, SEOTOOLS_PAUSE_AUTOMATION: '1' }).SEOTOOLS_PAUSE_AUTOMATION).toBe(
+      true,
+    )
+  })
+
   it('lists every problem at once', () => {
     const error = (() => {
       try {

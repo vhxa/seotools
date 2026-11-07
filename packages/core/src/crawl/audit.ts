@@ -21,6 +21,11 @@
  * was.
  */
 import { z } from 'zod'
+import {
+  canonicalThresholds,
+  thresholdOverridesSchema,
+  type ThresholdOverrides,
+} from './thresholds'
 import { isInternalUrl, normalizeCrawlUrl } from './normalize'
 
 /**
@@ -77,11 +82,24 @@ export type AuditValue = (typeof AUDIT_VALUES)[number]
  *   the alternates of a URL that is deliberately out of the index. Before, a rule only replaced the
  *   generic finding of the URL itself and never what other pages said of it. Rules do not change;
  *   what they accept does, so an analysis of an older meaning is read as it was.
+ * - 5: only what the URL that points declares excuses what it points at. A destination declared
+ *   out of the index (a `noindex` it requires or allows, an expectation of `not-indexable`) no longer
+ *   excuses a canonical or hreflang to it from a URL expected to be indexable: pointing an indexable
+ *   page at a URL meant to stay out is the problem. A URL that is itself expected out still excuses
+ *   the indexing blockers of what it points at, and its own inbound findings. A failing or
+ *   redirecting destination is never excused.
  */
-export const AUDIT_SEMANTICS = 4
+export const AUDIT_SEMANTICS = 5
 
 /** The first meaning (`AUDIT_SEMANTICS`) in which the declared state of a URL reaches the URLs that point at it. */
 export const RELATIONS_SEMANTICS = 4
+
+/**
+ * The first meaning in which only the URL that points (the origin) can make a finding about the URL
+ * it points at expected: a destination declared out of the index no longer excuses an origin that
+ * is expected to be indexable.
+ */
+export const ORIGIN_RELATIONS_SEMANTICS = 5
 
 /**
  * Whether a rule is read differently from semantics 4 on (see `AUDIT_SEMANTICS`): the ones that
@@ -771,6 +789,8 @@ export interface AuditSnapshot {
   semantics?: number
   /** The language directories shared rules looked at. Absent: there were none. */
   languages?: LanguageConfig
+  /** The figures the checks compared with, where they differed from the defaults. Absent: none did. */
+  thresholds?: ThresholdOverrides
 }
 
 /**
@@ -786,6 +806,7 @@ const snapshotSchema = z.object({
   rules: z.array(ruleSchema),
   semantics: z.number().int().min(1).optional(),
   languages: z.object({ prefixes: z.array(z.string()), unprefixed: z.boolean() }).optional(),
+  thresholds: thresholdOverridesSchema.optional(),
 })
 
 /** The configuration in force now: what a new analysis, and a recalculation, use. */
@@ -793,11 +814,14 @@ export function auditSnapshotOf(
   version: number,
   rules: readonly AuditRule[],
   languages: LanguageConfig = NO_LANGUAGES,
+  thresholds?: ThresholdOverrides,
 ): AuditSnapshot {
+  const figures = canonicalThresholds(thresholds)
   return {
     version,
     semantics: AUDIT_SEMANTICS,
     languages: canonicalLanguages(languages),
+    ...(Object.keys(figures).length > 0 ? { thresholds: figures } : {}),
     rules: rules
       .filter((rule) => rule.enabled)
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

@@ -5,7 +5,7 @@ describe('URL detail findings', () => {
   it('surfaces high importance warnings alongside high importance issues before lower findings', () => {
     const findings = [
       { issue: 'redirect-3xx' },
-      { issue: 'soft-404-possible' },
+      { issue: 'soft-404-confirmed' },
       { issue: 'no-response' },
       { issue: 'redirect-chain' },
     ]

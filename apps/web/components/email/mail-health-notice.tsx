@@ -1,4 +1,4 @@
-import { getMailConfig } from '@seotools/core'
+import { readMailConfig } from '@seotools/core'
 import { TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
@@ -17,21 +17,28 @@ export async function MailHealthNotice() {
   const db = await getDb()
   const [[latest], config] = await Promise.all([
     db.mail.recent({ limit: 1 }),
-    getSettings().then(getMailConfig),
+    getSettings().then(readMailConfig),
   ])
-  const health = mailHealth({ configured: config !== null, latest: latest ?? null })
+  const health = mailHealth({
+    configured: config.state === 'ready',
+    undecryptable: config.state === 'undecryptable',
+    latest: latest ?? null,
+  })
   if (health.state === 'ok') return null
   const t = await getTranslations('Email.health')
   return (
-    <Alert variant="destructive" className="grid-cols-[auto_1fr_auto] items-center">
+    <Alert variant="destructive" className="has-[>svg]:grid-cols-[auto_1fr_auto]">
       <TriangleAlertIcon />
-      <div className="grid gap-0.5">
-        <AlertTitle>{t(`${health.state}.title`)}</AlertTitle>
-        <AlertDescription>{t(`${health.state}.description`)}</AlertDescription>
-      </div>
+      <AlertTitle>{t(`${health.state}.title`)}</AlertTitle>
+      <AlertDescription className="col-start-2">
+        {t(`${health.state}.description`)}
+      </AlertDescription>
       <Link
         href="/system/email"
-        className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'row-span-2')}
+        className={cn(
+          buttonVariants({ variant: 'outline', size: 'sm' }),
+          'col-start-3 row-span-2 row-start-1 self-center',
+        )}
       >
         {t(`${health.state}.open`)}
       </Link>

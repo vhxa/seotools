@@ -17,6 +17,15 @@ describe('mailHealth', () => {
     expect(mailHealth({ configured: true, latest: delivery('sent') })).toEqual({ state: 'ok' })
   })
 
+  it('warns that saved settings cannot be read, whatever was sent', () => {
+    expect(mailHealth({ configured: false, undecryptable: true, latest: null })).toEqual({
+      state: 'undecryptable',
+    })
+    expect(
+      mailHealth({ configured: false, undecryptable: true, latest: delivery('sent') }),
+    ).toEqual({ state: 'undecryptable' })
+  })
+
   it('warns when the latest delivery failed, even with a provider', () => {
     expect(mailHealth({ configured: true, latest: delivery('failed') })).toEqual({
       state: 'failing',

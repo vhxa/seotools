@@ -69,6 +69,8 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'directive-outside-head': U,
   'directives-conflict': U,
   'directives-conflict-snippets': U,
+  // A recheck reads the page and its robots.txt again.
+  'directives-unreadable': U,
   noindex: U,
   nofollow: U,
   nosnippet: U,
@@ -79,14 +81,17 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   // canonicals. Whether the target can be indexed is a fact about another URL.
   'canonical-outside-head': U,
   'canonical-conflict': U,
+  'canonical-broken': S,
+  'canonical-redirect': S,
   'canonical-not-indexable': S,
   'canonical-fragment': U,
   'canonical-missing': U,
-  canonicalised: U,
   'canonical-relative': U,
   'canonical-repeated': U,
   // sitemaps: what they list is not read again by a recheck
   'sitemap-too-big': U,
+  'sitemap-broken': S,
+  'sitemap-redirect': S,
   'sitemap-not-indexable': S,
   'indexed-not-in-sitemap': S,
   'indexable-not-in-sitemap': S,
@@ -135,9 +140,16 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'img-long-alt': U,
   // structured data
   'json-ld-invalid': U,
+  'structured-data-required-missing': U,
+  'structured-data-recommended-missing': U,
   'no-structured-data': U,
   // links. The links a page has are its own; who links to it, and how far it is, are not.
   'link-to-localhost': U,
+  // Whether what a page links to fails, redirects or is canonicalised is a fact about other URLs.
+  'links-to-broken': S,
+  'links-to-redirect': S,
+  'links-to-canonicalised': S,
+  'links-tracking-parameters': S,
   'uncrawlable-links': U,
   'only-nofollow-inlinks': S,
   'only-noindex-inlinks': S,

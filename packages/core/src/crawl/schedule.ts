@@ -82,10 +82,18 @@ function offsetMs(instant: number, timeZone: string): number {
   return asUtc - Math.floor(instant / 1000) * 1000
 }
 
-/** The instant a wall-clock time happens. A time skipped by DST lands just after the jump. */
+/**
+ * Ambiguous wall times use the earlier instant, once per local day. Missing wall times shift
+ * forward by the size of the DST gap (02:30 becomes 03:30 for a one-hour jump).
+ */
 function fromLocal(wallClockAsUtc: number, timeZone: string): number {
-  const first = wallClockAsUtc - offsetMs(wallClockAsUtc, timeZone)
-  return wallClockAsUtc - offsetMs(first, timeZone)
+  const offsets = new Set(
+    [-2, -1, 0, 1, 2].map((days) => offsetMs(wallClockAsUtc + days * 86_400_000, timeZone)),
+  )
+  const candidates = [...offsets].map((offset) => wallClockAsUtc - offset).sort((a, b) => a - b)
+  const exact = candidates.filter((t) => t + offsetMs(t, timeZone) === wallClockAsUtc)
+  if (exact.length) return exact[0]!
+  return candidates.find((t) => t + offsetMs(t, timeZone) > wallClockAsUtc)!
 }
 
 const DAY_MS = 86_400_000
@@ -97,7 +105,8 @@ export function nextScheduledRun(recurrence: CrawlRecurrence, after: Date): Date
   const { frequency, hour, minute, dayOfWeek, dayOfMonth, timeZone } = recurrence
 
   if (frequency === 'hourly') {
-    // Stepping real minutes, not wall-clock hours, copes with zones offset by 30 or 45 minutes.
+    // Hourly runs include both occurrences of a repeated hour. Stepping real minutes also
+    // handles zones offset by 30 or 45 minutes.
     const start = Math.floor(after.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS
     for (let t = start; t < start + 2 * HOUR_MS; t += MINUTE_MS) {
       if (localTime(new Date(t), timeZone).minute === minute) return new Date(t)

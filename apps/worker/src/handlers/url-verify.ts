@@ -12,6 +12,7 @@ export function createUrlVerifyHandler(options: {
   db: Database
   allowPrivateNetworks: boolean
   appVersion?: string
+  settingsSecret?: string
 }): JobHandler {
   return async (job, ctx) => {
     const parsed = urlVerifyPayload.safeParse(job.payload)
@@ -23,6 +24,7 @@ export function createUrlVerifyHandler(options: {
         log: ctx.log,
         signal: ctx.signal,
         appVersion: options.appVersion,
+        settingsSecret: options.settingsSecret,
         createFetcher: (config) =>
           createHttpFetcher({ ...config, allowPrivateNetworks: options.allowPrivateNetworks }),
       })

@@ -44,7 +44,8 @@ async function crawlOf(urls: string[]) {
   if (!crawl) throw new Error('crawl did not start')
   await db.crawls.addUrls(
     crawl.id,
-    urls.map((url) => ({
+    urls.map((url, index) => ({
+      seq: index + 1,
       url,
       urlHash: crawlUrlHash(url),
       scope: url.startsWith(SITE) || url.includes('www.acme.com') ? 'internal' : 'external',

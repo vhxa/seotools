@@ -23,6 +23,8 @@ const crawl = (id: string, overrides: Partial<Crawl> = {}): Crawl => ({
   auditSnapshot: auditSnapshotOf(1, []),
   robots: null,
   pruned: false,
+  history: false,
+  ref: 1,
   error: null,
   createdAt: new Date(2026, 0, ++n),
   startedAt: null,
