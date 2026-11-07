@@ -528,6 +528,12 @@ export interface OutLink extends CrawlLinkRow {
   sourceHash: string
 }
 
+/** Where a page of the links leaving a URL ended: the next page starts after it. */
+export interface OutLinkCursor {
+  target: number
+  kind: string
+}
+
 /** A link where query parameters enter the site. */
 export interface ParameterEntry {
   sourceUrl: string
@@ -687,8 +693,16 @@ export interface CrawlRepository {
   getUrl(crawlId: string, urlHash: string): Promise<CrawlUrl | null>
   /** These URLs of a crawl that it has, in no particular order. */
   urlsOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrl[]>
-  /** Every link that leaves these URLs of a crawl, with what is known of where it goes. */
-  outlinksOf(crawlId: string, sourceHashes: string[]): Promise<OutLink[]>
+  /**
+   * A page of the links that leave one URL of a crawl, with what is known of where they go, in the
+   * order the crawler numbered their targets. Paged by a cursor on the links' own key, so a URL with
+   * any number of links is read a bounded page at a time. `next` is `null` after the last page.
+   */
+  outlinksOf(
+    crawlId: string,
+    sourceHash: string,
+    page: { after: OutLinkCursor | null; limit: number },
+  ): Promise<{ links: OutLink[]; next: OutLinkCursor | null }>
   /**
    * The links that bring query parameters their page does not have (they kept the tag as read,
    * `LinkContext.snippet`): where parameters enter the site. Ordered by target, then source.

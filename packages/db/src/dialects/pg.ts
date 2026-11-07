@@ -1751,54 +1751,64 @@ export function createPgDatabase(options: {
             .select()
             .from(crawlUrls)
             .where(and(eq(crawlUrls.crawlId, crawlId), inArray(crawlUrls.urlHash, batch)))
-          found.push(...rows.map(toCrawlUrl))
+          for (const row of rows) found.push(toCrawlUrl(row))
         }
         return found
       },
 
-      async outlinksOf(crawlId, sourceHashes) {
+      async outlinksOf(crawlId, sourceHash, { after, limit }) {
         const ref = await refOf(crawlId)
-        if (ref === null) return []
-        const sources = alias(crawlUrls, 'out_sources')
-        const found: OutLink[] = []
-        for (const batch of chunk(sourceHashes)) {
-          const rows = await db
-            .select({
-              sourceHash: sources.urlHash,
-              url: crawlUrls.url,
-              urlHash: crawlUrls.urlHash,
-              kind: crawlUrlLinks.kind,
-              scope: crawlUrls.scope,
-              urlKind: crawlUrls.kind,
-              state: crawlUrls.state,
-              statusCode: crawlUrls.statusCode,
-              error: crawlUrls.error,
-              text: crawlUrlLinks.text,
-              element: crawlUrlLinks.element,
-              region: crawlUrlLinks.region,
-              snippet: crawlUrlLinks.snippet,
-            })
-            .from(crawlUrlLinks)
-            .innerJoin(
-              sources,
-              and(eq(sources.crawlId, crawlId), eq(sources.seq, crawlUrlLinks.source)),
-            )
-            .innerJoin(
-              crawlUrls,
-              and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.seq, crawlUrlLinks.target)),
-            )
-            .where(and(eq(crawlUrlLinks.crawlRef, ref), inArray(sources.urlHash, batch)))
-            .orderBy(
-              asc(sources.urlHash),
-              asc(crawlUrls.url),
-              asc(crawlUrls.urlHash),
-              asc(crawlUrlLinks.kind),
-            )
-          found.push(
-            ...rows.map(({ sourceHash, ...row }) => ({ sourceHash, ...toCrawlLinkRow(row) })),
+        if (ref === null) return { links: [], next: null }
+        const source = (
+          await db
+            .select({ seq: crawlUrls.seq })
+            .from(crawlUrls)
+            .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, sourceHash)))
+        )[0]
+        if (!source || source.seq === null) return { links: [], next: null }
+        const rows = await db
+          .select({
+            target: crawlUrlLinks.target,
+            url: crawlUrls.url,
+            urlHash: crawlUrls.urlHash,
+            kind: crawlUrlLinks.kind,
+            scope: crawlUrls.scope,
+            urlKind: crawlUrls.kind,
+            state: crawlUrls.state,
+            statusCode: crawlUrls.statusCode,
+            error: crawlUrls.error,
+            text: crawlUrlLinks.text,
+            element: crawlUrlLinks.element,
+            region: crawlUrlLinks.region,
+            snippet: crawlUrlLinks.snippet,
+          })
+          .from(crawlUrlLinks)
+          .innerJoin(
+            crawlUrls,
+            and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.seq, crawlUrlLinks.target)),
           )
+          .where(
+            and(
+              eq(crawlUrlLinks.crawlRef, ref),
+              eq(crawlUrlLinks.source, source.seq),
+              after
+                ? or(
+                    gt(crawlUrlLinks.target, after.target),
+                    and(eq(crawlUrlLinks.target, after.target), gt(crawlUrlLinks.kind, after.kind)),
+                  )
+                : undefined,
+            ),
+          )
+          .orderBy(asc(crawlUrlLinks.target), asc(crawlUrlLinks.kind))
+          .limit(limit)
+        const last = rows.at(-1)
+        return {
+          links: rows.map(({ target: _target, ...row }) => ({
+            sourceHash,
+            ...toCrawlLinkRow(row),
+          })),
+          next: last && rows.length === limit ? { target: last.target, kind: last.kind } : null,
         }
-        return found
       },
 
       async parameterEntries(crawlId, { limit, offset }) {
@@ -2023,7 +2033,7 @@ export function createPgDatabase(options: {
               and(eq(targets.crawlId, crawlId), eq(targets.seq, crawlUrlLinks.target)),
             )
             .where(and(eq(crawlUrlLinks.crawlRef, ref), inArray(sources.urlHash, batch)))
-          found.push(...(rows as CrawlLink[]))
+          for (const row of rows as CrawlLink[]) found.push(row)
         }
         return found
       },
@@ -2166,7 +2176,7 @@ export function createPgDatabase(options: {
             })
             .from(crawlUrlIssues)
             .where(and(eq(crawlUrlIssues.crawlId, crawlId), inArray(crawlUrlIssues.urlHash, batch)))
-          found.push(...rows.map(toCrawlUrlIssue))
+          for (const row of rows) found.push(toCrawlUrlIssue(row))
         }
         return found
       },
@@ -2240,7 +2250,7 @@ export function createPgDatabase(options: {
             .select()
             .from(crawlUrlAudit)
             .where(and(eq(crawlUrlAudit.crawlId, crawlId), inArray(crawlUrlAudit.urlHash, batch)))
-          found.push(...rows.map(toCrawlUrlAudit))
+          for (const row of rows) found.push(toCrawlUrlAudit(row))
         }
         return found
       },
@@ -2852,7 +2862,7 @@ export function createPgDatabase(options: {
                 eq(urlVerificationUrls.state, 'done'),
               ),
             )
-          found.push(...rows.map(({ row }) => toVerifiedUrl(row)))
+          for (const { row } of rows) found.push(toVerifiedUrl(row))
         }
         return newestVerifiedPerUrl(found)
       },

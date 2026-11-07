@@ -19,6 +19,7 @@ import type {
   CrawlUrlQuery,
   CrawlUrlSort,
   OutLink,
+  OutLinkCursor,
 } from '@seotools/db'
 import { describeAcceptance } from './acceptance-reason'
 import { CSV_BOM, csvRow, type CsvCell } from './csv'
@@ -43,6 +44,8 @@ export const isExportKind = (value: string): value is ExportKind =>
 
 /** URLs read from the database at a time: what is in memory, whatever the size of the crawl. */
 export const EXPORT_BATCH_SIZE = 500
+/** Links of one URL read at a time by the links export. */
+export const EXPORT_LINKS_PAGE_SIZE = 1000
 
 /** Translates a message by its full key (`Namespace.path.to.message`). */
 export type Translate = (key: string, values?: Record<string, string | number>) => string
@@ -681,21 +684,14 @@ export async function* exportCsv(options: {
       const hashes = urls.map((url) => url.urlHash)
       // The pages file counts findings only when the crawl was checked for them.
       const checked = kind === 'findings' || context.analysed
-      const [issues, accepted, audits, links, chains] = await Promise.all([
+      const [issues, accepted, audits, chains] = await Promise.all([
         checked ? source.issuesOf(listing.crawlId, hashes) : [],
         checked ? source.acceptedOf(listing.crawlId, hashes) : [],
         source.auditOf(listing.crawlId, hashes),
-        kind === 'links' ? source.outlinksOf(listing.crawlId, hashes) : [],
         kind === 'redirects'
           ? redirectChains(source, listing.crawlId, urls)
           : new Map<string, RedirectChain>(),
       ])
-      const linksByUrl = new Map<string, OutLink[]>()
-      for (const link of links) {
-        const list = linksByUrl.get(link.sourceHash)
-        if (list) list.push(link)
-        else linksByUrl.set(link.sourceHash, [link])
-      }
       const issuesByUrl = new Map<string, CrawlUrlIssue[]>()
       for (const issue of issues) {
         const list = issuesByUrl.get(issue.urlHash)
@@ -709,23 +705,34 @@ export async function* exportCsv(options: {
         else acceptedByUrl.set(finding.urlHash, [finding])
       }
       const auditByUrl = new Map(audits.map((audit) => [audit.urlHash, audit]))
-      const text = urls
-        .flatMap((url) =>
-          exportRecords(
-            kind,
-            {
-              url,
-              issues: issuesByUrl.get(url.urlHash) ?? [],
-              accepted: acceptedByUrl.get(url.urlHash) ?? [],
-              audit: auditByUrl.get(url.urlHash),
-              links: linksByUrl.get(url.urlHash),
-              redirect: chains.get(url.urlHash),
-            },
-            context,
-          ),
-        )
-        .join('')
-      if (text !== '') yield text
+      const rowOf = (url: CrawlUrl, links?: OutLink[]): ExportUrl => ({
+        url,
+        issues: issuesByUrl.get(url.urlHash) ?? [],
+        accepted: acceptedByUrl.get(url.urlHash) ?? [],
+        audit: auditByUrl.get(url.urlHash),
+        links,
+        redirect: chains.get(url.urlHash),
+      })
+      if (kind === 'links') {
+        // A page can have any number of links: they are read a bounded page at a time.
+        for (const url of urls) {
+          let after: OutLinkCursor | null = null
+          do {
+            if (signal?.aborted) return
+            const page: { links: OutLink[]; next: OutLinkCursor | null } = await source.outlinksOf(
+              listing.crawlId,
+              url.urlHash,
+              { after, limit: EXPORT_LINKS_PAGE_SIZE },
+            )
+            const text = exportRecords(kind, rowOf(url, page.links), context).join('')
+            if (text !== '') yield text
+            after = page.next
+          } while (after)
+        }
+      } else {
+        const text = urls.flatMap((url) => exportRecords(kind, rowOf(url), context)).join('')
+        if (text !== '') yield text
+      }
     }
     if (urls.length < limit) break
   }

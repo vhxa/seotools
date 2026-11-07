@@ -9,6 +9,7 @@ import es from '../messages/es.json'
 import { CSV_BOM } from './csv'
 import {
   EXPORT_KINDS,
+  EXPORT_LINKS_PAGE_SIZE,
   ExportInconsistentError,
   FINDINGS_COLUMNS,
   LINKS_COLUMNS,
@@ -787,7 +788,10 @@ describe('walking the crawl', () => {
       issuesOf: issuesOf as unknown as ExportSource['issuesOf'],
       acceptedOf: vi.fn(async () => []) as unknown as ExportSource['acceptedOf'],
       auditOf: auditOf as unknown as ExportSource['auditOf'],
-      outlinksOf: vi.fn(async () => []) as unknown as ExportSource['outlinksOf'],
+      outlinksOf: vi.fn(async () => ({
+        links: [],
+        next: null,
+      })) as unknown as ExportSource['outlinksOf'],
       urlsOf: vi.fn(async () => []) as unknown as ExportSource['urlsOf'],
       calls: { listUrls, issuesOf, auditOf },
       ...overrides,
@@ -1103,6 +1107,60 @@ describe('the links and redirects files', () => {
     expect(line).toContain('LinkRegions.nav')
   })
 
+  it('reads the links of a URL a bounded page at a time, every link once', async () => {
+    const total = EXPORT_LINKS_PAGE_SIZE * 2 + 7
+    const outlinksOf = vi.fn(
+      async (
+        _id: string,
+        sourceHash: string,
+        { after, limit }: { after: { target: number; kind: string } | null; limit: number },
+      ) => {
+        const start = after ? after.target + 1 : 0
+        const end = Math.min(start + limit, total)
+        const links = Array.from({ length: end - start }, (_, i) => ({
+          sourceHash,
+          url: `https://example.com/t${start + i}`,
+          urlHash: `t${start + i}`,
+          kind: 'anchor' as const,
+          scope: 'internal' as const,
+          urlKind: 'page' as const,
+          state: 'done' as const,
+          statusCode: 200,
+          error: null,
+          context: null,
+        }))
+        return { links, next: end < total ? { target: end - 1, kind: 'anchor' } : null }
+      },
+    )
+    const source = {
+      listUrls: vi.fn(async ({ offset }: { offset: number }) =>
+        offset === 0 ? [crawlUrl('/a')] : [],
+      ),
+      issuesOf: vi.fn(async () => []),
+      acceptedOf: vi.fn(async () => []),
+      auditOf: vi.fn(async () => []),
+      outlinksOf,
+      urlsOf: vi.fn(async () => []),
+    } as unknown as ExportSource
+    const chunks: string[] = []
+    for await (const piece of exportCsv({
+      kind: 'links',
+      source,
+      listing: { crawlId: 'c1', view: 'pages' },
+      context,
+      expected: 1,
+    })) {
+      chunks.push(piece)
+    }
+    const lines = chunks.join('').trim().split('\r\n').slice(1)
+    expect(lines).toHaveLength(total)
+    expect(new Set(lines).size).toBe(total)
+    expect(outlinksOf).toHaveBeenCalledTimes(3)
+    for (const [, , page] of outlinksOf.mock.calls) {
+      expect(page.limit).toBe(EXPORT_LINKS_PAGE_SIZE)
+    }
+  })
+
   it('follows a redirect chain through what the crawl recorded, and tells a loop', async () => {
     const hop = (path: string, to: string | null, status = 301): CrawlUrl => ({
       ...crawlUrl(path),
@@ -1118,7 +1176,7 @@ describe('the links and redirects files', () => {
       issuesOf: vi.fn(async () => []),
       acceptedOf: vi.fn(async () => []),
       auditOf: vi.fn(async () => []),
-      outlinksOf: vi.fn(async () => []),
+      outlinksOf: vi.fn(async () => ({ links: [], next: null })),
       urlsOf: vi.fn(async (_id: string, hashes: string[]) =>
         hashes.flatMap((hash) => byHash.get(hash) ?? []),
       ),

@@ -18,6 +18,8 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createFirstAdmin, needsSetup } from '../admin'
 import type {
+  OutLink,
+  OutLinkCursor,
   CrawlUrlResult,
   Database,
   NewCrawlFile,
@@ -1458,26 +1460,35 @@ export function describeDatabaseContract(
         const pairs = (rows: { url: string; kind: string }[]) =>
           rows.map((row) => `${row.url.replace(site, '')} ${row.kind}`)
 
-        it('reads the links leaving several URLs at once, and URLs by their hash', async () => {
+        it('reads the links leaving a URL a page at a time, and URLs by their hash', async () => {
           const crawlId = await crawlWithLinks()
-          const out = await db.crawls.outlinksOf(crawlId, [
-            hashOf(url('/about')),
-            hashOf(url('/blog/b')),
-          ])
-          expect(
-            out.map(
-              (row) =>
-                `${row.sourceHash === hashOf(url('/about')) ? 'about' : 'b'} ${pairs([row])[0]}`,
-            ),
-          ).toEqual([
-            ...(hashOf(url('/about')) < hashOf(url('/blog/b'))
-              ? ['about / anchor', 'about /logo.png image', 'b / anchor-nofollow']
-              : ['b / anchor-nofollow', 'about / anchor', 'about /logo.png image']),
-          ])
+          const about = hashOf(url('/about'))
+          const all = await db.crawls.outlinksOf(crawlId, about, { after: null, limit: 100 })
+          expect(all.next).toBeNull()
+          expect(pairs(all.links).sort()).toEqual(['/ anchor', '/logo.png image'])
+          expect(all.links.every((link) => link.sourceHash === about)).toBe(true)
+
+          // One at a time: every link once, in the same order, and the cursor ends.
+          const paged: string[] = []
+          let after: OutLinkCursor | null = null
+          for (let i = 0; i < 5; i++) {
+            const page: { links: OutLink[]; next: OutLinkCursor | null } =
+              await db.crawls.outlinksOf(crawlId, about, { after, limit: 1 })
+            paged.push(...pairs(page.links))
+            if (!page.next) break
+            after = page.next
+          }
+          expect(paged).toEqual(pairs(all.links))
+
           expect(
             (await db.crawls.urlsOf(crawlId, [hashOf(home), 'missing'])).map((u) => u.url),
           ).toEqual([home])
-          expect(await db.crawls.outlinksOf('missing', [hashOf(home)])).toEqual([])
+          expect(
+            await db.crawls.outlinksOf('missing', hashOf(home), { after: null, limit: 10 }),
+          ).toEqual({ links: [], next: null })
+          expect(
+            await db.crawls.outlinksOf(crawlId, 'missing', { after: null, limit: 10 }),
+          ).toEqual({ links: [], next: null })
         })
 
         it('keeps a link whose target is not stored yet, when the crawler numbered both ends', async () => {
