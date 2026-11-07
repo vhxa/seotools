@@ -25,6 +25,7 @@ import {
   type UrlSnapshot,
 } from './compare'
 import { PAGE_ISSUE_IDS } from './issues'
+import { DEFAULT_THRESHOLDS } from './thresholds'
 
 const CATALOG = '3.abc'
 
@@ -679,6 +680,7 @@ describe('a finding a rule accepts in the later crawl', () => {
     catalog: 'v1',
     scope: 's1',
     perUrlAudit: true,
+    thresholds: DEFAULT_THRESHOLDS,
   }
   const url = (issues: string[], accepted: string[] = [], conditions = 'none'): UrlEvidence => ({
     requested: true,
@@ -711,6 +713,52 @@ describe('a finding a rule accepts in the later crawl', () => {
       target: { crawl: { ...crawl, scope: 's2' }, url: url(['noindex']) },
     })
     expect(change).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+  })
+})
+
+describe('a finding decided by a figure the domain sets', () => {
+  const crawl: Evidence['crawl'] = {
+    retained: true,
+    observable: true,
+    analysed: true,
+    complete: true,
+    catalog: 'v1',
+    scope: 's1',
+    perUrlAudit: true,
+    thresholds: DEFAULT_THRESHOLDS,
+  }
+  const url = (issues: string[]): UrlEvidence => ({
+    requested: true,
+    participation: 'audited',
+    intent: 'indexable',
+    conditions: 'none',
+    issues: new Set(issues),
+    accepted: new Set(),
+  })
+  const longer = { ...crawl, scope: 's2', thresholds: { ...DEFAULT_THRESHOLDS, titleMax: 100 } }
+
+  it('is not resolved when only the figure moved', () => {
+    const change = classifyFinding('title-too-long', {
+      base: { crawl, url: url(['title-too-long']) },
+      target: { crawl: longer, url: url([]) },
+    })
+    expect(change).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+  })
+
+  it('is not new when only the figure moved', () => {
+    const change = classifyFinding('title-too-long', {
+      base: { crawl: longer, url: url([]) },
+      target: { crawl, url: url(['title-too-long']) },
+    })
+    expect(change).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+  })
+
+  it('still compares a page-local issue no figure decides', () => {
+    const change = classifyFinding('title-missing', {
+      base: { crawl, url: url(['title-missing']) },
+      target: { crawl: longer, url: url([]) },
+    })
+    expect(change).toMatchObject({ kind: 'resolved' })
   })
 })
 

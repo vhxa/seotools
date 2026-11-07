@@ -24,6 +24,21 @@ export const AUDIT_THRESHOLDS = {
 } as const satisfies Record<string, { default: number; min: number; max: number }>
 
 export type ThresholdKey = keyof typeof AUDIT_THRESHOLDS
+
+/**
+ * The issues each figure decides. Two analyses with a different value of one of them cannot say
+ * whether the site changed: a finding that comes or goes may be the figure that moved.
+ */
+export const THRESHOLD_ISSUES: Readonly<Record<string, readonly ThresholdKey[]>> = {
+  'title-too-short': ['titleMin'],
+  'title-too-long': ['titleMax'],
+  'description-too-short': ['descriptionMin'],
+  'description-too-long': ['descriptionMax'],
+  'content-thin': ['thinWords'],
+  'url-too-long': ['urlMax'],
+  'deep-page': ['clickDepthMax'],
+  'img-too-heavy': ['imageMaxKb'],
+}
 export type AuditThresholds = Record<ThresholdKey, number>
 export const THRESHOLD_KEYS = Object.keys(AUDIT_THRESHOLDS) as ThresholdKey[]
 

@@ -25,7 +25,12 @@ import {
   type ConditionStates,
   type RecordedIntent,
 } from './audit'
-import { canonicalThresholds } from './thresholds'
+import {
+  canonicalThresholds,
+  resolveThresholds,
+  THRESHOLD_ISSUES,
+  type AuditThresholds,
+} from './thresholds'
 import { compareIssueSeverity, isPageIssueId, type PageIssueId } from './issues'
 import type { CrawlStatus, CrawlUrlKind, CrawlUrlState } from './types'
 
@@ -210,6 +215,8 @@ export interface CrawlFacts {
   scope: string | null
   /** The analysis kept whether each URL was audited. Without it, nothing says what was left out. */
   perUrlAudit: boolean
+  /** The figures it was analysed with (`null` when it was not analysed). */
+  thresholds: AuditThresholds | null
 }
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
@@ -221,6 +228,9 @@ export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
     catalog: crawl.issueCatalog,
     scope: crawlAuditScope(crawl),
     perUrlAudit: crawl.pagesAudit !== null,
+    // A snapshot without figures used the defaults: they are the values the checks always had.
+    thresholds:
+      crawl.pagesByWorstIssue === null ? null : resolveThresholds(crawl.auditSnapshot?.thresholds),
   }
 }
 
@@ -447,6 +457,7 @@ interface Basis {
   intent: string
   conditions: string
   scope: string | null
+  thresholds: AuditThresholds | null
 }
 
 export type Observation =
@@ -476,6 +487,7 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
       intent: url.intent ?? 'unknown',
       conditions: url.conditions,
       scope: crawl.scope,
+      thresholds: crawl.thresholds,
     },
   }
 }
@@ -487,6 +499,14 @@ function incomparable(issue: string, a: Basis, b: Basis): UnknownReason | null {
   // keeps and which it raises (`applyAuditPolicy`).
   if (a.intent !== b.intent || a.conditions !== b.conditions) return 'audit'
   if (!isPageLocalIssue(issue) && (a.scope === null || a.scope !== b.scope)) return 'audit'
+  // A page-local issue decided by a figure the domain sets: a new figure is not a change of the site.
+  const figures = THRESHOLD_ISSUES[issue]
+  if (
+    figures &&
+    figures.some((key) => a.thresholds === null || a.thresholds[key] !== b.thresholds?.[key])
+  ) {
+    return 'audit'
+  }
   return null
 }
 
