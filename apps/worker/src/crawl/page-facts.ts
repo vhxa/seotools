@@ -171,6 +171,51 @@ const readsLikeNotFound = (text: string) =>
  * crawling again. It follows what a browser does with a head and only looks at tags actually
  * written, since the parser does not add the ones a browser would imply.
  */
+
+/**
+ * The facts of a page nothing was read from yet. Also what a field missing from facts stored by an
+ * older crawl means: what that crawl did not look for counts as not seen, never as `undefined`.
+ */
+export const emptyPageFacts = (): CrawlPageFacts => ({
+  heads: 0,
+  bodies: 0,
+  headNotFirst: false,
+  invalidHeadElements: [],
+  titles: 0,
+  titlesOutsideHead: 0,
+  descriptions: 0,
+  descriptionsOutsideHead: 0,
+  robotsOutsideHead: 0,
+  canonicals: [],
+  refresh: null,
+  h1s: 0,
+  h2s: 0,
+  emptyHeadings: 0,
+  longHeadings: 0,
+  headingLevelSkipped: false,
+  words: 0,
+  textHash: null,
+  textSimhash: null,
+  placeholderText: false,
+  notFoundText: false,
+  notFoundHeadline: false,
+  imagesNoAlt: 0,
+  imagesEmptyAlt: 0,
+  imagesNoSize: 0,
+  imagesLongAlt: 0,
+  jsonLdInvalid: 0,
+  structuredData: 0,
+  localhostLinks: 0,
+  uncrawlableLinks: 0,
+  emptyAnchors: 0,
+  vagueAnchors: 0,
+  insecureForms: 0,
+  unsafeBlankLinks: 0,
+  protocolRelative: 0,
+  mixedContent: 0,
+  missingSecurityHeaders: [],
+})
+
 export class PageFactsCollector {
   /** `before`: nothing has ended the head yet, whether or not a `<head>` tag opened it. */
   private headState: 'before' | 'in' | 'after' = 'before'
@@ -193,45 +238,7 @@ export class PageFactsCollector {
   private readonly invalidHead = new Set<string>()
   private readonly evidence: PageEvidenceFacts = {}
 
-  readonly facts: CrawlPageFacts = {
-    heads: 0,
-    bodies: 0,
-    headNotFirst: false,
-    invalidHeadElements: [],
-    titles: 0,
-    titlesOutsideHead: 0,
-    descriptions: 0,
-    descriptionsOutsideHead: 0,
-    robotsOutsideHead: 0,
-    canonicals: [],
-    refresh: null,
-    h1s: 0,
-    h2s: 0,
-    emptyHeadings: 0,
-    longHeadings: 0,
-    headingLevelSkipped: false,
-    words: 0,
-    textHash: null,
-    textSimhash: null,
-    placeholderText: false,
-    notFoundText: false,
-    notFoundHeadline: false,
-    imagesNoAlt: 0,
-    imagesEmptyAlt: 0,
-    imagesNoSize: 0,
-    imagesLongAlt: 0,
-    jsonLdInvalid: 0,
-    structuredData: 0,
-    localhostLinks: 0,
-    uncrawlableLinks: 0,
-    emptyAnchors: 0,
-    vagueAnchors: 0,
-    insecureForms: 0,
-    unsafeBlankLinks: 0,
-    protocolRelative: 0,
-    mixedContent: 0,
-    missingSecurityHeaders: [],
-  }
+  readonly facts: CrawlPageFacts = emptyPageFacts()
 
   constructor(
     private readonly pageUrl: string,

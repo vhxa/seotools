@@ -882,10 +882,12 @@ export function detectFindings(
   const found: Finding[] = []
   for (const issue of PAGE_ISSUE_IDS) {
     const result = CHECKS[issue](url, site)
+    // A check that has nothing to read gives no finding, never a failed analysis.
+    if (!result) continue
     if (result === true) found.push({ issue })
     else if (Array.isArray(result)) {
       if (result.length > 0) found.push({ issue, details: result })
-    } else if (result !== false) {
+    } else {
       found.push({
         issue,
         ...(result.details ? { details: result.details } : {}),

@@ -3,6 +3,7 @@ import {
   PAGE_ISSUE_IDS,
   crawlUrlHash,
   createLogger,
+  type CrawlPageFacts,
   type NewAuditRule,
   type PageIssueId,
 } from '@seotools/core'
@@ -712,6 +713,24 @@ describe('each issue', () => {
     expect((await issuesAt(crawlId, '/sitemap.xml')).map((row) => row.issue)).toContain(
       'sitemap-too-big',
     )
+  })
+})
+
+describe('facts stored by an older crawl', () => {
+  it('lack fields added since, which read as not seen instead of failing the analysis', async () => {
+    const crawlId = await crawl(websiteOf({ at: '/' }))
+    const hash = crawlUrlHash(`${SITE}/`)
+    const stored = await db.crawls.getUrl(crawlId, hash)
+    const { notFoundHeadline: _headline, notFoundText: _text, ...older } = stored!.data!.facts!
+    await db.crawls.recordResult({
+      crawlId,
+      urlHash: hash,
+      result: { ...stored!, data: { ...stored!.data, facts: older as CrawlPageFacts } },
+    })
+    await expect(analyseCrawl(db, crawlId, EMPTY_AUDIT_SNAPSHOT)).resolves.toBeDefined()
+    const issues = (await issuesAt(crawlId, '/')).map((row) => row.issue)
+    expect(issues).not.toContain('soft-404-confirmed')
+    expect(issues).not.toContain('soft-404-possible')
   })
 })
 

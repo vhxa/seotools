@@ -21,6 +21,7 @@ import {
 import type { Crawl, CrawlUrl, CrawlUrlView, Database } from '@seotools/db'
 import { parseRobotsSitemaps } from './extract'
 import { findNearDuplicates } from './fingerprint'
+import { emptyPageFacts } from './page-facts'
 
 const BATCH = 1000
 const VIEWS: readonly CrawlUrlView[] = ['pages', 'other', 'external']
@@ -252,7 +253,8 @@ export function auditUrl(
 ): AuditedUrl {
   const parsed = new URL(url.url)
   const internal = url.scope === 'internal'
-  const facts = internal ? (url.data?.facts ?? null) : null
+  // Facts stored by an older crawl lack the fields added since: those read as not seen.
+  const facts = internal && url.data?.facts ? { ...emptyPageFacts(), ...url.data.facts } : null
   const contentPage =
     internal &&
     url.kind === 'page' &&

@@ -28,7 +28,6 @@ which moves the entries of `[Unreleased]` into the new version.
   days by default (Settings → Crawling, "Days of URL history"; empty keeps it always), then only
   their totals. Domains still on the old default of 10 crawls move to 2. A domain that chose
   another number keeps it.
-
 - MySQL is no longer supported: seotools runs on SQLite (the default) or PostgreSQL. A `mysql://`
   `DATABASE_URL` (or `DATABASE_DIALECT=mysql`) now fails at startup with a message saying so.
 - **What counts as a page changed.** A page is a URL that answered with HTML and a 2xx. A page,
@@ -80,9 +79,13 @@ which moves the entries of `[Unreleased]` into the new version.
   JobPosting, Organization, SoftwareApplication, Review and AggregateRating, the JSON-LD of a page
   is checked for the properties Google requires (a warning) and recommends (an opportunity), naming
   what is missing. From the next crawl.
-- **Crawl scope, depth and staging access**: crawl settings support path scope, maximum depth, encrypted request headers and Basic Auth. URLs outside the scope remain visible as not requested.
-- **List mode**: editors can crawl an ad hoc list of up to 1000 URLs without following links.
-- **Schedule time zones**: crawl schedules offer editable IANA time zones; daily, weekly and monthly runs shift missing DST times forward and use the earlier instant for repeated times. Hourly schedules run in each real hour.
+- **Crawl scope, depth and staging access** (Settings → Crawling): paths to include or leave out,
+  a maximum depth, and request headers or Basic Auth (kept encrypted, sent only to the domain's own
+  URLs) to crawl a staging site. URLs outside the scope are listed as not requested.
+- **List mode**: editors can crawl a list of up to 1,000 URLs without following their links.
+- **Schedule time zones**: each crawl schedule runs in the time zone you choose. When a daylight
+  saving change skips the chosen time, the run moves forward; when it repeats it, the run happens
+  once, the first time. Hourly schedules run every real hour.
 - **Thresholds per domain** (Settings → Audit → Thresholds): the figures some checks compare with
   (title and meta description length, words for thin content, URL length, click depth, image
   weight) can be set per domain; empty fields keep the recommended ones. Changing them analyses the
@@ -94,7 +97,10 @@ which moves the entries of `[Unreleased]` into the new version.
 - `node /app/worker/dist/migrate-db.mjs --from file:… --to postgres://…` copies an installation from
   SQLite to an empty PostgreSQL database, keeping people signed in. See
   [Move from SQLite to PostgreSQL](docs/updating.md#move-from-sqlite-to-postgresql).
-- `SEOTOOLS_PAUSE_AUTOMATION` (default `false`) for staging copies of a production database: the worker fires no scheduled crawls, runs no periodic refreshes or update checks and sends no email (each attempt is recorded as not sent, "automation paused"). Crawls and rechecks you start from the UI still run, and System shows a notice while it is on.
+- `SEOTOOLS_PAUSE_AUTOMATION` (default `false`) for a staging copy of a production database: the
+  worker starts no scheduled crawls, runs no periodic refreshes or update checks and sends no email
+  (each attempt is recorded as not sent, "automation paused"). Crawls and rechecks started from the
+  UI still run, and System shows a notice while it is on.
 - **noindex or canonical hidden by robots.txt**: a page blocked by robots.txt that declares a
   noindex or a canonical elsewhere, which search engines cannot read.
 
@@ -103,17 +109,27 @@ which moves the entries of `[Unreleased]` into the new version.
 - Secondary text has enough contrast in light and dark themes.
 - A script, stylesheet or image that answers with an HTML error page (a missing `.js` on many
   sites) is a broken resource, no longer counted as a page.
-- Running the bundled worker scripts (`node apps/worker/dist/recover.mjs <email>`, `bootstrap.mjs`) outside Docker no longer needs `MIGRATIONS_DIR`: the migrations are found next to the repository, and when they are not, the error names the folders it looked in and says to set `MIGRATIONS_DIR`.
-- Crawl alerts no longer compare a crawl whose findings were never analysed (after waiting two hours for the analysis): only a crawl problem is reported if it applies, otherwise nothing is sent, and the worker logs a warning.
-- Every page under System answered with an error when the saved email settings could not be decrypted (the encryption key changed after saving them). They now render, System → Email and the warning in System say that the settings must be entered again, and the worker records the email as not sent instead of failing.
+- Running the bundled worker scripts (`node apps/worker/dist/recover.mjs <email>`,
+  `bootstrap.mjs`) outside Docker no longer needs `MIGRATIONS_DIR`: the migrations are found next
+  to the repository, and when they are not, the error names the folders it looked in.
+- Crawl alerts no longer compare a crawl whose findings were never analysed (after waiting two
+  hours for the analysis): only a crawl problem is reported if there is one, and the worker logs a
+  warning.
+- Every page under System answered with an error when the saved email settings could not be
+  decrypted (the encryption key changed after saving them). They now render and say that the
+  settings must be entered again, and the worker records the email as not sent instead of failing.
+- A crawl analysed by an older version is analysed again under a new issue catalog instead of
+  failing ("could not analyse a crawl again" in the worker log, which left its findings outdated):
+  what that crawl did not record counts as not seen.
 
 ### Upgrade notes
 
-- This update adds crawl configuration migrations. Going back requires restoring the database backup.
-
-- The first start after the update moves the results of older crawls to the compact history and,
-  with SQLite, compacts the file: about 20 seconds for a 1 GB database. Take a backup first (see
-  docs/updating.md): going back to 0.2.0-rc.1 needs it.
+- **Take a backup first** (see docs/updating.md). This update adds migrations, and going back to
+  0.2.0-rc.1 needs the backup: that image refuses a database with migrations it does not know.
+- The first start moves the results of older crawls to the compact history and, with SQLite,
+  compacts the file: on a real 1.1 GB database the container was healthy after 16 seconds and the
+  file was 134 MB. The worker then analyses the retained crawls again under the new issue catalog,
+  which takes a few seconds per crawl; their findings change as described above.
 - MySQL was never in a stable release and nobody should be affected. An installation on MySQL must
   stay on 0.2.0-rc.1 or move to PostgreSQL by exporting its data itself: there is no tool for that.
 
