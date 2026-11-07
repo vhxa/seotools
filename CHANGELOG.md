@@ -20,6 +20,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.2.0-rc.2] - 2026-11-07
+
 ### Breaking
 
 - **Old crawls keep a compact history instead of everything.** The full results (links, evidence,
@@ -39,29 +41,6 @@ which moves the entries of `[Unreleased]` into the new version.
   is reported again: pointing an indexable page at a URL meant to stay out is the problem. A page
   that is itself expected out still excuses what it points at. Domains with such rules have their
   latest crawl analysed again on upgrade; earlier analyses keep the meaning they had.
-
-### Changed
-
-- Domain navigation now brings Overview, Issues and URLs together, with separate crawl trends
-  and a Crawls section. Administration groups status, companies, users, email and updates; old
-  company and pages-overview addresses redirect to their new locations. Status describes worker
-  health and job results in words, with the queue under Technical details.
-- The detail of a URL shows its key facts first and the rest in tabs, with how the crawler
-  reached it and, for each link, its text, element and page region. The URLs table counts
-  findings by type in less space, apart from those on non-indexable pages.
-- Links take much less space: on a real site the database went from 1.1 GB to 133 MB after the
-  first start. SQLite files are compacted on start when a removal left them mostly empty.
-- Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a
-  redirect**, or **a URL that cannot be indexed**. Only the last one follows the audit rules; a
-  broken or redirecting target is always reported.
-- "Canonicalised to another URL" is no longer a finding: it is a state of the URL's indexability.
-  What a page links to is reported on that page instead: **links to broken URLs**, **to redirects**,
-  **to canonicalised URLs** and **internal links with tracking parameters**.
-- Search-result findings (title, description, headings, thin or duplicate content, hreflang, URL
-  form) on a page that cannot be indexed are shown as secondary and no longer count among the pages
-  with findings. Accessibility, security, HTML and broken references always count.
-- Importance reviewed: a robots.txt block is a warning of medium importance (usually deliberate),
-  and so are a missing `alt`, `nosnippet` and a possible soft 404; `noimageindex` is a low warning.
 
 ### Added
 
@@ -103,6 +82,29 @@ which moves the entries of `[Unreleased]` into the new version.
   UI still run, and System shows a notice while it is on.
 - **noindex or canonical hidden by robots.txt**: a page blocked by robots.txt that declares a
   noindex or a canonical elsewhere, which search engines cannot read.
+
+### Changed
+
+- Domain navigation now brings Overview, Issues and URLs together, with separate crawl trends
+  and a Crawls section. Administration groups status, companies, users, email and updates; old
+  company and pages-overview addresses redirect to their new locations. Status describes worker
+  health and job results in words, with the queue under Technical details.
+- The detail of a URL shows its key facts first and the rest in tabs, with how the crawler
+  reached it and, for each link, its text, element and page region. The URLs table counts
+  findings by type in less space, apart from those on non-indexable pages.
+- Links take much less space: on a real site the database went from 1.1 GB to 134 MB after the
+  first start. SQLite files are compacted on start when a removal left them mostly empty.
+- Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a
+  redirect**, or **a URL that cannot be indexed**. Only the last one follows the audit rules; a
+  broken or redirecting target is always reported.
+- "Canonicalised to another URL" is no longer a finding: it is a state of the URL's indexability.
+  What a page links to is reported on that page instead: **links to broken URLs**, **to redirects**,
+  **to canonicalised URLs** and **internal links with tracking parameters**.
+- Search-result findings (title, description, headings, thin or duplicate content, hreflang, URL
+  form) on a page that cannot be indexed are shown as secondary and no longer count among the pages
+  with findings. Accessibility, security, HTML and broken references always count.
+- Importance reviewed: a robots.txt block is a warning of medium importance (usually deliberate),
+  and so are a missing `alt`, `nosnippet` and a possible soft 404; `noimageindex` is a low warning.
 
 ### Fixed
 
