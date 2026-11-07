@@ -248,8 +248,10 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  *   names (`sitemap-not-indexable` and the sitemap conditions), and `sitemap-not-indexable` says
  *   what keeps the URL from being indexed. Analysing a crawl again does not repair one that stored
  *   every URL of a sitemap alike: it stops claiming a listing it cannot prove.
+ * - 9: a missing, repeated or misplaced title is secondary on a page that cannot be indexed, like
+ *   the other title and description findings.
  */
-const CHECKS_REVISION = 8
+const CHECKS_REVISION = 9
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.
@@ -285,6 +287,9 @@ export const SEO_CONTENT_ISSUES: ReadonlySet<PageIssueId> = new Set<PageIssueId>
   'hreflang-same-language',
   'hreflang-no-self',
   'hreflang-no-x-default',
+  'title-missing',
+  'title-multiple',
+  'title-outside-head',
   'title-duplicate',
   'title-too-long',
   'title-too-short',
