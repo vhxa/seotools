@@ -169,7 +169,6 @@ import type {
   SitemapHreflang,
   VerifiedUrl,
   CrawlUrlTrace,
-  OutLink,
   DiscoveryStep,
   CrawlUrl,
 } from '../types'
