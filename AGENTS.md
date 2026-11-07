@@ -138,7 +138,7 @@ docker build .                      # the image CI publishes (amd64 + arm64)
 
 ## Testing
 
-Vitest only, run from the repo root (it groups `packages/*` and `apps/*` as projects). Test files live next to the code as `*.test.ts`; there is no `__tests__/` folder. There are no frontend component, API integration, CLI or E2E suites yet.
+Vitest only, run from the repo root (it groups `packages/*` and `apps/*` as projects). Test files live next to the code as `*.test.ts`; there is no `__tests__/` folder. There are no frontend component, API integration or CLI suites. The only E2E suite is the Playwright smoke suite below.
 
 ### Unit and contract tests
 
@@ -164,6 +164,17 @@ pnpm test
 These tests **wipe the tables** of the database they point to. Use a throwaway database, never your dev data. Each dialect's `reset` (`sqlite.test.ts`, `postgres.test.ts`) lists the tables by hand: add every new table to both.
 
 A change to the database layer is not done until the contract passes on both dialects.
+
+### End-to-end smoke tests
+
+`e2e/` (Playwright, Chromium only, `playwright.config.ts`) drives the production build in a browser: first-run setup and sign-in, the admin's domain pages and CSV export, and a viewer's restricted access. Vitest does not run it.
+
+```bash
+pnpm build && pnpm exec playwright install chromium   # once
+pnpm test:e2e
+```
+
+`e2e/support/start.ts` makes a fresh SQLite file in the OS temp dir (never `/data`), seeds a company, a domain and one finished crawl through the real crawler against a fake site, and serves the Next standalone build on port 3210. The specs run in file order and depend on each other (the first creates the administrator); the sign-in endpoint is rate limited, so later specs reuse a saved session instead of signing in again.
 
 ### Type checking
 
