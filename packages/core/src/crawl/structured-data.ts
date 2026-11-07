@@ -99,6 +99,8 @@ export interface StructuredDataReport {
 }
 
 const MAX_NODES = 100
+/** Values looked at, at most: lists and objects, however deep. */
+const MAX_VISITS = 10_000
 const MAX_TYPES = 20
 const MAX_PROBLEMS = 20
 
@@ -131,22 +133,43 @@ function typesOf(node: Record<string, unknown>): string[] {
     .map((value) => value.replace(/^(?:https?:\/\/schema\.org\/|schema:)/, ''))
 }
 
-/** The nodes a JSON-LD block declares at its top: itself, a list of them, or its `@graph`. */
-function topNodes(value: unknown, into: Record<string, unknown>[]) {
-  if (into.length >= MAX_NODES) return
-  if (Array.isArray(value)) {
-    for (const item of value) topNodes(item, into)
-    return
+/**
+ * The nodes the JSON-LD blocks declare at their top: each block, a list of them, or its `@graph`,
+ * the nodes of a graph before the node that holds it. A loop with a budget, never recursion: a page
+ * can nest lists thousands deep in a few kilobytes, and what does not fit the budget is not judged.
+ */
+function topNodes(blocks: readonly unknown[]): Record<string, unknown>[] {
+  const nodes: Record<string, unknown>[] = []
+  type Step = { visit: unknown } | { emit: Record<string, unknown> }
+  const stack: Step[] = []
+  const pushAll = (values: readonly unknown[]) => {
+    const room = Math.max(0, MAX_VISITS - stack.length)
+    for (let i = Math.min(values.length, room) - 1; i >= 0; i--) stack.push({ visit: values[i] })
   }
-  if (!isObject(value)) return
-  if (Array.isArray(value['@graph'])) topNodes(value['@graph'], into)
-  if (value['@type'] !== undefined) into.push(value)
+  pushAll(blocks)
+  let visits = 0
+  while (stack.length > 0 && nodes.length < MAX_NODES && visits < MAX_VISITS) {
+    const step = stack.pop()!
+    if ('emit' in step) {
+      nodes.push(step.emit)
+      continue
+    }
+    visits++
+    const value = step.visit
+    if (Array.isArray(value)) {
+      pushAll(value)
+      continue
+    }
+    if (!isObject(value)) continue
+    if (value['@type'] !== undefined) stack.push({ emit: value })
+    if (Array.isArray(value['@graph'])) pushAll(value['@graph'])
+  }
+  return nodes
 }
 
 /** Judges the parsed JSON-LD blocks of a page. */
 export function checkStructuredData(blocks: readonly unknown[]): StructuredDataReport {
-  const nodes: Record<string, unknown>[] = []
-  for (const block of blocks) topNodes(block, nodes)
+  const nodes = topNodes(blocks)
   const types: string[] = []
   const problems: StructuredDataProblem[] = []
   for (const node of nodes) {

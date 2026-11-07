@@ -54,3 +54,24 @@ describe('checkStructuredData', () => {
     expect(report.problems.length).toBeLessThanOrEqual(20)
   })
 })
+
+describe('what a page cannot make the check do', () => {
+  it('judges lists nested thousands deep without failing', () => {
+    let nested: unknown = { '@type': 'Product' }
+    for (let i = 0; i < 20_000; i++) nested = [nested]
+    expect(() => checkStructuredData([JSON.parse(JSON.stringify(nested))])).not.toThrow()
+  })
+
+  it('stops at its budget on a huge flat list', () => {
+    const many = Array.from({ length: 200_000 }, () => ({ '@type': 'Thing' }))
+    const report = checkStructuredData([many])
+    expect(report.types).toEqual(['Thing'])
+  })
+
+  it('still finds the nodes of a graph before the node that holds it', () => {
+    const report = checkStructuredData([
+      { '@type': 'WebPage', '@graph': [{ '@type': 'Product' }, { '@type': 'Organization' }] },
+    ])
+    expect(report.types).toEqual(['Product', 'Organization', 'WebPage'])
+  })
+})
