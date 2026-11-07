@@ -59,7 +59,9 @@ describe('what a page cannot make the check do', () => {
   it('judges lists nested thousands deep without failing', () => {
     let nested: unknown = { '@type': 'Product' }
     for (let i = 0; i < 20_000; i++) nested = [nested]
-    expect(() => checkStructuredData([JSON.parse(JSON.stringify(nested))])).not.toThrow()
+    // Built in memory: serialising it would itself overflow a small stack (the parser in the
+    // crawler counts such a block as invalid JSON-LD).
+    expect(() => checkStructuredData([nested])).not.toThrow()
   })
 
   it('stops at its budget on a huge flat list', () => {
