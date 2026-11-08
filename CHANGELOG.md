@@ -20,10 +20,13 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
-## [0.2.0-rc.2] - 2026-11-07
+## [0.2.0] - 2026-11-08
 
 ### Breaking
 
+- Startup refuses a database with migrations unknown to the image, reversing the previous
+  documented behaviour of allowing older images to start on newer databases. This also applies
+  with migrations disabled and in worker-only containers.
 - **Old crawls keep a compact history instead of everything.** The full results (links, evidence,
   page data) are kept for the latest crawl and the one before it, which is what a comparison
   needs; for older crawls, what each URL was (its answer, findings and audit state) is kept for 30
@@ -41,107 +44,6 @@ which moves the entries of `[Unreleased]` into the new version.
   is reported again: pointing an indexable page at a URL meant to stay out is the problem. A page
   that is itself expected out still excuses what it points at. Domains with such rules have their
   latest crawl analysed again on upgrade; earlier analyses keep the meaning they had.
-
-### Added
-
-- **Query parameters** (URLs → Parameters): every parameter the crawl found, with how many URLs
-  carry it, and where each one enters the site: the link from a URL without it to one with it.
-- Light and dark themes, or the system's, chosen in the account menu.
-- **Custom extraction** (Settings → Crawling): up to 10 values read from every page with a CSS
-  selector, as text or from an attribute (a price, an author, a product id). They show in the
-  detail of each URL and as columns of the pages CSV, from the next crawl.
-- **Export links and redirects** from the URLs table (Export menu): one row per link leaving the
-  listed URLs (with its text, element and part of the page), and one row per redirect with where
-  its chain ends, how many hops it has and whether it loops.
-- **Structured data checked against Google's rich result requirements**: for Product, Article,
-  BreadcrumbList, FAQPage, LocalBusiness (and common kinds), Event, Recipe, VideoObject,
-  JobPosting, Organization, SoftwareApplication, Review and AggregateRating, the JSON-LD of a page
-  is checked for the properties Google requires (a warning) and recommends (an opportunity), naming
-  what is missing. From the next crawl.
-- **Crawl scope, depth and staging access** (Settings → Crawling): paths to include or leave out,
-  a maximum depth, and request headers or Basic Auth (kept encrypted, sent only to the domain's own
-  URLs) to crawl a staging site. URLs outside the scope are listed as not requested.
-- **List mode**: editors can crawl a list of up to 1,000 URLs without following their links.
-- **Schedule time zones**: each crawl schedule runs in the time zone you choose. When a daylight
-  saving change skips the chosen time, the run moves forward; when it repeats it, the run happens
-  once, the first time. Hourly schedules run every real hour.
-- **Thresholds per domain** (Settings → Audit → Thresholds): the figures some checks compare with
-  (title and meta description length, words for thin content, URL length, click depth, image
-  weight) can be set per domain; empty fields keep the recommended ones. Changing them analyses the
-  latest crawl again, and each analysis keeps the figures it used.
-- **Where each link is**: the text of the link, the element that holds it and the part of the page
-  (menu, header, footer, main content, sidebar), and, where a link brings in query parameters the
-  page does not have, the tag as the crawler read it. Each URL also records the page and the kind
-  of link it was first found through. Only crawls from now on have it.
-- `node /app/worker/dist/migrate-db.mjs --from file:… --to postgres://…` copies an installation from
-  SQLite to an empty PostgreSQL database, keeping people signed in. See
-  [Move from SQLite to PostgreSQL](docs/updating.md#move-from-sqlite-to-postgresql).
-- `SEOTOOLS_PAUSE_AUTOMATION` (default `false`) for a staging copy of a production database: the
-  worker starts no scheduled crawls, runs no periodic refreshes or update checks and sends no email
-  (each attempt is recorded as not sent, "automation paused"). Crawls and rechecks started from the
-  UI still run, and System shows a notice while it is on.
-- **noindex or canonical hidden by robots.txt**: a page blocked by robots.txt that declares a
-  noindex or a canonical elsewhere, which search engines cannot read.
-
-### Changed
-
-- Domain navigation now brings Overview, Issues and URLs together, with separate crawl trends
-  and a Crawls section. Administration groups status, companies, users, email and updates; old
-  company and pages-overview addresses redirect to their new locations. Status describes worker
-  health and job results in words, with the queue under Technical details.
-- The detail of a URL shows its key facts first and the rest in tabs, with how the crawler
-  reached it and, for each link, its text, element and page region. The URLs table counts
-  findings by type in less space, apart from those on non-indexable pages.
-- Links take much less space: on a real site the database went from 1.1 GB to 134 MB after the
-  first start. SQLite files are compacted on start when a removal left them mostly empty.
-- Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a
-  redirect**, or **a URL that cannot be indexed**. Only the last one follows the audit rules; a
-  broken or redirecting target is always reported.
-- "Canonicalised to another URL" is no longer a finding: it is a state of the URL's indexability.
-  What a page links to is reported on that page instead: **links to broken URLs**, **to redirects**,
-  **to canonicalised URLs** and **internal links with tracking parameters**.
-- Search-result findings (title, description, headings, thin or duplicate content, hreflang, URL
-  form) on a page that cannot be indexed are shown as secondary and no longer count among the pages
-  with findings. Accessibility, security, HTML and broken references always count.
-- Importance reviewed: a robots.txt block is a warning of medium importance (usually deliberate),
-  and so are a missing `alt`, `nosnippet` and a possible soft 404; `noimageindex` is a low warning.
-
-### Fixed
-
-- Secondary text has enough contrast in light and dark themes.
-- A script, stylesheet or image that answers with an HTML error page (a missing `.js` on many
-  sites) is a broken resource, no longer counted as a page.
-- Running the bundled worker scripts (`node apps/worker/dist/recover.mjs <email>`,
-  `bootstrap.mjs`) outside Docker no longer needs `MIGRATIONS_DIR`: the migrations are found next
-  to the repository, and when they are not, the error names the folders it looked in.
-- Crawl alerts no longer compare a crawl whose findings were never analysed (after waiting two
-  hours for the analysis): only a crawl problem is reported if there is one, and the worker logs a
-  warning.
-- Every page under System answered with an error when the saved email settings could not be
-  decrypted (the encryption key changed after saving them). They now render and say that the
-  settings must be entered again, and the worker records the email as not sent instead of failing.
-- A crawl analysed by an older version is analysed again under a new issue catalog instead of
-  failing ("could not analyse a crawl again" in the worker log, which left its findings outdated):
-  what that crawl did not record counts as not seen.
-
-### Upgrade notes
-
-- **Take a backup first** (see docs/updating.md). This update adds migrations, and going back to
-  0.2.0-rc.1 needs the backup: that image refuses a database with migrations it does not know.
-- The first start moves the results of older crawls to the compact history and, with SQLite,
-  compacts the file: on a real 1.1 GB database the container was healthy after 16 seconds and the
-  file was 134 MB. The worker then analyses the retained crawls again under the new issue catalog,
-  which takes a few seconds per crawl; their findings change as described above.
-- MySQL was never in a stable release and nobody should be affected. An installation on MySQL must
-  stay on 0.2.0-rc.1 or move to PostgreSQL by exporting its data itself: there is no tool for that.
-
-## [0.2.0-rc.1] - 2026-11-05
-
-### Breaking
-
-- Startup refuses a database with migrations unknown to the image, reversing the previous
-  documented behaviour of allowing older images to start on newer databases. This also applies
-  with migrations disabled and in worker-only containers.
 
 ### Added
 
@@ -198,6 +100,44 @@ which moves the entries of `[Unreleased]` into the new version.
   administrators: tags, backups, migrations, rollback, Docker Compose and Dokploy (manual and
   automatic).
 - `node scripts/release.mjs` and a CI check that the versions of all packages agree with this file.
+- **Query parameters** (URLs → Parameters): every parameter the crawl found, with how many URLs
+  carry it, and where each one enters the site: the link from a URL without it to one with it.
+- Light and dark themes, or the system's, chosen in the account menu.
+- **Custom extraction** (Settings → Crawling): up to 10 values read from every page with a CSS
+  selector, as text or from an attribute (a price, an author, a product id). They show in the
+  detail of each URL and as columns of the pages CSV, from the next crawl.
+- **Export links and redirects** from the URLs table (Export menu): one row per link leaving the
+  listed URLs (with its text, element and part of the page), and one row per redirect with where
+  its chain ends, how many hops it has and whether it loops.
+- **Structured data checked against Google's rich result requirements**: for Product, Article,
+  BreadcrumbList, FAQPage, LocalBusiness (and common kinds), Event, Recipe, VideoObject,
+  JobPosting, Organization, SoftwareApplication, Review and AggregateRating, the JSON-LD of a page
+  is checked for the properties Google requires (a warning) and recommends (an opportunity), naming
+  what is missing. From the next crawl.
+- **Crawl scope, depth and staging access** (Settings → Crawling): paths to include or leave out,
+  a maximum depth, and request headers or Basic Auth (kept encrypted, sent only to the domain's own
+  URLs) to crawl a staging site. URLs outside the scope are listed as not requested.
+- **List mode**: editors can crawl a list of up to 1,000 URLs without following their links.
+- **Schedule time zones**: each crawl schedule runs in the time zone you choose. When a daylight
+  saving change skips the chosen time, the run moves forward; when it repeats it, the run happens
+  once, the first time. Hourly schedules run every real hour.
+- **Thresholds per domain** (Settings → Audit → Thresholds): the figures some checks compare with
+  (title and meta description length, words for thin content, URL length, click depth, image
+  weight) can be set per domain; empty fields keep the recommended ones. Changing them analyses the
+  latest crawl again, and each analysis keeps the figures it used.
+- **Where each link is**: the text of the link, the element that holds it and the part of the page
+  (menu, header, footer, main content, sidebar), and, where a link brings in query parameters the
+  page does not have, the tag as the crawler read it. Each URL also records the page and the kind
+  of link it was first found through. Only crawls from now on have it.
+- `node /app/worker/dist/migrate-db.mjs --from file:… --to postgres://…` copies an installation from
+  SQLite to an empty PostgreSQL database, keeping people signed in. See
+  [Move from SQLite to PostgreSQL](docs/updating.md#move-from-sqlite-to-postgresql).
+- `SEOTOOLS_PAUSE_AUTOMATION` (default `false`) for a staging copy of a production database: the
+  worker starts no scheduled crawls, runs no periodic refreshes or update checks and sends no email
+  (each attempt is recorded as not sent, "automation paused"). Crawls and rechecks started from the
+  UI still run, and System shows a notice while it is on.
+- **noindex or canonical hidden by robots.txt**: a page blocked by robots.txt that declares a
+  noindex or a canonical elsewhere, which search engines cannot read.
 
 ### Changed
 
@@ -209,7 +149,6 @@ which moves the entries of `[Unreleased]` into the new version.
   that point at it (canonical, hreflang), that URL says so, and comparisons of crawls call those
   findings accepted instead of resolved. Crawls still stored are analysed again at startup to show
   this, with no requests.
-
 - Docker tags now say what they are. `latest` is the newest **stable release** (it used to follow
   `main`), `X.Y.Z` is one release, `X.Y` follows the patches of a minor version, and from 1.0.0
   `X` follows a major version. Builds of `main` are published as `edge` and `sha-<commit>`, and
@@ -217,6 +156,26 @@ which moves the entries of `[Unreleased]` into the new version.
   page. There is no `0` tag: while the major version is 0 a minor release can break things.
 - The container image is checked (it starts and reports the version it was published as) before the
   tags that follow releases move and before a GitHub release is created.
+- Domain navigation now brings Overview, Issues and URLs together, with separate crawl trends
+  and a Crawls section. Administration groups status, companies, users, email and updates; old
+  company and pages-overview addresses redirect to their new locations. Status describes worker
+  health and job results in words, with the queue under Technical details.
+- The detail of a URL shows its key facts first and the rest in tabs, with how the crawler
+  reached it and, for each link, its text, element and page region. The URLs table counts
+  findings by type in less space, apart from those on non-indexable pages.
+- Links take much less space: on a real site the database went from 1.1 GB to 134 MB after the
+  first start. SQLite files are compacted on start when a removal left them mostly empty.
+- Where a canonical or a sitemap entry leads is told apart: **a broken URL** (4xx/5xx), **a
+  redirect**, or **a URL that cannot be indexed**. Only the last one follows the audit rules; a
+  broken or redirecting target is always reported.
+- "Canonicalised to another URL" is no longer a finding: it is a state of the URL's indexability.
+  What a page links to is reported on that page instead: **links to broken URLs**, **to redirects**,
+  **to canonicalised URLs** and **internal links with tracking parameters**.
+- Search-result findings (title, description, headings, thin or duplicate content, hreflang, URL
+  form) on a page that cannot be indexed are shown as secondary and no longer count among the pages
+  with findings. Accessibility, security, HTML and broken references always count.
+- Importance reviewed: a robots.txt block is a warning of medium importance (usually deliberate),
+  and so are a missing `alt`, `nosnippet` and a possible soft 404; `noimageindex` is a low warning.
 
 ### Fixed
 
@@ -228,24 +187,33 @@ which moves the entries of `[Unreleased]` into the new version.
 - The README and example environment now document Compose's existing database override
   accurately, preserving `DATABASE_URL_DOCKER`. Startup logs the selected dialect without the URL.
 - Crawl retention settings explain that older crawls lose URL results, links and evidence.
+- Secondary text has enough contrast in light and dark themes.
+- A script, stylesheet or image that answers with an HTML error page (a missing `.js` on many
+  sites) is a broken resource, no longer counted as a page.
 
 ### Upgrade notes
 
+- **Take a backup first**, of the database and of `BETTER_AUTH_SECRET` and
+  `SETTINGS_ENCRYPTION_KEY` if you set it (see docs/updating.md). This version adds migrations,
+  which only move forward: to go back, stop the app and restore that backup with the previous
+  image. This image refuses a database with migrations it does not know; images older than
+  0.2.0-rc.1 do not check, so their starting does not mean the database is compatible.
+- The first start moves the results of older crawls to the compact history and, with SQLite,
+  compacts the file: on a real 1.1 GB database the container was healthy after 16 seconds and the
+  file was 134 MB. The worker then analyses the crawls that still have their results again, with no
+  requests to any site, which takes a few seconds per crawl; their findings change as described
+  above.
 - Accounts that already exist become administrators, which is what they could do until now. New
   accounts have nothing until they are given it.
+- Nobody receives an alert until they choose it in their account, and email has to be set up in
+  System → Email first.
 - With `SEOTOOLS_MODE=worker`, set `BETTER_AUTH_URL` in the worker too, or the emails with password
-  links and the crawl alerts fail: they need the address of the app. A single container already has it.
-- Keep the pre-update database backup and both secret keys. To go back after any schema or
-  stored-data conversion, stop the app and restore that backup with the previous image.
-  Older images predating this guard still allow unsafe downgrades; their starting successfully
-  does not mean the database is compatible.
+  links and the crawl alerts fail: they need the address of the app. A single container already has
+  it.
 - Docker Compose uses `DATABASE_URL_DOCKER` in `.env`; `DATABASE_URL` is for local development,
-  direct Docker runs and Dokploy Docker applications. If you followed the previous README and
-  set only `DATABASE_URL` for Compose, the installation used SQLite. Back up that SQLite volume
-  before changing configuration: pointing at another database does not transfer your data.
-- This version adds migrations (`crawl_url_accepted_issues`, `domains.archived_at`, empty for every
-  existing domain, users' roles and access, and the record of sent email and the alerts people
-  choose, empty at first: nobody receives an alert until they turn it on). Migrations only move
-  forward: going back to an earlier version needs the backup taken before updating.
-- At the first start, the worker analyses the crawls that still have their results again, with no
-  requests to any site. It may take a while on a large installation.
+  direct Docker runs and Dokploy Docker applications. If you followed the previous README and set
+  only `DATABASE_URL` for Compose, the installation used SQLite. Back up that SQLite volume before
+  changing configuration: pointing at another database does not transfer your data.
+- `latest` now follows stable releases only. To keep following `main`, use `edge`.
+- MySQL was never in a stable release. An installation on MySQL (a build of `main` or 0.2.0-rc.1)
+  must stay where it is or move its data to PostgreSQL itself: there is no tool for that.
