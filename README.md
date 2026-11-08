@@ -50,7 +50,7 @@ docker compose up -d
 Open <http://localhost:3000>. The first time, it asks you to create the admin account (name,
 email and password), signs you in, and then asks for your first company and domain (`example.com`,
 without `https://` or `www.`). Domains are grouped by company, like an agency groups them by
-client, and you switch between them from the selector at the top of the sidebar. Run a full crawl
+client, and you switch between them from the selector in the header, which also searches any URL of the domain. Run a full crawl
 from the domain's overview; **Administration → Status** shows whether the database and the worker
 are healthy.
 

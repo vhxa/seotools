@@ -38,7 +38,7 @@ const name = (path: string) => relative(APP, path)
 /** Public on purpose: no session exists yet, and each authorises itself some other way. */
 const PUBLIC_ACTIONS = new Set(['createAdmin', 'requestPasswordEmailAction', 'setPasswordAction'])
 /** Inside a domain and only reading, so anyone who can see the domain may call them. */
-const READ_ONLY_DOMAIN_ACTIONS = new Set(['loadLinksAction'])
+const READ_ONLY_DOMAIN_ACTIONS = new Set(['loadLinksAction', 'searchUrlsAction'])
 /** About the person's own account. */
 const OWN_ACCOUNT_ACTIONS = new Set(['changePasswordAction', 'saveAlertsAction'])
 

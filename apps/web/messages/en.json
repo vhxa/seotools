@@ -92,18 +92,25 @@
     "archived": "Archived",
     "manageCompanies": "Manage companies"
   },
+  "Header": {
+    "home": "seotools home",
+    "searchLabel": "Search the URLs of this domain",
+    "searchPlaceholder": "Search by URL or title",
+    "searchOpen": "Search",
+    "searchClose": "Close search",
+    "searching": "Searching…",
+    "noResults": "No URLs match."
+  },
   "Sidebar": {
     "toggle": "Toggle sidebar",
     "mobileTitle": "Navigation",
-    "mobileDescription": "Main navigation and domain selector.",
+    "mobileDescription": "Main navigation.",
     "overview": "Overview",
     "crawlFiles": "Crawl files",
     "robots": "robots.txt",
     "sitemaps": "Sitemaps",
     "llms": "llms.txt",
     "settings": "Settings",
-    "versionRelease": "v{version}",
-    "versionDevelopment": "v{version} · development",
     "issues": "Issues",
     "urls": "URLs",
     "crawls": "Crawls",
@@ -2929,6 +2936,12 @@
   },
   "Account": {
     "title": "Account",
+    "tabs": {
+      "label": "Account sections",
+      "profile": "Profile",
+      "alerts": "Alerts",
+      "password": "Password"
+    },
     "password": "Password",
     "current": "Current password",
     "next": "New password",

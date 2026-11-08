@@ -48,7 +48,7 @@ checked against it:
 What tells a release from a development build is not the number but the **channel**
 (`SEOTOOLS_BUILD_CHANNEL`, an argument of the Dockerfile): only the release workflow, for a tag,
 passes `release`. The image from `main`, a pull request, or `docker build` on a machine are
-`development` and show as such in the sidebar, `/api/health` and **System → Updates**.
+`development` and show as such in `/api/health` and **System → Updates**.
 
 Never edit a `version` by hand, and never raise it in a feature or fix pull request: `check` fails
 if it disagrees with `CHANGELOG.md`.
@@ -131,7 +131,7 @@ A release is a pull request and a tag. Nothing is published until the tag is pus
 4. **Validate it as an installation would receive it** (this is the part nobody else does):
    - Build the image and update **a copy of real data** from the previous release, as in
      [updating.md](updating.md#update-with-docker-compose): the migrations apply, the data is
-     there, `/api/health` is `ok`, the Updates page and the sidebar say what they should.
+     there, `/api/health` is `ok`, the Updates page says what it should.
    - If it has migrations, read the diff of `packages/db/migrations/*` for what could hurt data on
      both dialects, and run the database contract on PostgreSQL (`TEST_POSTGRES_URL`).
    - Walk through the release notes as if you had never seen the code.

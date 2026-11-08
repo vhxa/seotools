@@ -20,6 +20,19 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Changed
+
+- The app has a new header across the top: the domain selector and the user menu moved there from
+  the sidebar, and a new search finds any URL of the domain by address or title and opens its
+  detail.
+- The sidebar only holds the navigation of the domain you are in and is always open on wide
+  screens: it no longer folds, and it does not appear in System, the account or when adding a
+  domain. On narrow screens the sidebar opens from a button in the header, and the search becomes
+  an icon.
+- The account page is centred like System and split into tabs: profile, alerts and password.
+- The version and build channel are no longer shown in the sidebar. They are in **System → Updates**
+  and `/api/health`.
+
 ## [0.2.0] - 2026-11-08
 
 ### Breaking

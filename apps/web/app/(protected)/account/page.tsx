@@ -1,7 +1,9 @@
 import { getTranslations } from 'next-intl/server'
+import { AccountTabs } from '@/components/account-tabs'
 import { AlertsForm } from '@/components/alerts/alerts-form'
 import { PasswordForm } from '@/components/users/password-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { parseAccountTab } from '@/lib/account-tabs'
 import { getDb } from '@/lib/db'
 import { requireViewer } from '@/lib/session'
 import { visibleCompanies } from '@/lib/workspace'
@@ -13,8 +15,13 @@ export async function generateMetadata() {
 }
 
 /** One's own account: who it is, what it can reach, and its password. */
-export default async function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string | string[] }>
+}) {
   const viewer = await requireViewer()
+  const tab = parseAccountTab((await searchParams).tab)
   const [t, tUsers] = await Promise.all([getTranslations('Account'), getTranslations('Users')])
   const db = await getDb()
   const companies = await db.companies.list()
@@ -43,50 +50,58 @@ export default async function AccountPage() {
       : companies.find((c) => c.id === grant.companyId)?.name
 
   return (
-    <main className="grid max-w-2xl gap-6">
+    <main className="grid min-w-0 gap-8">
       <h1 className="text-2xl font-semibold">{t('title')}</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>{viewer.session.user.name}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2 text-sm">
-          <p className="text-muted-foreground">{viewer.session.user.email}</p>
-          <p>{tUsers(`roles.${viewer.role}`)}</p>
-          {viewer.role === 'admin' ? (
-            <p className="text-muted-foreground">{tUsers('access.everything')}</p>
-          ) : viewer.grants.length === 0 ? (
-            <p className="text-muted-foreground">{tUsers('access.nothing')}</p>
-          ) : (
-            <ul className="grid gap-0.5">
-              {viewer.grants.map((grant) => (
-                <li key={grant.domainId ?? grant.companyId}>
-                  {tUsers('access.row', {
-                    target: nameOf(grant) ?? '',
-                    role: tUsers(`roles.${grant.role}`),
-                  })}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-      <Card id="alerts" className="scroll-mt-16">
-        <CardHeader>
-          <CardTitle>{t('alerts.title')}</CardTitle>
-          <CardDescription>{t('alerts.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AlertsForm groups={alertGroups} />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('password')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PasswordForm />
-        </CardContent>
-      </Card>
+      <AccountTabs active={tab}>
+        {tab === 'profile' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{viewer.session.user.name}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2 text-sm">
+              <p className="text-muted-foreground">{viewer.session.user.email}</p>
+              <p>{tUsers(`roles.${viewer.role}`)}</p>
+              {viewer.role === 'admin' ? (
+                <p className="text-muted-foreground">{tUsers('access.everything')}</p>
+              ) : viewer.grants.length === 0 ? (
+                <p className="text-muted-foreground">{tUsers('access.nothing')}</p>
+              ) : (
+                <ul className="grid gap-0.5">
+                  {viewer.grants.map((grant) => (
+                    <li key={grant.domainId ?? grant.companyId}>
+                      {tUsers('access.row', {
+                        target: nameOf(grant) ?? '',
+                        role: tUsers(`roles.${grant.role}`),
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        {tab === 'alerts' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('alerts.title')}</CardTitle>
+              <CardDescription>{t('alerts.description')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AlertsForm groups={alertGroups} />
+            </CardContent>
+          </Card>
+        )}
+        {tab === 'password' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('password')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PasswordForm />
+            </CardContent>
+          </Card>
+        )}
+      </AccountTabs>
     </main>
   )
 }
