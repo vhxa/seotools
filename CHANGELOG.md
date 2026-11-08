@@ -20,6 +20,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-08
+
 ### Changed
 
 - The app has a new header across the top: the domain selector and the user menu moved there from
