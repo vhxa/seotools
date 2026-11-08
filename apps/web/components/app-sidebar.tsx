@@ -15,32 +15,20 @@ import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { DomainSwitcher, type SwitcherCompany } from '@/components/domain-switcher'
-import { Logo } from '@/components/logo'
-import { NavUser, type NavUserData } from '@/components/nav-user'
+import { type SwitcherCompany } from '@/components/domain-switcher'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  SidebarRail,
-  useSidebar,
 } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 
@@ -63,40 +51,14 @@ type NavItem = NavLink | NavSection
 const isActive = (link: { href: string; exact?: boolean }, pathname: string) =>
   pathname === link.href || (!link.exact && pathname.startsWith(`${link.href}/`))
 
-/**
- * Options that unfold in place. A sidebar collapsed to icons has no room for that, so there they
- * open as a menu beside it.
- */
+/** Options that unfold in place. */
 function NavCollapsible({ section, pathname }: { section: NavSection; pathname: string }) {
-  const { state, isMobile } = useSidebar()
   const active = section.links.some((link) => isActive(link, pathname))
   const [open, setOpen] = useState(active)
 
-  if (state === 'collapsed' && !isMobile) {
-    return (
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<SidebarMenuButton isActive={active} tooltip={section.label} />}
-          >
-            <section.icon />
-            <span>{section.label}</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="right" align="start">
-            {section.links.map((link) => (
-              <DropdownMenuItem key={link.href} render={<Link href={link.href} />}>
-                {link.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    )
-  }
-
   return (
     <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
-      <CollapsibleTrigger render={<SidebarMenuButton tooltip={section.label} />}>
+      <CollapsibleTrigger render={<SidebarMenuButton />}>
         <section.icon />
         <span>{section.label}</span>
         <ChevronRightIcon className={cn('ml-auto transition-transform', open && 'rotate-90')} />
@@ -119,18 +81,9 @@ function NavCollapsible({ section, pathname }: { section: NavSection; pathname: 
   )
 }
 
-function NavGroup({
-  label,
-  items,
-  pathname,
-}: {
-  label: string
-  items: NavItem[]
-  pathname: string
-}) {
+function NavGroup({ items, pathname }: { items: NavItem[]; pathname: string }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) =>
@@ -141,7 +94,6 @@ function NavGroup({
                 <SidebarMenuButton
                   render={<Link href={item.href} />}
                   isActive={isActive(item, pathname)}
-                  tooltip={item.label}
                 >
                   <item.icon />
                   <span>{item.label}</span>
@@ -156,22 +108,16 @@ function NavGroup({
 }
 
 /**
- * App navigation: logo and domain selector on top, the options in the middle and the signed-in
- * user at the bottom. Domain options only show while a tracked domain is open (`/domains/[host]`).
+ * App navigation, under the header, only while a domain is open (`/domains/[host]`): its options
+ * and, for administrators, the administration at the bottom. The domain selector and the user are in the
+ * header. Always in view on wide screens; on narrow ones it opens from the header's button.
  */
 export function AppSidebar({
   isAdmin,
   companies,
-  user,
-  version,
-  development = false,
 }: {
   isAdmin: boolean
   companies: SwitcherCompany[]
-  user: NavUserData
-  version?: string
-  /** The build is not a release: say so next to the version, so it is never taken for one. */
-  development?: boolean
 }) {
   const t = useTranslations('Sidebar')
   const tFiles = useTranslations('CrawlFiles.extra.kinds')
@@ -224,42 +170,27 @@ export function AppSidebar({
       ]
     : []
 
+  // Outside a domain (System, the account, adding a domain) there is nothing to navigate here.
+  if (!activeHost) return null
+
   return (
     <nav aria-label={t('navLabel')} className="contents">
-      <Sidebar collapsible="icon">
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" render={<Link href="/" />} tooltip="seotools">
-                {/* `!` beats the button's `[&_svg]:size-4`, which is meant for icons. */}
-                <Logo className="size-8! shrink-0 rounded-lg" />
-                <span className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">seotools</span>
-                  {version && (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {t(development ? 'versionDevelopment' : 'versionRelease', { version })}
-                    </span>
-                  )}
-                </span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-          <DomainSwitcher canManage={isAdmin} companies={companies} />
-        </SidebarHeader>
+      {/* Starts below the header (`h-16`) instead of at the top of the screen, and has no
+          background or border of its own: it sits on the page like the header does. */}
+      <Sidebar className="top-16 h-[calc(100svh-4rem)] group-data-[side=left]:border-r-0 [&_[data-slot=sidebar-inner]]:bg-transparent">
         <div className="flex min-h-0 flex-1 flex-col">
           <SidebarContent>
-            {activeHost && <NavGroup label={activeHost} items={domainItems} pathname={pathname} />}
+            <NavGroup items={domainItems} pathname={pathname} />
           </SidebarContent>
         </div>
-        <SidebarFooter>
-          {isAdmin && (
+        {isAdmin && (
+          <SidebarFooter>
             <nav aria-label={t('administration')}>
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     render={<Link href="/system" />}
                     isActive={pathname === '/system' || pathname.startsWith('/system/')}
-                    tooltip={t('administration')}
                   >
                     <ShieldIcon />
                     <span>{t('administration')}</span>
@@ -267,10 +198,8 @@ export function AppSidebar({
                 </SidebarMenuItem>
               </SidebarMenu>
             </nav>
-          )}
-          <NavUser user={user} />
-        </SidebarFooter>
-        <SidebarRail />
+          </SidebarFooter>
+        )}
       </Sidebar>
     </nav>
   )

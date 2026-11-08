@@ -76,6 +76,29 @@ test('a URL opens in a drawer and as a full page, with how it was found', async 
   await expect(page.getByText('https://example.com/products?sort=price').first()).toBeVisible()
 })
 
+test('the header search finds a URL of the domain and opens its detail', async ({ page }) => {
+  await page.goto(`${domain}/issues`)
+  await page.getByRole('combobox', { name: 'Search the URLs of this domain' }).fill('about')
+  await page.getByRole('option', { name: /https:\/\/example\.com\/about/ }).click()
+  await expect(page).toHaveURL(/\/pages\/details\/[0-9a-f]{32}/)
+  await expect(page.getByRole('heading', { name: 'https://example.com/about' })).toBeVisible()
+})
+
+test('System and the account have no sidebar; the account has its tabs', async ({ page }) => {
+  await page.goto(domain)
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+  await page.getByRole('link', { name: 'Administration' }).click()
+  await expect(page).toHaveURL(/\/system$/)
+  await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0)
+
+  await page.goto('/account')
+  await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: 'Profile' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Password' }).click()
+  await expect(page).toHaveURL(/\/account\?tab=password$/)
+  await expect(page.getByLabel('Current password')).toBeVisible()
+})
+
 test('the query parameters page shows where a parameter enters the site', async ({ page }) => {
   await page.goto(`${domain}/pages/parameters`)
   await expect(page.getByRole('heading', { name: 'Query parameters', level: 1 })).toBeVisible()

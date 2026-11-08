@@ -52,7 +52,7 @@ export default async function AlertsSettingsPage({
           <p className="text-sm text-muted-foreground">{t('archived')}</p>
         )}
         <div>
-          <Link href="/account#alerts" className={cn(buttonVariants({ variant: 'outline' }))}>
+          <Link href="/account?tab=alerts" className={cn(buttonVariants({ variant: 'outline' }))}>
             <BellIcon />
             {t('manage')}
           </Link>

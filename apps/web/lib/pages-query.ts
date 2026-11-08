@@ -38,7 +38,7 @@ export const DETAIL_SORTS = [
 export const PARTICIPATION_FILTERS = ['audited', 'excluded'] as const
 export type ParticipationFilter = (typeof PARTICIPATION_FILTERS)[number]
 
-const MAX_SEARCH_LENGTH = 200
+export const MAX_SEARCH_LENGTH = 200
 /** The shape of a rule id or a crawl id: a UUID. */
 const RULE_ID = /^[0-9a-f-]{36}$/i
 /** Whether a value has the shape of a crawl id. Whose crawl it is, is for the server to check. */

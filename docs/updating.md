@@ -80,8 +80,8 @@ How to read a version, `MAJOR.MINOR.PATCH`:
 A release candidate is older than the release it precedes (`0.3.0-rc.1` < `0.3.0`), never becomes
 `latest`, and is never offered by the Updates page.
 
-A development build reports itself as one everywhere: in the sidebar (`v0.2.0 · development`), in
-`/api/health` (`"channel": "development"`) and on the Updates page. Its version number is the last
+A development build reports itself as one everywhere: in `/api/health` (`"channel": "development"`)
+and on the Updates page. Its version number is the last
 release it descends from, not a release.
 
 ## Before updating

@@ -92,18 +92,25 @@
     "archived": "Archivados",
     "manageCompanies": "Gestionar empresas"
   },
+  "Header": {
+    "home": "Inicio de seotools",
+    "searchLabel": "Buscar entre las URLs de este dominio",
+    "searchPlaceholder": "Buscar por URL o título",
+    "searchOpen": "Buscar",
+    "searchClose": "Cerrar la búsqueda",
+    "searching": "Buscando…",
+    "noResults": "Ninguna URL coincide."
+  },
   "Sidebar": {
     "toggle": "Alternar barra lateral",
     "mobileTitle": "Navegación",
-    "mobileDescription": "Navegación principal y selector de dominio.",
+    "mobileDescription": "Navegación principal.",
     "overview": "Resumen",
     "crawlFiles": "Archivos de rastreo",
     "robots": "robots.txt",
     "sitemaps": "Sitemaps",
     "llms": "llms.txt",
     "settings": "Ajustes",
-    "versionRelease": "v{version}",
-    "versionDevelopment": "v{version} · desarrollo",
     "issues": "Problemas",
     "urls": "URLs",
     "crawls": "Rastreos",
@@ -2929,6 +2936,12 @@
   },
   "Account": {
     "title": "Cuenta",
+    "tabs": {
+      "label": "Secciones de la cuenta",
+      "profile": "Perfil",
+      "alerts": "Alertas",
+      "password": "Contraseña"
+    },
     "password": "Contraseña",
     "current": "Contraseña actual",
     "next": "Contraseña nueva",
