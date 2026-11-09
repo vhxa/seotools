@@ -8,6 +8,7 @@
       "noResponse": "Sin respuesta"
     },
     "account": "Cuenta",
+    "administration": "Administración",
     "theme": {
       "system": "Tema del sistema",
       "light": "Tema claro",
@@ -284,7 +285,7 @@
     },
     "errors": {
       "alreadyRunning": "Este dominio ya tiene un rastreo en curso.",
-      "noPriorityUrls": "Todavía no hay páginas prioritarias. Márcalas primero en Páginas.",
+      "noPriorityUrls": "Todavía no hay URLs prioritarias. Márcalas primero en URLs.",
       "invalidPriorityUrl": "Introduce una URL de {host}, como /precios o https://{host}/precios.",
       "invalidSchedule": "Revisa la frecuencia, el día y la hora de la programación.",
       "listLimit": "Introduce entre 1 y 1000 URL.",
@@ -428,7 +429,7 @@
     },
     "jobs": {
       "title": "Recomprobaciones",
-      "description": "Solicita algunas URLs de nuevo tras una corrección, sin rastreo, y juzga lo que responde cada una por sí sola. Inicia una desde la tabla de páginas o desde el detalle de una URL.",
+      "description": "Solicita algunas URLs de nuevo tras una corrección, sin rastreo, y juzga lo que responde cada una por sí sola. Inicia una desde la tabla de URLs o desde el detalle de una URL.",
       "status": "Estado",
       "started": "Inicio",
       "urls": "URLs",
@@ -495,7 +496,7 @@
     "metaTitle": "URLs · {host} · seotools",
     "title": "URLs",
     "description": "Todas las URLs del último rastreo completo. Selecciona varias para actuar sobre ellas a la vez.",
-    "neverCrawled": "Este dominio todavía no se ha rastreado. Lanza un rastreo completo desde el resumen de páginas.",
+    "neverCrawled": "Este dominio todavía no se ha rastreado. Lanza un rastreo completo desde el resumen.",
     "viewsLabel": "Vistas",
     "views": {
       "pages": "Páginas",
@@ -1458,7 +1459,7 @@
     "description": "Lanza cada tipo de rastreo ahora o de forma recurrente. Un dominio ejecuta un solo rastreo a la vez.",
     "typeDescriptions": {
       "full": "Pide todas las URLs de la web: desde la portada, los sitemaps y todo lo enlazado en cualquier parte, sin hacer caso a robots.txt ni a meta robots.",
-      "priority": "Pide solo las páginas marcadas como prioritarias en Páginas, sin seguir sus enlaces."
+      "priority": "Pide solo las URLs marcadas como prioritarias en URLs, sin seguir sus enlaces."
     },
     "schedule": {
       "enabled": "Ejecutar de forma programada",
@@ -2006,7 +2007,7 @@
   "PrioritySettings": {
     "metaTitle": "Páginas prioritarias · {host} · seotools",
     "title": "Páginas prioritarias",
-    "description": "Páginas de {host} que pide el rastreo prioritario, con su resultado más reciente de cualquier rastreo. Si marcas una página con la estrella en la lista de Páginas, también aparece aquí.",
+    "description": "URLs de {host} que pide el rastreo prioritario, con su resultado más reciente de cualquier rastreo. Si marcas una URL con la estrella en la lista de URLs, también aparece aquí.",
     "columns": {
       "url": "URL",
       "status": "Estado",
@@ -2417,7 +2418,7 @@
       "metaTitle": "Historial de rastreos · {host} · seotools",
       "title": "Historial de rastreos",
       "description": "Todos los rastreos completos de este dominio que terminaron con resultados, del más reciente al más antiguo. Cada rastreo conserva la configuración de auditoría con la que se analizó y sus resultados por URL hasta que la retención los elimina.",
-      "empty": "Este dominio aún no tiene ningún rastreo completo terminado. Lanza uno desde el resumen de páginas.",
+      "empty": "Este dominio aún no tiene ningún rastreo completo terminado. Lanza uno desde el resumen.",
       "compare": {
         "title": "Comparar dos rastreos",
         "description": "Elige los rastreos para ver qué se descubrió, qué no se volvió a ver y qué cambió entre ellos."
@@ -3119,10 +3120,22 @@
     "main": "Contenido principal",
     "aside": "Lateral"
   },
+  "AppError": {
+    "title": "Algo ha ido mal",
+    "description": "No se ha podido mostrar esta página. Inténtalo de nuevo; si sigue fallando, revisa los registros del servidor.",
+    "reference": "Referencia: {digest}",
+    "retry": "Reintentar",
+    "home": "Ir al inicio"
+  },
   "Dashboard": {
     "metaTitle": "{host} · seotools",
     "lastCrawl": "Último rastreo completo terminado {when}.",
     "neverCrawled": "Este dominio todavía no se ha rastreado.",
+    "firstCrawl": {
+      "title": "Todavía no se ha rastreado nada",
+      "description": "Lanza el primer rastreo completo para encontrar las URLs de este sitio y comprobarlas. Las cifras, la evolución y los hallazgos que revisar aparecen aquí cuando termine.",
+      "viewerDescription": "Todavía no se ha rastreado nada. Las cifras y los hallazgos aparecen aquí cuando alguien que pueda editar este dominio lance el primer rastreo completo."
+    },
     "lastAttempt": "Intento de rastreo completo más reciente:",
     "jobs": "Ver rastreos",
     "incomplete": {

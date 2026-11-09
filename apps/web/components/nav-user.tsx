@@ -1,6 +1,6 @@
 'use client'
 
-import { LogOutIcon, UserIcon } from 'lucide-react'
+import { LogOutIcon, ShieldIcon, UserIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -40,7 +40,7 @@ function UserSummary({ user }: { user: NavUserData }) {
 }
 
 /** Signed-in user in the header: their picture or initials, and a menu with theme and sign out. */
-export function NavUser({ user }: { user: NavUserData }) {
+export function NavUser({ user, isAdmin = false }: { user: NavUserData; isAdmin?: boolean }) {
   const t = useTranslations('Common')
   const router = useRouter()
 
@@ -69,6 +69,12 @@ export function NavUser({ user }: { user: NavUserData }) {
             <UserIcon />
             {t('account')}
           </DropdownMenuItem>
+          {isAdmin && (
+            <DropdownMenuItem render={<Link href="/system" />}>
+              <ShieldIcon />
+              {t('administration')}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onClick={async () => {
               await authClient.signOut()
