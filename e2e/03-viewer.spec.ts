@@ -1,5 +1,5 @@
 import { createDatabase, inviteUser, redeemUserToken } from '@seotools/db'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './support/test'
 import { DATABASE_URL, HOST, OTHER_HOST, VIEWER, VIEWER_STATE } from './support/env'
 import { signIn } from './support/helpers'
 
