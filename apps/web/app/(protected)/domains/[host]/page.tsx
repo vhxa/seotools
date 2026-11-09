@@ -34,7 +34,7 @@ export default async function DomainDashboardPage({
   params: Promise<{ host: string }>
 }) {
   const { host } = await params
-  const { domain } = await requireDomain(host)
+  const { domain, canEdit } = await requireDomain(host)
   const [t, format] = await Promise.all([getTranslations('Dashboard'), getFormatter()])
   const db = await getDb()
   const [active, latest, crawls, config] = await Promise.all([
@@ -99,6 +99,25 @@ export default async function DomainDashboardPage({
           disabled={active !== null || domain.archivedAt !== null}
         />
       </div>
+
+      {!latest && crawls.length === 0 && !active && (
+        <section
+          aria-labelledby="first-crawl"
+          className="grid justify-items-center gap-3 rounded-lg border border-dashed px-4 py-10 text-center"
+        >
+          <h2 id="first-crawl" className="text-lg font-medium">
+            {t('firstCrawl.title')}
+          </h2>
+          <p className="max-w-prose text-sm text-muted-foreground">
+            {t(
+              canEdit && !domain.archivedAt
+                ? 'firstCrawl.description'
+                : 'firstCrawl.viewerDescription',
+            )}
+          </p>
+          {!domain.archivedAt && <StartCrawlButton host={domain.host} type="full" />}
+        </section>
+      )}
 
       {active && <ActiveCrawl host={domain.host} crawl={active} />}
 

@@ -51,7 +51,7 @@ export function AppHeader({
       <DomainSwitcher canManage={isAdmin} companies={companies} />
       {searchHost && <UrlSearch host={searchHost} />}
       <div className={cn('shrink-0', searchHost ? 'md:ml-auto' : 'ml-auto')}>
-        <NavUser user={user} />
+        <NavUser user={user} isAdmin={isAdmin} />
       </div>
     </header>
   )

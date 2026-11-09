@@ -30,6 +30,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
+import { isNavActive, isSectionOpen, type SectionOverride } from '@/lib/sidebar-nav'
 import { cn } from '@/lib/utils'
 
 interface NavLink {
@@ -38,6 +39,8 @@ interface NavLink {
   icon: LucideIcon
   /** Active only on this exact path, not on its sub-pages. */
   exact?: boolean
+  /** Other paths that belong to this link. */
+  also?: string[]
 }
 
 interface NavSection {
@@ -48,16 +51,20 @@ interface NavSection {
 
 type NavItem = NavLink | NavSection
 
-const isActive = (link: { href: string; exact?: boolean }, pathname: string) =>
-  pathname === link.href || (!link.exact && pathname.startsWith(`${link.href}/`))
+const isActive = isNavActive
 
 /** Options that unfold in place. */
 function NavCollapsible({ section, pathname }: { section: NavSection; pathname: string }) {
   const active = section.links.some((link) => isActive(link, pathname))
-  const [open, setOpen] = useState(active)
+  const [override, setOverride] = useState<SectionOverride | null>(null)
+  const open = isSectionOpen(active, override, pathname)
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+    <Collapsible
+      open={open}
+      onOpenChange={(next) => setOverride({ pathname, open: next })}
+      render={<SidebarMenuItem />}
+    >
       <CollapsibleTrigger render={<SidebarMenuButton />}>
         <section.icon />
         <span>{section.label}</span>
@@ -141,6 +148,7 @@ export function AppSidebar({
         {
           label: t('urls'),
           href: `/domains/${activeHost}/pages/details`,
+          also: [`/domains/${activeHost}/pages/parameters`],
           icon: FileTextIcon,
         },
         {

@@ -20,10 +20,24 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Added
+
+- The user menu has an Administration entry for administrators.
+- An error page and a loading skeleton for the signed-in app, so a failing page offers to try again instead of a blank screen.
+- A domain that has never been crawled shows a prompt on its overview to run the first full crawl.
+
+### Changed
+
+- The "Query parameters" link on the URLs page is a button with an icon.
+
 ### Fixed
 
 - The record of finished jobs no longer grows forever: the worker deletes completed jobs after 30
   days and failed ones after 90, checking every hour. Pending and running jobs are never touched.
+- The Crawls and Crawl files sections of the sidebar open, and mark the current page, when you navigate into them.
+- Query parameters now marks URLs as the current section in the sidebar.
+- Some messages still called the URLs list "Pages".
+- The trend charts no longer repeat a date when several crawls ran the same day, and their legend follows the order of the figures above.
 
 ## [0.3.0] - 2026-11-08
 

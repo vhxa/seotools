@@ -1,6 +1,7 @@
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import type { CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
+import { FilterIcon } from 'lucide-react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
@@ -207,6 +208,7 @@ export default async function PagesDetailsPage({
             href={`/domains/${host}/pages/parameters${browsable ? `?crawl=${browsable.id}` : ''}`}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
+            <FilterIcon />
             {tParameters('title')}
           </Link>
         )}

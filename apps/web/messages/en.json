@@ -8,6 +8,7 @@
       "noResponse": "No response"
     },
     "account": "Account",
+    "administration": "Administration",
     "theme": {
       "system": "System theme",
       "light": "Light theme",
@@ -284,7 +285,7 @@
     },
     "errors": {
       "alreadyRunning": "This domain already has a crawl in progress.",
-      "noPriorityUrls": "There are no priority pages yet. Mark some in Pages first.",
+      "noPriorityUrls": "There are no priority URLs yet. Mark some in URLs first.",
       "invalidPriorityUrl": "Enter a URL of {host}, like /pricing or https://{host}/pricing.",
       "invalidSchedule": "Check the frequency, day and time of the schedule.",
       "listLimit": "Enter between 1 and 1000 URLs.",
@@ -428,7 +429,7 @@
     },
     "jobs": {
       "title": "Rechecks",
-      "description": "Requests some URLs again after a fix, without a crawl, and judges what each one answers on its own. Start one from the pages table or the detail of a URL.",
+      "description": "Requests some URLs again after a fix, without a crawl, and judges what each one answers on its own. Start one from the URLs table or the detail of a URL.",
       "status": "Status",
       "started": "Started",
       "urls": "URLs",
@@ -495,7 +496,7 @@
     "metaTitle": "URLs · {host} · seotools",
     "title": "URLs",
     "description": "Every URL of the last full crawl. Select some to act on them together.",
-    "neverCrawled": "This domain has not been crawled yet. Run a full crawl from the pages overview.",
+    "neverCrawled": "This domain has not been crawled yet. Run a full crawl from the overview.",
     "viewsLabel": "Views",
     "views": {
       "pages": "Pages",
@@ -1458,7 +1459,7 @@
     "description": "Run each type of crawl now or on a recurring schedule. A domain runs one crawl at a time.",
     "typeDescriptions": {
       "full": "Requests every URL of the site: from the home page, the sitemaps and everything linked anywhere, ignoring robots.txt and meta robots.",
-      "priority": "Requests only the pages marked as priority in Pages, without following their links."
+      "priority": "Requests only the URLs marked as priority in URLs, without following their links."
     },
     "schedule": {
       "enabled": "Run on a schedule",
@@ -2006,7 +2007,7 @@
   "PrioritySettings": {
     "metaTitle": "Priority pages · {host} · seotools",
     "title": "Priority pages",
-    "description": "Pages of {host} that the priority crawl requests, with their most recent result from any crawl. Starring a page in the Pages list adds it here too.",
+    "description": "URLs of {host} that the priority crawl requests, with their most recent result from any crawl. Starring a URL in the URLs list adds it here too.",
     "columns": {
       "url": "URL",
       "status": "Status",
@@ -2417,7 +2418,7 @@
       "metaTitle": "Crawl history · {host} · seotools",
       "title": "Crawl history",
       "description": "Every full crawl of this domain that finished with results, newest first. A crawl keeps the audit configuration it was analysed with, and its results per URL until the retention setting removes them.",
-      "empty": "This domain has no finished full crawl yet. Run one from the pages overview.",
+      "empty": "This domain has no finished full crawl yet. Run one from the overview.",
       "compare": {
         "title": "Compare two crawls",
         "description": "Choose the crawls to see what was discovered, not seen again and changed between them."
@@ -3119,10 +3120,22 @@
     "main": "Main content",
     "aside": "Sidebar"
   },
+  "AppError": {
+    "title": "Something went wrong",
+    "description": "This page could not be shown. Try again; if it keeps failing, check the server logs.",
+    "reference": "Reference: {digest}",
+    "retry": "Try again",
+    "home": "Go home"
+  },
   "Dashboard": {
     "metaTitle": "{host} · seotools",
     "lastCrawl": "Last full crawl finished {when}.",
     "neverCrawled": "This domain has not been crawled yet.",
+    "firstCrawl": {
+      "title": "Nothing has been crawled yet",
+      "description": "Run the first full crawl to find the URLs of this site and check them. The figures, the trend and the findings to review appear here when it finishes.",
+      "viewerDescription": "Nothing has been crawled yet. The figures and findings appear here once someone who can edit this domain runs the first full crawl."
+    },
     "lastAttempt": "Most recent full crawl attempt:",
     "jobs": "View crawls",
     "incomplete": {

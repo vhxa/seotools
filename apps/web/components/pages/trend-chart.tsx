@@ -54,6 +54,15 @@ export function TrendChart({
           strokeWidth: 2,
         }
       : false
+  // Several crawls on one day would repeat its label: only the first point of each day gets a tick
+  // (the tooltip keeps the exact time).
+  const dayTicks: number[] = []
+  let lastDay: string | null = null
+  for (const point of points) {
+    const day = format.dateTime(point.at, { year: 'numeric', month: 'numeric', day: 'numeric' })
+    if (day !== lastDay) dayTicks.push(point.at)
+    lastDay = day
+  }
   const number = (value: number | null) => (value === null ? '—' : format.number(value))
 
   if (points.length === 0) {
@@ -74,6 +83,7 @@ export function TrendChart({
           <CartesianGrid vertical={false} />
           <XAxis
             dataKey="at"
+            ticks={dayTicks}
             tickLine={false}
             axisLine={false}
             tickMargin={8}
@@ -100,7 +110,11 @@ export function TrendChart({
               />
             }
           />
-          {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
+          {series.length > 1 && (
+            // Recharts sorts legend entries by name by default; keep the order of the series, which
+            // is the order of the tiles on the dashboard.
+            <ChartLegend itemSorter={null} content={<ChartLegendContent />} />
+          )}
           {series.map((id) => (
             <Area
               key={id}
