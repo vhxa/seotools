@@ -36,6 +36,9 @@ import { createUpdateChecker } from './updates/update-checker'
 const SCHEDULER_INTERVAL_MS = 30_000
 /** How often the record of sent email is trimmed. */
 const PRUNE_INTERVAL_MS = 60 * 60_000
+/** Finished jobs are only a trace; completed ones go after 30 days, failed ones (to diagnose) after 90. */
+const COMPLETED_JOBS_MAX_AGE_MS = 30 * 24 * 60 * 60_000
+const FAILED_JOBS_MAX_AGE_MS = 90 * 24 * 60 * 60_000
 
 async function main() {
   const env = parseWorkerEnv()
@@ -124,6 +127,13 @@ async function main() {
         }),
       )
       .catch((err) => log.error({ err }, 'could not prune the record of sent email or old history'))
+      .then(() =>
+        db.jobs.prune({
+          finishedBefore: new Date(Date.now() - COMPLETED_JOBS_MAX_AGE_MS),
+          failedBefore: new Date(Date.now() - FAILED_JOBS_MAX_AGE_MS),
+        }),
+      )
+      .catch((err) => log.error({ err }, 'could not prune finished jobs'))
   void pruneDeliveries()
   const deliveriesTimer = setInterval(() => void pruneDeliveries(), PRUNE_INTERVAL_MS)
   void tickScheduler()

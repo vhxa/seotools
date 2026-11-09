@@ -88,6 +88,12 @@ export interface JobRepository {
   release(input: { id: string; workerId: string; runAt?: Date }): Promise<void>
   /** Recovers jobs whose worker died: back to `pending`, or `failed` if out of attempts. */
   requeueStale(input: { lockedBefore: Date }): Promise<number>
+  /**
+   * Deletes finished jobs: `completed` ones last updated before `finishedBefore`, `failed` ones
+   * before `failedBefore`. Never `pending` or `running`, nor a job an active crawl or recheck still
+   * points at (`failOrphaned` reads it). Returns how many were deleted.
+   */
+  prune(input: { finishedBefore: Date; failedBefore: Date }): Promise<number>
 }
 
 export interface Heartbeat {

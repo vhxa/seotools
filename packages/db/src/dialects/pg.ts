@@ -821,6 +821,28 @@ export function createPgDatabase(options: {
           return failed.length + requeued.length
         })
       },
+
+      async prune({ finishedBefore, failedBefore }) {
+        // `updated_at` is when the job last changed: for a finished job, when it ended.
+        const old = or(
+          and(eq(jobs.status, 'completed'), lt(jobs.updatedAt, finishedBefore)),
+          and(eq(jobs.status, 'failed'), lt(jobs.updatedAt, failedBefore)),
+        )
+        const notInUse = and(
+          notInArray(
+            jobs.id,
+            db.select({ id: crawls.jobId }).from(crawls).where(isNotNull(crawls.activeKey)),
+          ),
+          notInArray(
+            jobs.id,
+            db
+              .select({ id: urlVerifications.jobId })
+              .from(urlVerifications)
+              .where(isNotNull(urlVerifications.activeKey)),
+          ),
+        )
+        return (await db.delete(jobs).where(and(old, notInUse)).returning({ id: jobs.id })).length
+      },
     },
 
     heartbeats: {

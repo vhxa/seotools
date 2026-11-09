@@ -20,6 +20,11 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Fixed
+
+- The record of finished jobs no longer grows forever: the worker deletes completed jobs after 30
+  days and failed ones after 90, checking every hour. Pending and running jobs are never touched.
+
 ## [0.3.0] - 2026-11-08
 
 ### Changed

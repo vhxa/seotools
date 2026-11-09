@@ -46,4 +46,5 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 
 ## Periodic loops
 
+- Finished jobs are pruned hourly with the other records (`db.jobs.prune`: completed after 30 days, failed after 90; never pending, running, or the job of an active crawl or recheck). Nothing may read a finished job by id after that: a new feature that needs a job's outcome keeps it in its own table.
 - An archived domain stays out of every periodic loop: see "Companies and domains lifecycle" in `packages/db/AGENTS.md`.

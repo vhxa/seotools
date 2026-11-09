@@ -100,6 +100,42 @@ export function describeDatabaseContract(
         expect(await db.jobs.get('missing')).toBeNull()
       })
 
+      it('prunes finished jobs by age and never pending or running ones', async () => {
+        const now = new Date()
+        const due = new Date(now.getTime() + 5000)
+        const finishedBefore = new Date(now.getTime() + minutes(1))
+        const failedBefore = new Date(now.getTime() - minutes(1))
+        const done = await db.jobs.enqueue({ type: 'prune-done' })
+        const bad = await db.jobs.enqueue({ type: 'prune-bad', maxAttempts: 1 })
+        const waiting = await db.jobs.enqueue({
+          type: 'prune-wait',
+          runAt: new Date(now.getTime() + minutes(10)),
+        })
+        const claimed = await db.jobs.claim({
+          workerId: 'w1',
+          limit: 10,
+          now: due,
+          types: ['prune-done', 'prune-bad'],
+        })
+        expect(claimed).toHaveLength(2)
+        await db.jobs.complete({ id: done.id, workerId: 'w1' })
+        await db.jobs.fail({ id: bad.id, workerId: 'w1', error: 'boom' })
+        const running = await db.jobs.enqueue({ type: 'prune-run' })
+        await db.jobs.claim({ workerId: 'w1', limit: 1, now: due, types: ['prune-run'] })
+
+        // Failed jobs are kept longer than completed ones: the failed one is not old enough yet.
+        expect(await db.jobs.prune({ finishedBefore, failedBefore })).toBe(1)
+        expect(await db.jobs.get(done.id)).toBeNull()
+        expect(await db.jobs.get(bad.id)).not.toBeNull()
+
+        const later = new Date(now.getTime() + minutes(1))
+        expect(await db.jobs.prune({ finishedBefore: later, failedBefore: later })).toBe(1)
+        expect(await db.jobs.get(bad.id)).toBeNull()
+        expect(await db.jobs.get(waiting.id)).not.toBeNull()
+        expect(await db.jobs.get(running.id)).not.toBeNull()
+        expect(await db.jobs.prune({ finishedBefore: later, failedBefore: later })).toBe(0)
+      })
+
       it('claims only due jobs, oldest first, up to the limit', async () => {
         const now = new Date()
         const first = await db.jobs.enqueue({ type: 't', runAt: new Date(now.getTime() - 2000) })
