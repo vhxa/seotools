@@ -50,19 +50,15 @@ docker compose up -d
 Open <http://localhost:3000>. The first time, it asks you to create the admin account (name,
 email and password), signs you in, and then asks for your first company and domain (`example.com`,
 without `https://` or `www.`). Domains are grouped by company, like an agency groups them by
-client, and you switch between them from the selector in the header, which also searches any URL of the domain. Run a full crawl
-from the domain's overview; **Administration → Status** shows whether the database and the worker
-are healthy.
+client, and you switch between them from the domain selector in the header; the search box next to
+it finds any URL of the domain. Run a full crawl from the domain's overview; **Administration →
+Status** shows whether the database and the worker are healthy.
 
 Data lives in the `seotools-data` volume (`/data` in the container). To build the image yourself
 instead of pulling it, use `docker compose up -d --build`.
 
 This pulls the newest **stable release**. For anything you rely on, pin a version
 (`SEOTOOLS_IMAGE` in `.env`) and update it on purpose: see [Updating](#updating).
-
-> **No release has been published yet**, so `latest` does not exist yet. Until the first one, build
-> the image from source (`docker compose up -d --build`) or run a development build of `main` with
-> `SEOTOOLS_IMAGE=ghcr.io/vhxa/seotools:edge` in `.env`.
 
 ## Configuration
 
@@ -111,10 +107,6 @@ The image is `ghcr.io/vhxa/seotools`. `1.2.3` is one release, `1.2` follows its 
 from 1.0.0, `1` follows its minor versions), `latest` is the newest stable release, and `edge` and
 `sha-<commit>` are development builds of `main`, never releases. What each tag means and which one
 to use is in [docs/updating.md](docs/updating.md#image-tags). In production, pin one.
-
-> A package published to GHCR is **private** until you make it public (GitHub → Packages →
-> seotools → Package settings → Change visibility). Do that once so anyone can `docker pull`
-> without logging in.
 
 ### VPS with Docker Compose
 
