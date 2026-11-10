@@ -66,7 +66,11 @@ export interface RecheckView {
  */
 export function viewRecheck(input: {
   verified: VerifiedUrl | null
-  crawl: { auditVersion: number | null; pagesByWorstIssue: unknown }
+  crawl: {
+    auditVersion: number | null
+    pagesByWorstIssue: unknown
+    auditSnapshot?: { unobserved?: string[] | undefined } | null
+  }
   /** When the crawl requested this URL. */
   crawledAt: Date | null
   /** The issues the crawl found at this URL. */
@@ -91,6 +95,7 @@ export function viewRecheck(input: {
           recheck: verified.outcome.findings.map((finding) => finding.issue),
           unchecked: verified.outcome.unchecked,
           accepted: (verified.outcome.accepted ?? []).map((finding) => finding.issue),
+          unobserved: crawl.auditSnapshot?.unobserved ?? [],
         })
       : null,
     notComparable: comparable ? null : analysed ? 'rules-changed' : 'not-analysed',

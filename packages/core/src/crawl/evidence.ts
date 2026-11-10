@@ -43,6 +43,8 @@ export const ISSUE_EVIDENCE = {
   'canonical-redirect': 'related-urls',
   'canonical-not-indexable': 'related-urls',
   'links-to-broken': 'related-urls',
+  'resources-broken': 'related-urls',
+  'og-image-broken': 'related-urls',
   'links-to-redirect': 'related-urls',
   'links-to-canonicalised': 'related-urls',
   'links-tracking-parameters': 'related-urls',

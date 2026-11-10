@@ -19,6 +19,7 @@ import type {
 } from '@seotools/db'
 import { conditionStatesOf } from './conditions'
 import { detectFindings } from './issue-checks'
+import { unobservedIssues } from './observed-inputs'
 import { loadSite } from './site-audit'
 
 export interface CrawlAnalysis {
@@ -60,11 +61,14 @@ export const recordedAuditConfig = (crawl: Pick<Crawl, 'auditSnapshot'>): AuditS
 export async function analyseCrawl(
   db: Database,
   crawlId: string,
-  config: AuditSnapshot,
+  given: AuditSnapshot,
 ): Promise<CrawlAnalysis> {
   const crawl = await db.crawls.get(crawlId)
   if (!crawl) throw new Error(`Crawl ${crawlId} not found`)
 
+  // What the crawl could not observe is about the crawl, not the configuration: it is worked out
+  // again each time, never carried over from the snapshot that came with it.
+  const { unobserved: _recorded, ...config } = given
   const site = await loadSite(db, crawl, config)
   const issues: CrawlUrlIssue[] = []
   const acceptedIssues: CrawlUrlAcceptedIssue[] = []
@@ -133,6 +137,9 @@ export async function analyseCrawl(
       pagesWithType[type]++
     }
   }
+  const unobserved = unobservedIssues(
+    site.urls.flatMap((url) => (url.internal && url.facts ? [url.facts] : [])),
+  )
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,
@@ -140,7 +147,11 @@ export async function analyseCrawl(
     pages: pagesByWorstIssue,
     withType: pagesWithType,
     catalog: ISSUE_CATALOG_VERSION,
-    audit: { snapshot: config, pages: audit, urls },
+    audit: {
+      snapshot: { ...config, ...(unobserved.length > 0 ? { unobserved } : {}) },
+      pages: audit,
+      urls,
+    },
   })
   return {
     pages: audit.audited + audit.excluded,

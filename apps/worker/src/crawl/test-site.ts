@@ -37,6 +37,12 @@ export interface PageOptions {
   h2?: string | null
   links?: string
   headers?: Record<string, string>
+  /** Replaces the Open Graph and Twitter tags. `null` leaves them out. */
+  social?: string | null
+  /** Replaces the `<html>` tag, e.g. to leave `lang` out. */
+  html?: string
+  /** Replaces the charset and viewport tags. */
+  document?: string
 }
 
 /** A page with nothing wrong, unless the options say otherwise. */
@@ -51,10 +57,21 @@ export function page(path: string, options: PageOptions = {}): Partial<FetchedRe
   const canonical = options.canonical === undefined ? url : options.canonical
   const h1 = options.h1 === undefined ? `The main heading of ${path}` : options.h1
   const h2 = options.h2 === undefined ? 'A second heading' : options.h2
+  // The image is on another site, so the crawl does not request it.
+  const social =
+    options.social === undefined
+      ? `<meta property="og:title" content="${title ?? 'A title'}">
+      <meta property="og:type" content="website">
+      <meta property="og:image" content="https://cdn.example.net/og.png">
+      <meta property="og:url" content="${canonical ?? url}">
+      <meta name="twitter:card" content="summary_large_image">`
+      : (options.social ?? '')
   return {
     statusCode: 200,
     headers: { 'content-type': 'text/html', ...SAFE_HEADERS, ...options.headers },
-    body: Buffer.from(`<!doctype html><html lang="en"><head>
+    body: Buffer.from(`<!doctype html>${options.html ?? '<html lang="en">'}<head>
+      ${options.document ?? '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'}
+      ${social}
       ${title === null ? '' : `<title>${title}</title>`}
       ${description === null ? '' : `<meta name="description" content="${description}">`}
       ${canonical === null ? '' : `<link rel="canonical" href="${canonical}">`}

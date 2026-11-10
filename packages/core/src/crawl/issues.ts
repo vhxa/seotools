@@ -24,9 +24,14 @@ export type IssueImportance = (typeof ISSUE_IMPORTANCES)[number]
  * - `security-header`: the names of the headers that are missing.
  * - `indexability-blocker`: what keeps a URL from being indexable, from `INDEXABILITY_BLOCKERS`.
  * - `structured-data-missing`: `Type: property, property | alternative`, schema.org names.
+ * - `social-missing`: the Open Graph properties that are missing (`og:title`…).
  */
 export type IssueDetailKind =
-  'hreflang-source' | 'security-header' | 'indexability-blocker' | 'structured-data-missing'
+  | 'hreflang-source'
+  | 'security-header'
+  | 'indexability-blocker'
+  | 'structured-data-missing'
+  | 'social-missing'
 
 type Entry = readonly [type: IssueType, importance: IssueImportance, detail?: IssueDetailKind]
 
@@ -51,6 +56,10 @@ const ISSUE_CATALOG = {
     'refresh-redirect': ['warning', 'medium'],
     'robots-blocked': ['warning', 'medium'],
     'redirect-3xx': ['warning', 'low'],
+    // A 302 or a 307 says the move is not for good: search engines keep the old URL.
+    'redirect-temporary': ['warning', 'low'],
+    // A page that answers slowly (the figure is a threshold), as the crawler measured it.
+    'slow-response': ['opportunity', 'low'],
     'broken-external-link': ['warning', 'low'],
   },
   // What the user declared of a URL, against what the crawl saw. See `crawl/audit`: the expectation
@@ -157,10 +166,19 @@ const ISSUE_CATALOG = {
     'structured-data-recommended-missing': ['opportunity', 'low', 'structured-data-missing'],
     'no-structured-data': ['opportunity', 'low'],
   },
+  // How the page looks when shared. `og-image-broken` is a broken reference.
+  social: {
+    'og-missing': ['opportunity', 'medium'],
+    'og-incomplete': ['opportunity', 'low', 'social-missing'],
+    'og-image-broken': ['warning', 'medium'],
+    'og-url-mismatch': ['warning', 'low'],
+    'twitter-card-missing': ['opportunity', 'low'],
+  },
   links: {
     'link-to-localhost': ['issue', 'high'],
-    // What a page links to, reported where the link can be fixed.
+    // What a page links to or embeds, reported where the link can be fixed.
     'links-to-broken': ['issue', 'medium'],
+    'resources-broken': ['issue', 'medium'],
     'links-to-redirect': ['warning', 'low'],
     'links-to-canonicalised': ['warning', 'low'],
     'links-tracking-parameters': ['warning', 'medium'],
@@ -198,6 +216,11 @@ const ISSUE_CATALOG = {
     'multiple-head-or-body': ['warning', 'medium'],
     'document-too-big': ['issue', 'medium'],
     'content-before-head': ['warning', 'medium'],
+    // What a browser and assistive technology need to read the page right.
+    'html-lang-missing': ['warning', 'medium'],
+    'html-lang-invalid': ['warning', 'low'],
+    'viewport-missing': ['warning', 'medium'],
+    'charset-missing': ['warning', 'low'],
   },
 } as const satisfies Record<string, Record<string, Entry>>
 
@@ -214,7 +237,15 @@ export const ISSUE_GROUPS = [
   },
   {
     id: 'on-page',
-    categories: ['title', 'meta-description', 'headings', 'content', 'images', 'structured-data'],
+    categories: [
+      'title',
+      'meta-description',
+      'headings',
+      'content',
+      'images',
+      'structured-data',
+      'social',
+    ],
   },
   { id: 'architecture', categories: ['links', 'urls'] },
   { id: 'technical', categories: ['security', 'html'] },
@@ -308,6 +339,10 @@ export const SEO_CONTENT_ISSUES: ReadonlySet<PageIssueId> = new Set<PageIssueId>
   'content-near-duplicate',
   'content-thin',
   'no-structured-data',
+  'og-missing',
+  'og-incomplete',
+  'og-url-mismatch',
+  'twitter-card-missing',
   'structured-data-required-missing',
   'structured-data-recommended-missing',
   'deep-page',

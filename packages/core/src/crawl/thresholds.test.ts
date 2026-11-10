@@ -3,6 +3,7 @@ import { auditSnapshotOf } from './audit'
 import { auditScopeKey } from './compare'
 import {
   DEFAULT_THRESHOLDS,
+  THRESHOLD_ISSUES,
   canonicalThresholds,
   parseThresholdOverrides,
   resolveThresholds,
@@ -26,6 +27,18 @@ describe('thresholds', () => {
     expect(thresholdsProblem(resolveThresholds({ titleMin: 70 }))).toBe('title')
     expect(thresholdsProblem(resolveThresholds({ descriptionMin: 200 }))).toBe('description')
     expect(thresholdsProblem(DEFAULT_THRESHOLDS)).toBeNull()
+  })
+
+  it('include how long a page may take to answer, which only slow-response reads', () => {
+    expect(DEFAULT_THRESHOLDS.responseTimeMaxMs).toBe(1000)
+    expect(THRESHOLD_ISSUES['slow-response']).toEqual(['responseTimeMaxMs'])
+    expect(parseThresholdOverrides({ responseTimeMaxMs: 2500 })).toEqual({
+      responseTimeMaxMs: 2500,
+    })
+    expect(parseThresholdOverrides({ responseTimeMaxMs: 5 })).toEqual({})
+    const slower = auditSnapshotOf(1, [], undefined, { responseTimeMaxMs: 2500 })
+    expect(slower.thresholds).toEqual({ responseTimeMaxMs: 2500 })
+    expect(auditScopeKey(slower)).not.toBe(auditScopeKey(auditSnapshotOf(1, [])))
   })
 
   it('are part of the configuration an analysis keeps, and of what makes two the same', () => {

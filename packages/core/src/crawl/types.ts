@@ -193,6 +193,40 @@ export interface PageEvidenceFacts {
   links?: Partial<Record<LinkProblem, LinkEvidence[]>>
 }
 
+/**
+ * What a page says about how it looks when shared: its Open Graph and Twitter Card tags. Only the
+ * first occurrence of each is kept, as text a site wrote (bounded) or as a URL that resolved.
+ */
+export interface SocialFacts {
+  /** How many `<meta property="og:…">` tags the page has, whatever they say. */
+  openGraphTags: number
+  title?: string
+  description?: string
+  /** `og:image` (or `og:image:secure_url`/`:url` when there is no plain one), resolved. */
+  image?: string
+  /** Positive integers only. */
+  imageWidth?: number
+  imageHeight?: number
+  /** `og:url`, resolved. */
+  url?: string
+  type?: string
+  siteName?: string
+  twitterCard?: string
+  twitterTitle?: string
+  twitterDescription?: string
+  twitterImage?: string
+}
+
+/** What the document declares about itself outside of the tags that say what the page is about. */
+export interface DocumentFacts {
+  /** The `lang` of `<html>`. `null`: none, or empty. */
+  lang: string | null
+  /** The `content` of `<meta name="viewport">`. `null`: none. */
+  viewport: string | null
+  /** The charset the document declares (`<meta charset>` or `http-equiv="Content-Type"`). */
+  charset: string | null
+}
+
 /** What the checks for issues look at, gathered while parsing a page. Counts unless it says not. */
 export interface CrawlPageFacts {
   /** `<head>` and `<body>` tags actually written in the document. */
@@ -249,6 +283,12 @@ export interface CrawlPageFacts {
   mixedContent: number
   /** Names of the security headers the response did not have. */
   missingSecurityHeaders: string[]
+  /**
+   * Open Graph and Twitter Card tags, and what the document declares of itself. Absent: parsed
+   * before they were kept, which is not looked for and never "has none".
+   */
+  social?: SocialFacts
+  document?: DocumentFacts
   /**
    * Samples of the images and links the counters above count. Pages parsed before they were kept
    * do not have it: their findings have no examples to show, and none are made up.

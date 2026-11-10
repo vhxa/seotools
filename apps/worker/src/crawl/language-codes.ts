@@ -38,3 +38,22 @@ export function isValidHreflang(value: string): boolean {
   if (rest.length === 0) return true
   return rest.length === 1 && REGIONS.has(rest[0]!)
 }
+
+/** No real tag comes near this, and what the page wrote should not make the parser work harder. */
+const MAX_LANGUAGE_TAG = 100
+
+/**
+ * Whether a value is a well-formed BCP 47 language tag, which is all HTML asks of `lang`: `fil`,
+ * `de-CH-1901`, `en-US-u-ca-gregory` and `und` are fine, `en_US` and free text are not. Unlike
+ * hreflang, it does not judge whether the language or region exists.
+ */
+export function isWellFormedLanguageTag(value: string): boolean {
+  const tag = value.trim()
+  if (!tag || tag.length > MAX_LANGUAGE_TAG) return false
+  try {
+    Intl.getCanonicalLocales(tag)
+    return true
+  } catch {
+    return false
+  }
+}

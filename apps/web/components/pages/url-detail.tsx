@@ -24,12 +24,14 @@ import { PriorityToggle, UrlLink } from '@/components/crawl/url-cells'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
+import { SharePreviewView } from '@/components/pages/share-preview'
 import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { groupDetailFindings } from '@/lib/url-detail-findings'
 import { ruleRefsOf } from '@/lib/audit-rules'
+import { sharePreview } from '@/lib/share-preview'
 import { formatBytes } from '@/lib/format'
 import type { UrlDetailData } from '@/lib/url-detail'
 
@@ -252,6 +254,12 @@ export async function UrlDetail({
               </Field>
             ))}
           </Fields>
+        </Section>
+      )}
+
+      {isPage && (
+        <Section title={t('sections.preview')}>
+          <SharePreviewView preview={sharePreview(url)} />
         </Section>
       )}
 

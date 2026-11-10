@@ -317,6 +317,12 @@ export const PAGES_COLUMNS: readonly UrlColumn[] = [
   },
   { header: 'expectation', cell: expectationOf },
   { header: 'title', cell: ({ url }) => url.title },
+  // Empty where the crawl did not store it: a crawl from before the tags were kept, or no tag.
+  { header: 'ogTitle', cell: ({ url }) => url.data?.facts?.social?.title },
+  { header: 'ogDescription', cell: ({ url }) => url.data?.facts?.social?.description },
+  { header: 'ogImage', cell: ({ url }) => url.data?.facts?.social?.image },
+  { header: 'twitterCard', cell: ({ url }) => url.data?.facts?.social?.twitterCard },
+  { header: 'htmlLang', cell: ({ url }) => url.data?.facts?.document?.lang },
   typeColumn('issues', 'issue'),
   typeColumn('warnings', 'warning'),
   typeColumn('opportunities', 'opportunity'),

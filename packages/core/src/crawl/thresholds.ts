@@ -21,6 +21,8 @@ export const AUDIT_THRESHOLDS = {
   clickDepthMax: { default: 3, min: 1, max: 20 },
   /** Kilobytes of an image over which it is too heavy. */
   imageMaxKb: { default: 100, min: 10, max: 10_000 },
+  /** Milliseconds a page takes to answer over which it is slow. */
+  responseTimeMaxMs: { default: 1000, min: 100, max: 60_000 },
 } as const satisfies Record<string, { default: number; min: number; max: number }>
 
 export type ThresholdKey = keyof typeof AUDIT_THRESHOLDS
@@ -38,6 +40,7 @@ export const THRESHOLD_ISSUES: Readonly<Record<string, readonly ThresholdKey[]>>
   'url-too-long': ['urlMax'],
   'deep-page': ['clickDepthMax'],
   'img-too-heavy': ['imageMaxKb'],
+  'slow-response': ['responseTimeMaxMs'],
 }
 export type AuditThresholds = Record<ThresholdKey, number>
 export const THRESHOLD_KEYS = Object.keys(AUDIT_THRESHOLDS) as ThresholdKey[]

@@ -65,7 +65,11 @@ export default async function RecheckPage({
     const view = viewRecheck({
       verified: url.state === 'done' ? url : null,
       crawl: comparable
-        ? { auditVersion: comparable.auditVersion, pagesByWorstIssue: comparable.pagesByWorstIssue }
+        ? {
+            auditVersion: comparable.auditVersion,
+            pagesByWorstIssue: comparable.pagesByWorstIssue,
+            auditSnapshot: comparable.auditSnapshot,
+          }
         : { auditVersion: null, pagesByWorstIssue: null },
       crawledAt: null,
       crawlIssues: crawlIssues.filter((found) => found.urlHash === url.urlHash).map((f) => f.issue),

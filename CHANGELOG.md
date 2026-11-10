@@ -25,6 +25,16 @@ which moves the entries of `[Unreleased]` into the new version.
 - The user menu has an Administration entry for administrators.
 - An error page and a loading skeleton for the signed-in app, so a failing page offers to try again instead of a blank screen.
 - A domain that has never been crawled shows a prompt on its overview to run the first full crawl.
+- Twelve new checks: Open Graph and Twitter Card tags (missing, incomplete, `og:url` that differs
+  from the canonical, a share image that fails or redirects), `lang`, viewport and charset of the
+  document, temporary redirects (302/307), slow responses and broken resources a page loads. The
+  slowest response a page may have is a new threshold per domain (Settings → Audit → Thresholds,
+  1000 ms by default). The checks that read the HTML show from the next full crawl; temporary
+  redirects, slow responses and broken resources also appear in retained crawls when they are
+  analysed again, and a crawl from before the tags were kept is never reported as lacking them.
+- The URL detail previews how a page appears in search results and when it is shared (Open Graph
+  image, title and description), and the pages CSV has `og:title`, `og:description`, `og:image`,
+  `twitter:card` and HTML lang columns.
 
 ### Changed
 
@@ -37,6 +47,10 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Fixed
 
+- A broken image, script or stylesheet is now reported on the page that loads it (`resources-broken`).
+- Comparing with a crawl made before a check could see its input (structured data before 0.2.0,
+  Open Graph and the document language before this version) no longer reports those findings as new
+  or resolved: they show as not verifiable.
 - The record of finished jobs no longer grows forever: the worker deletes completed jobs after 30
   days and failed ones after 90, checking every hour. Pending and running jobs are never touched.
 - The Crawls and Crawl files sections of the sidebar open, and mark the current page, when you navigate into them.

@@ -6,11 +6,13 @@ import {
   crawlUrlHash,
   type CrawlPageFacts,
   type DeclaredCanonical,
+  type DocumentFacts,
   type ImageEvidence,
   type ImageProblem,
   type LinkEvidence,
   type LinkProblem,
   type PageEvidenceFacts,
+  type SocialFacts,
 } from '@seotools/core'
 
 /** JSON-LD blocks a page can have judged; the rest only count. */
@@ -51,6 +53,46 @@ const NOT_CONTENT = new Set([
 
 /** Link kinds that load a resource into the page, which is what mixed content is about. */
 const RESOURCE_LINK_KINDS = new Set(['script', 'style', 'image', 'media', 'frame', 'head-link'])
+
+/** Longest `lang`, viewport or charset kept: real ones are a few dozen characters. */
+const MAX_DOCUMENT_VALUE = 200
+
+/** The `<meta>` of Open Graph and Twitter Cards that are kept, and where each goes. */
+const SOCIAL_TEXT = {
+  'og:title': 'title',
+  'og:description': 'description',
+  'og:type': 'type',
+  'og:site_name': 'siteName',
+  'twitter:card': 'twitterCard',
+  'twitter:title': 'twitterTitle',
+  'twitter:description': 'twitterDescription',
+} as const satisfies Record<string, keyof SocialFacts>
+const SOCIAL_URL = {
+  'og:image': 'image',
+  'og:url': 'url',
+  'twitter:image': 'twitterImage',
+} as const satisfies Record<string, keyof SocialFacts>
+/** Other names the same image goes by: only used when the plain one is not there. */
+const SOCIAL_URL_FALLBACK = {
+  'og:image:secure_url': 'image',
+  'og:image:url': 'image',
+  'twitter:image:src': 'twitterImage',
+} as const satisfies Record<string, keyof SocialFacts>
+const SOCIAL_SIZE = { 'og:image:width': 'imageWidth', 'og:image:height': 'imageHeight' } as const
+/** Larger than any image, and keeps what a site wrote from being a number that means nothing. */
+const MAX_IMAGE_SIZE = 100_000
+
+/** The charset a `Content-Type` value (`text/html; charset=utf-8`) declares, without regexes. */
+function charsetOf(contentType: string): string | null {
+  const value = contentType.slice(0, MAX_DOCUMENT_VALUE).toLowerCase()
+  const at = value.indexOf('charset=')
+  if (at === -1) return null
+  let end = at + 'charset='.length
+  const start = end
+  while (end < value.length && !' ;"\''.includes(value[end]!)) end++
+  const charset = value.slice(start, end).trim()
+  return charset === '' ? null : charset
+}
 
 const HEADING = /^h([1-6])$/
 const MAX_INVALID_HEAD_ELEMENTS = 10
@@ -223,6 +265,7 @@ export class PageFactsCollector {
   private notContentDepth = 0
   private codeDepth = 0
   private svgDepth = 0
+  private mathDepth = 0
   private noscriptDepth = 0
   private templateDepth = 0
   private previousHeading = 1
@@ -237,6 +280,11 @@ export class PageFactsCollector {
   private readonly text: string[] = []
   private readonly invalidHead = new Set<string>()
   private readonly evidence: PageEvidenceFacts = {}
+  private readonly social: SocialFacts = { openGraphTags: 0 }
+  /** The first URL of each image under its other names, used if the plain one is not there. */
+  private readonly socialFallback: Partial<Record<'image' | 'twitterImage', string>> = {}
+  private readonly document: DocumentFacts = { lang: null, viewport: null, charset: null }
+  private sawHtml = false
 
   readonly facts: CrawlPageFacts = emptyPageFacts()
 
@@ -251,11 +299,17 @@ export class PageFactsCollector {
     return this.headState !== 'after'
   }
 
+  /** Inside a template or foreign content (SVG, MathML): markup that is not the page's own. */
+  private get inert() {
+    return this.templateDepth > 0 || this.svgDepth > 0 || this.mathDepth > 0
+  }
+
   open(name: string, attributes: Record<string, string>) {
     this.trackHead(name)
     if (NOT_CONTENT.has(name)) this.notContentDepth++
     if (name === 'script' || name === 'style') this.codeDepth++
     if (name === 'svg') this.svgDepth++
+    if (name === 'math') this.mathDepth++
     if (attributes.itemscope !== undefined || attributes.typeof !== undefined) {
       this.facts.structuredData++
     }
@@ -263,6 +317,14 @@ export class PageFactsCollector {
     switch (name) {
       case 'title':
         if (this.svgDepth === 0) this.count('titles', 'titlesOutsideHead')
+        break
+      case 'html':
+        // The document root is the first `<html>` that is not inert markup: one inside a template or
+        // foreign content is not the document, and must not decide its language.
+        if (!this.sawHtml && !this.inert) {
+          this.sawHtml = true
+          this.document.lang = boundedText(attributes.lang ?? '', MAX_DOCUMENT_VALUE) || null
+        }
         break
       case 'meta':
         this.onMeta(attributes)
@@ -310,6 +372,7 @@ export class PageFactsCollector {
     if (NOT_CONTENT.has(name) && this.notContentDepth > 0) this.notContentDepth--
     if ((name === 'script' || name === 'style') && this.codeDepth > 0) this.codeDepth--
     if (name === 'svg' && this.svgDepth > 0) this.svgDepth--
+    if (name === 'math' && this.mathDepth > 0) this.mathDepth--
     if (name === 'noscript' && this.noscriptDepth > 0) this.noscriptDepth--
     if (name === 'template' && this.templateDepth > 0) this.templateDepth--
     if (name === 'head' && this.headState === 'in') this.headState = 'after'
@@ -363,6 +426,11 @@ export class PageFactsCollector {
       }
     }
     if (this.evidence.images || this.evidence.links) facts.evidence = this.evidence
+    // Always set, even with nothing in them: that is what tells them from a crawl that did not look.
+    this.social.image ??= this.socialFallback.image
+    this.social.twitterImage ??= this.socialFallback.twitterImage
+    facts.social = this.social
+    facts.document = this.document
     return facts
   }
 
@@ -438,6 +506,54 @@ export class PageFactsCollector {
     if (name === 'description') this.count('descriptions', 'descriptionsOutsideHead')
     if ((name === 'robots' || name.endsWith('bot')) && !this.inHead) {
       this.facts.robotsOutsideHead++
+    }
+    // What a template or foreign content holds is not what the page says of itself or when shared.
+    if (this.inert) return
+    this.onDocumentMeta(name, attributes)
+    this.onSocialMeta(attributes)
+  }
+
+  /** The viewport and the charset, the first of each. */
+  private onDocumentMeta(name: string, attributes: Record<string, string>) {
+    const { document } = this
+    if (name === 'viewport' && document.viewport === null) {
+      document.viewport = boundedText(attributes.content ?? '', MAX_DOCUMENT_VALUE) || null
+    }
+    if (document.charset !== null) return
+    if (attributes.charset !== undefined) {
+      document.charset = boundedText(attributes.charset, 40).toLowerCase() || null
+    } else if ((attributes['http-equiv'] ?? '').toLowerCase() === 'content-type') {
+      document.charset = charsetOf(attributes.content ?? '')
+    }
+  }
+
+  /** Open Graph and Twitter Card tags: the first of each, bounded, and URLs only if they resolve. */
+  private onSocialMeta(attributes: Record<string, string>) {
+    const property = (attributes.property ?? '').toLowerCase().trim()
+    const named = (attributes.name ?? '').toLowerCase().trim()
+    const key = property.startsWith('og:') || property.startsWith('twitter:') ? property : named
+    if (key.startsWith('og:')) this.social.openGraphTags++
+    const content = attributes.content
+    if (content === undefined) return
+    const { social } = this
+    if (Object.hasOwn(SOCIAL_TEXT, key)) {
+      const field = SOCIAL_TEXT[key as keyof typeof SOCIAL_TEXT]
+      const text = boundedText(content)
+      if (social[field] === undefined && text) social[field] = text
+    } else if (Object.hasOwn(SOCIAL_URL, key) || Object.hasOwn(SOCIAL_URL_FALLBACK, key)) {
+      const url = boundedUrl(this.resolve(content.trim()))
+      if (!url) return
+      if (Object.hasOwn(SOCIAL_URL, key)) {
+        const field = SOCIAL_URL[key as keyof typeof SOCIAL_URL]
+        if (social[field] === undefined) social[field] = url
+      } else {
+        const field = SOCIAL_URL_FALLBACK[key as keyof typeof SOCIAL_URL_FALLBACK]
+        this.socialFallback[field] ??= url
+      }
+    } else if (Object.hasOwn(SOCIAL_SIZE, key)) {
+      const field = SOCIAL_SIZE[key as keyof typeof SOCIAL_SIZE]
+      const value = /^\d{1,6}$/.test(content.trim()) ? Number(content.trim()) : 0
+      if (social[field] === undefined && value > 0 && value <= MAX_IMAGE_SIZE) social[field] = value
     }
   }
 
