@@ -46,7 +46,7 @@ export default async function ParametersPage({
   )
   if (selection.kind === 'missing') notFound()
 
-  const base = `/domains/${domain.host}/pages/details`
+  const base = `/domains/${domain.host}/urls`
   const header = (
     <div className="grid gap-1">
       <Link href={base} className="text-sm text-muted-foreground hover:underline">

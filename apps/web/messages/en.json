@@ -115,9 +115,6 @@
     "issues": "Issues",
     "urls": "URLs",
     "crawls": "Crawls",
-    "crawlsRun": "Run and schedule",
-    "crawlsHistory": "History",
-    "crawlsCompare": "Compare",
     "administration": "Administration",
     "navLabel": "Main"
   },
@@ -392,7 +389,7 @@
     },
     "results": {
       "metaTitle": "Recheck · {host} · seotools",
-      "back": "Back to jobs",
+      "back": "Back to rechecks",
       "title": "Recheck of {count, plural, one {# URL} other {# URLs}}",
       "cancel": "Cancel",
       "summary": "{done, number} of {total, number} URLs requested again · started {when}",
@@ -428,6 +425,7 @@
       "queued": "Waiting"
     },
     "jobs": {
+      "metaTitle": "Rechecks · {host} · seotools",
       "title": "Rechecks",
       "description": "Requests some URLs again after a fix, without a crawl, and judges what each one answers on its own. Start one from the URLs table or the detail of a URL.",
       "status": "Status",
@@ -656,7 +654,11 @@
       "excluded": "Not requested: excluded by the crawl settings",
       "depth": "Not requested: maximum depth exceeded"
     },
-    "secondaryFinding": "On a non-indexable page"
+    "secondaryFinding": "On a non-indexable page",
+    "issuesPanel": {
+      "hide": "Fold the issues panel",
+      "show": "Show the issues panel"
+    }
   },
   "Export": {
     "menu": {
@@ -1453,67 +1455,13 @@
     "other": "Other",
     "anchor-nofollow": "Nofollow link"
   },
-  "Jobs": {
-    "metaTitle": "Run and schedule · {host} · seotools",
-    "title": "Run and schedule",
-    "description": "Run each type of crawl now or on a recurring schedule. A domain runs one crawl at a time.",
-    "typeDescriptions": {
-      "full": "Requests every URL of the site: from the home page, the sitemaps and everything linked anywhere, ignoring robots.txt and meta robots.",
-      "priority": "Requests only the URLs marked as priority in URLs, without following their links."
-    },
-    "schedule": {
-      "enabled": "Run on a schedule",
-      "frequency": "Frequency",
-      "frequencies": {
-        "hourly": "Every hour",
-        "daily": "Every day",
-        "weekly": "Every week",
-        "monthly": "Every month"
-      },
-      "dayOfWeek": "Day of the week",
-      "dayOfMonth": "Day of the month",
-      "time": "Time",
-      "minuteOfHour": "At the minute of",
-      "timeZoneHint": "Times are in {timeZone}.",
-      "hourlyHint": "Only the minutes count: it runs every hour at that minute.",
-      "save": "Save schedule",
-      "saved": "Saved.",
-      "nextRun": "Next run: {when}.",
-      "lastOutcome": {
-        "started": "Last run started {when}.",
-        "skipped-active": "Last run skipped {when}: another crawl was in progress.",
-        "skipped-empty": "Last run skipped {when}: no priority pages marked."
-      },
-      "timeZone": "Time zone"
-    },
-    "history": {
-      "title": "Recent crawls",
-      "type": "Type",
-      "status": "Status",
-      "trigger": "Started by",
-      "started": "Started",
-      "pages": "Pages",
-      "urls": "URLs",
-      "external": "External",
-      "triggers": {
-        "manual": "Manual",
-        "schedule": "Schedule"
-      },
-      "empty": "No crawls yet."
-    },
-    "list": {
-      "label": "Crawl a URL list",
-      "hint": "One URL per line, up to 1000; links are not followed.",
-      "start": "Start list crawl",
-      "started": "List crawl started."
-    }
-  },
   "DomainSettings": {
     "title": "Settings",
     "description": "Everything that can be configured for {host}.",
     "navLabel": "Settings sections",
     "sections": {
       "crawl": "Crawling",
+      "schedules": "Schedules",
       "priority": "Priority pages",
       "audit": "Audit",
       "alerts": "Alerts"
@@ -1654,7 +1602,29 @@
       "label": "Custom extraction",
       "placeholder": "Price | meta[property=\"product:price:amount\"] | content",
       "hint": "One per line: name | CSS selector | attribute (leave it out to read the text). Read from every page from the next crawl."
-    }
+    },
+    "sections": {
+      "requests": {
+        "title": "Requests",
+        "description": "How the crawler asks for each URL: who it says it is and how fast it goes."
+      },
+      "scope": {
+        "title": "Scope",
+        "description": "Which part of the site a full crawl walks, and how far."
+      },
+      "extraction": {
+        "title": "Extraction",
+        "description": "Extra data to read from every page."
+      },
+      "retention": {
+        "title": "Retention",
+        "description": "How long the results of past crawls are kept."
+      },
+      "credentials": {
+        "description": "Headers or Basic Auth the site needs to answer. Stored encrypted and sent only to this site."
+      }
+    },
+    "saving": "Saving…"
   },
   "CrawlFiles": {
     "refresh": {
@@ -2414,36 +2384,6 @@
       "prunedBody": "The results per URL of this crawl were removed by the retention setting. Only its totals remain: {pages} pages and {urls} URLs were found. Choose a crawl that still has its results.",
       "prunedSettings": "Change how many crawls keep their results"
     },
-    "list": {
-      "metaTitle": "Crawl history · {host} · seotools",
-      "title": "Crawl history",
-      "description": "Every full crawl of this domain that finished with results, newest first. A crawl keeps the audit configuration it was analysed with, and its results per URL until the retention setting removes them.",
-      "empty": "This domain has no finished full crawl yet. Run one from the overview.",
-      "compare": {
-        "title": "Compare two crawls",
-        "description": "Choose the crawls to see what was discovered, not seen again and changed between them."
-      },
-      "columns": {
-        "crawled": "Crawled",
-        "results": "Results",
-        "found": "Found",
-        "config": "Audit configuration",
-        "findings": "Pages with findings"
-      },
-      "trigger": {
-        "manual": "Manual",
-        "schedule": "Scheduled"
-      },
-      "latest": "Latest",
-      "found": "{pages} pages · {urls} URLs",
-      "configDiffers": "Now: {current}",
-      "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
-      "view": "View",
-      "compareWithPrevious": "Compare with previous",
-      "retention": "How many crawls keep their results per URL is set in the crawl settings; older ones keep only their totals.",
-      "settings": "Crawl settings",
-      "capped": "Showing the newest {count} crawls. Older ones are not listed."
-    },
     "url": {
       "title": "History of this URL",
       "description": "What each retained full crawl recorded of this URL, newest first ({count, plural, one {# crawl} other {# crawls}}). A crawl without results says so; it is never read as the URL being absent.",
@@ -2481,7 +2421,6 @@
   },
   "CrawlCompare": {
     "metaTitle": "Compare crawls · {host} · seotools",
-    "title": "Compare crawls",
     "description": "What changed between two full crawls, read from what they stored. Nothing is requested from the site. Where the evidence does not say why something changed, the page does not either.",
     "needTwo": "Comparing needs two finished full crawls of this domain. Run another crawl first.",
     "sameCrawl": "Both ends are the same crawl. Choose two different crawls.",
@@ -3229,5 +3168,95 @@
     "pagination": "Entry points pages",
     "previous": "Previous",
     "next": "Next"
+  },
+  "CrawlsArea": {
+    "title": "Crawls",
+    "nav": {
+      "label": "Crawls sections",
+      "list": "Crawls",
+      "compare": "Compare",
+      "rechecks": "Rechecks"
+    }
+  },
+  "Crawls": {
+    "metaTitle": "Crawls · {host} · seotools",
+    "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the audit configuration it was analysed with, and its results per URL until the retention setting removes them.",
+    "columns": {
+      "crawl": "Crawl",
+      "results": "Results",
+      "found": "Found",
+      "config": "Audit configuration",
+      "findings": "Pages with findings"
+    },
+    "trigger": {
+      "manual": "Manual",
+      "schedule": "Scheduled"
+    },
+    "latest": "Latest",
+    "found": "{pages} pages · {urls} URLs · {external} external",
+    "configDiffers": "Now: {current}",
+    "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
+    "view": "View",
+    "compareWithPrevious": "Compare with previous",
+    "retention": "How many crawls keep their results per URL is set in the crawl settings; older ones keep only their totals.",
+    "settings": "Crawl settings",
+    "capped": "Showing the newest {count} crawls. Older ones are not listed.",
+    "empty": "No crawls yet.",
+    "schedules": {
+      "when": {
+        "hourly": "every hour at minute {minute}",
+        "daily": "every day at {time}",
+        "weekly": "every week on {weekday} at {time}",
+        "monthly": "every month on day {day} at {time}"
+      },
+      "none": "no schedule",
+      "change": "Change schedules",
+      "set": "Set a schedule"
+    },
+    "list": {
+      "open": "Crawl a URL list",
+      "title": "Crawl a URL list",
+      "description": "Requests only the URLs you list, without following their links.",
+      "label": "URLs",
+      "hint": "One URL per line, up to 1000; links are not followed.",
+      "start": "Start list crawl"
+    },
+    "started": "Started {when}",
+    "finished": "Finished {when}"
+  },
+  "Schedules": {
+    "metaTitle": "Schedules · {host} · seotools",
+    "title": "Schedules",
+    "description": "Run each type of crawl by itself on a recurring schedule. A domain runs one crawl at a time.",
+    "toCrawls": "Run a crawl now.",
+    "typeDescriptions": {
+      "full": "Requests every URL of the site: from the home page, the sitemaps and everything linked anywhere, ignoring robots.txt and meta robots.",
+      "priority": "Requests only the URLs marked as priority in URLs, without following their links."
+    },
+    "form": {
+      "enabled": "Run on a schedule",
+      "frequency": "Frequency",
+      "frequencies": {
+        "hourly": "Every hour",
+        "daily": "Every day",
+        "weekly": "Every week",
+        "monthly": "Every month"
+      },
+      "dayOfWeek": "Day of the week",
+      "dayOfMonth": "Day of the month",
+      "time": "Time",
+      "minuteOfHour": "At the minute of",
+      "timeZoneHint": "Times are in {timeZone}.",
+      "hourlyHint": "Only the minutes count: it runs every hour at that minute.",
+      "save": "Save schedule",
+      "saved": "Saved.",
+      "nextRun": "Next run: {when}.",
+      "lastOutcome": {
+        "started": "Last run started {when}.",
+        "skipped-active": "Last run skipped {when}: another crawl was in progress.",
+        "skipped-empty": "Last run skipped {when}: no priority pages marked."
+      },
+      "timeZone": "Time zone"
+    }
   }
 }

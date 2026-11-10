@@ -459,7 +459,7 @@ export async function UrlDetail({
           {history ?? (
             <a
               className="underline"
-              href={`/domains/${host}/pages/details/${url.urlHash}?crawl=${crawl.id}`}
+              href={`/domains/${host}/urls/${url.urlHash}?crawl=${crawl.id}`}
             >
               {t('viewHistory')}
             </a>

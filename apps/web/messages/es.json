@@ -115,9 +115,6 @@
     "issues": "Problemas",
     "urls": "URLs",
     "crawls": "Rastreos",
-    "crawlsRun": "Ejecutar y programar",
-    "crawlsHistory": "Historial",
-    "crawlsCompare": "Comparar",
     "administration": "Administración",
     "navLabel": "Principal"
   },
@@ -392,7 +389,7 @@
     },
     "results": {
       "metaTitle": "Recomprobación · {host} · seotools",
-      "back": "Volver a las tareas",
+      "back": "Volver a las recomprobaciones",
       "title": "Recomprobación de {count, plural, one {# URL} other {# URLs}}",
       "cancel": "Cancelar",
       "summary": "{done, number} de {total, number} URLs solicitadas de nuevo · iniciada {when}",
@@ -428,6 +425,7 @@
       "queued": "Esperando"
     },
     "jobs": {
+      "metaTitle": "Recomprobaciones · {host} · seotools",
       "title": "Recomprobaciones",
       "description": "Solicita algunas URLs de nuevo tras una corrección, sin rastreo, y juzga lo que responde cada una por sí sola. Inicia una desde la tabla de URLs o desde el detalle de una URL.",
       "status": "Estado",
@@ -656,7 +654,11 @@
       "excluded": "No solicitada: excluida por la configuración de rastreo",
       "depth": "No solicitada: profundidad máxima superada"
     },
-    "secondaryFinding": "En una página no indexable"
+    "secondaryFinding": "En una página no indexable",
+    "issuesPanel": {
+      "hide": "Plegar el panel de incidencias",
+      "show": "Mostrar el panel de incidencias"
+    }
   },
   "Export": {
     "menu": {
@@ -1453,67 +1455,13 @@
     "other": "Otro",
     "anchor-nofollow": "Enlace nofollow"
   },
-  "Jobs": {
-    "metaTitle": "Ejecutar y programar · {host} · seotools",
-    "title": "Ejecutar y programar",
-    "description": "Lanza cada tipo de rastreo ahora o de forma recurrente. Un dominio ejecuta un solo rastreo a la vez.",
-    "typeDescriptions": {
-      "full": "Pide todas las URLs de la web: desde la portada, los sitemaps y todo lo enlazado en cualquier parte, sin hacer caso a robots.txt ni a meta robots.",
-      "priority": "Pide solo las URLs marcadas como prioritarias en URLs, sin seguir sus enlaces."
-    },
-    "schedule": {
-      "enabled": "Ejecutar de forma programada",
-      "frequency": "Frecuencia",
-      "frequencies": {
-        "hourly": "Cada hora",
-        "daily": "Cada día",
-        "weekly": "Cada semana",
-        "monthly": "Cada mes"
-      },
-      "dayOfWeek": "Día de la semana",
-      "dayOfMonth": "Día del mes",
-      "time": "Hora",
-      "minuteOfHour": "En el minuto de",
-      "timeZoneHint": "Las horas están en {timeZone}.",
-      "hourlyHint": "Solo cuentan los minutos: se ejecuta cada hora en ese minuto.",
-      "save": "Guardar programación",
-      "saved": "Guardado.",
-      "nextRun": "Próxima ejecución: {when}.",
-      "lastOutcome": {
-        "started": "La última ejecución empezó {when}.",
-        "skipped-active": "La última ejecución se omitió {when}: había otro rastreo en curso.",
-        "skipped-empty": "La última ejecución se omitió {when}: no hay páginas prioritarias marcadas."
-      },
-      "timeZone": "Zona horaria"
-    },
-    "history": {
-      "title": "Rastreos recientes",
-      "type": "Tipo",
-      "status": "Estado",
-      "trigger": "Iniciado por",
-      "started": "Inicio",
-      "pages": "Páginas",
-      "urls": "URLs",
-      "external": "Externas",
-      "triggers": {
-        "manual": "Manual",
-        "schedule": "Programación"
-      },
-      "empty": "Todavía no hay rastreos."
-    },
-    "list": {
-      "label": "Rastrear una lista de URL",
-      "hint": "Una URL por línea, hasta 1000; no se siguen enlaces.",
-      "start": "Iniciar rastreo de lista",
-      "started": "Rastreo de lista iniciado."
-    }
-  },
   "DomainSettings": {
     "title": "Ajustes",
     "description": "Todo lo que se puede configurar de {host}.",
     "navLabel": "Secciones de ajustes",
     "sections": {
       "crawl": "Rastreo",
+      "schedules": "Programaciones",
       "priority": "Páginas prioritarias",
       "audit": "Auditoría",
       "alerts": "Alertas"
@@ -1654,7 +1602,29 @@
       "label": "Extracción personalizada",
       "placeholder": "Precio | meta[property=\"product:price:amount\"] | content",
       "hint": "Una por línea: nombre | selector CSS | atributo (omítelo para leer el texto). Se lee de cada página desde el próximo rastreo."
-    }
+    },
+    "sections": {
+      "requests": {
+        "title": "Peticiones",
+        "description": "Cómo pide el rastreador cada URL: quién dice ser y a qué velocidad va."
+      },
+      "scope": {
+        "title": "Alcance",
+        "description": "Qué parte de la web recorre un rastreo completo y hasta dónde."
+      },
+      "extraction": {
+        "title": "Extracción",
+        "description": "Datos adicionales que leer de cada página."
+      },
+      "retention": {
+        "title": "Retención",
+        "description": "Cuánto tiempo se conservan los resultados de los rastreos pasados."
+      },
+      "credentials": {
+        "description": "Cabeceras o Basic Auth que la web necesita para responder. Se guardan cifradas y solo se envían a esta web."
+      }
+    },
+    "saving": "Guardando…"
   },
   "CrawlFiles": {
     "refresh": {
@@ -2414,36 +2384,6 @@
       "prunedBody": "La configuración de retención eliminó los resultados por URL de este rastreo. Solo quedan sus totales: se encontraron {pages} páginas y {urls} URL. Elige un rastreo que aún conserve sus resultados.",
       "prunedSettings": "Cambiar cuántos rastreos conservan sus resultados"
     },
-    "list": {
-      "metaTitle": "Historial de rastreos · {host} · seotools",
-      "title": "Historial de rastreos",
-      "description": "Todos los rastreos completos de este dominio que terminaron con resultados, del más reciente al más antiguo. Cada rastreo conserva la configuración de auditoría con la que se analizó y sus resultados por URL hasta que la retención los elimina.",
-      "empty": "Este dominio aún no tiene ningún rastreo completo terminado. Lanza uno desde el resumen.",
-      "compare": {
-        "title": "Comparar dos rastreos",
-        "description": "Elige los rastreos para ver qué se descubrió, qué no se volvió a ver y qué cambió entre ellos."
-      },
-      "columns": {
-        "crawled": "Rastreado",
-        "results": "Resultados",
-        "found": "Encontrado",
-        "config": "Configuración de auditoría",
-        "findings": "Páginas con hallazgos"
-      },
-      "trigger": {
-        "manual": "Manual",
-        "schedule": "Programado"
-      },
-      "latest": "Último",
-      "found": "{pages} páginas · {urls} URL",
-      "configDiffers": "Ahora: {current}",
-      "findings": "{issues} problemas · {warnings} avisos · {opportunities} oportunidades",
-      "view": "Ver",
-      "compareWithPrevious": "Comparar con el anterior",
-      "retention": "Cuántos rastreos conservan sus resultados por URL se define en los ajustes de rastreo; los más antiguos solo conservan sus totales.",
-      "settings": "Ajustes de rastreo",
-      "capped": "Se muestran los {count} rastreos más recientes. Los anteriores no aparecen en la lista."
-    },
     "url": {
       "title": "Historial de esta URL",
       "description": "Lo que cada rastreo completo conservado registró de esta URL, del más reciente al más antiguo ({count, plural, one {# rastreo} other {# rastreos}}). Un rastreo sin resultados lo indica; nunca se interpreta como que la URL no existía.",
@@ -2481,7 +2421,6 @@
   },
   "CrawlCompare": {
     "metaTitle": "Comparar rastreos · {host} · seotools",
-    "title": "Comparar rastreos",
     "description": "Qué cambió entre dos rastreos completos, según lo que guardaron. No se solicita nada al sitio. Cuando la evidencia no explica por qué cambió algo, la página tampoco lo hace.",
     "needTwo": "Para comparar hacen falta dos rastreos completos terminados de este dominio. Lanza otro rastreo primero.",
     "sameCrawl": "Ambos extremos son el mismo rastreo. Elige dos rastreos distintos.",
@@ -3229,5 +3168,95 @@
     "pagination": "Páginas de puntos de entrada",
     "previous": "Anterior",
     "next": "Siguiente"
+  },
+  "CrawlsArea": {
+    "title": "Rastreos",
+    "nav": {
+      "label": "Secciones de rastreos",
+      "list": "Rastreos",
+      "compare": "Comparar",
+      "rechecks": "Recomprobaciones"
+    }
+  },
+  "Crawls": {
+    "metaTitle": "Rastreos · {host} · seotools",
+    "description": "Todos los rastreos de este dominio, del más reciente al más antiguo. Un dominio ejecuta un solo rastreo a la vez. Un rastreo completo conserva la configuración de auditoría con la que se analizó y sus resultados por URL hasta que la retención los elimina.",
+    "columns": {
+      "crawl": "Rastreo",
+      "results": "Resultados",
+      "found": "Encontrado",
+      "config": "Configuración de auditoría",
+      "findings": "Páginas con hallazgos"
+    },
+    "trigger": {
+      "manual": "Manual",
+      "schedule": "Programado"
+    },
+    "latest": "Último",
+    "found": "{pages} páginas · {urls} URL · {external} externas",
+    "configDiffers": "Ahora: {current}",
+    "findings": "{issues} problemas · {warnings} avisos · {opportunities} oportunidades",
+    "view": "Ver",
+    "compareWithPrevious": "Comparar con el anterior",
+    "retention": "Cuántos rastreos conservan sus resultados por URL se define en los ajustes de rastreo; los más antiguos solo conservan sus totales.",
+    "settings": "Ajustes de rastreo",
+    "capped": "Se muestran los {count} rastreos más recientes. Los anteriores no aparecen en la lista.",
+    "empty": "Todavía no hay rastreos.",
+    "schedules": {
+      "when": {
+        "hourly": "cada hora, en el minuto {minute}",
+        "daily": "cada día a las {time}",
+        "weekly": "cada semana, el {weekday} a las {time}",
+        "monthly": "cada mes, el día {day} a las {time}"
+      },
+      "none": "sin programación",
+      "change": "Cambiar programaciones",
+      "set": "Programar"
+    },
+    "list": {
+      "open": "Rastrear una lista de URL",
+      "title": "Rastrear una lista de URL",
+      "description": "Pide solo las URLs de la lista, sin seguir sus enlaces.",
+      "label": "URLs",
+      "hint": "Una URL por línea, hasta 1000; no se siguen enlaces.",
+      "start": "Iniciar rastreo de lista"
+    },
+    "started": "Inicio: {when}",
+    "finished": "Fin: {when}"
+  },
+  "Schedules": {
+    "metaTitle": "Programaciones · {host} · seotools",
+    "title": "Programaciones",
+    "description": "Ejecuta cada tipo de rastreo por sí solo de forma recurrente. Un dominio ejecuta un solo rastreo a la vez.",
+    "toCrawls": "Ejecutar un rastreo ahora.",
+    "typeDescriptions": {
+      "full": "Pide todas las URLs de la web: desde la portada, los sitemaps y todo lo enlazado en cualquier parte, sin hacer caso a robots.txt ni a meta robots.",
+      "priority": "Pide solo las URLs marcadas como prioritarias en URLs, sin seguir sus enlaces."
+    },
+    "form": {
+      "enabled": "Ejecutar de forma programada",
+      "frequency": "Frecuencia",
+      "frequencies": {
+        "hourly": "Cada hora",
+        "daily": "Cada día",
+        "weekly": "Cada semana",
+        "monthly": "Cada mes"
+      },
+      "dayOfWeek": "Día de la semana",
+      "dayOfMonth": "Día del mes",
+      "time": "Hora",
+      "minuteOfHour": "En el minuto de",
+      "timeZoneHint": "Las horas están en {timeZone}.",
+      "hourlyHint": "Solo cuentan los minutos: se ejecuta cada hora en ese minuto.",
+      "save": "Guardar programación",
+      "saved": "Guardado.",
+      "nextRun": "Próxima ejecución: {when}.",
+      "lastOutcome": {
+        "started": "La última ejecución empezó {when}.",
+        "skipped-active": "La última ejecución se omitió {when}: había otro rastreo en curso.",
+        "skipped-empty": "La última ejecución se omitió {when}: no hay páginas prioritarias marcadas."
+      },
+      "timeZone": "Zona horaria"
+    }
   }
 }

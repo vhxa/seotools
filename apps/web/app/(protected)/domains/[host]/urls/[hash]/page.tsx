@@ -80,7 +80,7 @@ export default async function UrlPage({
     <main className="grid gap-6">
       <div className="grid justify-items-start gap-3">
         <Link
-          href={`/domains/${domain.host}/pages/details${crawlParam(selected.id)}`}
+          href={`/domains/${domain.host}/urls${crawlParam(selected.id)}`}
           className={buttonVariants({ variant: 'ghost', size: 'sm' })}
         >
           <ArrowLeftIcon />
@@ -108,22 +108,18 @@ export default async function UrlPage({
             crawl={selected}
             historical={historical}
             currentVersion={config.version}
-            latestHref={historical ? `/domains/${domain.host}/pages/details/${hash}` : null}
+            latestHref={historical ? `/domains/${domain.host}/urls/${hash}` : null}
             picker={
               <CrawlSwitcher
                 crawls={history}
                 selected={selected}
                 latestId={latestId}
-                hrefFor={(crawl) =>
-                  `/domains/${domain.host}/pages/details/${hash}${crawlParam(crawl.id)}`
-                }
+                hrefFor={(crawl) => `/domains/${domain.host}/urls/${hash}${crawlParam(crawl.id)}`}
               />
             }
           />
         }
-        hrefFor={(urlHash) =>
-          `/domains/${domain.host}/pages/details/${urlHash}${crawlParam(selected.id)}`
-        }
+        hrefFor={(urlHash) => `/domains/${domain.host}/urls/${urlHash}${crawlParam(selected.id)}`}
       />
     </main>
   )

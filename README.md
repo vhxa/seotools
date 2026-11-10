@@ -10,7 +10,8 @@ Raspberry Pi to a VPS.
 
 - **Crawls whole sites** from the home page, the sitemaps and every link, including what
   `robots.txt` blocks (auditing it is the point), with per-domain scope, depth, rate limits, request
-  headers and Basic Auth for staging sites, lists of URLs and schedules in your time zone.
+  headers and Basic Auth for staging sites and lists of URLs. The Crawls area brings runs,
+  comparison and rechecks together; recurring schedules live in Settings → Schedules, in your time zone.
 - **119 checks** grouped by what they are: indexation (noindex, robots.txt, canonicals, sitemaps,
   hreflang), broken references (links, canonicals, hreflang or sitemap entries that fail or
   redirect), and quality (titles, descriptions, headings, content, images, structured data against

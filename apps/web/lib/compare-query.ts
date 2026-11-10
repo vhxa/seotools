@@ -68,5 +68,5 @@ export function compareHref(
   if (next.issue && isFindingChange(next.change)) params.set('issue', next.issue)
   if (next.page > 1) params.set('page', String(next.page))
   const search = params.toString()
-  return `/domains/${host}/pages/compare${search ? `?${search}` : ''}`
+  return `/domains/${host}/crawls/compare${search ? `?${search}` : ''}`
 }

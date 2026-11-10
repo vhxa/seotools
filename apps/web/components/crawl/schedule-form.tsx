@@ -90,7 +90,7 @@ export function ScheduleForm({
   locale: string
   values: ScheduleFormValues
 }) {
-  const t = useTranslations('Jobs.schedule')
+  const t = useTranslations('Schedules.form')
   const canEdit = useCanEdit()
   const [state, onSubmit, pending] = useFormActionState<ActionState>(
     saveScheduleAction.bind(null, host, type),

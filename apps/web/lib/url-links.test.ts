@@ -164,22 +164,21 @@ describe('loadUrlLinks', () => {
 
 describe('hrefPattern', () => {
   it('preserves a search containing the placeholder hash', () => {
-    const hrefFor = (hash: string) =>
-      `/domains/acme.com/pages/details?q=${'0'.repeat(32)}&url=${hash}`
+    const hrefFor = (hash: string) => `/domains/acme.com/urls?q=${'0'.repeat(32)}&url=${hash}`
     const hash = hashOf(`${SITE}/about`)
     expect(applyHref(hrefPattern(hrefFor), hash)).toBe(hrefFor(hash))
   })
 
   it('turns where a detail opens into something that can cross to the browser', () => {
-    const drawer = (hash: string) => `/domains/acme.com/pages/details?crawl=abc&url=${hash}`
-    const page = (hash: string) => `/domains/acme.com/pages/details/${hash}?crawl=abc`
+    const drawer = (hash: string) => `/domains/acme.com/urls?crawl=abc&url=${hash}`
+    const page = (hash: string) => `/domains/acme.com/urls/${hash}?crawl=abc`
     for (const hrefFor of [drawer, page]) {
       const pattern = hrefPattern(hrefFor)
       const hash = hashOf(`${SITE}/about`)
       expect(applyHref(pattern, hash)).toBe(hrefFor(hash))
     }
     expect(hrefPattern(page)).toEqual({
-      prefix: '/domains/acme.com/pages/details/',
+      prefix: '/domains/acme.com/urls/',
       suffix: '?crawl=abc',
     })
   })

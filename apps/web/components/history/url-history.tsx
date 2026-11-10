@@ -178,7 +178,7 @@ export function UrlHistory({
                       <div className="grid gap-1">
                         {trace && !crawl.pruned ? (
                           <Link
-                            href={`/domains/${host}/pages/details/${urlHash}?crawl=${crawl.id}`}
+                            href={`/domains/${host}/urls/${urlHash}?crawl=${crawl.id}`}
                             className="text-sm font-medium hover:underline"
                           >
                             {when(crawl)}

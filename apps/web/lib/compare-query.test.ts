@@ -61,7 +61,7 @@ describe('parseCompareQuery', () => {
 
 describe('compareHref', () => {
   it('leaves defaults out', () => {
-    expect(compareHref('acme.com', base)).toBe('/domains/acme.com/pages/compare')
+    expect(compareHref('acme.com', base)).toBe('/domains/acme.com/crawls/compare')
   })
 
   it('writes what differs from the defaults, the crawls first', () => {
@@ -77,13 +77,13 @@ describe('compareHref', () => {
         page: 2,
       }),
     ).toBe(
-      `/domains/acme.com/pages/compare?from=${a}&to=${b}&change=lost&view=other&q=a+b&issue=noindex&page=2`,
+      `/domains/acme.com/crawls/compare?from=${a}&to=${b}&change=lost&view=other&q=a+b&issue=noindex&page=2`,
     )
   })
 
   it('does not carry an issue to changes that have no findings', () => {
     expect(compareHref('acme.com', { ...base, issue: 'noindex' }, { change: 'title' })).toBe(
-      '/domains/acme.com/pages/compare?change=title',
+      '/domains/acme.com/crawls/compare?change=title',
     )
   })
 
