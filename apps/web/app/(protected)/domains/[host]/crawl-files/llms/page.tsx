@@ -5,13 +5,11 @@ import { FileRequestsTable, FileSize, Finding } from '@/components/crawl-files/p
 import { RawFile } from '@/components/crawl-files/raw-file'
 import { Stat } from '@/components/stat'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { llmsFullView, llmsView, type LlmsFinding } from '@/lib/crawl-files'
+import { SEVERE_FINDINGS, llmsFullView, llmsView } from '@/lib/crawl-files'
 import { getDb } from '@/lib/db'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
-
-const SEVERE: ReadonlySet<LlmsFinding> = new Set(['invalid', 'unavailable'])
 
 export async function generateMetadata({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
@@ -49,7 +47,7 @@ export default async function LlmsPage({ params }: { params: Promise<{ host: str
       {view.findings.map((finding) => (
         <Finding
           key={finding}
-          severe={SEVERE.has(finding)}
+          severe={SEVERE_FINDINGS.llms.has(finding)}
           title={t(`findings.${finding}.title`)}
           description={t(`findings.${finding}.description`)}
         />

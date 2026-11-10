@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { PAGE_ISSUES, type PageIssueId } from '@seotools/core/crawl/issues'
 import { ChevronRightIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -16,7 +17,9 @@ export function IssueRows({
   hrefOf,
   countLabel,
   secondaryLabel,
+  extra,
 }: {
+  extra?: (issue: PageIssueId, pages: number) => ReactNode
   rows: IssueCount[]
   hrefOf: (issue: PageIssueId) => string
   countLabel: (pages: number) => string
@@ -54,6 +57,7 @@ export function IssueRows({
             </span>
             <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
           </Link>
+          {extra?.(issue, pages)}
           <InfoHelp label={tIssues(`${issue}.name`)}>{tIssues(`${issue}.description`)}</InfoHelp>
         </li>
       ))}

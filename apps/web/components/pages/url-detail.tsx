@@ -474,7 +474,9 @@ export async function UrlDetail({
           )}
         </TabsContent>
         <TabsContent value="links" className="grid gap-6">
-          <UrlLinks host={host} data={data} direction="in" hrefFor={hrefFor} />
+          <div id="inbound-links">
+            <UrlLinks host={host} data={data} direction="in" hrefFor={hrefFor} />
+          </div>
           <UrlLinks host={host} data={data} direction="out" hrefFor={hrefFor} />
         </TabsContent>
       </Tabs>

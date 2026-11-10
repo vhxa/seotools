@@ -777,3 +777,11 @@ export function findingChangesBetween(
     between: evidence.slice(baseIndex + 1, targetIndex),
   })
 }
+
+/** Pair-wide limits on an issue summary; URL-specific limits still come from classification. */
+export function issuePairReasons(notes: readonly PairNoteCode[], issue: string): UnknownReason[] {
+  return notes.flatMap((note): UnknownReason[] => {
+    if ((note === 'audit' || note === 'incomplete') && isPageLocalIssue(issue)) return []
+    return [note === 'legacy' ? 'participation' : note]
+  })
+}

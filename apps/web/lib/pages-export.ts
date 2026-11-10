@@ -332,6 +332,7 @@ export const PAGES_COLUMNS: readonly UrlColumn[] = [
     cell: (row, c) =>
       wasChecked(row, c) ? new Set(row.accepted?.map(({ issue }) => issue)).size : null,
   },
+  { header: 'referencedBy', cell: ({ url }) => url.referencedBy?.total },
 ]
 
 /** What a finding stores about a URL, in words: where a hreflang came from, what keeps it out. */

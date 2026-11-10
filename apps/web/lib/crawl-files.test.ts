@@ -10,6 +10,7 @@ import {
   robotsView,
   securityView,
   sitemapsView,
+  siteFindings,
 } from './crawl-files'
 
 const at = new Date('2026-06-15T10:00:00Z')
@@ -298,5 +299,27 @@ describe('unreadable files are not absent', () => {
     )
     expect(view.triedCount).toBe(0)
     expect(view.rows[0]?.state).toBe('access-denied')
+  })
+})
+
+describe('siteFindings', () => {
+  it('uses the current file state and read time, and omits disabled security.txt', () => {
+    const found = siteFindings(
+      {
+        robots: [file({ body: 'User-agent: *\nDisallow: /' })],
+        sitemap: [],
+        llms: [],
+        security: null,
+      },
+      'example.com',
+      at,
+    )
+    expect(found).toContainEqual({
+      file: 'robots',
+      finding: 'site-blocked',
+      severe: true,
+      readAt: at,
+    })
+    expect(found.some((row) => row.file === 'security')).toBe(false)
   })
 })

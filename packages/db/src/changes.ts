@@ -12,9 +12,10 @@ import {
   type FindingChange,
   type PageIssueId,
   type PairNoteName,
+  type UnknownReason,
   keepsUrlHistory,
 } from '@seotools/core'
-import type { Crawl, Database } from '@seotools/db'
+import type { Crawl, Database } from './types'
 
 /** URLs read from the database at a time. */
 const BATCH = 200
@@ -35,6 +36,20 @@ export interface FindingTally {
   samples: string[]
 }
 
+/**
+ * How one issue changed between two crawls, counting URLs, in the words of the comparison:
+ * `fresh` (new), `back` (reappeared) and `resolved`, and `unverified` for the URLs whose findings
+ * differ without the evidence saying why (a different catalog, audit configuration or a crawl cut at
+ * its limit), with the reasons. Accepted, excluded and now-audited changes are in none of them.
+ */
+export interface IssueChangeTally {
+  fresh: number
+  back: number
+  resolved: number
+  unverified: number
+  reasons: UnknownReason[]
+}
+
 export interface CrawlComparison {
   /** What the crawl is compared with. `null`: there is nothing to compare it with. */
   base: Crawl | null
@@ -46,6 +61,8 @@ export interface CrawlComparison {
     status: number
     title: number
     canonical: number
+    gained: number
+    lost: number
     robots: number
   }
   /** `null`: they cannot be compared on findings. */
@@ -60,12 +77,31 @@ export interface CrawlComparison {
   } | null
   /** Findings of high importance that are new or back, worst first. Empty unless `findings`. */
   important: FindingTally[]
+  /** What changed per issue, for every issue with a change. Empty unless `findings`. */
+  byIssue: Map<string, IssueChangeTally>
   notes: PairNoteName[]
   /** Some change was counted only up to `MAX_CLASSIFIED_URLS`. */
   cut: boolean
 }
 
-const EMPTY_URLS = { added: 0, missing: 0, status: 0, title: 0, canonical: 0, robots: 0 }
+const tallyOf = (byIssue: Map<string, IssueChangeTally>, issue: string): IssueChangeTally => {
+  const found = byIssue.get(issue)
+  if (found) return found
+  const created: IssueChangeTally = { fresh: 0, back: 0, resolved: 0, unverified: 0, reasons: [] }
+  byIssue.set(issue, created)
+  return created
+}
+
+const EMPTY_URLS = {
+  added: 0,
+  missing: 0,
+  status: 0,
+  title: 0,
+  canonical: 0,
+  robots: 0,
+  gained: 0,
+  lost: 0,
+}
 
 /**
  * What changed between a finished full crawl and the one before it, in the words of
@@ -78,11 +114,14 @@ const EMPTY_URLS = { added: 0, missing: 0, status: 0, title: 0, canonical: 0, ro
  * so is never counted as new or resolved here, and never reaches `important`.
  */
 export async function compareWithPrevious(input: {
-  db: Database
+  db: Pick<Database, 'crawls'>
   target: Crawl
   signal?: AbortSignal
+  /** Web summaries need exact counts; alerts may cap classification work. */
+  exact?: boolean
 }): Promise<CrawlComparison> {
   const { db, target, signal } = input
+  const maximum = input.exact ? Number.POSITIVE_INFINITY : MAX_CLASSIFIED_URLS
   const found = await db.crawls.list(target.domainId, { type: 'full', limit: HISTORY_CRAWLS })
   const history = found
     .filter((crawl) => isBrowsableStatus(crawl.status) && byAge(crawl, target) <= 0)
@@ -95,6 +134,7 @@ export async function compareWithPrevious(input: {
     urls: EMPTY_URLS,
     findings: null,
     important: [],
+    byIssue: new Map(),
     notes: [],
     cut: false,
   }
@@ -113,6 +153,8 @@ export async function compareWithPrevious(input: {
     const counts = await db.crawls.compareCounts({ ...ids, view })
     if (!counts) continue
     result.urls = {
+      gained: result.urls.gained + counts.gained,
+      lost: result.urls.lost + counts.lost,
       added: result.urls.added + counts.added,
       missing: result.urls.missing + counts.missing,
       status: result.urls.status + counts.status,
@@ -139,8 +181,8 @@ export async function compareWithPrevious(input: {
     for (const change of ['gained', 'lost'] as const) {
       const query = { ...ids, view, change }
       const total = await db.crawls.countCompared(query)
-      if (total > MAX_CLASSIFIED_URLS) result.cut = true
-      for (let offset = 0; offset < Math.min(total, MAX_CLASSIFIED_URLS); offset += BATCH) {
+      if (total > maximum) result.cut = true
+      for (let offset = 0; offset < Math.min(total, maximum); offset += BATCH) {
         if (signal?.aborted) throw new DOMException('Stopped', 'AbortError')
         const rows = await db.crawls.compareUrls({ ...query, limit: BATCH, offset })
         if (rows.length === 0) break
@@ -163,13 +205,26 @@ export async function compareWithPrevious(input: {
             // A URL can both gain and lose findings: each is counted in the direction it went.
             const gained = change === 'gained' && finding.reportedBy === 'target'
             const lost = change === 'lost' && finding.reportedBy === 'base'
-            if (gained && finding.kind === 'new') totals.fresh++
-            else if (gained && finding.kind === 'reappeared') totals.back++
-            else if (gained && finding.kind === 'audited') totals.audited++
-            else if (lost && finding.kind === 'resolved') totals.resolved++
-            else if (lost && finding.kind === 'accepted') totals.accepted++
+            if (gained && finding.kind === 'new') {
+              totals.fresh++
+              tallyOf(result.byIssue, finding.issue).fresh++
+            } else if (gained && finding.kind === 'reappeared') {
+              totals.back++
+              tallyOf(result.byIssue, finding.issue).back++
+            } else if (gained && finding.kind === 'audited') totals.audited++
+            else if (lost && finding.kind === 'resolved') {
+              totals.resolved++
+              tallyOf(result.byIssue, finding.issue).resolved++
+            } else if (lost && finding.kind === 'accepted') totals.accepted++
             else if (lost && finding.kind === 'excluded') totals.excluded++
-            else if ((gained || lost) && finding.kind === 'unverified') totals.unverified++
+            else if ((gained || lost) && finding.kind === 'unverified') {
+              totals.unverified++
+              const perIssue = tallyOf(result.byIssue, finding.issue)
+              perIssue.unverified++
+              for (const reason of finding.reasons) {
+                if (!perIssue.reasons.includes(reason)) perIssue.reasons.push(reason)
+              }
+            }
 
             if (
               gained &&

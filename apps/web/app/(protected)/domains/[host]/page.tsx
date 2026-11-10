@@ -1,4 +1,5 @@
 import { auditResultsState } from '@seotools/core/crawl/audit'
+import { compareWithPrevious } from '@seotools/db'
 import { TriangleAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
@@ -10,7 +11,8 @@ import { InfoHelp } from '@/components/help'
 import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { TrendChart } from '@/components/pages/trend-chart'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { trendFigures, trendPoints } from '@/lib/dashboard'
+import { compareHref, parseCompareQuery } from '@/lib/compare-query'
+import { dashboardDifference, trendFigures, trendPoints } from '@/lib/dashboard'
 import { getDb } from '@/lib/db'
 import { homePriorities } from '@/lib/domain-home'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
@@ -43,6 +45,17 @@ export default async function DomainDashboardPage({
     db.crawls.list(domain.id, { type: 'full', limit: HISTORY_CRAWLS }),
     db.audit.config(domain.id),
   ])
+  const comparison =
+    latest && !latest.pruned ? await compareWithPrevious({ db, target: latest, exact: true }) : null
+  const previousFigures = comparison?.base ? trendFigures(comparison.base) : null
+  const compareText = await getTranslations('CrawlCompare')
+  const delta = (
+    key: 'crawled' | 'indexable' | 'issues' | 'warnings' | 'opportunities',
+    value: number | null,
+  ) => {
+    const before = key === 'crawled' ? comparison?.base?.pagesCount : previousFigures?.[key]
+    return dashboardDifference(before, value)
+  }
   const state = auditResultsState(latest, config)
   const lastAttempt = crawls[0]
   const unsuccessful =
@@ -148,6 +161,13 @@ export default async function DomainDashboardPage({
             <div key={key} className="grid min-w-0 content-start gap-0.5">
               <dt className="text-sm text-muted-foreground">{t(`tiles.${key}`)}</dt>
               <dd className="text-3xl font-semibold tabular-nums">{number(value)}</dd>
+              {delta(key, value) !== null && (
+                <dd
+                  className={`text-xs tabular-nums ${key === 'crawled' || key === 'indexable' ? 'text-muted-foreground' : delta(key, value)! < 0 ? 'text-green-700 dark:text-green-400' : delta(key, value)! > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+                >
+                  {format.number(delta(key, value)!, { signDisplay: 'exceptZero' })}
+                </dd>
+              )}
               <dd className="text-xs text-muted-foreground">
                 {latest && !figures && key !== 'crawled'
                   ? t('notChecked')
@@ -167,6 +187,45 @@ export default async function DomainDashboardPage({
         )}
       </section>
 
+      {comparison?.base && latest && (
+        <section className="grid gap-2">
+          <h2 className="text-lg font-medium">{t('changesTitle')}</h2>
+          {comparison.notes
+            .filter((note) => note === 'catalog' || note === 'audit')
+            .map((note) => (
+              <p
+                key={note}
+                className="text-xs text-muted-foreground"
+                title={compareText(`notes.${note}.description`)}
+              >
+                {t('configurationChanged')}
+              </p>
+            ))}
+          <p className="text-xs text-muted-foreground">{compareText('totals.description')}</p>
+          <div className="flex flex-wrap gap-4 text-sm">
+            {(['added', 'missing', 'gained', 'lost'] as const).map((change) => (
+              <Link
+                key={change}
+                className="underline"
+                href={compareHref(domain.host, parseCompareQuery({}), {
+                  from: comparison.base!.id,
+                  to: latest.id,
+                  change,
+                })}
+              >
+                {compareText(`changes.${change}`)}:{' '}
+                {number(
+                  change === 'added'
+                    ? comparison.urls.added
+                    : change === 'missing'
+                      ? comparison.urls.missing
+                      : comparison.urls[change],
+                )}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
       {latest && figures && (
         <section aria-labelledby="trend" className="grid gap-4">
           <h2 id="trend" className="text-lg font-medium">

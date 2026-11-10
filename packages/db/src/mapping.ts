@@ -634,7 +634,7 @@ export function foldViewCounts(
 }
 
 /** The columns of `crawl_urls` that listing, filtering and ordering URLs look at. */
-export interface CrawlUrlColumns extends Record<CrawlUrlSort, AnyColumn> {
+export interface CrawlUrlColumns extends Record<Exclude<CrawlUrlSort, 'referencedBy'>, AnyColumn> {
   crawlId: AnyColumn
   state: AnyColumn
   scope: AnyColumn
@@ -795,7 +795,7 @@ export function crawlUrlOrder(
   sort: CrawlUrlSort = 'depth',
   direction: 'asc' | 'desc' = 'asc',
 ): SQL[] {
-  const column = columns[sort]
+  const column = columns[sort === 'referencedBy' ? 'url' : sort]
   return [
     asc(sql`${column} is null`),
     (direction === 'desc' ? desc : asc)(column),

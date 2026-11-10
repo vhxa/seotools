@@ -11,10 +11,15 @@ import {
   type Logger,
   type Mailer,
 } from '@seotools/core'
-import type { Crawl, Database, Domain } from '@seotools/db'
+import {
+  compareWithPrevious,
+  type Crawl,
+  type CrawlComparison,
+  type Database,
+  type Domain,
+} from '@seotools/db'
 import { deliver } from '../mail/deliver'
 import { JobDeferredError, JobInterruptedError, PermanentJobError } from '../types'
-import { compareWithPrevious, type CrawlComparison } from './changes'
 import { issueName } from './issue-names'
 
 /** How long a crawl may wait to be analysed before its findings are given up on. */

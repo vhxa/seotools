@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EMPTY_AUDIT_SNAPSHOT, auditSnapshotOf, type AuditRule } from './audit'
 import {
+  issuePairReasons,
   keepsUrlHistory,
   FINDING_CHANGES,
   PAGE_LOCAL_ISSUES,
@@ -850,5 +851,19 @@ describe('a crawl kept only as compact history', () => {
     expect(keepsUrlHistory(compact)).toBe(true)
     expect(keepsUrlHistory({ pruned: true, history: false })).toBe(false)
     expect(keepsUrlHistory({ pruned: false })).toBe(true)
+  })
+})
+
+describe('issue summary comparability', () => {
+  it('keeps page-local checks comparable under site-wide limits, but never a catalog change', () => {
+    expect(issuePairReasons(['audit', 'incomplete'], 'title-missing')).toEqual([])
+    expect(issuePairReasons(['audit', 'incomplete'], 'links-to-broken')).toEqual([
+      'audit',
+      'incomplete',
+    ])
+    expect(issuePairReasons(['catalog', 'legacy'], 'title-missing')).toEqual([
+      'catalog',
+      'participation',
+    ])
   })
 })
