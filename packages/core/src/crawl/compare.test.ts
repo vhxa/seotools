@@ -285,6 +285,16 @@ describe('auditScopeKey', () => {
     })
   })
 
+  it('is not changed by what the crawl could not observe: that is not configuration', () => {
+    const plain = auditSnapshotOf(3, [rule()])
+    expect(auditScopeKey({ ...plain, unobserved: ['og-missing', 'viewport-missing'] })).toBe(
+      auditScopeKey(plain),
+    )
+    expect(
+      crawlAuditScope(crawl({ auditSnapshot: { ...plain, unobserved: ['og-missing'] } })),
+    ).toBe(auditScopeKey(plain))
+  })
+
   it('is unknown for a crawl that was not analysed, or whose snapshot is gone', () => {
     expect(crawlAuditScope(crawl({ pagesByWorstIssue: null }))).toBeNull()
     expect(crawlAuditScope(crawl({ auditSnapshot: null, auditVersion: 4 }))).toBeNull()
@@ -292,6 +302,78 @@ describe('auditScopeKey', () => {
     expect(crawlAuditScope(crawl({ auditSnapshot: null, auditVersion: null }))).toBe(
       auditScopeKey(EMPTY_AUDIT_SNAPSHOT),
     )
+  })
+})
+
+describe('a finding whose input an earlier crawl did not record', () => {
+  // An old crawl analysed again with today's catalog: same catalog and configuration as a new one,
+  // but facts that lack what the check reads, so it stays silent about them.
+  const old = (unobserved: string[]) =>
+    facts({ ...crawlFactsOf(crawl({ auditSnapshot: { ...auditSnapshotOf(2, []), unobserved } })) })
+  const fresh = facts()
+
+  it('records which issues a crawl could not see', () => {
+    expect(crawlFactsOf(crawl()).unobserved).toEqual(new Set())
+    expect(old(['og-missing']).unobserved).toEqual(new Set(['og-missing']))
+  })
+
+  it.each(['og-missing', 'structured-data-required-missing', 'html-lang-missing'])(
+    'is unverified, not new, when %s shows up against a crawl that did not look',
+    (issue) => {
+      expect(isPageLocalIssue(issue)).toBe(true)
+      expect(
+        classifyFinding(issue, {
+          base: seen([], {}, old([issue])),
+          target: seen([issue], {}, fresh),
+        }),
+      ).toMatchObject({ kind: 'unverified', reportedBy: 'target', reasons: ['unobserved'] })
+    },
+  )
+
+  it('does not call resolved a finding that a crawl that did not look no longer has', () => {
+    expect(
+      classifyFinding('og-missing', {
+        base: seen(['og-missing'], {}, fresh),
+        target: seen([], {}, old(['og-missing'])),
+      }),
+    ).toMatchObject({ kind: 'unverified', reportedBy: 'base', reasons: ['unobserved'] })
+  })
+
+  it('only affects the issues it lists', () => {
+    expect(
+      classifyFinding('title-missing', {
+        base: seen([], {}, old(['og-missing'])),
+        target: seen(['title-missing'], {}, fresh),
+      }),
+    ).toMatchObject({ kind: 'new' })
+  })
+
+  it('classifies normally when both crawls looked', () => {
+    expect(
+      classifyFinding('og-missing', {
+        base: seen([], {}, fresh),
+        target: seen(['og-missing'], {}, fresh),
+      }),
+    ).toMatchObject({ kind: 'new' })
+    expect(
+      classifyFinding('og-missing', {
+        base: seen(['og-missing'], {}, fresh),
+        target: seen([], {}, fresh),
+      }),
+    ).toMatchObject({ kind: 'resolved' })
+  })
+
+  it('leaves a gap in a timeline, and says nothing when neither could tell', () => {
+    const blind = old(['og-missing'])
+    expect(
+      classifyFinding('og-missing', { base: seen([], {}, blind), target: seen([], {}, blind) }),
+    ).toBeNull()
+    const [timeline] = issueTimelines(
+      [seen([], {}, blind), seen(['og-missing'], {}, fresh)],
+      ['og-missing'],
+    )
+    expect(timeline?.cells[0]).toEqual({ presence: 'unknown', reason: 'unobserved' })
+    expect(timeline?.events[1]).toMatchObject({ kind: 'unverified', reasons: ['unobserved'] })
   })
 })
 

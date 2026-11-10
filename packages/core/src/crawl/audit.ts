@@ -791,6 +791,13 @@ export interface AuditSnapshot {
   languages?: LanguageConfig
   /** The figures the checks compared with, where they differed from the defaults. Absent: none did. */
   thresholds?: ThresholdOverrides
+  /**
+   * Issues this analysis could not see, sorted: their input was not recorded for some page, because
+   * the crawl was made before a check could read it (`unobservedIssues`, in the worker). Absent: none,
+   * as in every snapshot stored before this. It describes what the crawl kept, not a configuration:
+   * `auditScopeKey` never reads it, and a comparison reads those issues as unknown (`unobserved`).
+   */
+  unobserved?: string[]
 }
 
 /**
@@ -807,6 +814,7 @@ const snapshotSchema = z.object({
   semantics: z.number().int().min(1).optional(),
   languages: z.object({ prefixes: z.array(z.string()), unprefixed: z.boolean() }).optional(),
   thresholds: thresholdOverridesSchema.optional(),
+  unobserved: z.array(z.string()).optional(),
 })
 
 /** The configuration in force now: what a new analysis, and a recalculation, use. */

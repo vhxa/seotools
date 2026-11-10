@@ -1,23 +1,26 @@
 import {
   EMPTY_AUDIT_SNAPSHOT,
+  MAX_EVIDENCE_ITEMS,
   PAGE_ISSUE_IDS,
   auditSnapshotOf,
   crawlUrlHash,
+  classifyFinding,
   createLogger,
+  crawlFactsOf,
   type CrawlPageFacts,
   type NewAuditRule,
   type PageIssueId,
 } from '@seotools/core'
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import { runCrawl } from './engine'
 import { fakeSite, moved, type Answer } from './fake-site'
 import { FetchError } from './fetcher'
 import { SAFE_HEADERS, SITE, page, sitemapOf, words, xml } from './test-site'
 import { CHECKS } from './issue-checks'
-import { isValidHreflang } from './language-codes'
+import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
 import { parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
 
 const log = createLogger('test', 'silent')
@@ -851,6 +854,46 @@ describe('what a crawl did not look for', () => {
     for (const id of NEW_FACT_ISSUES) expect(issues).not.toContain(id)
   })
 
+  it('keeps which issues it could not see, so that a later crawl is not compared as if it had', async () => {
+    const crawlId = await olderPage('/x')
+    await analyseCrawl(db, crawlId, EMPTY_AUDIT_SNAPSHOT)
+    const snapshot = (await db.crawls.get(crawlId))?.auditSnapshot
+    expect(snapshot?.unobserved).toEqual([...NEW_FACT_ISSUES].sort())
+
+    // Analysed again from what it stored (as the startup reanalysis does): worked out again.
+    await analyseCrawl(db, crawlId, snapshot!)
+    expect((await db.crawls.get(crawlId))?.auditSnapshot?.unobserved).toEqual(
+      [...NEW_FACT_ISSUES].sort(),
+    )
+
+    // A crawl that looked says nothing is unobserved, and keeps no field.
+    const fresh = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x') } }))
+    expect((await db.crawls.get(fresh))?.auditSnapshot).not.toHaveProperty('unobserved')
+    // Which also holds when it is analysed again from a snapshot that said otherwise.
+    await analyseCrawl(db, fresh, snapshot!)
+    expect((await db.crawls.get(fresh))?.auditSnapshot).not.toHaveProperty('unobserved')
+
+    // Against the old crawl, what the new one reports is not new: nobody could have seen it.
+    const bare = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x', { social: null }) } }))
+    const crawls = await Promise.all([crawlId, bare].map((id) => db.crawls.get(id)))
+    const [base, target] = crawls.map((row) => crawlFactsOf(row as never))
+    const url = (issues: string[]) => ({
+      requested: true,
+      participation: 'audited' as const,
+      intent: 'indexable' as const,
+      conditions: '',
+      issues: new Set(issues),
+    })
+    const reported = (await issuesAt(bare, '/x')).map((row) => row.issue)
+    expect(reported).toContain('og-missing')
+    expect(
+      classifyFinding('og-missing', {
+        base: { crawl: { ...base!, catalog: target!.catalog, scope: target!.scope }, url: url([]) },
+        target: { crawl: target!, url: url(reported) },
+      }),
+    ).toMatchObject({ kind: 'unverified', reasons: ['unobserved'] })
+  })
+
   it('still finds what the answer alone says: a slow response and a temporary redirect', async () => {
     const crawlId = await crawl(
       websiteOf({
@@ -941,8 +984,11 @@ describe('social tags, the document and what a page loads', () => {
       at: '/x',
       pages: {
         '/a': page('/a', { html: '<html lang="es-419">' }),
-        '/b': page('/b', { html: '<html lang="en-UK">' }),
+        '/b': page('/b', { html: '<html lang="en_US">' }),
         '/c': page('/c', { html: '<html lang="">' }),
+        '/f': page('/f', { html: '<html lang="fil">' }),
+        '/g': page('/g', { html: '<html lang="de-CH-1901">' }),
+        '/h': page('/h', { html: '<html lang="en-US-u-ca-gregory">' }),
         '/d': page('/d', {
           document: '<meta name="viewport" content="width=device-width">',
           headers: { 'content-type': 'text/html; charset=utf-8' },
@@ -958,6 +1004,9 @@ describe('social tags, the document and what a page loads', () => {
     const c = await issuesOf(crawlId, '/c')
     expect(c).toContain('html-lang-missing')
     expect(c).not.toContain('html-lang-invalid')
+    for (const valid of ['/f', '/g', '/h']) {
+      expect(await issuesOf(crawlId, valid)).not.toContain('html-lang-invalid')
+    }
     expect(await issuesOf(crawlId, '/d')).not.toContain('charset-missing')
     expect(await issuesOf(crawlId, '/e')).not.toContain('charset-missing')
   })
@@ -1024,6 +1073,25 @@ describe('social tags, the document and what a page loads', () => {
     expect(await issuesOf(crawlId, '/gone.js')).toContain('client-error')
     // Another site's image that the crawl did not request is not known to be broken.
     expect(await issuesOf(crawlId, '/y')).not.toContain('resources-broken')
+  })
+
+  it('keeps the broken resources of a page bounded, and counts them all', async () => {
+    // Pages that all load the same many broken scripts: the total is right, the sample is bounded.
+    const scripts = Array.from({ length: 25 }, (_, i) => `/gone-${i}.js`)
+    const loading = scripts.map((src) => `<script src="${src}"></script>`)
+    // Twice, so that a resource a page loads more than once counts once.
+    const body = loading.join('') + loading.join('')
+    const pages = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [`/p${i}`, page(`/p${i}`, { body })]),
+    )
+    const crawlId = await only({ at: '/p0', pages })
+    for (const path of ['/p0', '/p5', '/p11']) {
+      const found = (await issuesAt(crawlId, path)).find((row) => row.issue === 'resources-broken')
+      expect(found?.evidence).toMatchObject({ kind: 'related-urls', total: 25 })
+      const urls = found?.evidence?.kind === 'related-urls' ? found.evidence.urls : []
+      expect(urls).toHaveLength(MAX_EVIDENCE_ITEMS)
+      expect(new Set(urls).size).toBe(MAX_EVIDENCE_ITEMS)
+    }
   })
 })
 
@@ -1453,6 +1521,31 @@ describe('isValidHreflang', () => {
     'refuses %s',
     (code) => expect(isValidHreflang(code)).toBe(false),
   )
+})
+
+describe('isWellFormedLanguageTag', () => {
+  it.each([
+    'en',
+    'es-419',
+    'fil',
+    'de-CH-1901',
+    'en-US-u-ca-gregory',
+    'zh-Hant-TW',
+    'und',
+    ' en-GB ',
+    // Well formed, even if no search engine would take it for hreflang.
+    'en-UK',
+  ])('accepts %s', (tag) => expect(isWellFormedLanguageTag(tag)).toBe(true))
+  it.each(['', '  ', 'en_US', 'english language', 'en,fr', '*', '123', 'e', 'a'.repeat(5000)])(
+    'refuses %s',
+    (tag) => expect(isWellFormedLanguageTag(tag)).toBe(false),
+  )
+  it('does not hand a long value to Intl', () => {
+    const spy = vi.spyOn(Intl, 'getCanonicalLocales')
+    expect(isWellFormedLanguageTag(`en-${'a'.repeat(200)}`)).toBe(false)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
 })
 
 describe('parseRobotsDirectives', () => {

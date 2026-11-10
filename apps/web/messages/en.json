@@ -2614,7 +2614,8 @@
       "participation": "the analysis did not keep whether the URL was audited",
       "incomplete": "a crawl stopped at its URL limit and this finding depends on other pages",
       "catalog": "the issue catalogs differ",
-      "audit": "the audit configuration or the expectation for the URL differs"
+      "audit": "the audit configuration or the expectation for the URL differs",
+      "unobserved": "a crawl did not record what this check needs: compare with crawls made after the update"
     },
     "notes": {
       "pruned": {

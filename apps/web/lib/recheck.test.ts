@@ -113,6 +113,7 @@ describe('viewRecheck', () => {
       fixed: ['title-missing'],
       remaining: ['h1-missing'],
       appeared: [],
+      unobserved: [],
       nowAccepted: [],
       pendingFullCrawl: ['title-duplicate'],
     })

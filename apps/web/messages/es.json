@@ -2614,7 +2614,8 @@
       "participation": "el análisis no conservó si la URL se auditó",
       "incomplete": "un rastreo se detuvo en su límite de URL y este hallazgo depende de otras páginas",
       "catalog": "los catálogos de problemas difieren",
-      "audit": "la configuración de auditoría o la expectativa de la URL difieren"
+      "audit": "la configuración de auditoría o la expectativa de la URL difieren",
+      "unobserved": "un rastreo no registró lo que esta comprobación necesita: compara con rastreos hechos después de la actualización"
     },
     "notes": {
       "pruned": {

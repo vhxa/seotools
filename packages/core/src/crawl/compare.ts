@@ -217,6 +217,11 @@ export interface CrawlFacts {
   perUrlAudit: boolean
   /** The figures it was analysed with (`null` when it was not analysed). */
   thresholds: AuditThresholds | null
+  /**
+   * The issues whose input it did not record (it was made before a check could read it), so that
+   * not reporting them says nothing. Absent: none.
+   */
+  unobserved?: ReadonlySet<string>
 }
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
@@ -231,6 +236,7 @@ export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
     // A snapshot without figures used the defaults: they are the values the checks always had.
     thresholds:
       crawl.pagesByWorstIssue === null ? null : resolveThresholds(crawl.auditSnapshot?.thresholds),
+    unobserved: new Set(crawl.auditSnapshot?.unobserved),
   }
 }
 
@@ -439,6 +445,7 @@ export type UnknownReason =
   | 'incomplete'
   | 'catalog'
   | 'audit'
+  | 'unobserved'
 
 /** What one crawl says about a URL, for the findings it reports. */
 export interface UrlEvidence {
@@ -487,6 +494,8 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   if (!url.requested) return unknown('not-requested')
   if (url.participation === 'excluded') return unknown('excluded')
   if (url.participation === null) return unknown('participation')
+  // A crawl that never recorded what the check reads cannot say the URL does not have the issue.
+  if (crawl.unobserved?.has(issue)) return unknown('unobserved')
   // An incomplete crawl lacks pages that others link from, copy or point to: it can report what is
   // not there, and miss what is.
   if (!crawl.complete && !isPageLocalIssue(issue)) return unknown('incomplete')

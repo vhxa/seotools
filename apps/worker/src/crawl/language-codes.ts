@@ -26,11 +26,12 @@ const REGIONS = new Set(
 )
 
 /**
- * Whether a value is a language with an optional script and region, as search engines and browsers
- * understand it. `en-UK` is the classic mistake: the region of the UK is `GB`.
+ * Whether a hreflang value is one search engines understand: `x-default`, or a language with an
+ * optional script and region. `en-UK` is the classic mistake: the region of the UK is `GB`.
  */
-export function isValidLanguageTag(value: string): boolean {
+export function isValidHreflang(value: string): boolean {
   const code = value.trim().toLowerCase()
+  if (code === 'x-default') return true
   const [language, ...rest] = code.split('-')
   if (!language || !LANGUAGES.has(language)) return false
   if (rest.length > 0 && /^[a-z]{4}$/.test(rest[0]!)) rest.shift()
@@ -38,6 +39,21 @@ export function isValidLanguageTag(value: string): boolean {
   return rest.length === 1 && REGIONS.has(rest[0]!)
 }
 
-/** Whether a hreflang value is one search engines understand: `x-default` or a language tag. */
-export const isValidHreflang = (value: string): boolean =>
-  value.trim().toLowerCase() === 'x-default' || isValidLanguageTag(value)
+/** No real tag comes near this, and what the page wrote should not make the parser work harder. */
+const MAX_LANGUAGE_TAG = 100
+
+/**
+ * Whether a value is a well-formed BCP 47 language tag, which is all HTML asks of `lang`: `fil`,
+ * `de-CH-1901`, `en-US-u-ca-gregory` and `und` are fine, `en_US` and free text are not. Unlike
+ * hreflang, it does not judge whether the language or region exists.
+ */
+export function isWellFormedLanguageTag(value: string): boolean {
+  const tag = value.trim()
+  if (!tag || tag.length > MAX_LANGUAGE_TAG) return false
+  try {
+    Intl.getCanonicalLocales(tag)
+    return true
+  } catch {
+    return false
+  }
+}

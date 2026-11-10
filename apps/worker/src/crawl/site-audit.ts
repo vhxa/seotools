@@ -5,6 +5,7 @@ import {
   defaultResolution,
   crawlUrlHash,
   isInternalUrl,
+  MAX_EVIDENCE_ITEMS,
   isRobotsAllowed,
   parseRobots,
   type AuditParticipation,
@@ -174,10 +175,11 @@ export interface AuditedUrl {
   /** The URLs of the site its anchors link to. */
   linksTo: AuditedUrl[]
   /**
-   * What it loads (images, scripts, stylesheets, media, frames) that was requested and failed, once
-   * each. Only the failures are kept: a page can load hundreds of resources, and nothing reads the rest.
+   * What it loads (images, scripts, stylesheets, media, frames) that was requested and failed: how
+   * many, once each, and the first `MAX_EVIDENCE_ITEMS` as a sample. Bounded, because a site with
+   * a broken resource that every page loads would otherwise keep it once per page.
    */
-  failedEmbeds: AuditedUrl[]
+  failedEmbeds: { total: number; sample: AuditedUrl[] }
   /** Clicks from the home page. `null`: following links does not get here. */
   clickDepth: number | null
 }
@@ -329,7 +331,7 @@ export function auditUrl(
     internalAnchorsOut: 0,
     nofollowAnchorsOut: 0,
     linksTo: [],
-    failedEmbeds: [],
+    failedEmbeds: { total: 0, sample: [] },
     clickDepth: null,
   }
 }
@@ -433,6 +435,9 @@ export async function loadSite(
   const alternates = new Set<string>()
   for (let start = 0; start < internal.length; start += BATCH) {
     const hashes = internal.slice(start, start + BATCH).map((url) => url.url.urlHash)
+    // Every link of a source is in this batch, so what a page was seen to load is only kept until the
+    // batch ends: what stays is its total and a sample.
+    const failedEmbedsSeen = new Map<AuditedUrl, Set<AuditedUrl>>()
     const [links, declared] = await Promise.all([
       db.crawls.linksFrom(crawl.id, hashes),
       db.crawls.sitemapHreflangOf(crawl.id, hashes),
@@ -442,9 +447,17 @@ export async function loadSite(
       const source = byHash.get(sourceHash)
       const target = byHash.get(targetHash)
       if (!source) continue
-      // Of the site, or of another that the crawl requested because an anchor links to it.
-      if (EMBED_KINDS.has(kind) && embedFailed(target) && !source.failedEmbeds.includes(target)) {
-        source.failedEmbeds.push(target)
+      if (EMBED_KINDS.has(kind) && target !== source && embedFailed(target)) {
+        // Of the site, or of another that the crawl requested because an anchor links to it.
+        let seen = failedEmbedsSeen.get(source)
+        if (!seen) failedEmbedsSeen.set(source, (seen = new Set()))
+        if (!seen.has(target)) {
+          seen.add(target)
+          source.failedEmbeds.total++
+          if (source.failedEmbeds.sample.length < MAX_EVIDENCE_ITEMS) {
+            source.failedEmbeds.sample.push(target)
+          }
+        }
       }
       if (!target?.internal) continue
       if (kind === 'sitemap') {

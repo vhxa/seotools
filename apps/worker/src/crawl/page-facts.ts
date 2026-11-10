@@ -265,6 +265,7 @@ export class PageFactsCollector {
   private notContentDepth = 0
   private codeDepth = 0
   private svgDepth = 0
+  private mathDepth = 0
   private noscriptDepth = 0
   private templateDepth = 0
   private previousHeading = 1
@@ -298,11 +299,17 @@ export class PageFactsCollector {
     return this.headState !== 'after'
   }
 
+  /** Inside a template or foreign content (SVG, MathML): markup that is not the page's own. */
+  private get inert() {
+    return this.templateDepth > 0 || this.svgDepth > 0 || this.mathDepth > 0
+  }
+
   open(name: string, attributes: Record<string, string>) {
     this.trackHead(name)
     if (NOT_CONTENT.has(name)) this.notContentDepth++
     if (name === 'script' || name === 'style') this.codeDepth++
     if (name === 'svg') this.svgDepth++
+    if (name === 'math') this.mathDepth++
     if (attributes.itemscope !== undefined || attributes.typeof !== undefined) {
       this.facts.structuredData++
     }
@@ -312,7 +319,9 @@ export class PageFactsCollector {
         if (this.svgDepth === 0) this.count('titles', 'titlesOutsideHead')
         break
       case 'html':
-        if (!this.sawHtml) {
+        // The document root is the first `<html>` that is not inert markup: one inside a template or
+        // foreign content is not the document, and must not decide its language.
+        if (!this.sawHtml && !this.inert) {
           this.sawHtml = true
           this.document.lang = boundedText(attributes.lang ?? '', MAX_DOCUMENT_VALUE) || null
         }
@@ -363,6 +372,7 @@ export class PageFactsCollector {
     if (NOT_CONTENT.has(name) && this.notContentDepth > 0) this.notContentDepth--
     if ((name === 'script' || name === 'style') && this.codeDepth > 0) this.codeDepth--
     if (name === 'svg' && this.svgDepth > 0) this.svgDepth--
+    if (name === 'math' && this.mathDepth > 0) this.mathDepth--
     if (name === 'noscript' && this.noscriptDepth > 0) this.noscriptDepth--
     if (name === 'template' && this.templateDepth > 0) this.templateDepth--
     if (name === 'head' && this.headState === 'in') this.headState = 'after'
@@ -497,6 +507,8 @@ export class PageFactsCollector {
     if ((name === 'robots' || name.endsWith('bot')) && !this.inHead) {
       this.facts.robotsOutsideHead++
     }
+    // What a template or foreign content holds is not what the page says of itself or when shared.
+    if (this.inert) return
     this.onDocumentMeta(name, attributes)
     this.onSocialMeta(attributes)
   }

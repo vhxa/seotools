@@ -22,7 +22,7 @@ import {
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
-import { isValidHreflang, isValidLanguageTag } from './language-codes'
+import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
 import {
   excusedBlockers,
   excusesInlinks,
@@ -677,10 +677,16 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'link-to-localhost': linkProblem('localhost', (facts) => facts.localhostLinks),
   'links-to-broken': linkedTargets(fails),
   // What a page loads that fails (the crawl kept only those), reported on the page that loads it.
-  'resources-broken': linkedTargets(
-    () => true,
-    (url) => url.failedEmbeds,
-  ),
+  'resources-broken': (url) => {
+    const { total, sample } = url.failedEmbeds
+    if (!url.contentPage || total === 0) return false
+    const urls: string[] = []
+    for (const target of sample) {
+      const address = boundedUrl(target.url.url)
+      if (address) urls.push(address)
+    }
+    return backedBy({ kind: 'related-urls', total, urls })
+  },
   'links-to-redirect': linkedTargets(redirects),
   'links-to-canonicalised': linkedTargets((target) => target.contentPage && target.canonicalised),
   'links-tracking-parameters': linkedTargets(hasTrackingParameters),
@@ -747,8 +753,10 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'content-before-head': onPage((_, facts) => facts.headNotFirst),
   // What the document declares. Pages parsed before it was kept (`document` absent) are not judged.
   'html-lang-missing': onPage((_, facts) => facts.document !== undefined && !facts.document.lang),
+  // `lang=""` is valid HTML ("unknown language"), but it tells a screen reader and a search engine
+  // nothing: it is read as missing (`html-lang-missing`), never as invalid.
   'html-lang-invalid': onPage(
-    (_, facts) => !!facts.document?.lang && !isValidLanguageTag(facts.document.lang),
+    (_, facts) => !!facts.document?.lang && !isWellFormedLanguageTag(facts.document.lang),
   ),
   'viewport-missing': onPage(
     (_, facts) => facts.document !== undefined && !facts.document.viewport,

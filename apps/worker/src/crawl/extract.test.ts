@@ -609,4 +609,49 @@ describe('social and document facts', () => {
       'https://example.com/share.png',
     ])
   })
+
+  it('takes the language from the real document root, not from a template or foreign content', () => {
+    expect(
+      factsOf('<template><html lang="es"><body></body></html></template><html lang="en"></html>')
+        .document?.lang,
+    ).toBe('en')
+    expect(
+      factsOf('<template><html lang="es"></html></template><html></html>').document?.lang,
+    ).toBe(null)
+    expect(
+      factsOf('<svg><html lang="es"></html></svg><html lang="en"></html>').document?.lang,
+    ).toBe('en')
+    expect(
+      factsOf('<math><html lang="es"></html></math><html lang="en"></html>').document?.lang,
+    ).toBe('en')
+    // Only the first real root counts.
+    expect(factsOf('<html lang="en"></html><html lang="es"></html>').document?.lang).toBe('en')
+  })
+
+  it('does not read an empty lang as a language', () => {
+    expect(factsOf('<html lang=""></html>').document?.lang).toBeNull()
+  })
+
+  it('ignores preview and document meta inside templates and foreign content', () => {
+    const facts = factsOf(`<html><head></head><body>
+      <template>
+        <meta property="og:title" content="Inert">
+        <meta name="twitter:card" content="summary">
+        <meta name="viewport" content="width=device-width">
+        <meta charset="utf-8">
+      </template>
+      <svg><meta property="og:image" content="/inert.png"><meta name="viewport" content="svg"></svg>
+      <math><meta charset="latin1"></math>
+    </body></html>`)
+    expect(facts.social).toEqual({ openGraphTags: 0 })
+    expect(facts.document).toEqual({ lang: null, viewport: null, charset: null })
+  })
+
+  it('reads the meta that follows a template', () => {
+    const facts = factsOf(`<template><meta property="og:title" content="Inert"></template>
+      <svg></svg><math></math>
+      <meta property="og:title" content="Real"><meta name="viewport" content="width=device-width">`)
+    expect(facts.social).toEqual({ openGraphTags: 1, title: 'Real' })
+    expect(facts.document?.viewport).toBe('width=device-width')
+  })
 })

@@ -66,6 +66,7 @@ describe('compareWithCrawl', () => {
       fixed: ['noindex', 'title-missing'],
       remaining: ['h1-missing'],
       appeared: ['description-missing'],
+      unobserved: [],
       nowAccepted: [],
       pendingFullCrawl: [],
     })
@@ -112,9 +113,24 @@ describe('compareWithCrawl', () => {
       fixed: [],
       remaining: [],
       appeared: [],
+      unobserved: [],
       nowAccepted: [],
       pendingFullCrawl: [],
     })
+  })
+
+  it('never calls new what the crawl could not have seen', () => {
+    const result = compareWithCrawl({
+      crawl: ['title-missing'],
+      recheck: ['title-missing', 'og-missing', 'noindex'],
+      unobserved: ['og-missing'],
+    })
+    expect(result.appeared).toEqual(['noindex'])
+    expect(result.unobserved).toEqual(['og-missing'])
+    expect(result.remaining).toEqual(['title-missing'])
+    expect(compareWithCrawl({ crawl: [], recheck: ['og-missing'] }).appeared).toEqual([
+      'og-missing',
+    ])
   })
 })
 

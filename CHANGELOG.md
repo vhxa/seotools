@@ -48,6 +48,9 @@ which moves the entries of `[Unreleased]` into the new version.
 ### Fixed
 
 - A broken image, script or stylesheet is now reported on the page that loads it (`resources-broken`).
+- Comparing with a crawl made before a check could see its input (structured data before 0.2.0,
+  Open Graph and the document language before this version) no longer reports those findings as new
+  or resolved: they show as not verifiable.
 - The record of finished jobs no longer grows forever: the worker deletes completed jobs after 30
   days and failed ones after 90, checking every hour. Pending and running jobs are never touched.
 - The Crawls and Crawl files sections of the sidebar open, and mark the current page, when you navigate into them.

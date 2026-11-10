@@ -263,6 +263,11 @@ export interface VerificationComparison {
   /** The recheck found it and the crawl did not. */
   appeared: PageIssueId[]
   /**
+   * The recheck found it, and the crawl did not record what the check needs (it predates it): it is
+   * neither new nor known before.
+   */
+  unobserved: PageIssueId[]
+  /**
    * What the crawl found at this URL that only a full crawl can confirm gone. It is the crawl's
    * word, from its date, and the recheck says nothing about it.
    */
@@ -283,12 +288,15 @@ export function compareWithCrawl(input: {
   unchecked?: readonly string[]
   /** The issues the recheck saw and a rule accepts. Left out for a recheck that did not keep them. */
   accepted?: readonly string[]
+  /** The issues the crawl could not see (`AuditSnapshot.unobserved`): it cannot say they were absent. */
+  unobserved?: readonly string[]
 }): VerificationComparison {
   const unchecked = new Set(input.unchecked ?? [])
   const accepted = new Set(input.accepted ?? [])
   const before = new Set(input.crawl.filter(isPageIssueId))
   const after = new Set(input.recheck.filter(isPageIssueId))
   const settled = (issue: PageIssueId) => SCOPE[issue] === 'url' && !unchecked.has(issue)
+  const blind = new Set(input.unobserved ?? [])
   return {
     fixed: byCatalog(
       [...before].filter((issue) => settled(issue) && !after.has(issue) && !accepted.has(issue)),
@@ -297,7 +305,12 @@ export function compareWithCrawl(input: {
       [...before].filter((issue) => settled(issue) && !after.has(issue) && accepted.has(issue)),
     ),
     remaining: byCatalog([...before].filter((issue) => settled(issue) && after.has(issue))),
-    appeared: byCatalog([...after].filter((issue) => settled(issue) && !before.has(issue))),
+    appeared: byCatalog(
+      [...after].filter((issue) => settled(issue) && !before.has(issue) && !blind.has(issue)),
+    ),
+    unobserved: byCatalog(
+      [...after].filter((issue) => settled(issue) && !before.has(issue) && blind.has(issue)),
+    ),
     pendingFullCrawl: byCatalog([...before].filter((issue) => !settled(issue))),
   }
 }
