@@ -39,6 +39,15 @@ which moves the entries of `[Unreleased]` into the new version.
 - Some messages still called the URLs list "Pages".
 - The trend charts no longer repeat a date when several crawls ran the same day, and their legend follows the order of the figures above.
 
+### Security
+
+- The app sends the security headers it checks for on the sites it audits: a Content-Security-Policy
+  that lets only its own scripts run and keeps it out of frames, `X-Frame-Options`,
+  `X-Content-Type-Options`, `Referrer-Policy`, a `Permissions-Policy`, and HSTS when
+  `BETTER_AUTH_URL` is an `https://` address.
+- Search engines are told not to index the app: every response says `noindex`, and `/robots.txt`
+  disallows everything. A sign-in page of a public installation no longer ends up in search results.
+
 ## [0.3.0] - 2026-11-08
 
 ### Changed

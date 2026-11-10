@@ -4,6 +4,7 @@ import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
 import pkg from '../../package.json' with { type: 'json' }
 import { webEnvSchema } from '../../packages/core/src/env'
+import { STATIC_SECURITY_HEADERS } from './lib/security-headers'
 
 // Next only reads .env from apps/web; load the monorepo-root .env too (dev only, no-op in prod).
 const rootDir = fileURLToPath(new URL('../..', import.meta.url))
@@ -40,6 +41,11 @@ const config: NextConfig = {
   serverExternalPackages: ['better-sqlite3', 'postgres', 'pino', 'nodemailer', 'resend'],
   env: { APP_VERSION: pkg.version },
   poweredByHeader: false,
+  // The same on every response, static files included. The Content-Security-Policy and HSTS depend
+  // on the request or on run-time settings, so `proxy.ts` sets them.
+  async headers() {
+    return [{ source: '/:path*', headers: [...STATIC_SECURITY_HEADERS] }]
+  },
   // Old addresses keep working: companies moved under Administration and the pages overview became
   // the dashboard of the domain.
   async redirects() {

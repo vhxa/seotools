@@ -33,10 +33,20 @@ Client components may only import pure subpath exports of `@seotools/core`: see 
 ## Security
 
 - Admin credentials never come from environment variables. The first admin is registered on `/setup` through `createFirstAdmin`, which refuses to run once any user exists. Never re-enable better-auth sign-up.
-- `proxy.ts` only checks that a session cookie exists. Every protected page and **every server action** must call `requireSession()` (or what builds on it: `requireViewer`, `requireAdmin`, `requireDomain`, `requireDomainEditor`) itself; a layout does not protect actions. `lib/authorization.test.ts` reads the code and fails on an action or a page that does not.
+- `proxy.ts` only checks that a session cookie exists (and sets the Content-Security-Policy and HSTS of each response; the headers that never change are in `next.config.ts`, all from `lib/security-headers.ts`). Scripts run only with the per-request nonce: an inline `<script>` reads it from the `x-nonce` request header, as the root layout does, and nothing adds `'unsafe-inline'` to `script-src`; `e2e/support/test.ts` fails a spec on any policy violation. Every protected page and **every server action** must call `requireSession()` (or what builds on it: `requireViewer`, `requireAdmin`, `requireDomain`, `requireDomainEditor`) itself; a layout does not protect actions. `lib/authorization.test.ts` reads the code and fails on an action or a page that does not.
 - A valid session is not authorization. Pages and server actions restricted to a role (e.g. admin) must also check the user's role on the server. Instance-wide ones (`/system/*`) call `requireAdmin()` (`lib/session.ts`), the single place that checks it.
 - `GET /api/health` is public: it reports the status, the version and channel, the database (`db: { ok, dialect }`) and the worker (`worker: { ok, lastSeen }`). Error details stay in the server logs.
 
 ## Versions and releases
 
 - **Update check** (System → Updates, behind `requireAdmin()`): `checkForUpdates` (`@seotools/core`) reads the GitHub releases feed on request or, if an administrator enabled it, from the worker once a day; never while rendering a page. It sends nothing about domains or the installation. A failure is `check-failed`, never "up to date", and a development build is never compared. The app never replaces its container or touches the Docker socket: Docker or Dokploy does.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

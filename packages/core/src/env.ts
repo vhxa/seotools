@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from './zod'
 import { BUILD_CHANNELS, type BuildInfo } from './version'
 
 /** Treat empty strings (e.g. `FOO=` in a .env file) as "not set". */

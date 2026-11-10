@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '../zod'
 
 export const CRAWL_FREQUENCIES = ['hourly', 'daily', 'weekly', 'monthly'] as const
 export type CrawlFrequency = (typeof CRAWL_FREQUENCIES)[number]

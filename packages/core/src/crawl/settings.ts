@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '../zod'
 import { extractorsSchema, type Extractor } from './extraction'
 import { parseAuditSelector } from './audit'
 import { INDEXNOW_KEY, OPTIONAL_CRAWL_FILES, type OptionalCrawlFile } from './files'
