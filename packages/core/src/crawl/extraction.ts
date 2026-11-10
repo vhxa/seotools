@@ -1,5 +1,5 @@
 import { parse } from 'css-what'
-import { z } from 'zod'
+import { z } from '../zod'
 
 /**
  * Custom extraction: values a domain asks the crawler to read from every page with a CSS selector,

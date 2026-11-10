@@ -8,7 +8,7 @@
  * Pure on purpose (no Node imports): client components import it through
  * `@seotools/core/crawl/acceptance`.
  */
-import { z } from 'zod'
+import { z } from '../zod'
 import type { AuditCondition, Requirement } from './audit'
 import type { IndexabilityBlocker } from './indexability'
 

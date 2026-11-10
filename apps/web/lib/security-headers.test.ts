@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   STATIC_SECURITY_HEADERS,
+  STRICT_TRANSPORT_SECURITY,
   contentSecurityPolicy,
   createNonce,
   servedOverHttps,
@@ -79,5 +80,11 @@ describe('STATIC_SECURITY_HEADERS', () => {
     expect(headers['X-Content-Type-Options']).toBe('nosniff')
     expect(headers['X-Robots-Tag']).toBe('noindex, nofollow')
     expect(headers['Referrer-Policy']).toBe('strict-origin-when-cross-origin')
+  })
+})
+
+describe('STRICT_TRANSPORT_SECURITY', () => {
+  it('covers the app only, never other services of its domain', () => {
+    expect(STRICT_TRANSPORT_SECURITY).not.toMatch(/includeSubDomains/i)
   })
 })

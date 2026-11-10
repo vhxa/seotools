@@ -20,7 +20,7 @@
  * was made with, so an analysis from before a change in meaning is still read, and repeated, as it
  * was.
  */
-import { z } from 'zod'
+import { z } from '../zod'
 import {
   canonicalThresholds,
   thresholdOverridesSchema,

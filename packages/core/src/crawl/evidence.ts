@@ -8,7 +8,7 @@
  * Pure on purpose (no Node imports): client components import it through
  * `@seotools/core/crawl/evidence`.
  */
-import { z } from 'zod'
+import { z } from '../zod'
 import type { PageIssueId } from './issues'
 import {
   CRAWL_LINK_KINDS,

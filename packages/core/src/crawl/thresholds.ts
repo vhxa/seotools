@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '../zod'
 
 /**
  * The figures some checks compare with, which are conventions rather than facts: a domain can set

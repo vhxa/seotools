@@ -25,8 +25,12 @@ export const STATIC_SECURITY_HEADERS: readonly { key: string; value: string }[] 
   { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
 ]
 
-/** Two years, as browsers' preload lists ask; only ever sent when the app is served over HTTPS. */
-export const STRICT_TRANSPORT_SECURITY = 'max-age=63072000; includeSubDomains'
+/**
+ * Two years; only ever sent when the app is served over HTTPS. Never `includeSubDomains`: that the
+ * app is served over HTTPS says nothing about other services under its domain, which a browser
+ * would then refuse to reach over HTTP.
+ */
+export const STRICT_TRANSPORT_SECURITY = 'max-age=63072000'
 
 /** A fresh value for every response: what lets the app's own inline script run, and nothing else. */
 export function createNonce(): string {
