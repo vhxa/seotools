@@ -205,7 +205,7 @@ export default async function PagesDetailsPage({
         </div>
         {selected && (
           <Link
-            href={`/domains/${host}/pages/parameters${browsable ? `?crawl=${browsable.id}` : ''}`}
+            href={`/domains/${host}/urls/parameters${browsable ? `?crawl=${browsable.id}` : ''}`}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             <FilterIcon />

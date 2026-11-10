@@ -12,7 +12,7 @@ import { loadRecheckAnnouncement } from '@/lib/recheck-notice'
 
 /** Where the URLs of a recheck, and what each one found, are listed. */
 export const recheckHref = (host: string, verification: Pick<Verification, 'id'>) =>
-  `/domains/${host}/jobs/verifications/${verification.id}`
+  `/domains/${host}/crawls/rechecks/${verification.id}`
 
 /**
  * Says how the domain's recheck is going: under way (refreshing itself, with a way to cancel it),

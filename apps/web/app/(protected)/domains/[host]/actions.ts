@@ -37,14 +37,14 @@ export interface AddPriorityUrlState {
 
 /** Where priority pages are listed (settings) and where they can be starred (pages). */
 function revalidatePriorityUrls(host: string) {
-  revalidatePath(`/domains/${host}/pages`)
-  revalidatePath(`/domains/${host}/pages/details`)
+  revalidatePath(`/domains/${host}`)
+  revalidatePath(`/domains/${host}/urls`)
   revalidatePath(`/domains/${host}/settings/priority`)
 }
 
 function revalidateDomain(host: string) {
-  revalidatePath(`/domains/${host}/pages`)
-  revalidatePath(`/domains/${host}/jobs`)
+  revalidatePath(`/domains/${host}`)
+  revalidatePath(`/domains/${host}/crawls`)
 }
 
 /** Starts a crawl now. A domain only runs one at a time, whatever its type. */
@@ -144,7 +144,8 @@ export async function saveScheduleAction(
     enabled: parsed.enabled,
     nextRunAt: nextScheduledRun(parsed.recurrence, new Date()),
   })
-  revalidatePath(`/domains/${host}/jobs`)
+  revalidatePath(`/domains/${host}/settings/schedules`)
+  revalidatePath(`/domains/${host}/crawls`)
   return { saved: true }
 }
 

@@ -748,7 +748,7 @@ describe('the address of an export', () => {
   it('carries what the table lists and not the page or the drawer', () => {
     const href = exportHref('example.com', query, 'findings')
     const [path, search] = href.split('?')
-    expect(path).toBe('/domains/example.com/pages/export/findings')
+    expect(path).toBe('/domains/example.com/urls/export/findings')
     const back = parseDetailQuery(rawParamsOf(new URLSearchParams(search)))
     expect(back).toEqual({ ...query, page: 1, url: null })
   })
@@ -765,7 +765,7 @@ describe('the address of an export', () => {
 
   it('has no query for the default table', () => {
     expect(exportHref('example.com', parseDetailQuery({}), 'pages')).toBe(
-      '/domains/example.com/pages/export/pages',
+      '/domains/example.com/urls/export/pages',
     )
   })
 })

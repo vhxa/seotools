@@ -13,7 +13,7 @@ const base = {
     urls: 55,
   },
   links: {
-    history: 'https://seo.test/domains/example.com/pages/history',
+    history: 'https://seo.test/domains/example.com/crawls',
     crawlSettings: 'https://seo.test/domains/example.com/settings/crawl',
   },
 }

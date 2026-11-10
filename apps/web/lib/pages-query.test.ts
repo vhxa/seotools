@@ -119,7 +119,7 @@ describe('parseDetailQuery', () => {
 
 describe('detailHref', () => {
   it('leaves defaults out', () => {
-    expect(detailHref('acme.com', base)).toBe('/domains/acme.com/pages/details')
+    expect(detailHref('acme.com', base)).toBe('/domains/acme.com/urls')
   })
 
   it('writes what differs from the defaults', () => {
@@ -132,13 +132,13 @@ describe('detailHref', () => {
         direction: 'desc',
         page: 2,
       }),
-    ).toBe('/domains/acme.com/pages/details?q=a+b&issue=client-error&sort=title&dir=desc&page=2')
+    ).toBe('/domains/acme.com/urls?q=a+b&issue=client-error&sort=title&dir=desc&page=2')
   })
 
   it('applies changes without touching the query', () => {
     const query = { ...base, search: 'blog', page: 4 }
     expect(detailHref('acme.com', query, { page: 1, issue: 'title-missing' })).toBe(
-      '/domains/acme.com/pages/details?q=blog&issue=title-missing',
+      '/domains/acme.com/urls?q=blog&issue=title-missing',
     )
     expect(query.page).toBe(4)
   })
@@ -146,38 +146,36 @@ describe('detailHref', () => {
   it('leaves the issue when a view is chosen', () => {
     expect(
       detailHref('acme.com', { ...base, view: 'all', issue: 'client-error' }, { view: 'other' }),
-    ).toBe('/domains/acme.com/pages/details?view=other')
+    ).toBe('/domains/acme.com/urls?view=other')
     expect(
       detailHref('acme.com', { ...base, view: 'all', issue: 'client-error' }, { view: 'pages' }),
-    ).toBe('/domains/acme.com/pages/details')
+    ).toBe('/domains/acme.com/urls')
   })
 
   it('writes an issue without a view, since it always means every one', () => {
     expect(detailHref('acme.com', base, { view: 'all', issue: 'client-error', page: 1 })).toBe(
-      '/domains/acme.com/pages/details?issue=client-error',
+      '/domains/acme.com/urls?issue=client-error',
     )
     expect(detailHref('acme.com', base, { issue: 'client-error' })).toBe(
-      '/domains/acme.com/pages/details?issue=client-error',
+      '/domains/acme.com/urls?issue=client-error',
     )
   })
 
   it('keeps the view when an issue is removed, so that only that filter goes', () => {
     const query = parseDetailQuery({ issue: 'client-error', q: 'blog' })
     expect(detailHref('acme.com', query, withoutFilter('issue'))).toBe(
-      '/domains/acme.com/pages/details?view=all&q=blog',
+      '/domains/acme.com/urls?view=all&q=blog',
     )
   })
 
   it('keeps the crawl being browsed in every address, and leaves the latest out', () => {
     const crawl = '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f12'
-    expect(detailHref('acme.com', { ...base, crawl })).toBe(
-      `/domains/acme.com/pages/details?crawl=${crawl}`,
-    )
+    expect(detailHref('acme.com', { ...base, crawl })).toBe(`/domains/acme.com/urls?crawl=${crawl}`)
     expect(detailHref('acme.com', { ...base, crawl }, { view: 'other', page: 1 })).toBe(
-      `/domains/acme.com/pages/details?crawl=${crawl}&view=other`,
+      `/domains/acme.com/urls?crawl=${crawl}&view=other`,
     )
     expect(detailHref('acme.com', { ...base, crawl }, { crawl: null })).toBe(
-      '/domains/acme.com/pages/details',
+      '/domains/acme.com/urls',
     )
   })
 
@@ -226,12 +224,12 @@ describe('the filters on the audit', () => {
   it('are kept in the address, and left out when they are not set', () => {
     const query = { ...base, participation: 'excluded', intent: 'indexable' } as DetailQuery
     const href = detailHref('acme.com', query)
-    expect(href).toBe('/domains/acme.com/pages/details?audit=excluded&intent=indexable')
+    expect(href).toBe('/domains/acme.com/urls?audit=excluded&intent=indexable')
     expect(parseDetailQuery(Object.fromEntries(new URL(href, 'http://x').searchParams))).toEqual(
       query,
     )
     expect(detailHref('acme.com', query, { participation: null, intent: null })).toBe(
-      '/domains/acme.com/pages/details',
+      '/domains/acme.com/urls',
     )
   })
 
@@ -309,7 +307,7 @@ describe('what a view carries when it is chosen', () => {
   it('does not forget the order when the view changes', () => {
     const query = parseDetailQuery({ sort: 'bytes', dir: 'desc' })
     expect(detailHref('acme.com', query, { view: 'resources', page: 1 })).toBe(
-      '/domains/acme.com/pages/details?view=resources&sort=bytes&dir=desc',
+      '/domains/acme.com/urls?view=resources&sort=bytes&dir=desc',
     )
   })
 })
@@ -416,15 +414,13 @@ describe('the link to what rules accept', () => {
   it('leaves the issue, and is left by choosing an issue or a view', () => {
     const issue = parseDetailQuery({ issue: 'noindex' })
     expect(detailHref('acme.com', issue, { accepted: 'all' })).toBe(
-      '/domains/acme.com/pages/details?accepted=all',
+      '/domains/acme.com/urls?accepted=all',
     )
     const accepted = parseDetailQuery({ accepted: 'all' })
     expect(detailHref('acme.com', accepted, { issue: 'noindex' })).toBe(
-      '/domains/acme.com/pages/details?issue=noindex',
+      '/domains/acme.com/urls?issue=noindex',
     )
-    expect(detailHref('acme.com', accepted, { view: 'pages' })).toBe(
-      '/domains/acme.com/pages/details',
-    )
+    expect(detailHref('acme.com', accepted, { view: 'pages' })).toBe('/domains/acme.com/urls')
   })
 })
 
@@ -441,10 +437,10 @@ describe('the filters that are set', () => {
     })
     expect(activeFilters(query)).toEqual(['search', 'status', 'participation'])
     expect(detailHref('acme.com', query, withoutFilter('status'))).toBe(
-      '/domains/acme.com/pages/details?view=resources&q=logo&audit=audited&sort=bytes&dir=desc',
+      '/domains/acme.com/urls?view=resources&q=logo&audit=audited&sort=bytes&dir=desc',
     )
     expect(detailHref('acme.com', query, withoutFilter('all'))).toBe(
-      '/domains/acme.com/pages/details?view=resources&sort=bytes&dir=desc',
+      '/domains/acme.com/urls?view=resources&sort=bytes&dir=desc',
     )
     expect(activeFilters(base)).toEqual([])
   })

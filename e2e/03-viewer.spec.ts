@@ -41,9 +41,18 @@ test.describe('a member with a viewer grant on one domain', () => {
     await expect(page.getByText(/Last full crawl finished/)).toBeVisible()
     await expect(page.getByRole('button', { name: 'Run full crawl' })).toHaveCount(0)
 
-    await page.goto(`${domain}/pages/details`)
+    await page.goto(`${domain}/urls`)
     await expect(page.getByRole('heading', { name: 'URLs', level: 1 })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Mark as priority' })).toHaveCount(0)
+  })
+
+  test('reads the Crawls area without being offered to run anything', async ({ page }) => {
+    await page.goto(`${domain}/crawls`)
+    await expect(page.getByRole('heading', { name: 'Crawls', level: 1 })).toBeVisible()
+    await expect(page.getByRole('table').getByText('completed')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Run full crawl' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Run priority crawl' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Crawl a URL list' })).toHaveCount(0)
   })
 
   test('does not find a domain without a grant, nor the administration', async ({ page }) => {

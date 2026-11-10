@@ -147,19 +147,11 @@ export function AppSidebar({
         { label: t('issues'), href: `/domains/${activeHost}/issues`, icon: CircleAlertIcon },
         {
           label: t('urls'),
-          href: `/domains/${activeHost}/pages/details`,
-          also: [`/domains/${activeHost}/pages/parameters`],
+          href: `/domains/${activeHost}/urls`,
           icon: FileTextIcon,
         },
-        {
-          label: t('crawls'),
-          icon: RadarIcon,
-          links: [
-            { label: t('crawlsRun'), href: `/domains/${activeHost}/jobs` },
-            { label: t('crawlsHistory'), href: `/domains/${activeHost}/pages/history` },
-            { label: t('crawlsCompare'), href: `/domains/${activeHost}/pages/compare` },
-          ],
-        },
+        // One link: the list, the comparison and the rechecks are tabs of the area.
+        { label: t('crawls'), href: `/domains/${activeHost}/crawls`, icon: RadarIcon },
         {
           label: t('crawlFiles'),
           icon: FileCode2Icon,

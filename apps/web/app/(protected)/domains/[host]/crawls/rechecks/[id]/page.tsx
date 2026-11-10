@@ -96,7 +96,7 @@ export default async function RecheckPage({
       {active && <AutoRefresh intervalMs={2000} />}
       <div className="grid justify-items-start gap-3">
         <Link
-          href={`/domains/${domain.host}/jobs`}
+          href={`/domains/${domain.host}/crawls/rechecks`}
           className={buttonVariants({ variant: 'ghost', size: 'sm' })}
         >
           <ArrowLeftIcon />
@@ -186,7 +186,7 @@ export default async function RecheckPage({
                   <TableRow key={url.urlHash}>
                     <TableCell className="max-w-md">
                       <Link
-                        href={`/domains/${domain.host}/pages/details/${url.urlHash}`}
+                        href={`/domains/${domain.host}/urls/${url.urlHash}`}
                         title={url.url}
                         className="block truncate font-mono text-xs hover:underline"
                       >

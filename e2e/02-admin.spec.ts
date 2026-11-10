@@ -34,7 +34,7 @@ test('the issues page lists what the crawl found, and each issue opens the URLs 
 })
 
 test('the URLs table has its views with counts, and a search', async ({ page }) => {
-  await page.goto(`${domain}/pages/details`)
+  await page.goto(`${domain}/urls`)
   await expect(page.getByRole('heading', { name: 'URLs', level: 1 })).toBeVisible()
 
   const views = page.getByRole('navigation', { name: 'Views' })
@@ -63,7 +63,7 @@ test('the URLs table has its views with counts, and a search', async ({ page }) 
 })
 
 test('a URL opens in a drawer and as a full page, with how it was found', async ({ page }) => {
-  await page.goto(`${domain}/pages/details`)
+  await page.goto(`${domain}/urls`)
   await page.getByRole('link', { name: 'https://example.com/products?sort=price' }).first().click()
 
   const drawer = page.getByRole('dialog')
@@ -71,7 +71,7 @@ test('a URL opens in a drawer and as a full page, with how it was found', async 
   await expect(drawer.getByText('How it was found')).toBeVisible()
 
   await drawer.getByRole('link', { name: 'Open full screen' }).click()
-  await expect(page).toHaveURL(/\/pages\/details\/[0-9a-f]{32}/)
+  await expect(page).toHaveURL(/\/urls\/[0-9a-f]{32}/)
   await expect(page.getByText('How it was found')).toBeVisible()
   await expect(page.getByText('https://example.com/products?sort=price').first()).toBeVisible()
 })
@@ -80,7 +80,7 @@ test('the header search finds a URL of the domain and opens its detail', async (
   await page.goto(`${domain}/issues`)
   await page.getByRole('combobox', { name: 'Search the URLs of this domain' }).fill('about')
   await page.getByRole('option', { name: /https:\/\/example\.com\/about/ }).click()
-  await expect(page).toHaveURL(/\/pages\/details\/[0-9a-f]{32}/)
+  await expect(page).toHaveURL(/\/urls\/[0-9a-f]{32}/)
   await expect(page.getByRole('heading', { name: 'https://example.com/about' })).toBeVisible()
 })
 
@@ -100,7 +100,7 @@ test('System and the account have no sidebar; the account has its tabs', async (
 })
 
 test('the query parameters page shows where a parameter enters the site', async ({ page }) => {
-  await page.goto(`${domain}/pages/parameters`)
+  await page.goto(`${domain}/urls/parameters`)
   await expect(page.getByRole('heading', { name: 'Query parameters', level: 1 })).toBeVisible()
 
   const found = page.getByRole('region', { name: 'Parameters found' })
@@ -115,7 +115,7 @@ test('the query parameters page shows where a parameter enters the site', async 
 })
 
 test('the pages export downloads a CSV with its header row', async ({ page }) => {
-  await page.goto(`${domain}/pages/details`)
+  await page.goto(`${domain}/urls`)
   await page.getByRole('button', { name: 'Export' }).click()
   const download = page.waitForEvent('download')
   await page.getByRole('menuitem', { name: /^Pages/ }).click()
@@ -128,4 +128,129 @@ test('the pages export downloads a CSV with its header row', async ({ page }) =>
   expect(header).toContain('HTTP status')
   expect(header).toContain('Technical state')
   expect(rows.join('\n')).toContain('https://example.com/about')
+})
+
+test('the Crawls area lists the crawls, with the run actions and its own sections', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/crawls`)
+  await expect(page.getByRole('heading', { name: 'Crawls', level: 1 })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Run full crawl' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Run priority crawl' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Crawl a URL list' })).toBeVisible()
+
+  // The seed crawl: a full one, with its results and findings, and the way to look at it.
+  const crawls = page.getByRole('table')
+  await expect(crawls.getByText('Full crawl').first()).toBeVisible()
+  await expect(crawls.getByText('completed')).toBeVisible()
+  await expect(crawls.getByRole('link', { name: 'View', exact: true })).toBeVisible()
+
+  // One entry in the sidebar, and tabs in the page.
+  const sidebar = page.getByRole('navigation', { name: 'Main' })
+  await expect(sidebar.getByRole('link', { name: 'Crawls' })).toBeVisible()
+  const sections = page.getByRole('navigation', { name: 'Crawls sections' })
+  await sections.getByRole('link', { name: 'Compare' }).click()
+  await expect(page).toHaveURL(/\/crawls\/compare$/)
+  await sections.getByRole('link', { name: 'Rechecks' }).click()
+  await expect(page).toHaveURL(/\/crawls\/rechecks$/)
+  await expect(page.getByText('No rechecks yet.')).toBeVisible()
+})
+
+test('a URL list is crawled from a dialog', async ({ page }) => {
+  await page.goto(`${domain}/crawls`)
+  await page.getByRole('button', { name: 'Crawl a URL list' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByLabel('URLs')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Start list crawl' })).toBeVisible()
+})
+
+test('the schedules are a section of the settings, and the Crawls page links to them', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/crawls`)
+  await page.getByRole('link', { name: 'Set a schedule' }).click()
+  await expect(page).toHaveURL(/\/settings\/schedules$/)
+  await expect(page.getByRole('heading', { name: 'Schedules', level: 2 })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Schedules' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save schedule' })).toHaveCount(2)
+})
+
+test('the crawl settings are grouped in sections with one save always in reach', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/settings/crawl`)
+  for (const name of ['Requests', 'Scope', 'Extraction', 'Retention', 'Request credentials']) {
+    await expect(page.getByRole('group', { name })).toBeVisible()
+  }
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeInViewport()
+})
+
+test('the addresses of earlier versions still work, and keep their query', async ({ page }) => {
+  await page.goto(`${domain}/pages/details?view=redirects`)
+  await expect(page).toHaveURL(new RegExp(`${domain}/urls\\?view=redirects$`))
+  await expect(page.getByRole('heading', { name: 'URLs', level: 1 })).toBeVisible()
+
+  await page.goto(`${domain}/jobs`)
+  await expect(page).toHaveURL(new RegExp(`${domain}/crawls$`))
+
+  await page.goto(`${domain}/pages/history`)
+  await expect(page).toHaveURL(new RegExp(`${domain}/crawls$`))
+
+  await page.goto(`${domain}/pages/compare?change=gained`)
+  await expect(page).toHaveURL(new RegExp(`${domain}/crawls/compare\\?change=gained$`))
+
+  await page.goto(`${domain}/pages/parameters`)
+  await expect(page).toHaveURL(new RegExp(`${domain}/urls/parameters$`))
+})
+
+test('the issues panel of the URLs table can be folded, and stays folded', async ({ page }) => {
+  await page.goto(`${domain}/urls`)
+  const toggle = page.getByRole('button', { name: 'Issues', exact: true }).first()
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Issues', exact: true }).first()).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+})
+
+test('every legacy route preserves query parameters in its redirect', async ({ request }) => {
+  for (const [oldPath, newPath] of [
+    ['pages', ''],
+    ['pages/details', 'urls'],
+    ['pages/details/abc', 'urls/abc'],
+    ['pages/parameters', 'urls/parameters'],
+    ['pages/export/pages', 'urls/export/pages'],
+    ['pages/history', 'crawls'],
+    ['pages/compare', 'crawls/compare'],
+    ['jobs', 'crawls'],
+    ['jobs/verifications/abc', 'crawls/rechecks/abc'],
+  ]) {
+    const query = '?crawl=old&url=abc&issue=noindex&view=redirects'
+    const response = await request.get(`${domain}/${oldPath}${query}`, { maxRedirects: 0 })
+    expect(response.status()).toBe(307)
+    const location = new URL(response.headers().location!, 'http://localhost')
+    expect(location.pathname).toBe(`${domain}${newPath ? `/${newPath}` : ''}`)
+    expect(location.search).toBe(query)
+  }
+})
+
+test('the default URL columns fit at 1280 px and selection keeps the table in place', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(`${domain}/urls`)
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const rows = page.getByRole('region', {
+    name: 'Results table. Scroll to explore rows and columns.',
+  })
+  const table = rows.getByRole('table')
+  await expect(table.getByRole('columnheader', { name: 'Technical state' })).toBeVisible()
+  expect(await rows.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  const before = await table.boundingBox()
+  await page.getByRole('checkbox', { name: 'Select every URL on this page' }).check()
+  expect((await table.boundingBox())?.y).toBe(before?.y)
 })

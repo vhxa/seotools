@@ -87,7 +87,7 @@ export default async function DomainDashboardPage({
             <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               {t('lastAttempt')}
               <CrawlStatusBadge status={lastAttempt.status} />
-              <Link href={`${base}/jobs`} className="underline">
+              <Link href={`${base}/crawls`} className="underline">
                 {t('jobs')}
               </Link>
             </p>

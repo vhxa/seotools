@@ -104,7 +104,7 @@ export function UrlSearch({ host }: { host: string }) {
           onValueChange={(hit) => {
             if (!hit) return
             close()
-            router.push(`/domains/${host}/pages/details/${hit.hash}`)
+            router.push(`/domains/${host}/urls/${hit.hash}`)
           }}
           itemToStringLabel={(hit) => hit.url}
           isItemEqualToValue={(a, b) => a.hash === b.hash}

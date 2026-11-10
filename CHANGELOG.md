@@ -28,6 +28,11 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Changed
 
+- One Crawls area replaces the three overlapping pages "Run and schedule", "History" and "Compare": a single sidebar entry opens the list of every crawl (with its type, status, results, audit configuration and findings, and the run actions "Run full crawl", "Run priority crawl" and "Crawl a URL list", now in a dialog), with Compare and Rechecks as tabs.
+- Crawl schedules moved from the Crawls page to a new Schedules section of the domain's settings, after Crawling. The Crawls page shows when each crawl is scheduled and links to it.
+- Pages of a domain have addresses named after the interface: `/urls` (was `/pages/details`), `/urls/parameters`, `/urls/export/…`, `/crawls` (was `/jobs` and `/pages/history`), `/crawls/compare` and `/crawls/rechecks/…`. The old addresses redirect, query string included, so bookmarks and alert emails already sent keep working.
+- The URLs table fits more at 1280 px: Status comes before Title, the URL column is narrower, and the issues panel beside the table can be folded away (the choice is remembered in the browser).
+- Crawl settings are grouped in titled sections (Requests, Scope, Extraction, Retention, Request credentials, Other crawl files) with a save bar that stays in view.
 - The "Query parameters" link on the URLs page is a button with an icon.
 
 ### Fixed

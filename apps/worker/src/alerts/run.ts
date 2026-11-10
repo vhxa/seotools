@@ -156,7 +156,7 @@ export async function runCrawlAlerts(input: {
               urls: crawl.urlsCount,
             },
             links: {
-              history: appLink(publicUrl, `/domains/${domain.host}/pages/history`),
+              history: appLink(publicUrl, `/domains/${domain.host}/crawls`),
               crawlSettings: appLink(publicUrl, `/domains/${domain.host}/settings/crawl`),
             },
             ...(comparison
@@ -208,7 +208,7 @@ function sectionsOf(
   const compareHref = base
     ? appLink(
         publicUrl,
-        `/domains/${domain.host}/pages/compare?${new URLSearchParams({ from: base.id, to: crawl.id, change: 'gained' })}`,
+        `/domains/${domain.host}/crawls/compare?${new URLSearchParams({ from: base.id, to: crawl.id, change: 'gained' })}`,
       )
     : ''
   const out: { findings?: FindingsNotice; summary?: ChangeSummary } = {}
@@ -225,7 +225,7 @@ function sectionsOf(
         samples: tally.samples,
         href: appLink(
           publicUrl,
-          `/domains/${domain.host}/pages/details?${new URLSearchParams({ crawl: crawl.id, issue: tally.issue })}`,
+          `/domains/${domain.host}/urls?${new URLSearchParams({ crawl: crawl.id, issue: tally.issue })}`,
         ),
       })),
     }

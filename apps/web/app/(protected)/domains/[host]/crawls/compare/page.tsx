@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Form from 'next/form'
 import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
-import { CrawlsContext } from '@/components/crawl/crawls-context'
+import { CrawlsHeader } from '@/components/crawl/crawls-header'
 import { CompareTable } from '@/components/history/compare-table'
 import { crawlMoment, CrawlStamp } from '@/components/history/crawl-stamp'
 import { PairNotes } from '@/components/history/pair-notes'
@@ -69,13 +69,7 @@ export default async function ComparePage({
   const selection = await selectPair(db.crawls, domain.id, query.from, query.to)
   if (selection.kind === 'missing') notFound()
 
-  const header = (
-    <div className="grid gap-1">
-      <CrawlsContext />
-      <h1 className="text-2xl font-semibold">{t('title')}</h1>
-      <p className="text-sm text-muted-foreground">{t('description')}</p>
-    </div>
-  )
+  const header = <CrawlsHeader host={domain.host} description={t('description')} />
 
   if (selection.kind === 'empty') {
     return (
@@ -279,7 +273,7 @@ export default async function ComparePage({
                 ))}
               </nav>
               <Form
-                action={`/domains/${domain.host}/pages/compare`}
+                action={`/domains/${domain.host}/crawls/compare`}
                 scroll={false}
                 role="search"
                 className="flex min-w-0 items-center gap-2"

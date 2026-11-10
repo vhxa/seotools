@@ -46,13 +46,45 @@ const config: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: [...STATIC_SECURITY_HEADERS] }]
   },
-  // Old addresses keep working: companies moved under Administration and the pages overview became
-  // the dashboard of the domain.
+  // Old addresses keep working (links in emails already sent, bookmarks): companies moved under
+  // Administration, the pages overview became the dashboard of the domain and the pages of a domain
+  // were renamed after what the UI calls them. Next carries the query string of the request over.
   async redirects() {
     return [
       { source: '/companies', destination: '/system/companies', permanent: false },
       { source: '/companies/new', destination: '/system/companies/new', permanent: false },
       { source: '/domains/:host/pages', destination: '/domains/:host', permanent: false },
+      {
+        source: '/domains/:host/pages/details/:path*',
+        destination: '/domains/:host/urls/:path*',
+        permanent: false,
+      },
+      {
+        source: '/domains/:host/pages/parameters',
+        destination: '/domains/:host/urls/parameters',
+        permanent: false,
+      },
+      {
+        source: '/domains/:host/pages/export/:kind',
+        destination: '/domains/:host/urls/export/:kind',
+        permanent: false,
+      },
+      {
+        source: '/domains/:host/pages/history',
+        destination: '/domains/:host/crawls',
+        permanent: false,
+      },
+      {
+        source: '/domains/:host/pages/compare',
+        destination: '/domains/:host/crawls/compare',
+        permanent: false,
+      },
+      { source: '/domains/:host/jobs', destination: '/domains/:host/crawls', permanent: false },
+      {
+        source: '/domains/:host/jobs/verifications/:id',
+        destination: '/domains/:host/crawls/rechecks/:id',
+        permanent: false,
+      },
     ]
   },
 }
