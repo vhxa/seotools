@@ -54,6 +54,8 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'refresh-redirect': U,
   'robots-blocked': U, // against a robots.txt the recheck requests again, not the one of the crawl
   'redirect-3xx': U,
+  'redirect-temporary': U,
+  'slow-response': U, // a recheck measures the answer again
   'broken-external-link': S,
   // what is expected of the indexation, against what the recheck saw
   'expected-indexable-blocked': U,
@@ -143,10 +145,18 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'structured-data-required-missing': U,
   'structured-data-recommended-missing': U,
   'no-structured-data': U,
+  // social: what the page declares is its own; whether its image answers is about another URL
+  'og-missing': U,
+  'og-incomplete': U,
+  'og-image-broken': S,
+  'og-url-mismatch': U,
+  'twitter-card-missing': U,
   // links. The links a page has are its own; who links to it, and how far it is, are not.
   'link-to-localhost': U,
   // Whether what a page links to fails, redirects or is canonicalised is a fact about other URLs.
   'links-to-broken': S,
+  // Whether an embedded resource fails is a fact about another URL.
+  'resources-broken': S,
   'links-to-redirect': S,
   'links-to-canonicalised': S,
   'links-tracking-parameters': S,
@@ -181,6 +191,10 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'multiple-head-or-body': U,
   'document-too-big': U,
   'content-before-head': U,
+  'html-lang-missing': U,
+  'html-lang-invalid': U,
+  'viewport-missing': U,
+  'charset-missing': U,
 }
 
 export const verificationScopeOf = (issue: PageIssueId): VerificationScope => SCOPE[issue]

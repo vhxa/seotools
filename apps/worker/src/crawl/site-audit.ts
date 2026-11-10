@@ -24,6 +24,10 @@ import { findNearDuplicates } from './fingerprint'
 import { emptyPageFacts } from './page-facts'
 
 const BATCH = 1000
+/** Link kinds that load a resource into the page. `head-link` is left out: it says nothing of what it is. */
+const EMBED_KINDS: ReadonlySet<string> = new Set(['image', 'script', 'style', 'media', 'frame'])
+/** What an external server answers to a crawler that it would not answer to a person. */
+export const REFUSES_BOTS = new Set([401, 403, 405, 406, 429, 451])
 const VIEWS: readonly CrawlUrlView[] = ['pages', 'other', 'external']
 /** The bot robots.txt and meta robots are read for, with `*` as its fallback. */
 const SEARCH_BOT = 'Googlebot'
@@ -169,6 +173,11 @@ export interface AuditedUrl {
   nofollowAnchorsOut: number
   /** The URLs of the site its anchors link to. */
   linksTo: AuditedUrl[]
+  /**
+   * What it loads (images, scripts, stylesheets, media, frames) that was requested and failed, once
+   * each. Only the failures are kept: a page can load hundreds of resources, and nothing reads the rest.
+   */
+  failedEmbeds: AuditedUrl[]
   /** Clicks from the home page. `null`: following links does not get here. */
   clickDepth: number | null
 }
@@ -320,8 +329,18 @@ export function auditUrl(
     internalAnchorsOut: 0,
     nofollowAnchorsOut: 0,
     linksTo: [],
+    failedEmbeds: [],
     clickDepth: null,
   }
+}
+
+/** A requested URL that answered with an error or did not answer (bots refused elsewhere do not count). */
+function embedFailed(target: AuditedUrl | undefined): target is AuditedUrl {
+  if (!target || target.url.state !== 'done') return false
+  const { error, statusCode } = target.url
+  if (error !== null) return true
+  if (statusCode === null || statusCode < 400 || statusCode > 599) return false
+  return target.internal || !REFUSES_BOTS.has(statusCode)
 }
 
 /** Follows redirects and anchors from the home page, a redirect not being a click. */
@@ -422,7 +441,12 @@ export async function loadSite(
       if (sourceHash === targetHash) continue
       const source = byHash.get(sourceHash)
       const target = byHash.get(targetHash)
-      if (!source || !target?.internal) continue
+      if (!source) continue
+      // Of the site, or of another that the crawl requested because an anchor links to it.
+      if (EMBED_KINDS.has(kind) && embedFailed(target) && !source.failedEmbeds.includes(target)) {
+        source.failedEmbeds.push(target)
+      }
+      if (!target?.internal) continue
       if (kind === 'sitemap') {
         if (storedAlike(source)) unattributed.set(target, (unattributed.get(target) ?? 0) + 1)
         else target.sitemaps++

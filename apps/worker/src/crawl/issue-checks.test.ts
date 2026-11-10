@@ -1,6 +1,7 @@
 import {
   EMPTY_AUDIT_SNAPSHOT,
   PAGE_ISSUE_IDS,
+  auditSnapshotOf,
   crawlUrlHash,
   createLogger,
   type CrawlPageFacts,
@@ -91,6 +92,15 @@ const asking = (
   enabled: true,
 })
 
+/** Open Graph and Twitter tags that are complete, with the parts a test changes left to it. */
+const shared = (
+  path: string,
+  { image = 'https://cdn.example.net/og.png', url = `${SITE}${path}`, card = true } = {},
+) =>
+  `<meta property="og:title" content="A title"><meta property="og:type" content="website">
+   <meta property="og:image" content="${image}"><meta property="og:url" content="${url}">
+   ${card ? '<meta name="twitter:card" content="summary_large_image">' : ''}`
+
 const SCENARIOS: Record<PageIssueId, Scenario> = {
   // --- what is expected of a URL's indexation ------------------------------
   'expected-indexable-blocked': {
@@ -160,6 +170,8 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     robots: 'User-agent: *\nDisallow: /x\n',
   },
   'redirect-3xx': { at: '/x', pages: { '/x': moved('/about') } },
+  'redirect-temporary': { at: '/x', pages: { '/x': moved('/about', 302) } },
+  'slow-response': { at: '/x', pages: { '/x': { ...page('/x'), responseTimeMs: 2500 } } },
   'broken-external-link': {
     at: 'https://elsewhere.org/gone',
     homeLinks: '<a href="https://elsewhere.org/gone">A link elsewhere</a>',
@@ -466,6 +478,31 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     },
   },
 
+  // --- social --------------------------------------------------------------
+  'og-missing': { at: '/x', pages: { '/x': page('/x', { social: null }) } },
+  'og-incomplete': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', {
+        social:
+          '<meta property="og:title" content="A title"><meta name="twitter:card" content="summary">',
+      }),
+    },
+    details: ['og:type', 'og:image', 'og:url'],
+  },
+  'og-image-broken': {
+    at: '/x',
+    pages: { '/x': page('/x', { social: shared('/x', { image: '/gone.png' }) }) },
+  },
+  'og-url-mismatch': {
+    at: '/x',
+    pages: { '/x': page('/x', { social: shared('/x', { url: `${SITE}/elsewhere` }) }) },
+  },
+  'twitter-card-missing': {
+    at: '/x',
+    pages: { '/x': page('/x', { social: shared('/x', { card: false }) }) },
+  },
+
   // --- structured data -----------------------------------------------------
   'structured-data-required-missing': {
     at: '/x',
@@ -555,6 +592,12 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
   'url-multiple-slashes': { at: '/a//b', pages: { '/a//b': page('/a//b') } },
   'url-spaces': { at: '/a%20b', pages: { '/a%20b': page('/a%20b') } },
   'links-to-broken': { at: '/', pages: { '/x': { statusCode: 404, headers: {} } } },
+  'resources-broken': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', { body: '<img src="/gone.png" alt="An image" width="1" height="1">' }),
+    },
+  },
   'links-to-redirect': { at: '/', pages: { '/x': moved('/about') } },
   'links-to-canonicalised': {
     at: '/',
@@ -627,6 +670,18 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     pages: { '/x': page('/x', { body: '<body><p>More</p></body>' }) },
   },
   'document-too-big': { at: '/x', pages: { '/x': { ...page('/x'), bytes: 3_000_000 } } },
+  'html-lang-missing': { at: '/x', pages: { '/x': page('/x', { html: '<html>' }) } },
+  'html-lang-invalid': { at: '/x', pages: { '/x': page('/x', { html: '<html lang="en_US">' }) } },
+  'viewport-missing': {
+    at: '/x',
+    pages: { '/x': page('/x', { document: '<meta charset="utf-8">' }) },
+  },
+  'charset-missing': {
+    at: '/x',
+    pages: {
+      '/x': page('/x', { document: '<meta name="viewport" content="width=device-width">' }),
+    },
+  },
   'content-before-head': {
     at: '/x',
     pages: {
@@ -731,6 +786,244 @@ describe('facts stored by an older crawl', () => {
     const issues = (await issuesAt(crawlId, '/')).map((row) => row.issue)
     expect(issues).not.toContain('soft-404-confirmed')
     expect(issues).not.toContain('soft-404-possible')
+  })
+})
+
+const NEW_FACT_ISSUES = [
+  'og-missing',
+  'og-incomplete',
+  'og-image-broken',
+  'og-url-mismatch',
+  'twitter-card-missing',
+  'html-lang-missing',
+  'html-lang-invalid',
+  'viewport-missing',
+  'charset-missing',
+] as const satisfies readonly PageIssueId[]
+
+describe('what a crawl did not look for', () => {
+  /** A page of a crawl from before social and document facts, as it is when read back. */
+  async function olderPage(at: string, html: Partial<Record<string, unknown>> = {}) {
+    const crawlId = await crawl(
+      websiteOf({
+        at,
+        pages: {
+          [at]: page(at, { social: null, html: '<html>', document: '<meta name="x" content="y">' }),
+        },
+      }),
+    )
+    const hash = crawlUrlHash(absolute(at))
+    const stored = await db.crawls.getUrl(crawlId, hash)
+    const { social: _social, document: _document, ...older } = stored!.data!.facts!
+    await db.crawls.recordResult({
+      crawlId,
+      urlHash: hash,
+      result: {
+        ...stored!,
+        data: { ...stored!.data, facts: { ...older, ...html } as CrawlPageFacts },
+      },
+    })
+    return crawlId
+  }
+
+  it('is not taken for having none: nothing of what they say is reported', async () => {
+    // The page really has no tags, no lang, no viewport and no charset: a new crawl says so.
+    const fresh = await crawl(
+      websiteOf({
+        at: '/x',
+        pages: {
+          '/x': page('/x', {
+            social: null,
+            html: '<html>',
+            document: '<meta name="x" content="y">',
+          }),
+        },
+      }),
+    )
+    const now = (await issuesAt(fresh, '/x')).map((row) => row.issue)
+    for (const id of ['og-missing', 'html-lang-missing', 'viewport-missing', 'charset-missing']) {
+      expect(now).toContain(id)
+    }
+    // The same page as an earlier crawl stored it, without those fields.
+    const crawlId = await olderPage('/x')
+    await expect(analyseCrawl(db, crawlId, EMPTY_AUDIT_SNAPSHOT)).resolves.toBeDefined()
+    const issues = (await issuesAt(crawlId, '/x')).map((row) => row.issue)
+    for (const id of NEW_FACT_ISSUES) expect(issues).not.toContain(id)
+  })
+
+  it('still finds what the answer alone says: a slow response and a temporary redirect', async () => {
+    const crawlId = await crawl(
+      websiteOf({
+        at: '/x',
+        pages: { '/x': { ...page('/x'), responseTimeMs: 2500 }, '/y': moved('/about', 307) },
+      }),
+    )
+    const found = async (at: string) => (await issuesAt(crawlId, at)).map((row) => row.issue)
+    expect(await found('/x')).toContain('slow-response')
+    expect(await found('/y')).toContain('redirect-temporary')
+  })
+})
+
+describe('social tags, the document and what a page loads', () => {
+  const only = (scenario: Scenario) => crawl(websiteOf(scenario))
+  const issuesOf = async (crawlId: string, at: string) =>
+    (await issuesAt(crawlId, at)).map((row) => row.issue)
+
+  it('does not call a page with Open Graph tags missing them, nor one with none incomplete', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', { social: '<meta property="og:locale" content="en_US">' }),
+        '/y': page('/y', { social: null }),
+      },
+    })
+    const x = await issuesOf(crawlId, '/x')
+    expect(x).not.toContain('og-missing')
+    expect(x).toContain('og-incomplete')
+    expect(x).toContain('twitter-card-missing')
+    const y = await issuesOf(crawlId, '/y')
+    expect(y).toContain('og-missing')
+    expect(y).not.toContain('og-incomplete')
+    expect(y).toContain('twitter-card-missing')
+  })
+
+  it('compares og:url with the canonical, and with the page itself when it has none', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', {
+          canonical: `${SITE}/main`,
+          social: shared('/x', { url: `${SITE}/main` }),
+        }),
+        '/y': page('/y', { canonical: null, social: shared('/y', { url: `${SITE}/other` }) }),
+        '/z': page('/z', { canonical: null, social: shared('/z') }),
+      },
+    })
+    expect(await issuesOf(crawlId, '/x')).not.toContain('og-url-mismatch')
+    expect(await issuesOf(crawlId, '/y')).toContain('og-url-mismatch')
+    expect(await issuesOf(crawlId, '/z')).not.toContain('og-url-mismatch')
+  })
+
+  it('reports a share image of the crawl that fails or redirects, with it as evidence', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', { social: shared('/x', { image: '/gone.png' }) }),
+        '/y': page('/y', { social: shared('/y', { image: '/moved.png' }) }),
+        '/moved.png': moved('/about'),
+        '/ok': page('/ok', { social: shared('/ok', { image: '/fine.png' }) }),
+        '/fine.png': { statusCode: 200, headers: { 'content-type': 'image/png' } },
+        // Only the twitter image: it is the one that is checked.
+        '/t': page('/t', {
+          social: `${shared('/t', { image: 'https://cdn.example.net/ok.png' }).replace(/<meta property="og:image"[^>]*>/, '')}<meta name="twitter:image" content="/gone.png">`,
+        }),
+      },
+    })
+    const found = (await issuesAt(crawlId, '/x')).find((row) => row.issue === 'og-image-broken')
+    expect(found?.evidence).toMatchObject({ kind: 'related-urls', urls: [`${SITE}/gone.png`] })
+    expect(await issuesOf(crawlId, '/y')).toContain('og-image-broken')
+    expect(await issuesOf(crawlId, '/ok')).not.toContain('og-image-broken')
+    expect(await issuesOf(crawlId, '/t')).toContain('og-image-broken')
+  })
+
+  it('does not say a share image the crawl did not request is broken', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', { social: shared('/x', { image: 'https://cdn.example.net/gone.png' }) }),
+      },
+    })
+    expect(await issuesOf(crawlId, '/x')).not.toContain('og-image-broken')
+  })
+
+  it('judges the language of the document, and the charset by the header too', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/a': page('/a', { html: '<html lang="es-419">' }),
+        '/b': page('/b', { html: '<html lang="en-UK">' }),
+        '/c': page('/c', { html: '<html lang="">' }),
+        '/d': page('/d', {
+          document: '<meta name="viewport" content="width=device-width">',
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+        '/e': page('/e', {
+          document:
+            '<meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta name="viewport" content="width=device-width">',
+        }),
+      },
+    })
+    expect(await issuesOf(crawlId, '/a')).not.toContain('html-lang-invalid')
+    expect(await issuesOf(crawlId, '/b')).toContain('html-lang-invalid')
+    const c = await issuesOf(crawlId, '/c')
+    expect(c).toContain('html-lang-missing')
+    expect(c).not.toContain('html-lang-invalid')
+    expect(await issuesOf(crawlId, '/d')).not.toContain('charset-missing')
+    expect(await issuesOf(crawlId, '/e')).not.toContain('charset-missing')
+  })
+
+  it('finds a response slower than the threshold of the domain, and only a page that answered', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/fast': { ...page('/fast'), responseTimeMs: 900 },
+        '/slow': { ...page('/slow'), responseTimeMs: 1001 },
+        '/slow-404': {
+          statusCode: 404,
+          headers: { 'content-type': 'text/html' },
+          responseTimeMs: 5000,
+        },
+      },
+    })
+    expect(await issuesOf(crawlId, '/fast')).not.toContain('slow-response')
+    expect(await issuesOf(crawlId, '/slow')).toContain('slow-response')
+    expect(await issuesOf(crawlId, '/slow-404')).not.toContain('slow-response')
+    await analyseCrawl(db, crawlId, auditSnapshotOf(1, [], undefined, { responseTimeMaxMs: 5000 }))
+    expect(await issuesOf(crawlId, '/slow')).not.toContain('slow-response')
+    await analyseCrawl(db, crawlId, auditSnapshotOf(1, [], undefined, { responseTimeMaxMs: 500 }))
+    expect(await issuesOf(crawlId, '/fast')).toContain('slow-response')
+  })
+
+  it('tells a temporary redirect from a permanent one', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/a': moved('/about', 301),
+        '/b': moved('/about', 302),
+        '/c': moved('/about', 307),
+        '/d': moved('/about', 308),
+      },
+    })
+    expect(await issuesOf(crawlId, '/a')).not.toContain('redirect-temporary')
+    expect(await issuesOf(crawlId, '/b')).toContain('redirect-temporary')
+    expect(await issuesOf(crawlId, '/c')).toContain('redirect-temporary')
+    expect(await issuesOf(crawlId, '/d')).not.toContain('redirect-temporary')
+  })
+
+  it('reports a script, stylesheet or image that fails on the page that loads it', async () => {
+    const crawlId = await only({
+      at: '/x',
+      pages: {
+        '/x': page('/x', {
+          head: '<link rel="stylesheet" href="/gone.css"><link rel="icon" href="/gone.ico">',
+          body: '<script src="/gone.js"></script><img src="/ok.png" alt="a" width="1" height="1"><iframe src="/gone-frame"></iframe>',
+        }),
+        '/ok.png': { statusCode: 200, headers: { 'content-type': 'image/png' } },
+        '/y': page('/y', {
+          body: '<img src="https://cdn.example.net/gone.png" alt="a" width="1" height="1">',
+        }),
+      },
+    })
+    const found = (await issuesAt(crawlId, '/x')).find((row) => row.issue === 'resources-broken')
+    expect(found?.evidence).toMatchObject({ kind: 'related-urls', total: 3 })
+    const urls = found?.evidence?.kind === 'related-urls' ? found.evidence.urls : []
+    expect([...urls].sort()).toEqual([`${SITE}/gone-frame`, `${SITE}/gone.css`, `${SITE}/gone.js`])
+    // A `head-link` cannot be told to be a stylesheet or an icon, so it is not judged.
+    expect(urls).not.toContain(`${SITE}/gone.ico`)
+    // The page itself is not blamed on the resource: it gets its own finding.
+    expect(await issuesOf(crawlId, '/gone.js')).toContain('client-error')
+    // Another site's image that the crawl did not request is not known to be broken.
+    expect(await issuesOf(crawlId, '/y')).not.toContain('resources-broken')
   })
 })
 

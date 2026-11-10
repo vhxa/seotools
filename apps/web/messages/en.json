@@ -696,6 +696,11 @@
       "audit": "Audit",
       "expectation": "Expected indexing",
       "title": "Title",
+      "ogTitle": "og:title",
+      "ogDescription": "og:description",
+      "ogImage": "og:image",
+      "twitterCard": "twitter:card",
+      "htmlLang": "HTML lang",
       "issues": "Number of issues",
       "warnings": "Number of warnings",
       "opportunities": "Number of opportunities",
@@ -752,7 +757,8 @@
       "linksOut": "Links to",
       "audit": "Audit and indexing",
       "technical": "Technical metadata",
-      "ruleOrigins": "Rule origins"
+      "ruleOrigins": "Rule origins",
+      "preview": "Search and social preview"
     },
     "fields": {
       "contentType": "Content type",
@@ -837,7 +843,19 @@
     },
     "words": "Words",
     "inbound": "Inbound links",
-    "viewHistory": "View URL history"
+    "viewHistory": "View URL history",
+    "preview": {
+      "google": "In search results",
+      "social": "When shared",
+      "card": "Twitter card: {card}",
+      "noTitle": "No title: Google picks one",
+      "noSocialTitle": "No title: networks pick one",
+      "noDescription": "No meta description: Google picks a snippet from the page",
+      "notRecorded": "Not recorded by this crawl: run a new crawl to see it.",
+      "untagged": "The page has no Open Graph tags: social networks choose what to show.",
+      "imageInsecure": "Image not shown: it is not served over HTTPS",
+      "noImage": "No image"
+    }
   },
   "UrlLinks": {
     "in": {
@@ -926,8 +944,10 @@
       "anchor-empty": "Links with no text",
       "anchor-vague": "Links with vague text",
       "canonical-broken": "Canonical target",
+      "og-image-broken": "Share image",
       "canonical-redirect": "Canonical target",
       "links-to-broken": "Broken URLs it links to",
+      "resources-broken": "Broken resources it loads",
       "links-to-redirect": "Redirecting URLs it links to",
       "links-to-canonicalised": "Canonicalised URLs it links to",
       "links-tracking-parameters": "URLs with tracking parameters it links to"
@@ -997,6 +1017,14 @@
     "redirect-3xx": {
       "name": "3xx redirect (internal)",
       "description": "A URL of this site that redirects. Links to it should point at its target."
+    },
+    "redirect-temporary": {
+      "name": "Temporary redirect (302/307)",
+      "description": "A URL of this site answers with a temporary redirect, so search engines keep the old URL. If the move is permanent, use a 301 or 308."
+    },
+    "slow-response": {
+      "name": "Slow response",
+      "description": "The page took longer to answer than the threshold set for this domain (Settings → Audit → Thresholds). Slow responses hold back crawling and hurt visitors."
     },
     "broken-external-link": {
       "name": "Broken external link",
@@ -1362,6 +1390,22 @@
       "name": "Content misplaced before the '<head>'",
       "description": "Something comes before the '<head>', which can make browsers end it early."
     },
+    "html-lang-missing": {
+      "name": "No language on '<html>'",
+      "description": "The '<html>' tag has no lang attribute, so screen readers and translators have to guess the language of the page."
+    },
+    "html-lang-invalid": {
+      "name": "Invalid language on '<html>'",
+      "description": "The lang attribute of '<html>' is not a valid language tag. Use a code such as en, es or pt-BR."
+    },
+    "viewport-missing": {
+      "name": "No viewport meta tag",
+      "description": "The page has no '<meta name=\"viewport\">', so phones show it as a shrunken desktop page. It matters for mobile-first indexing."
+    },
+    "charset-missing": {
+      "name": "No character set declared",
+      "description": "Neither the Content-Type header nor the document declares a character set, so a browser may guess it wrong."
+    },
     "expected-indexable-blocked": {
       "name": "Expected indexable but blocked",
       "description": "You declared this URL should be indexable, but the crawl found something in the way: a noindex, a canonical to another URL, a robots.txt block or a redirect. The details name what it found. An error response is reported by its own response-code issue."
@@ -1414,6 +1458,10 @@
       "name": "Links to broken URLs",
       "description": "The page links to URLs of this site that answer 4xx/5xx or do not answer. Fix or remove those links."
     },
+    "resources-broken": {
+      "name": "Loads broken resources",
+      "description": "The page loads images, scripts, stylesheets, media or frames that answer 4xx/5xx or do not answer. Fix or remove them. Only resources the crawl requested are judged."
+    },
     "links-to-redirect": {
       "name": "Links to redirects",
       "description": "The page links to URLs that redirect. Link to the final URL."
@@ -1433,6 +1481,26 @@
     "structured-data-recommended-missing": {
       "name": "Structured data missing recommended properties",
       "description": "The JSON-LD declares a type that can show as a rich result but lacks properties Google recommends, as listed. Adding them can make the result richer."
+    },
+    "og-missing": {
+      "name": "No Open Graph tags",
+      "description": "The page has no Open Graph tag, so social networks and chat apps pick the title, description and image on their own when it is shared."
+    },
+    "og-incomplete": {
+      "name": "Open Graph tags missing",
+      "description": "The page has some Open Graph tags but lacks the ones listed: og:title, og:type, og:image or og:url."
+    },
+    "og-image-broken": {
+      "name": "Share image broken",
+      "description": "The image the page offers for sharing (og:image, or twitter:image if there is none) is a URL of this crawl that fails or redirects, so shared links show no picture. Only images the crawl requested are judged."
+    },
+    "og-url-mismatch": {
+      "name": "og:url differs from the canonical",
+      "description": "The page's og:url is not its canonical URL (or its own address when it has none), so shares and likes may be counted for another URL."
+    },
+    "twitter-card-missing": {
+      "name": "No Twitter Card",
+      "description": "The page has no twitter:card, so X does not know which card to show. It reads the Open Graph tags for the text, but not for the card type."
     }
   },
   "LinkKinds": {
@@ -2011,6 +2079,7 @@
       "content": "Content",
       "images": "Images",
       "structured-data": "Structured data",
+      "social": "Social",
       "links": "Links",
       "urls": "URLs",
       "security": "Security",
@@ -2031,7 +2100,8 @@
       "hreflang-source": "Source",
       "security-header": "Header",
       "indexability-blocker": "Blocker",
-      "structured-data-missing": "Missing"
+      "structured-data-missing": "Missing",
+      "social-missing": "Missing"
     },
     "hreflangSources": {
       "html": "HTML",
@@ -2333,6 +2403,10 @@
         "imageMaxKb": {
           "label": "Heaviest image",
           "unit": "Kilobytes"
+        },
+        "responseTimeMaxMs": {
+          "label": "Slowest response",
+          "unit": "Milliseconds"
         }
       }
     }
@@ -2706,7 +2780,8 @@
     "nofollow-required-missing": "Add the required nofollow directive in the page head or HTTP header, or correct the rule if links should be followed. Nofollow does not prevent indexing.",
     "robots-block-required-missing": "Add the intended block in robots.txt for the audited bot, or correct the rule that requires it. A robots.txt block does not guarantee removal from the index.",
     "sitemap-required-missing": "Include this URL as an entry in a sitemap that the crawler can read, or correct the rule requiring it. Run a full crawl to verify membership.",
-    "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change."
+    "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change.",
+    "social": "Add the Open Graph tags (og:title, og:type, og:image, og:url) and a twitter:card to the head of the page template. Use an og:url equal to the canonical and an image that answers over HTTPS, then crawl again."
   },
   "Companies": {
     "metaTitle": "Companies · Administration · seotools",

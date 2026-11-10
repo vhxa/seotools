@@ -360,6 +360,43 @@ describe('the pages file', () => {
     expect(text).toMatch(/,200,/)
   })
 
+  it('writes the social tags and the language of the page, empty where the crawl did not store them', () => {
+    const facts = {
+      social: {
+        openGraphTags: 3,
+        title: '=SUM(1+1)',
+        description: 'Shared, with a comma',
+        image: 'https://cdn.example.net/a.png',
+        twitterCard: 'summary',
+      },
+      document: { lang: 'es', viewport: null, charset: null },
+    }
+    const url = crawlUrl('/', { data: { facts } as unknown as CrawlUrl['data'] })
+    const [row] = asObjects(
+      'pages',
+      exportRecords('pages', { url, issues: [], audit: audit(url) }, context()).join(''),
+    )
+    expect(row).toMatchObject({
+      'og:title': "'=SUM(1+1)",
+      'og:description': 'Shared, with a comma',
+      'og:image': 'https://cdn.example.net/a.png',
+      'twitter:card': 'summary',
+      'HTML lang': 'es',
+    })
+    const older = crawlUrl('/old')
+    const [empty] = asObjects(
+      'pages',
+      exportRecords('pages', { url: older, issues: [], audit: audit(older) }, context()).join(''),
+    )
+    expect(empty).toMatchObject({
+      'og:title': '',
+      'og:description': '',
+      'og:image': '',
+      'twitter:card': '',
+      'HTML lang': '',
+    })
+  })
+
   it('keeps the HTTP status a bare number, even a negative-looking one is not text', () => {
     const url = crawlUrl('/')
     const record = exportRecords('pages', { url, issues: [], audit: undefined }, context()).join('')

@@ -344,6 +344,8 @@ const PAGE_LOCAL_LIST = [
   'soft-404-possible',
   'refresh-redirect',
   'redirect-3xx',
+  'redirect-temporary',
+  'slow-response',
   'directive-outside-head',
   'directives-conflict',
   'directives-conflict-snippets',
@@ -388,6 +390,10 @@ const PAGE_LOCAL_LIST = [
   'structured-data-required-missing',
   'structured-data-recommended-missing',
   'no-structured-data',
+  'og-missing',
+  'og-incomplete',
+  'og-url-mismatch',
+  'twitter-card-missing',
   'link-to-localhost',
   'uncrawlable-links',
   'anchor-empty',
@@ -411,6 +417,10 @@ const PAGE_LOCAL_LIST = [
   'multiple-head-or-body',
   'document-too-big',
   'content-before-head',
+  'html-lang-missing',
+  'html-lang-invalid',
+  'viewport-missing',
+  'charset-missing',
 ] as const satisfies readonly PageIssueId[]
 
 const PAGE_LOCAL: ReadonlySet<string> = new Set(PAGE_LOCAL_LIST)

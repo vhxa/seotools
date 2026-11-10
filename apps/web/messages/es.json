@@ -696,6 +696,11 @@
       "audit": "Auditoría",
       "expectation": "Indexación esperada",
       "title": "Título",
+      "ogTitle": "og:title",
+      "ogDescription": "og:description",
+      "ogImage": "og:image",
+      "twitterCard": "twitter:card",
+      "htmlLang": "Idioma de la página (html lang)",
       "issues": "Número de issues",
       "warnings": "Número de warnings",
       "opportunities": "Número de opportunities",
@@ -752,7 +757,8 @@
       "linksOut": "Enlaza a",
       "audit": "Auditoría e indexación",
       "technical": "Metadatos técnicos",
-      "ruleOrigins": "Origen de las reglas"
+      "ruleOrigins": "Origen de las reglas",
+      "preview": "Vista previa en buscadores y redes"
     },
     "fields": {
       "contentType": "Tipo de contenido",
@@ -837,7 +843,19 @@
     },
     "words": "Palabras",
     "inbound": "Enlaces entrantes",
-    "viewHistory": "Ver historial de la URL"
+    "viewHistory": "Ver historial de la URL",
+    "preview": {
+      "google": "En los resultados de búsqueda",
+      "social": "Al compartirla",
+      "card": "Twitter Card: {card}",
+      "noTitle": "Sin título: Google elige uno",
+      "noSocialTitle": "Sin título: las redes eligen uno",
+      "noDescription": "Sin meta descripción: Google elige un fragmento de la página",
+      "notRecorded": "Este rastreo no lo registró: lanza un rastreo nuevo para verlo.",
+      "untagged": "La página no tiene etiquetas Open Graph: las redes sociales eligen qué mostrar.",
+      "imageInsecure": "Imagen no mostrada: no se sirve por HTTPS",
+      "noImage": "Sin imagen"
+    }
   },
   "UrlLinks": {
     "in": {
@@ -926,8 +944,10 @@
       "anchor-empty": "Enlaces sin texto",
       "anchor-vague": "Enlaces con un texto poco descriptivo",
       "canonical-broken": "Destino del canonical",
+      "og-image-broken": "Imagen para compartir",
       "canonical-redirect": "Destino del canonical",
       "links-to-broken": "URLs rotas a las que enlaza",
+      "resources-broken": "Recursos rotos que carga",
       "links-to-redirect": "URLs que redirigen a las que enlaza",
       "links-to-canonicalised": "URLs canonicalizadas a las que enlaza",
       "links-tracking-parameters": "URLs con parámetros de seguimiento a las que enlaza"
@@ -997,6 +1017,14 @@
     "redirect-3xx": {
       "name": "Redirección 3xx (interna)",
       "description": "Una URL de esta web que redirige. Los enlaces que apuntan a ella deberían ir al destino."
+    },
+    "redirect-temporary": {
+      "name": "Redirección temporal (302/307)",
+      "description": "Una URL de esta web responde con una redirección temporal, así que los buscadores conservan la URL antigua. Si el cambio es definitivo, usa un 301 o un 308."
+    },
+    "slow-response": {
+      "name": "Respuesta lenta",
+      "description": "La página tardó en responder más que el umbral fijado para este dominio (Ajustes → Auditoría → Umbrales). Las respuestas lentas frenan el rastreo y perjudican a los visitantes."
     },
     "broken-external-link": {
       "name": "Enlace externo roto",
@@ -1362,6 +1390,22 @@
       "name": "Contenido mal colocado antes del '<head>'",
       "description": "Hay algo antes del '<head>', lo que puede hacer que los navegadores lo cierren antes de tiempo."
     },
+    "html-lang-missing": {
+      "name": "Sin idioma en '<html>'",
+      "description": "La etiqueta '<html>' no tiene el atributo lang, así que los lectores de pantalla y los traductores tienen que adivinar el idioma de la página."
+    },
+    "html-lang-invalid": {
+      "name": "Idioma no válido en '<html>'",
+      "description": "El atributo lang de '<html>' no es una etiqueta de idioma válida. Usa un código como en, es o pt-BR."
+    },
+    "viewport-missing": {
+      "name": "Sin meta viewport",
+      "description": "La página no tiene '<meta name=\"viewport\">', así que los móviles la muestran como una página de escritorio reducida. Importa para la indexación mobile-first."
+    },
+    "charset-missing": {
+      "name": "Sin juego de caracteres declarado",
+      "description": "Ni la cabecera Content-Type ni el documento declaran un juego de caracteres, así que un navegador puede interpretarlo mal."
+    },
     "expected-indexable-blocked": {
       "name": "Se esperaba indexable pero está bloqueada",
       "description": "Declaraste que esta URL debe ser indexable, pero el rastreo encontró algo que lo impide: un noindex, un canonical a otra URL, un bloqueo de robots.txt o una redirección. El detalle indica qué encontró. Una respuesta de error la señala su propio hallazgo de códigos de respuesta."
@@ -1414,6 +1458,10 @@
       "name": "Enlaza a URLs rotas",
       "description": "La página enlaza a URLs de esta web que responden 4xx/5xx o no responden. Corrige o quita esos enlaces."
     },
+    "resources-broken": {
+      "name": "Carga recursos rotos",
+      "description": "La página carga imágenes, scripts, hojas de estilo, medios o marcos que responden 4xx/5xx o no responden. Corrígelos o quítalos. Solo se juzgan los recursos que el rastreo solicitó."
+    },
     "links-to-redirect": {
       "name": "Enlaza a redirecciones",
       "description": "La página enlaza a URLs que redirigen. Enlaza a la URL final."
@@ -1433,6 +1481,26 @@
     "structured-data-recommended-missing": {
       "name": "Datos estructurados sin propiedades recomendadas",
       "description": "El JSON-LD declara un tipo que puede mostrarse como resultado enriquecido pero le faltan propiedades que Google recomienda, según la lista. Añadirlas puede enriquecer el resultado."
+    },
+    "og-missing": {
+      "name": "Sin etiquetas Open Graph",
+      "description": "La página no tiene ninguna etiqueta Open Graph, así que las redes sociales y las apps de mensajería eligen por su cuenta el título, la descripción y la imagen al compartirla."
+    },
+    "og-incomplete": {
+      "name": "Faltan etiquetas Open Graph",
+      "description": "La página tiene algunas etiquetas Open Graph pero le faltan las indicadas: og:title, og:type, og:image u og:url."
+    },
+    "og-image-broken": {
+      "name": "Imagen para compartir rota",
+      "description": "La imagen que la página ofrece al compartirse (og:image, o twitter:image si no hay otra) es una URL de este rastreo que falla o redirige, así que los enlaces compartidos no muestran imagen. Solo se juzgan las imágenes que el rastreo solicitó."
+    },
+    "og-url-mismatch": {
+      "name": "og:url distinta de la canónica",
+      "description": "El og:url de la página no es su URL canónica (ni su propia dirección si no tiene), así que las veces que se comparte o se da «me gusta» pueden contarse para otra URL."
+    },
+    "twitter-card-missing": {
+      "name": "Sin Twitter Card",
+      "description": "La página no tiene twitter:card, así que X no sabe qué tarjeta mostrar. Lee las etiquetas Open Graph para el texto, pero no para el tipo de tarjeta."
     }
   },
   "LinkKinds": {
@@ -2011,6 +2079,7 @@
       "content": "Contenido",
       "images": "Imágenes",
       "structured-data": "Datos estructurados",
+      "social": "Redes sociales",
       "links": "Enlaces",
       "urls": "URLs",
       "security": "Seguridad",
@@ -2031,7 +2100,8 @@
       "hreflang-source": "Origen",
       "security-header": "Cabecera",
       "indexability-blocker": "Impedimento",
-      "structured-data-missing": "Faltan"
+      "structured-data-missing": "Faltan",
+      "social-missing": "Falta"
     },
     "hreflangSources": {
       "html": "HTML",
@@ -2333,6 +2403,10 @@
         "imageMaxKb": {
           "label": "Imagen más pesada",
           "unit": "Kilobytes"
+        },
+        "responseTimeMaxMs": {
+          "label": "Respuesta más lenta",
+          "unit": "Milisegundos"
         }
       }
     }
@@ -2706,7 +2780,8 @@
     "nofollow-required-missing": "Añade la directiva nofollow exigida en el head o la cabecera HTTP, o corrige la regla si deben seguirse los enlaces. Nofollow no impide la indexación.",
     "robots-block-required-missing": "Añade el bloqueo previsto en robots.txt para el bot auditado o corrige la regla que lo exige. Un bloqueo en robots.txt no garantiza la eliminación del índice.",
     "sitemap-required-missing": "Incluye esta URL como entrada en un sitemap que el rastreador pueda leer o corrige la regla que lo exige. Ejecuta un rastreo completo para verificar su presencia.",
-    "sitemap-forbidden-present": "Elimina la entrada de la URL de los sitemaps afectados o corrige la regla si debe figurar en ellos. Ejecuta un rastreo completo para verificar el cambio."
+    "sitemap-forbidden-present": "Elimina la entrada de la URL de los sitemaps afectados o corrige la regla si debe figurar en ellos. Ejecuta un rastreo completo para verificar el cambio.",
+    "social": "Añade las etiquetas Open Graph (og:title, og:type, og:image, og:url) y una twitter:card al head de la plantilla. Usa un og:url igual al canonical y una imagen que responda por HTTPS, y vuelve a rastrear."
   },
   "Companies": {
     "metaTitle": "Empresas · Administración · seotools",
