@@ -25,7 +25,7 @@ export function ParameterToggle({
   if (!canEdit) return null
   return (
     <form onSubmit={onSubmit}>
-      <Button size="sm" variant="outline" disabled={pending}>
+      <Button type="submit" size="sm" variant="outline" disabled={pending}>
         {t(ignored ? 'stopIgnoring' : 'ignore')}
       </Button>
       {state.error && <p role="alert">{state.error}</p>}

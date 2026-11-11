@@ -375,6 +375,7 @@ test('ignored parameter settings persist and explain next-crawl behavior', async
   await ignoredRow
     .getByRole('button', { name: 'Stop ignoring (including matching prefixes)', exact: true })
     .click()
+  await expect(ignoredRow).toHaveCount(0)
   await page.goto(`${domain}/settings/crawl`)
   await expect(names).toHaveValue('utm_*')
   await names.fill('')
