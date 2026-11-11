@@ -19,7 +19,7 @@ packages/db/         # Database layer: Drizzle schemas, migrations and repositor
 
 ```bash
 # PostgreSQL: start a database, then set DATABASE_URL in .env
-docker run -d --name seotools-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=seotools -p 5432:5432 postgres:17
+docker run -d --name seotools-pg -v seotools-pg-data:/var/lib/postgresql/data -e POSTGRES_PASSWORD=test -e POSTGRES_DB=seotools -p 5432:5432 postgres:17
 # DATABASE_URL=postgres://postgres:test@localhost:5432/seotools
 ```
 
