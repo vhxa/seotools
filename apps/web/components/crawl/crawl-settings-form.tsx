@@ -110,6 +110,7 @@ export function CrawlSettingsForm({
   defaultUserAgent: string
   secretsSaved: boolean
 }) {
+  const v = useTranslations('Vitals')
   const t = useTranslations('CrawlSettings')
   const canEdit = useCanEdit()
   const [state, onSubmit, pending] = useFormActionState<ActionState>(
@@ -133,6 +134,16 @@ export function CrawlSettingsForm({
 
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
+      <div className="grid gap-2">
+        <Label htmlFor="collectVitals">{v('collect')}</Label>
+        <Switch
+          id="collectVitals"
+          name="collectVitals"
+          defaultChecked={settings.collectVitals}
+          disabled={!canEdit}
+        />
+        <p className="text-sm text-muted-foreground">{v('privacy')}</p>
+      </div>
       {/* Who cannot change the settings still reads them: inputs are disabled, not hidden. */}
       <Section
         id="requests"

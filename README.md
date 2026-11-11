@@ -8,6 +8,8 @@ Raspberry Pi to a VPS.
 
 ## What it does
 
+- **Core Web Vitals** from Google CrUX (field) and PageSpeed Insights (lab), with trends and URL findings.
+  Paused, archived, disabled or keyless runs record nothing and are not caught up later.
 - **Crawls whole sites** from the home page, the sitemaps and every link, including what
   `robots.txt` blocks (auditing it is the point), with per-domain scope, depth, rate limits, request
   headers and Basic Auth for staging sites and lists of URLs. The Crawls area brings runs,
@@ -66,6 +68,8 @@ This pulls the newest **stable release**. For anything you rely on, pin a versio
 (`SEOTOOLS_IMAGE` in `.env`) and update it on purpose: see [Updating](#updating).
 
 ## Configuration
+
+Administrators can save an encrypted Google API key in **Administration → Integrations**. With collection enabled in a domain’s Crawling settings, its page addresses and origin are sent to Google after each full crawl.
 
 All configuration is through environment variables. See [`.env.example`](.env.example) for the
 annotated list.

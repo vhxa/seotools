@@ -43,6 +43,9 @@ const U = 'url'
 const S = 'site'
 
 const SCOPE: Record<PageIssueId, VerificationScope> = {
+  'lcp-poor': S,
+  'inp-poor': S,
+  'cls-poor': S,
   // response codes. The redirect trail goes through other URLs; a broken link is not on this site.
   'no-response': U,
   'server-error': U,

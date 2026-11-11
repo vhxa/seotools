@@ -8,6 +8,7 @@ import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
 import { InfoHelp } from '@/components/help'
+import { DomainVitals } from '@/components/pages/domain-vitals'
 import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { TrendChart } from '@/components/pages/trend-chart'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -229,6 +230,9 @@ export default async function DomainDashboardPage({
           </div>
         </section>
       )}
+
+      <DomainVitals crawls={crawls} domainId={domain.id} />
+
       {latest && figures && (
         <section aria-labelledby="trend" className="grid gap-4">
           <h2 id="trend" className="text-lg font-medium">

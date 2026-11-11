@@ -1,3 +1,4 @@
+import { describeVitals } from './vitals'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -317,6 +318,7 @@ export function describeDatabaseContract(
       })
     })
 
+    describeVitals(() => db)
     describeLifecycle(
       () => db,
       (table) => countRows(table),

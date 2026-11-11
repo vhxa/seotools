@@ -1,3 +1,4 @@
+import type { VitalMetrics } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
   AccessGrant,
@@ -1322,7 +1323,27 @@ export interface CrawlFileRepository {
   deferCheck(input: { domainId: string; nextCheckAt: Date }): Promise<void>
 }
 
+export interface VitalsRecord extends VitalMetrics {
+  crawlId: string
+  formFactor: string
+  status: string
+  error: string | null
+  collectedAt: Date
+}
+export interface UrlVitalsRecord extends VitalsRecord {
+  urlHash: string
+  source: string
+}
+export interface VitalsRepository {
+  /** Latest finished full crawl with origin rows, including retained origin-only history. */
+  latestCrawl(domainId: string): Promise<Crawl | null>
+  origins(crawlId: string): Promise<VitalsRecord[]>
+  urls(crawlId: string): Promise<UrlVitalsRecord[]>
+  saveOrigin(row: VitalsRecord): Promise<void>
+  saveUrl(row: UrlVitalsRecord): Promise<void>
+}
 export interface Database {
+  readonly vitals: VitalsRepository
   readonly dialect: Dialect
   readonly jobs: JobRepository
   readonly heartbeats: HeartbeatRepository

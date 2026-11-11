@@ -1,4 +1,5 @@
 import {
+  emptyVitals,
   DEFAULT_CRAWL_SETTINGS,
   EMPTY_AUDIT_SNAPSHOT,
   crawlUrlHash,
@@ -193,6 +194,16 @@ export function describeLifecycle(
         { pageHash: crawlUrlHash(url), lang: 'es', url: `${url}es` },
       ])
       await db.crawls.finish(crawl.id, { status: 'completed' })
+      const vital = {
+        ...emptyVitals(),
+        crawlId: crawl.id,
+        formFactor: 'PHONE',
+        status: 'collected',
+        error: null,
+        collectedAt: new Date(),
+      }
+      await db.vitals.saveOrigin(vital)
+      await db.vitals.saveUrl({ ...vital, urlHash: crawlUrlHash(url), source: 'field' })
       expect(await db.crawls.prune({ domainId, type: 'full', keep: 1 })).toBe(1)
       await db.alerts.save({
         userId: member.id,

@@ -706,6 +706,7 @@ describe('the configuration across crawls', () => {
       version: 0,
       semantics: AUDIT_SEMANTICS,
       languages: NO_LANGUAGES,
+      unobserved: ['cls-poor', 'inp-poor', 'lcp-poor'],
       rules: [],
     })
   })

@@ -1,4 +1,6 @@
+import type { VitalMetrics } from '@seotools/core'
 import {
+  emptyVitals,
   EMPTY_AUDIT_SNAPSHOT,
   MAX_EVIDENCE_ITEMS,
   PAGE_ISSUE_IDS,
@@ -27,6 +29,7 @@ const log = createLogger('test', 'silent')
 interface Scenario {
   /** Where the issue should be found: a path, or an absolute URL. */
   at: string
+  vitals?: Partial<VitalMetrics>
   pages?: Record<string, Answer>
   /** Paths or URLs the home page links to, on top of every page in `pages`. */
   homeLinks?: string
@@ -105,6 +108,9 @@ const shared = (
    ${card ? '<meta name="twitter:card" content="summary_large_image">' : ''}`
 
 const SCENARIOS: Record<PageIssueId, Scenario> = {
+  'lcp-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { lcp: 4001 } },
+  'inp-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { inp: 501 } },
+  'cls-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { cls: 0.251 } },
   // --- what is expected of a URL's indexation ------------------------------
   'expected-indexable-blocked': {
     at: '/x',
@@ -749,6 +755,20 @@ describe('each issue', () => {
   )('finds %s', async (id) => {
     const scenario = SCENARIOS[id]
     const crawlId = await crawl(websiteOf(scenario), scenario.rules)
+    if (scenario.vitals) {
+      await db.vitals.saveUrl({
+        ...emptyVitals(),
+        ...scenario.vitals,
+        crawlId,
+        urlHash: crawlUrlHash(absolute(scenario.at)),
+        source: 'field',
+        formFactor: 'PHONE',
+        status: 'collected',
+        error: null,
+        collectedAt: new Date(),
+      })
+      await analyseCrawl(db, crawlId, await currentAuditConfig(db, domainId))
+    }
     const found = await issuesAt(crawlId, scenario.at)
     expect(found.map((row) => row.issue)).toContain(id)
     if (scenario.details) {
@@ -858,20 +878,30 @@ describe('what a crawl did not look for', () => {
     const crawlId = await olderPage('/x')
     await analyseCrawl(db, crawlId, EMPTY_AUDIT_SNAPSHOT)
     const snapshot = (await db.crawls.get(crawlId))?.auditSnapshot
-    expect(snapshot?.unobserved).toEqual([...NEW_FACT_ISSUES].sort())
+    expect(snapshot?.unobserved).toEqual(
+      [...NEW_FACT_ISSUES, 'cls-poor', 'inp-poor', 'lcp-poor'].sort(),
+    )
 
     // Analysed again from what it stored (as the startup reanalysis does): worked out again.
     await analyseCrawl(db, crawlId, snapshot!)
     expect((await db.crawls.get(crawlId))?.auditSnapshot?.unobserved).toEqual(
-      [...NEW_FACT_ISSUES].sort(),
+      [...NEW_FACT_ISSUES, 'cls-poor', 'inp-poor', 'lcp-poor'].sort(),
     )
 
     // A crawl that looked says nothing is unobserved, and keeps no field.
     const fresh = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x') } }))
-    expect((await db.crawls.get(fresh))?.auditSnapshot).not.toHaveProperty('unobserved')
+    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual([
+      'cls-poor',
+      'inp-poor',
+      'lcp-poor',
+    ])
     // Which also holds when it is analysed again from a snapshot that said otherwise.
     await analyseCrawl(db, fresh, snapshot!)
-    expect((await db.crawls.get(fresh))?.auditSnapshot).not.toHaveProperty('unobserved')
+    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual([
+      'cls-poor',
+      'inp-poor',
+      'lcp-poor',
+    ])
 
     // Against the old crawl, what the new one reports is not new: nobody could have seen it.
     const bare = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x', { social: null }) } }))
@@ -1599,4 +1629,27 @@ describe('figures a domain sets for its checks', () => {
       changed: false,
     })
   })
+})
+
+describe('field vitals findings', () => {
+  it.each([
+    ['lcp-poor', 'lcp', 2500, 4000],
+    ['inp-poor', 'inp', 200, 500],
+    ['cls-poor', 'cls', 0.1, 0.25],
+  ] as const)(
+    'raises %s only above the poor threshold, never without field data',
+    (issue, metric, good, poor) => {
+      for (const value of [null, good, poor]) {
+        const url = { vitals: { ...emptyVitals(), [metric]: value } } as AuditedUrl
+        expect(CHECKS[issue](url, {} as Site)).toBe(false)
+      }
+      expect(
+        CHECKS[issue](
+          { vitals: { ...emptyVitals(), [metric]: poor + 0.001 } } as AuditedUrl,
+          {} as Site,
+        ),
+      ).toBe(true)
+      expect(CHECKS[issue]({} as AuditedUrl, {} as Site)).toBe(false)
+    },
+  )
 })

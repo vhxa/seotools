@@ -1,7 +1,7 @@
 import { auditSnapshotOf, type Logger } from '@seotools/core'
 import type { Crawl, Database } from '@seotools/db'
 import { JobInterruptedError } from '../types'
-import { analyseCrawl } from './analysis'
+import { analyseCrawl, recordedAuditConfig } from './analysis'
 
 /** Times it looks again at a configuration that keeps changing under it, before leaving it to the job that change queued. */
 const MAX_ROUNDS = 5
@@ -29,14 +29,18 @@ const isCurrent = (crawl: Crawl, version: number) =>
  * - saving one is refused if the crawl already has a newer one (`saveAnalysis`), so a slow job never
  *   puts old results over new ones;
  * - when it finishes it looks at the configuration again, and if it moved on, analyses again.
- * Only the latest full crawl is touched: the analyses of older crawls keep the configuration they
- * were made with.
+ * By default only the latest full crawl is touched. A targeted vitals refresh of an older crawl
+ * keeps its recorded configuration.
  */
 export async function recomputeAudit(options: {
   db: Database
   domainId: string
   log: Logger
   signal?: AbortSignal
+  /** Target a stored crawl after new measurements arrive; older crawls keep their configuration. */
+  crawlId?: string
+  /** Analyse even when the audit version is current, because the stored inputs changed. */
+  force?: boolean
   /**
    * The last attempt the queue allows: if it fails, nothing will try again, and the failure is
    * recorded for the settings page to show. Earlier failures are retried, and recorded by nobody.
@@ -51,16 +55,20 @@ export async function recomputeAudit(options: {
     // Deleted since the change that queued this job: there is nothing left to analyse.
     if (!(await db.domains.get(domainId))) return { ...last, analysed }
     const config = await db.audit.config(domainId)
-    const snapshot = auditSnapshotOf(
+    let snapshot = auditSnapshotOf(
       config.version,
       config.rules,
       config.languages,
       config.thresholds,
     )
-    const crawl = await db.crawls.latestWithResults(domainId, 'full')
+    const latest = await db.crawls.latestWithResults(domainId, 'full')
+    const crawl = options.crawlId ? await db.crawls.get(options.crawlId) : latest
+    if (crawl && crawl.domainId !== domainId) throw new Error('Crawl belongs to another domain')
+    if (crawl && latest?.id !== crawl.id) snapshot = recordedAuditConfig(crawl)
     last = { crawlId: crawl?.id ?? null, version: snapshot.version }
-    if (!crawl || isCurrent(crawl, snapshot.version)) {
-      await db.audit.clearRecomputeFailure({ domainId, version: snapshot.version })
+    if (!crawl || (!(options.force && round === 0) && isCurrent(crawl, snapshot.version))) {
+      if (!crawl || crawl.id === latest?.id)
+        await db.audit.clearRecomputeFailure({ domainId, version: snapshot.version })
       return { ...last, analysed }
     }
     try {
@@ -71,7 +79,11 @@ export async function recomputeAudit(options: {
         'analysed the latest crawl again with the audit configuration',
       )
     } catch (error) {
-      if (options.finalAttempt && !(error instanceof JobInterruptedError)) {
+      if (
+        options.finalAttempt &&
+        crawl.id === latest?.id &&
+        !(error instanceof JobInterruptedError)
+      ) {
         await db.audit
           .failRecompute({
             domainId,

@@ -57,6 +57,8 @@ Who may do what with companies and domains in the UI is in `apps/web/AGENTS.md`.
 
 ## Retention and compaction
 
+`crawl_vitals` keeps origin trends and crawl-level collection state after pruning; `crawl_url_vitals` is pruned with per-URL results. Both cascade from crawls.
+
 Retention of crawl results and compaction of SQLite are described in `packages/core/src/crawl/AGENTS.md` (History and comparison).
 
 ## Raw SQL

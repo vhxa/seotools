@@ -735,7 +735,10 @@
       "finalStatus": "Final URL status",
       "hops": "Redirects in the chain",
       "loop": "Loop",
-      "referencedBy": "Referenced by"
+      "referencedBy": "Referenced by",
+      "lcp": "LCP (field, phone)",
+      "inp": "INP (field, phone)",
+      "cls": "CLS (field, phone)"
     },
     "values": {
       "internal": "This site",
@@ -1511,6 +1514,18 @@
     "twitter-card-missing": {
       "name": "No Twitter Card",
       "description": "The page has no twitter:card, so X does not know which card to show. It reads the Open Graph tags for the text, but not for the card type."
+    },
+    "lcp-poor": {
+      "name": "LCP is poor",
+      "description": "The mobile field LCP at the 75th percentile exceeds Google’s poor threshold."
+    },
+    "inp-poor": {
+      "name": "INP is poor",
+      "description": "The mobile field INP at the 75th percentile exceeds Google’s poor threshold."
+    },
+    "cls-poor": {
+      "name": "CLS is poor",
+      "description": "The mobile field CLS at the 75th percentile exceeds Google’s poor threshold."
     }
   },
   "LinkKinds": {
@@ -2094,7 +2109,8 @@
       "urls": "URLs",
       "security": "Security",
       "html": "HTML",
-      "indexing-intent": "Declared expectations"
+      "indexing-intent": "Declared expectations",
+      "performance": "Performance"
     },
     "types": {
       "issue": "Issue",
@@ -2792,7 +2808,8 @@
     "robots-block-required-missing": "Add the intended block in robots.txt for the audited bot, or correct the rule that requires it. A robots.txt block does not guarantee removal from the index.",
     "sitemap-required-missing": "Include this URL as an entry in a sitemap that the crawler can read, or correct the rule requiring it. Run a full crawl to verify membership.",
     "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change.",
-    "social": "Add the Open Graph tags (og:title, og:type, og:image, og:url) and a twitter:card to the head of the page template. Use an og:url equal to the canonical and an image that answers over HTTPS, then crawl again."
+    "social": "Add the Open Graph tags (og:title, og:type, og:image, og:url) and a twitter:card to the head of the page template. Use an og:url equal to the canonical and an image that answers over HTTPS, then crawl again.",
+    "performance": "Performance"
   },
   "Companies": {
     "metaTitle": "Companies · Administration · seotools",
@@ -3261,7 +3278,8 @@
     "companies": "Companies",
     "users": "Users",
     "email": "Email",
-    "updates": "Updates"
+    "updates": "Updates",
+    "integrations": "Integrations"
   },
   "Parameters": {
     "metaTitle": "Query parameters · {host} · seotools",
@@ -3422,5 +3440,57 @@
     "archived": "Archived domains",
     "archivedHelp": "Archived domains keep their data and no longer crawl.",
     "open": "Open {host}"
+  },
+  "Vitals": {
+    "title": "Core Web Vitals",
+    "integrations": "Integrations",
+    "privacy": "With a saved Google key and collection enabled, the domain’s page addresses and origin are sent to Google after each full crawl.",
+    "key": "Google API key",
+    "keep": "Leave blank to keep the saved key. It is never shown again.",
+    "configured": "Key saved",
+    "no-key": "No Google key is configured for Core Web Vitals.",
+    "remove": "Remove key",
+    "save": "Save",
+    "test": "Test",
+    "testHint": "Makes one CrUX request for https://www.google.com.",
+    "collect": "Collect Core Web Vitals",
+    "PHONE": "Phone (p75)",
+    "DESKTOP": "Desktop (p75)",
+    "field": "Field data (CrUX, phone, p75)",
+    "lab": "Lab measurement (PageSpeed Insights)",
+    "noField": "No field data: Google has too little traffic for this URL",
+    "failed": "Collection failed: {reason}",
+    "metrics": {
+      "lcp": "LCP",
+      "inp": "INP",
+      "cls": "CLS",
+      "fcp": "FCP",
+      "ttfb": "TTFB",
+      "tbt": "TBT"
+    },
+    "states": {
+      "good": "Good",
+      "needs-improvement": "Needs improvement",
+      "poor": "Poor",
+      "no-data": "No data"
+    },
+    "results": {
+      "saved": "Saved",
+      "invalid": "Invalid key",
+      "paused": "Automation is paused",
+      "no-key": "No key saved",
+      "success": "Google returned field data",
+      "no-data": "Google has no data",
+      "quota": "Google quota exceeded",
+      "forbidden": "Google rejected the request",
+      "network": "Network error",
+      "timeout": "Request timed out",
+      "http": "Google HTTP error",
+      "invalid-response": "Invalid Google response",
+      "unchanged": "No changes to save.",
+      "throttled": "Wait 10 seconds before testing again."
+    },
+    "unreadable": "Saved but unreadable; enter the key again.",
+    "crawlSource": "Crawl #{ref} · {date}"
   }
 }
