@@ -19,8 +19,10 @@ const website: Record<string, Answer> = {
   }),
   [`${SITE}/about`]: page('/about', { title: null }),
   [`${SITE}/products`]: page('/products', {
-    links: `<a href="/">Home</a><main><p>Sorted <a href="/products?sort=price">by price</a>.</p></main>`,
+    links: `<a href="/">Home</a><main><p>Sorted <a href="/products?sort=price">by price</a>.
+      See the <a href="/products/widget">widget</a>.</p></main>`,
   }),
+  [`${SITE}/products/widget`]: page('/products/widget'),
   [`${SITE}/products?sort=price`]: page('/products?sort=price', {
     canonical: `${SITE}/products`,
   }),

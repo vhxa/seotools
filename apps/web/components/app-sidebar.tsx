@@ -5,6 +5,7 @@ import {
   CircleAlertIcon,
   FileCode2Icon,
   FileTextIcon,
+  FolderTreeIcon,
   LayoutDashboardIcon,
   RadarIcon,
   SettingsIcon,
@@ -150,6 +151,7 @@ export function AppSidebar({
           href: `/domains/${activeHost}/urls`,
           icon: FileTextIcon,
         },
+        { label: t('structure'), href: `/domains/${activeHost}/structure`, icon: FolderTreeIcon },
         // One link: the list, the comparison and the rechecks are tabs of the area.
         { label: t('crawls'), href: `/domains/${activeHost}/crawls`, icon: RadarIcon },
         {

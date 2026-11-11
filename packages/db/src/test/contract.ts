@@ -636,6 +636,98 @@ export function describeDatabaseContract(
         expect((await db.crawls.get(crawl.id))?.finishedAt).toBeInstanceOf(Date)
       })
 
+      it('reads the recent full crawls and the active one of every domain at once', async () => {
+        const first = await domain('one.com')
+        const second = await domain('two.com')
+        const idle = await domain('idle.com')
+        const crawls = []
+        for (let i = 0; i < 3; i++) crawls.push(await finishedCrawl(first))
+        // A crawl that was never usable still ends the list, and a priority crawl is not a full one.
+        const failed = await startCrawl(second)
+        await db.crawls.finish(failed.id, { status: 'failed', error: 'boom' })
+        await new Promise((r) => setTimeout(r, 5))
+        const priority = await startCrawl(second, 'priority')
+        await db.crawls.finish(priority.id, { status: 'completed' })
+        await new Promise((r) => setTimeout(r, 5))
+        const running = await startCrawl(second)
+
+        const portfolio = await db.crawls.portfolio({ recent: 2 })
+        // The newest two of the three, newest first; nothing is running.
+        expect(portfolio.get(first)).toMatchObject({ running: false })
+        expect(portfolio.get(first)?.crawls.map(({ id }) => id)).toEqual([
+          crawls[2]!.id,
+          crawls[1]!.id,
+        ])
+        // Only finished full crawls are listed, and the active one only says it is running.
+        expect(portfolio.get(second)?.crawls.map(({ id }) => id)).toEqual([failed.id])
+        expect(portfolio.get(second)?.running).toBe(true)
+        expect(portfolio.get(second)?.crawls[0]).toMatchObject({
+          id: failed.id,
+          status: 'failed',
+          robots: null,
+          auditSnapshot: null,
+        })
+        expect(portfolio.has(idle)).toBe(false)
+        expect((await db.crawls.portfolio()).get(first)?.crawls).toHaveLength(3)
+        await db.crawls.cancel(running.id)
+        expect((await db.crawls.portfolio()).get(second)?.running).toBe(false)
+      })
+
+      it('keeps the counts of a crawl in the portfolio, analysed or not', async () => {
+        const domainId = await domain()
+        const analysed = await finishedCrawl(domainId)
+        await saveIssues({
+          crawlId: analysed.id,
+          issues: [],
+          pages: { issue: 0, warning: 0, opportunity: 0 },
+          withType: { issue: 1, warning: 2, opportunity: 3 },
+          catalog: 'test',
+          audit: { pages: { ...NO_PAGES, audited: 1, indexable: 1 } },
+        })
+        const plain = await finishedCrawl(domainId)
+        const [latest, previous] = (await db.crawls.portfolio()).get(domainId)!.crawls
+        expect(latest).toMatchObject({ id: plain.id, pagesWithType: null, pagesAudit: null })
+        expect(previous).toMatchObject({
+          id: analysed.id,
+          pagesCount: 1,
+          pagesWithType: { issue: 1, warning: 2, opportunity: 3 },
+          pagesAudit: { indexable: 1 },
+        })
+      })
+
+      it('pages through the URLs of the site by hash, leaving external ones out', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const paths = ['/', '/a/', '/a/b', '/c', '/d', '/e/f/g', '/h']
+        await db.crawls.addUrls(id, [
+          ...paths.map((path) => newUrl(`https://acme.com${path}`)),
+          newUrl('https://elsewhere.org/x', { scope: 'external' }),
+        ])
+        await db.crawls.recordResult({
+          crawlId: id,
+          urlHash: crawlUrlHash('https://acme.com/c'),
+          result: result('page', { statusCode: 404 }),
+        })
+        const seen: string[] = []
+        let after: string | null = null
+        for (;;) {
+          const page = await db.crawls.listStructureUrls(id, { after, limit: 3 })
+          if (page.length === 0) break
+          expect(page.length).toBeLessThanOrEqual(3)
+          seen.push(...page.map(({ url }) => url))
+          after = page[page.length - 1]!.urlHash
+        }
+        expect(seen.toSorted()).toEqual(paths.map((path) => `https://acme.com${path}`).toSorted())
+        const [gone] = await db.crawls
+          .listStructureUrls(id, {
+            after: null,
+            limit: 100,
+          })
+          .then((rows) => rows.filter(({ url }) => url.endsWith('/c')))
+        expect(gone).toMatchObject({ kind: 'page', statusCode: 404, state: 'done' })
+        expect(await db.crawls.listStructureUrls('missing', { after: null, limit: 5 })).toEqual([])
+      })
+
       it('queues internal URLs shallowest first and only records external ones', async () => {
         const domainId = await domain()
         const { id } = await startCrawl(domainId)

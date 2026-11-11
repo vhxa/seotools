@@ -15,7 +15,7 @@ test('the overview shows the figures and priorities of the last full crawl', asy
 
   const figures = page.getByRole('region', { name: /^Last full crawl/ })
   await expect(figures.getByText('Pages crawled')).toBeVisible()
-  await expect(figures.getByText('of 4 crawled')).toBeVisible()
+  await expect(figures.getByText('of 5 crawled')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Findings to review first' })).toBeVisible()
 })
 
@@ -38,7 +38,7 @@ test('the URLs table has its views with counts, and a search', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'URLs', level: 1 })).toBeVisible()
 
   const views = page.getByRole('navigation', { name: 'Views' })
-  await expect(views.getByRole('link', { name: /^Pages 4$/ })).toBeVisible()
+  await expect(views.getByRole('link', { name: /^Pages 5$/ })).toBeVisible()
   await expect(views.getByRole('link', { name: /^Redirects 1$/ })).toBeVisible()
   await expect(views.getByRole('link', { name: /^Resources \d+$/ })).toBeVisible()
   await expect(views.getByRole('link', { name: /^External \d+$/ })).toBeVisible()
@@ -82,6 +82,57 @@ test('the header search finds a URL of the domain and opens its detail', async (
   await page.getByRole('option', { name: /https:\/\/example\.com\/about/ }).click()
   await expect(page).toHaveURL(/\/urls\/[0-9a-f]{32}/)
   await expect(page.getByRole('heading', { name: 'https://example.com/about' })).toBeVisible()
+})
+
+test('the home shows every domain by company, with its last crawl and figures', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'All domains', level: 1 })).toBeVisible()
+
+  const acme = page.getByRole('region', { name: /^Acme/ })
+  await expect(acme.getByRole('link', { name: 'Open example.com' })).toBeVisible()
+  await expect(acme.getByText(/Last full crawl/)).toBeVisible()
+  await expect(acme.getByText('Pages', { exact: true })).toBeVisible()
+  await expect(acme.getByText('5', { exact: true })).toBeVisible()
+  // A domain that was never crawled is listed too, with nothing made up.
+  const elsewhere = page.getByRole('region', { name: /^Elsewhere/ })
+  await expect(elsewhere.getByRole('link', { name: 'Open other.example' })).toBeVisible()
+  await expect(elsewhere.getByText('Never crawled')).toBeVisible()
+
+  await acme.getByRole('link', { name: 'Open example.com' }).click()
+  await expect(page).toHaveURL(new RegExp(`${domain}$`))
+})
+
+test('the structure page adds the crawl up by directory and opens each one through the address', async ({
+  page,
+}) => {
+  await page.goto(domain)
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('link', { name: 'Structure' })
+    .click()
+  await expect(page).toHaveURL(new RegExp(`${domain}/structure$`))
+  await expect(page.getByRole('heading', { name: 'Structure', level: 1 })).toBeVisible()
+
+  const tree = page.getByRole('region', { name: /^Directories/ })
+  // The root holds every page, the one that is gone is an error, and /products/ has two pages.
+  const root = tree.getByRole('row').filter({ hasText: /^\// }).first()
+  await expect(root.getByRole('link', { name: '5', exact: true })).toBeVisible()
+  const products = tree.getByRole('row').filter({ hasText: 'products/' })
+  await expect(products.getByRole('link', { name: 'products/' })).toBeVisible()
+
+  // A count leads to the URL table, narrowed by the directory's address.
+  await products.getByRole('link', { name: '1', exact: true }).first().click()
+  await expect(page).toHaveURL(/\/urls\?.*q=example\.com%2Fproducts%2F/)
+
+  // Opening a directory is the address: it can be shared and survives a reload.
+  await page.goto(`${domain}/structure?path=/products/`)
+  await expect(
+    page.getByRole('navigation', { name: 'Directory' }).getByText('products/'),
+  ).toBeVisible()
+  await page.goto(`${domain}/structure?path=/nothing/`)
+  await expect(page.getByText('There are no URLs in this directory.')).toBeVisible()
 })
 
 test('System and the account have no sidebar; the account has its tabs', async ({ page }) => {

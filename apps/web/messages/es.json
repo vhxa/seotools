@@ -116,7 +116,8 @@
     "urls": "URLs",
     "crawls": "Rastreos",
     "administration": "Administración",
-    "navLabel": "Principal"
+    "navLabel": "Principal",
+    "structure": "Estructura"
   },
   "ProtectedShell": {
     "skipToContent": "Saltar al contenido principal"
@@ -3370,5 +3371,56 @@
       },
       "timeZone": "Zona horaria"
     }
+  },
+  "Structure": {
+    "metaTitle": "Estructura · {host} · seotools",
+    "title": "Estructura",
+    "description": "Los directorios del último rastreo completo y lo que hay en cada uno: páginas, errores y páginas con hallazgos.",
+    "noCrawl": "La estructura aparece aquí cuando el dominio se ha rastreado.",
+    "notChecked": "El último rastreo completo no se ha comprobado en busca de hallazgos, así que solo se cuentan páginas y errores. Lanza un rastreo completo nuevo para verlos aquí.",
+    "findingsHidden": "Los hallazgos no se muestran mientras el análisis no refleje la configuración de auditoría actual.",
+    "incomplete": "El último rastreo se detuvo en su límite de URLs tras {urls, number} URLs: estas cifras no cubren todo el sitio.",
+    "tree": "Directorios",
+    "treeHelp": "Cada directorio cuenta todas las URLs que hay debajo. Se muestran hasta {depth} niveles a la vez; abre un directorio para ver lo que contiene. Cada cifra lista esas URLs en la tabla de URLs, buscándolas por su dirección.",
+    "breadcrumb": "Directorio",
+    "directory": "Directorio",
+    "columns": {
+      "errors": "Errores",
+      "issue": "Páginas con problemas",
+      "warning": "Páginas con avisos",
+      "opportunity": "Páginas con oportunidades"
+    },
+    "hasMore": "tiene más",
+    "other": "{count, plural, one {# otro directorio} other {# otros directorios}}",
+    "otherMany": "Otros directorios",
+    "emptyPath": "No hay URLs en este directorio.",
+    "languages": "Directorios de idioma",
+    "languagesHelp": "Los directorios declarados en la configuración de auditoría (Ajustes → Auditoría). No se supone nada más sobre los idiomas.",
+    "unprefixed": "Sin directorio de idioma",
+    "rest": "Todo lo demás",
+    "truncated": "Este sitio tiene más directorios de los que caben en memoria: los más pequeños solo se cuentan en «otros»."
+  },
+  "Portfolio": {
+    "metaTitle": "Todos los dominios · seotools",
+    "title": "Todos los dominios",
+    "description": "El último rastreo completo de cada dominio que puedes ver, por empresa.",
+    "domainsCount": "{count, plural, one {# dominio} other {# dominios}}",
+    "lastCrawl": "Último rastreo completo {when}",
+    "neverCrawled": "Nunca rastreado",
+    "notChecked": "Aún sin comprobar",
+    "running": "Rastreando ahora",
+    "trend": "Páginas con problemas en los últimos rastreos completos",
+    "trendEmpty": "Aún no hay tendencia",
+    "trendPoint": "{date}: {count, number} páginas con problemas",
+    "figures": {
+      "crawled": "Páginas",
+      "indexable": "Indexables",
+      "issues": "Problemas",
+      "warnings": "Avisos",
+      "opportunities": "Oportunidades"
+    },
+    "archived": "Dominios archivados",
+    "archivedHelp": "Los dominios archivados conservan sus datos y ya no se rastrean.",
+    "open": "Abrir {host}"
   }
 }

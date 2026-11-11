@@ -9,6 +9,7 @@ import {
   desc,
   eq,
   exists,
+  getTableColumns,
   gt,
   gte,
   inArray,
@@ -106,6 +107,7 @@ import {
   type LinkScope,
   foldIssueCounts,
   toLinkContext,
+  foldPortfolio,
 } from '../mapping'
 import {
   AUDIT_SEMANTICS,
@@ -170,6 +172,7 @@ import type {
   CrawlUrlTrace,
   DiscoveryStep,
   CrawlUrl,
+  StructureUrl,
 } from '../types'
 
 const {
@@ -1467,6 +1470,65 @@ export function createPgDatabase(options: {
             .limit(1)
         )[0]
         return row ? toCrawl(row) : null
+      },
+
+      async portfolio({ recent = 8 } = {}) {
+        const ranked = db
+          .select({
+            id: crawls.id,
+            rank: sql<number>`row_number() over (partition by ${crawls.domainId} order by ${crawls.createdAt} desc)`.as(
+              'rank',
+            ),
+          })
+          .from(crawls)
+          .where(
+            and(
+              eq(crawls.type, 'full'),
+              inArray(crawls.status, ['completed', 'incomplete', 'failed', 'cancelled']),
+            ),
+          )
+          .as('ranked')
+        const { robots: _r, seedUrls: _s, auditSnapshot: _a, ...columns } = getTableColumns(crawls)
+        const rows = await db
+          .select(columns)
+          .from(crawls)
+          .where(
+            inArray(
+              crawls.id,
+              db.select({ id: ranked.id }).from(ranked).where(lte(ranked.rank, recent)),
+            ),
+          )
+          .orderBy(desc(crawls.createdAt))
+        const active = await db
+          .select({ domainId: crawls.domainId })
+          .from(crawls)
+          .where(isNotNull(crawls.activeKey))
+        return foldPortfolio(
+          rows.map((row) => ({ ...row, robots: null, seedUrls: null, auditSnapshot: null })),
+          active,
+        )
+      },
+
+      async listStructureUrls(crawlId, { after, limit }) {
+        const rows = await db
+          .select({
+            urlHash: crawlUrls.urlHash,
+            url: crawlUrls.url,
+            kind: crawlUrls.kind,
+            statusCode: crawlUrls.statusCode,
+            state: crawlUrls.state,
+          })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'internal'),
+              after === null ? undefined : gt(crawlUrls.urlHash, after),
+            ),
+          )
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+        return rows as StructureUrl[]
       },
 
       async outdatedAnalyses(catalog, limit) {

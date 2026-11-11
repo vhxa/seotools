@@ -116,7 +116,8 @@
     "urls": "URLs",
     "crawls": "Crawls",
     "administration": "Administration",
-    "navLabel": "Main"
+    "navLabel": "Main",
+    "structure": "Structure"
   },
   "ProtectedShell": {
     "skipToContent": "Skip to main content"
@@ -3370,5 +3371,56 @@
       },
       "timeZone": "Time zone"
     }
+  },
+  "Structure": {
+    "metaTitle": "Structure · {host} · seotools",
+    "title": "Structure",
+    "description": "The directories of the last full crawl and what is in each: pages, errors and pages with findings.",
+    "noCrawl": "The structure appears here once the domain has been crawled.",
+    "notChecked": "The last full crawl has not been checked for findings, so only pages and errors are counted. Run a new full crawl to see them here.",
+    "findingsHidden": "Findings are not shown while the analysis does not reflect the current audit configuration.",
+    "incomplete": "The last crawl stopped at its URL limit after {urls, number} URLs: these counts do not cover the whole site.",
+    "tree": "Directories",
+    "treeHelp": "Each directory counts every URL below it. Up to {depth} levels are shown at once; open a directory to see what is below it. Each figure lists those URLs in the URL table, found by their address.",
+    "breadcrumb": "Directory",
+    "directory": "Directory",
+    "columns": {
+      "errors": "Errors",
+      "issue": "Pages with issues",
+      "warning": "Pages with warnings",
+      "opportunity": "Pages with opportunities"
+    },
+    "hasMore": "has more",
+    "other": "{count, plural, one {# other directory} other {# other directories}}",
+    "otherMany": "Other directories",
+    "emptyPath": "There are no URLs in this directory.",
+    "languages": "Language directories",
+    "languagesHelp": "The directories declared in the audit configuration (Settings → Audit). Nothing else is assumed about languages.",
+    "unprefixed": "Without a language directory",
+    "rest": "Everything else",
+    "truncated": "This site has more directories than can be kept in memory: the smallest ones are only counted in \"other\"."
+  },
+  "Portfolio": {
+    "metaTitle": "All domains · seotools",
+    "title": "All domains",
+    "description": "The last full crawl of every domain you can see, by company.",
+    "domainsCount": "{count, plural, one {# domain} other {# domains}}",
+    "lastCrawl": "Last full crawl {when}",
+    "neverCrawled": "Never crawled",
+    "notChecked": "Not checked yet",
+    "running": "Crawling now",
+    "trend": "Pages with issues over the last full crawls",
+    "trendEmpty": "No trend yet",
+    "trendPoint": "{date}: {count, number} pages with issues",
+    "figures": {
+      "crawled": "Pages",
+      "indexable": "Indexable",
+      "issues": "Issues",
+      "warnings": "Warnings",
+      "opportunities": "Opportunities"
+    },
+    "archived": "Archived domains",
+    "archivedHelp": "Archived domains keep their data and no longer crawl.",
+    "open": "Open {host}"
   }
 }

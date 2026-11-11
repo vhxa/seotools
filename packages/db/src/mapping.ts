@@ -70,6 +70,7 @@ import type {
   UserRecord,
   CrawlUrlAcceptedIssue,
   Crawl,
+  PortfolioEntry,
   CrawlCounts,
   CrawlFile,
   CrawlFileCheck,
@@ -337,6 +338,19 @@ export const toCrawl = ({
   seedUrls: seedUrls === null ? null : (JSON.parse(seedUrls) as string[]),
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
 })
+
+/** Groups the rows `portfolio` reads (newest first) and the domains with an active crawl. */
+export function foldPortfolio(rows: CrawlRow[], active: { domainId: string }[]) {
+  const entries = new Map<string, PortfolioEntry>()
+  const entry = (domainId: string) => {
+    let found = entries.get(domainId)
+    if (!found) entries.set(domainId, (found = { crawls: [], running: false }))
+    return found
+  }
+  for (const row of rows) entry(row.domainId).crawls.push(toCrawl(row))
+  for (const { domainId } of active) entry(domainId).running = true
+  return entries
+}
 
 /** The columns of `crawls` that an analysis writes: its totals and the configuration it used. */
 export const crawlAnalysisColumns = (analysis: {

@@ -37,6 +37,15 @@ which moves the entries of `[Unreleased]` into the new version.
 - The URL detail previews how a page appears in search results and when it is shared (Open Graph
   image, title and description), and the pages CSV has `og:title`, `og:description`, `og:image`,
   `twitter:card` and HTML lang columns.
+- A portfolio home: anyone who can see two or more domains lands on `/` with every domain grouped by
+  company (last full crawl, pages crawled, indexable pages, issues, warnings, opportunities, a small
+  trend of the last full crawls and whether a crawl is running); archived domains are in a collapsed
+  list. With one domain or none, `/` still goes straight to it (or to the companies, onboarding or
+  the no-access page).
+- A Structure page per domain (sidebar): the directories of the latest full crawl with their pages,
+  errors and pages with issues, warnings and opportunities, each figure leading to the URLs table
+  narrowed to that directory, plus a breakdown by the language directories declared in the audit
+  configuration. A directory opens through the address (`?path=/blog/`).
 
 ### Changed
 
