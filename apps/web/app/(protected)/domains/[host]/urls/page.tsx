@@ -68,6 +68,7 @@ const toRow = (
   bytes: url.bytes,
   contentType: url.contentType,
   redirectTo: url.redirectTo,
+  referencedBy: url.referencedBy,
   issues: issues.map(({ issue }) => issue),
   issueDetails: issues.find(({ issue }) => issue === selectedIssue)?.details ?? [],
   priority,

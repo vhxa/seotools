@@ -21,6 +21,7 @@ Raspberry Pi to a VPS.
 - **Your own rules**: say which URLs are expected out of the index, which must carry a noindex or be
   in a sitemap, which are left out of the audit; findings a rule expects are shown as accepted, not
   hidden. Thresholds that are conventions (title length, thin content…) can be set per domain.
+- **Issues and changes**: filter findings, spot template-wide problems, inspect current site files and crawl differences, and see who references broken or redirected targets.
 - **Where every link is**: its text, element and part of the page, how the crawler found each URL,
   and where query parameters enter the site.
 - **History and comparison** of crawls, a URL's history, rechecks of single URLs, alerts by email,

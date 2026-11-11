@@ -424,6 +424,7 @@ export interface CrawlUrl
   crawlId: string
   state: CrawlUrlState
   fetchedAt: Date | null
+  referencedBy?: { total: number; kinds: Record<string, number> }
 }
 
 export interface CrawlLink {
@@ -448,7 +449,8 @@ export interface CrawlLink {
 export type { CrawlUrlView }
 
 /** What a list of URLs can be ordered by. Without one, shallowest first, then by URL. */
-export type CrawlUrlSort = 'url' | 'title' | 'status' | 'depth' | 'responseTime' | 'bytes'
+export type CrawlUrlSort =
+  'referencedBy' | 'url' | 'title' | 'status' | 'depth' | 'responseTime' | 'bytes'
 
 /** Which URLs of a crawl a list shows. */
 export interface CrawlUrlQuery {

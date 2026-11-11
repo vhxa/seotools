@@ -104,6 +104,7 @@ import { cn } from '@/lib/utils'
 
 /** What the table needs of a URL. Plain data: it crosses from the server to this component. */
 export interface PageRow {
+  referencedBy?: { total: number; kinds: Record<string, number> }
   automaticCheck: boolean
   urlHash: string
   url: string
@@ -150,6 +151,7 @@ const columns = helper.columns([
   helper.display({ id: 'select', enableHiding: false }),
   helper.display({ id: 'url', enableHiding: false }),
   helper.display({ id: 'status' }),
+  helper.display({ id: 'referencedBy' }),
   helper.display({ id: 'title' }),
   // Only there when filtering by an issue that details something: the filter says, not the user.
   helper.display({ id: 'issueDetail', enableHiding: false }),
@@ -168,6 +170,7 @@ const columns = helper.columns([
 
 /** Columns the server can sort by. */
 const SORTABLE: Partial<Record<string, CrawlUrlSort>> = {
+  referencedBy: 'referencedBy',
   url: 'url',
   title: 'title',
   status: 'status',
@@ -380,6 +383,20 @@ function Cell({
         </span>
       ) : (
         <Muted>—</Muted>
+      )
+    case 'referencedBy':
+      return row.referencedBy ? (
+        <Link
+          href={`/domains/${host}/urls/${row.urlHash}${query.crawl ? `?crawl=${query.crawl}` : ''}#inbound-links`}
+          title={Object.entries(row.referencedBy.kinds)
+            .map(([kind, count]) => `${t(`references.${kind as 'link'}`)}: ${count}`)
+            .join(', ')}
+          className="underline"
+        >
+          {row.referencedBy.total}
+        </Link>
+      ) : (
+        '—'
       )
     case 'status':
       if (row.notRequested) return <Muted>{t(`notRequested.${row.notRequested}`)}</Muted>
@@ -598,7 +615,12 @@ export function PagesTable({
     getRowId: (row) => row.urlHash,
     state: {
       // Selecting only leads to actions: who cannot take them is not offered the checkboxes.
-      columnVisibility: { ...columnVisibility, issueDetail: detail !== undefined, select: canEdit },
+      columnVisibility: {
+        ...columnVisibility,
+        referencedBy: query.view === 'errors' || query.view === 'redirects',
+        issueDetail: detail !== undefined,
+        select: canEdit,
+      },
       rowSelection: selection,
     },
     onRowSelectionChange: (updater: Updater<Record<string, true>>) =>

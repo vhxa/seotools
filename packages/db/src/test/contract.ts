@@ -1518,6 +1518,30 @@ export function describeDatabaseContract(
           })
         })
 
+        it('counts distinct referring URLs, groups kinds and sorts before paging', async () => {
+          const crawlId = await crawlWithLinks()
+          const rows = await db.crawls.listUrls({
+            crawlId,
+            view: 'all',
+            sort: 'referencedBy',
+            direction: 'desc',
+            limit: 1,
+            offset: 0,
+          })
+          expect(rows[0]?.url).toBe(home)
+          expect(rows[0]?.referencedBy).toEqual({ total: 4, kinds: { link: 3, canonical: 2 } })
+          const next = await db.crawls.listUrls({
+            crawlId,
+            view: 'all',
+            sort: 'referencedBy',
+            direction: 'desc',
+            limit: 1,
+            offset: 1,
+          })
+          expect(next[0]?.url).toBe(url('/logo.png'))
+          expect(next[0]?.referencedBy).toEqual({ total: 2, kinds: { resource: 2 } })
+        })
+
         it('reads the links leaving a URL a page at a time, and URLs by their hash', async () => {
           const crawlId = await crawlWithLinks()
           const about = hashOf(url('/about'))

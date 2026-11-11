@@ -27,6 +27,7 @@ export const PAGES_PAGE_SIZE = 50
  */
 export const DETAIL_VIEWS = URL_VIEWS
 export const DETAIL_SORTS = [
+  'referencedBy',
   'url',
   'title',
   'status',

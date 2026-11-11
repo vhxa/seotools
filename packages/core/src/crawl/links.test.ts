@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  referenceGroup,
   DEFAULT_LINK_FILTER,
   LINK_GROUPS,
   LINK_GROUP_OF,
@@ -96,5 +97,15 @@ describe('counts', () => {
       declared: 1,
       all: 7,
     })
+  })
+})
+
+describe('reference groups', () => {
+  it('combines navigation and resource kinds while keeping declarations separate', () => {
+    expect(referenceGroup('anchor-nofollow')).toBe(referenceGroup('anchor'))
+    expect(referenceGroup('script')).toBe(referenceGroup('image'))
+    expect(referenceGroup('canonical')).toBe('canonical')
+    expect(referenceGroup('hreflang')).toBe('hreflang')
+    expect(referenceGroup('sitemap')).toBe('sitemap')
   })
 })

@@ -1,3 +1,5 @@
+import { referenceGroup } from '@seotools/core/crawl/links'
+import { CRAWL_LINK_KINDS } from '@seotools/core'
 import { assertKnownMigrations } from '../migration-guard'
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -1783,15 +1785,63 @@ export function createSqliteDatabase(options: {
       },
 
       async listUrls({ limit, offset, sort, direction, ...query }) {
+        const crawl = db
+          .select({ ref: crawls.ref })
+          .from(crawls)
+          .where(eq(crawls.id, query.crawlId))
+          .get()
+        const references = sql<number>`(select count(distinct ${crawlUrlLinks.source}) from ${crawlUrlLinks} where ${crawlUrlLinks.crawlRef} = ${crawl?.ref ?? -1} and ${crawlUrlLinks.target} = ${crawlUrls.seq})`
         const rows = db
           .select()
           .from(crawlUrls)
           .where(crawlUrlWhere(urlColumns, query, subqueries(query.crawlId)))
-          .orderBy(...crawlUrlOrder(urlColumns, sort, direction))
+          .orderBy(
+            ...(sort === 'referencedBy'
+              ? [
+                  (direction === 'desc' ? desc : asc)(references),
+                  ...crawlUrlOrder(urlColumns, 'url', 'asc'),
+                ]
+              : crawlUrlOrder(urlColumns, sort, direction)),
+          )
           .limit(limit)
           .offset(offset)
           .all()
-        return rows.map(toCrawlUrl)
+        const seqs = rows.flatMap((row) => (row.seq === null ? [] : [row.seq]))
+        if (!seqs.length || crawl?.ref == null) return rows.map(toCrawlUrl)
+        const referenceKind = sql<string>`case when ${inArray(
+          crawlUrlLinks.kind,
+          CRAWL_LINK_KINDS.filter((kind) => referenceGroup(kind) === 'resource'),
+        )} then 'resource' when ${inArray(crawlUrlLinks.kind, ['canonical', 'hreflang', 'sitemap'])} then ${crawlUrlLinks.kind} else 'link' end`
+        const grouped = db
+          .select({
+            target: crawlUrlLinks.target,
+            kind: referenceKind,
+            count: sql<number>`count(distinct ${crawlUrlLinks.source})`,
+          })
+          .from(crawlUrlLinks)
+          .where(and(eq(crawlUrlLinks.crawlRef, crawl.ref), inArray(crawlUrlLinks.target, seqs)))
+          .groupBy(crawlUrlLinks.target, sql`2`)
+          .all()
+        const totals = db
+          .select({
+            target: crawlUrlLinks.target,
+            count: sql<number>`count(distinct ${crawlUrlLinks.source})`,
+          })
+          .from(crawlUrlLinks)
+          .where(and(eq(crawlUrlLinks.crawlRef, crawl.ref), inArray(crawlUrlLinks.target, seqs)))
+          .groupBy(crawlUrlLinks.target)
+          .all()
+        return rows.map((row) => ({
+          ...toCrawlUrl(row),
+          referencedBy: {
+            total: Number(totals.find((item) => item.target === row.seq)?.count ?? 0),
+            kinds: Object.fromEntries(
+              grouped
+                .filter((item) => item.target === row.seq)
+                .map((item) => [item.kind, Number(item.count)]),
+            ),
+          },
+        }))
       },
 
       async countListed(query) {

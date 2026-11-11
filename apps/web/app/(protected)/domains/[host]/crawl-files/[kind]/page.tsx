@@ -15,7 +15,13 @@ import { RawFile } from '@/components/crawl-files/raw-file'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { indexNowKeyMatches, presentFiles, primaryFile, securityView } from '@/lib/crawl-files'
+import {
+  SEVERE_FINDINGS,
+  indexNowKeyMatches,
+  presentFiles,
+  primaryFile,
+  securityView,
+} from '@/lib/crawl-files'
 import { getDb } from '@/lib/db'
 import { requireDomain } from '@/lib/workspace'
 
@@ -84,7 +90,7 @@ async function SecuritySummary({ file }: { file: CrawlFile }) {
       {findings.map((finding) => (
         <Finding
           key={finding}
-          severe={finding === 'expired'}
+          severe={SEVERE_FINDINGS.security.has(finding)}
           title={t(`findings.${finding}.title`)}
           description={t(`findings.${finding}.description`)}
         />

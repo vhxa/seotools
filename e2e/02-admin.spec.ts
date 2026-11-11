@@ -254,3 +254,29 @@ test('the default URL columns fit at 1280 px and selection keeps the table in pl
   await page.getByRole('checkbox', { name: 'Select every URL on this page' }).check()
   expect((await table.boundingBox())?.y).toBe(before?.y)
 })
+
+test('issues filters stay in the address, with current site findings above them', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/issues`)
+  await expect(page.getByRole('heading', { name: 'Site', exact: true })).toBeVisible()
+  await expect(
+    page.getByText(
+      'Current file findings, independent of crawls and excluded from dashboard totals.',
+    ),
+  ).toBeVisible()
+  await page.getByLabel('Type', { exact: true }).selectOption('issue')
+  await page.getByLabel('Group', { exact: true }).selectOption('crawling')
+  await page.getByLabel('Issue name', { exact: true }).fill('no-such-issue-name')
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(page).toHaveURL(/type=issue&group=crawling&q=no-such-issue-name/)
+  await expect(page.getByLabel('Type', { exact: true })).toHaveValue('issue')
+  await expect(page.getByLabel('Group', { exact: true })).toHaveValue('crawling')
+  await expect(page.getByLabel('Issue name', { exact: true })).toHaveValue('no-such-issue-name')
+  await page.goto(`${domain}/urls?view=errors`)
+  await expect(page.getByRole('columnheader', { name: 'Referenced by' })).toBeVisible()
+  await page.goto(domain)
+  await expect(
+    page.getByRole('heading', { name: 'What changed since the previous crawl' }),
+  ).toHaveCount(0)
+})

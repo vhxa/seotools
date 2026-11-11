@@ -117,3 +117,11 @@ export function linkGroupCounts(counts: LinkKindCounts): Record<LinkGroupChoice,
   }
   return groups
 }
+
+/** Breakdown of the sources that reference a broken or redirected target. */
+export function referenceGroup(
+  kind: CrawlLinkKind,
+): 'link' | 'hreflang' | 'canonical' | 'sitemap' | 'resource' {
+  if (kind === 'hreflang' || kind === 'canonical' || kind === 'sitemap') return kind
+  return LINK_GROUP_OF[kind] === 'resources' ? 'resource' : 'link'
+}

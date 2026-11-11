@@ -536,7 +536,8 @@
       "intent": "Intención de indexación",
       "indexability": "Estado técnico",
       "origin": "Origen de la configuración",
-      "actions": "Acciones"
+      "actions": "Acciones",
+      "referencedBy": "Referenciada por"
     },
     "sortBy": "Ordenar por {column}",
     "sortedAscending": "Orden ascendente, haz clic para ordenar de forma descendente",
@@ -658,6 +659,13 @@
     "issuesPanel": {
       "hide": "Plegar el panel de incidencias",
       "show": "Mostrar el panel de incidencias"
+    },
+    "references": {
+      "link": "Enlaces",
+      "resource": "Recursos",
+      "canonical": "Canónica",
+      "hreflang": "Hreflang",
+      "sitemap": "Sitemap"
     }
   },
   "Export": {
@@ -725,7 +733,8 @@
       "finalUrl": "URL final",
       "finalStatus": "Estado de la URL final",
       "hops": "Redirecciones en la cadena",
-      "loop": "Bucle"
+      "loop": "Bucle",
+      "referencedBy": "Referenciada por"
     },
     "values": {
       "internal": "Este sitio",
@@ -3193,7 +3202,9 @@
     "noPriorities": "No se registraron hallazgos en este análisis.",
     "affectedUrls": "{count, plural, one {# URL} other {# URL}}",
     "allIssues": "Todos los problemas",
-    "notCheckedFindings": "Este rastreo no tiene el análisis necesario para mostrar hallazgos. Inicia un nuevo rastreo completo para obtener datos actuales."
+    "notCheckedFindings": "Este rastreo no tiene el análisis necesario para mostrar hallazgos. Inicia un nuevo rastreo completo para obtener datos actuales.",
+    "changesTitle": "Qué ha cambiado desde el rastreo anterior",
+    "configurationChanged": "La configuración ha cambiado"
   },
   "Issues": {
     "metaTitle": "Problemas · {host} · seotools",
@@ -3216,6 +3227,31 @@
       "title": "Aceptados por una regla",
       "help": "El rastreo sigue viéndolos y una regla dice que se esperan. No están pendientes ni arreglados: quita la regla y vuelven a contar.",
       "viewAll": "Ver todas las URL con un hallazgo aceptado"
+    },
+    "filters": {
+      "type": "Tipo",
+      "group": "Grupo",
+      "search": "Nombre del hallazgo",
+      "all": "Todos",
+      "apply": "Aplicar"
+    },
+    "site": {
+      "title": "Sitio",
+      "description": "Hallazgos actuales de los archivos, independientes de los rastreos y excluidos de los totales del panel.",
+      "read": "Última lectura: {when}",
+      "never": "nunca",
+      "severe": "Roto",
+      "none": "Nada que señalar en los archivos que publica el sitio."
+    },
+    "template": {
+      "label": "Plantilla",
+      "help": "Casi todas las páginas lo tienen: probablemente procede de la plantilla del sitio, y corregirlo allí lo corrige en todas partes."
+    },
+    "changes": {
+      "unavailable": "No se puede comparar",
+      "fresh": "{count} nuevos",
+      "resolved": "{count} resueltos",
+      "cut": "Han cambiado demasiadas URL para contarlas aquí: abre la comparación para verlas."
     }
   },
   "SystemNav": {

@@ -536,7 +536,8 @@
       "intent": "Indexing intent",
       "indexability": "Technical state",
       "origin": "Configuration source",
-      "actions": "Actions"
+      "actions": "Actions",
+      "referencedBy": "Referenced by"
     },
     "sortBy": "Sort by {column}",
     "sortedAscending": "Sorted ascending, click to sort descending",
@@ -658,6 +659,13 @@
     "issuesPanel": {
       "hide": "Fold the issues panel",
       "show": "Show the issues panel"
+    },
+    "references": {
+      "link": "Links",
+      "resource": "Resources",
+      "canonical": "Canonical",
+      "hreflang": "Hreflang",
+      "sitemap": "Sitemap"
     }
   },
   "Export": {
@@ -725,7 +733,8 @@
       "finalUrl": "Final URL",
       "finalStatus": "Final URL status",
       "hops": "Redirects in the chain",
-      "loop": "Loop"
+      "loop": "Loop",
+      "referencedBy": "Referenced by"
     },
     "values": {
       "internal": "This site",
@@ -3193,7 +3202,9 @@
     "noPriorities": "No findings were recorded in this analysis.",
     "affectedUrls": "{count, plural, one {# URL} other {# URLs}}",
     "allIssues": "All issues",
-    "notCheckedFindings": "This crawl does not have the analysis needed to show findings. Run a new full crawl to collect current data."
+    "notCheckedFindings": "This crawl does not have the analysis needed to show findings. Run a new full crawl to collect current data.",
+    "changesTitle": "What changed since the previous crawl",
+    "configurationChanged": "Configuration changed"
   },
   "Issues": {
     "metaTitle": "Issues · {host} · seotools",
@@ -3216,6 +3227,31 @@
       "title": "Accepted by a rule",
       "help": "The crawl still sees these, and a rule says they are expected. They are not pending, and they are not fixed: remove the rule and they count again.",
       "viewAll": "View every URL with an accepted finding"
+    },
+    "filters": {
+      "type": "Type",
+      "group": "Group",
+      "search": "Issue name",
+      "all": "All",
+      "apply": "Apply"
+    },
+    "site": {
+      "title": "Site",
+      "description": "Current file findings, independent of crawls and excluded from dashboard totals.",
+      "read": "Last read: {when}",
+      "never": "never",
+      "severe": "Broken",
+      "none": "Nothing to report in the files the site publishes."
+    },
+    "template": {
+      "label": "Template",
+      "help": "Almost every page has it: it probably comes from the site's template, and fixing it there fixes it everywhere"
+    },
+    "changes": {
+      "unavailable": "Cannot be compared",
+      "fresh": "{count} new",
+      "resolved": "{count} resolved",
+      "cut": "Too many URLs changed to count them here: open the comparison to see them."
     }
   },
   "SystemNav": {
