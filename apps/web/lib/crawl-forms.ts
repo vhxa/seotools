@@ -97,8 +97,12 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
   }
 
   const scope = crawlSettingsSchema
-    .pick({ includePrefixes: true, excludePrefixes: true, maxDepth: true })
+    .pick({ includePrefixes: true, excludePrefixes: true, maxDepth: true, ignoredParameters: true })
     .safeParse({
+      ignoredParameters: text(form, 'ignoredParameters')
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean),
       includePrefixes: text(form, 'includePrefixes')
         .split(/\r?\n/)
         .map((s) => s.trim())

@@ -1,10 +1,18 @@
 import Link from 'next/link'
+import { matchesIgnoredParameter } from '@seotools/core/crawl/normalize'
+import { ParameterToggle } from '@/components/crawl/parameter-toggle'
+import { browsableCrawls } from '@/lib/crawl-history'
 import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { selectCrawl } from '@/lib/crawl-history'
 import { getDb } from '@/lib/db'
 import { crawlMoment } from '@/lib/pages-export'
-import { PARAMETER_SCAN_LIMIT, parameterSummary } from '@/lib/query-parameters'
+import {
+  PARAMETER_SCAN_LIMIT,
+  parameterSummary,
+  parameterSuggestions,
+  isTrackingParameter,
+} from '@/lib/query-parameters'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
@@ -77,7 +85,20 @@ export default async function ParametersPage({
   }
   const { crawl } = selection
 
-  const { parameters, bounded } = await parameterSummary(db.crawls, crawl.id)
+  const summary = await parameterSummary(db.crawls, crawl.id)
+  const { parameters, bounded } = summary
+  const sortedParameters = [...parameters].sort(
+    (a, b) => Number(isTrackingParameter(b[0])) - Number(isTrackingParameter(a[0])),
+  )
+  const settings = await db.crawls.settings(domain.id)
+  const retained = (await browsableCrawls(db.crawls, domain.id))
+    .filter((item) => !item.pruned)
+    .slice(0, 2)
+  const recent = await Promise.all(retained.map((item) => parameterSummary(db.crawls, item.id)))
+  const suggestions = parameterSuggestions(
+    recent[0]?.observations ?? [],
+    recent[1]?.observations ?? [],
+  )
 
   const rawPage = typeof query.page === 'string' ? Number(query.page) : 1
   const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 100_000) : 1
@@ -91,12 +112,13 @@ export default async function ParametersPage({
   return (
     <main className="grid min-w-0 gap-8 [overflow-wrap:anywhere]">
       {header}
+      <p className="text-sm text-muted-foreground">{t('ignoredHelp')}</p>
 
       <section aria-labelledby="parameters" className="grid gap-2">
         <h2 id="parameters" className="text-lg font-medium">
           {t('names')}
         </h2>
-        {bounded && (
+        {(bounded || recent.some((item) => item.bounded)) && (
           <p className="text-sm text-muted-foreground">
             {t('bounded', { count: PARAMETER_SCAN_LIMIT })}
           </p>
@@ -114,10 +136,11 @@ export default async function ParametersPage({
                   <th scope="col" className="py-2 text-right font-medium">
                     {t('count')}
                   </th>
+                  <th scope="col">{t('status')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {parameters.map(([name, count]) => (
+                {sortedParameters.map(([name, count]) => (
                   <tr key={name}>
                     <td className="py-2 pr-4 font-mono">
                       <Link
@@ -128,6 +151,32 @@ export default async function ParametersPage({
                       </Link>
                     </td>
                     <td className="py-2 text-right tabular-nums">{format.number(count)}</td>
+                    <td className="p-2">
+                      <div className="grid gap-2">
+                        <span>
+                          {t(
+                            matchesIgnoredParameter(name, settings.ignoredParameters)
+                              ? 'ignored'
+                              : 'notIgnored',
+                          )}
+                        </span>
+                        {isTrackingParameter(name) && (
+                          <span className="font-medium">
+                            {t('tracking')}: {t('trackingHelp')}
+                          </span>
+                        )}
+                        {suggestions.get(name)?.map((reason) => (
+                          <span key={reason}>
+                            {t('suggested')}: {t(`reasons.${reason}`)}
+                          </span>
+                        ))}
+                        <ParameterToggle
+                          host={host}
+                          name={name}
+                          ignored={matchesIgnoredParameter(name, settings.ignoredParameters)}
+                        />
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

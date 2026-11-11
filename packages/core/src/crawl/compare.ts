@@ -106,6 +106,7 @@ export function fieldChanges(base: UrlSnapshot, target: UrlSnapshot): FieldChang
 
 /** What this module needs of a crawl; `Crawl` in `@seotools/db` satisfies it. */
 export interface CrawlLike {
+  ignoredParameters?: string[]
   id: string
   status: CrawlStatus
   createdAt: Date
@@ -264,6 +265,7 @@ export type PairSide = 'base' | 'target'
  */
 export const PAIR_NOTES = [
   'pruned',
+  'ignoredParameters',
   'unanalysed',
   'legacy',
   'catalog',
@@ -304,6 +306,9 @@ export function assessPair(base: CrawlLike, target: CrawlLike): PairAssessment {
     if (found.length > 0) notes.push({ code, sides: found })
   }
 
+  const ignoredKey = (crawl: CrawlLike) =>
+    JSON.stringify([...new Set(crawl.ignoredParameters ?? [])].sort())
+  if (ignoredKey(base) !== ignoredKey(target)) add('ignoredParameters', ['base', 'target'])
   const pruned = sides((f) => !f.retained)
   add('pruned', pruned)
   const urls = pruned.length === 0
@@ -781,6 +786,8 @@ export function findingChangesBetween(
 /** Pair-wide limits on an issue summary; URL-specific limits still come from classification. */
 export function issuePairReasons(notes: readonly PairNoteCode[], issue: string): UnknownReason[] {
   return notes.flatMap((note): UnknownReason[] => {
+    // URL identity caveat; finding attribution still uses each URL’s recorded audit state.
+    if (note === 'ignoredParameters') return []
     if ((note === 'audit' || note === 'incomplete') && isPageLocalIssue(issue)) return []
     return [note === 'legacy' ? 'participation' : note]
   })

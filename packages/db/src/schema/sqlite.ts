@@ -190,6 +190,7 @@ export const crawlSettings = sqliteTable('crawl_settings', {
   indexNowKey: text('index_now_key'),
   includePrefixes: text('include_prefixes'),
   excludePrefixes: text('exclude_prefixes'),
+  ignoredParameters: text('ignored_parameters'),
   /** JSON array of `Extractor` (custom extraction). `null`: none. */
   extractors: text('extractors'),
   maxDepth: integer('max_depth'),
@@ -240,6 +241,7 @@ export const crawls = sqliteTable(
     jobId: text('job_id').notNull(),
     /** The domain id while the crawl is active, `null` after: unique, so one per domain at most. */
     seedUrls: text('seed_urls'),
+    ignoredParameters: text('ignored_parameters'),
     activeKey: text('active_key').unique(),
     pagesCount: integer('pages_count').notNull().default(0),
     urlsCount: integer('urls_count').notNull().default(0),
@@ -354,6 +356,7 @@ export const crawlUrlLinks = sqliteTable(
     source: integer('source').notNull(),
     target: integer('target').notNull(),
     kind: text('kind').notNull(),
+    occurrence: integer('occurrence').notNull().default(0),
     /** The anchor text, bounded. */
     text: text('text'),
     /** The element that holds the link, e.g. `a.dropdown-item[role=menuitem]`. */
@@ -364,7 +367,7 @@ export const crawlUrlLinks = sqliteTable(
     snippet: text('snippet'),
   },
   (t) => [
-    primaryKey({ columns: [t.crawlRef, t.source, t.target, t.kind] }),
+    primaryKey({ columns: [t.crawlRef, t.source, t.target, t.kind, t.occurrence] }),
     index('crawl_url_links_target_idx').on(t.crawlRef, t.target),
   ],
 )

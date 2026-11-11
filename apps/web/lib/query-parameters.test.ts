@@ -1,4 +1,5 @@
-import { expect, it, vi } from 'vitest'
+import { parameterSuggestions, isTrackingParameter } from './query-parameters'
+import { describe, expect, it, vi } from 'vitest'
 import { PARAMETER_SCAN_LIMIT, countParameters, parameterSummary } from './query-parameters'
 import { findingCounters } from './finding-counters'
 it('counts URLs rather than repeated parameter values', () => {
@@ -42,7 +43,7 @@ const pagedSource = (total: number) =>
 it('counts every page of addresses once and remembers the crawl', async () => {
   const queryUrls = pagedSource(4_500)
   const summary = await parameterSummary({ queryUrls }, 'crawl-a')
-  expect(summary).toEqual({
+  expect(summary).toMatchObject({
     parameters: [
       ['p0', 1_500],
       ['p1', 1_500],
@@ -60,4 +61,44 @@ it('stops at its budget and says so', async () => {
   const summary = await parameterSummary({ queryUrls }, 'crawl-b')
   expect(summary.bounded).toBe(true)
   expect(summary.parameters.reduce((sum, [, count]) => sum + count, 0)).toBe(PARAMETER_SCAN_LIMIT)
+})
+
+describe('ignore suggestions', () => {
+  const rows = (name: string, value: string, count = 5) =>
+    Array.from({ length: count }, (_, i) => ({
+      url: `https://example.com/${i}?${name}=${value}`,
+      canonical: `https://example.com/${i}` as string | null,
+    }))
+  it('requires five pairs and 90 percent volatility or canonical agreement', () => {
+    expect(
+      parameterSuggestions(rows('updatedAt', '2'), rows('updatedAt', '1')).get('updatedAt'),
+    ).toEqual(['canonical', 'volatile'])
+    expect(parameterSuggestions(rows('x', '2', 4), rows('x', '1', 4)).size).toBe(0)
+    const ten = rows('x', '2', 10)
+    ten[0]!.canonical = null
+    expect(parameterSuggestions(ten).get('x')).toEqual(['canonical'])
+    ten[1]!.canonical = null
+    expect(parameterSuggestions(ten).size).toBe(0)
+  })
+  it('marks tracking separately and never suggests ignoring it, even with both heuristic signals', () => {
+    for (const name of [
+      'utm_source',
+      'gclid',
+      'fbclid',
+      'msclkid',
+      'dclid',
+      'gbraid',
+      'wbraid',
+      'mc_cid',
+      'mc_eid',
+      '_ga',
+      '_gl',
+      'yclid',
+      'igshid',
+    ]) {
+      expect(isTrackingParameter(name)).toBe(true)
+      expect(parameterSuggestions(rows(name, '2'), rows(name, '1')).has(name)).toBe(false)
+    }
+    expect(isTrackingParameter('UTM_source')).toBe(false)
+  })
 })

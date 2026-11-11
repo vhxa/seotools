@@ -1,3 +1,4 @@
+import { stripIgnoredParameters } from '@seotools/core/crawl/normalize'
 import type { CrawlRepository } from '@seotools/db'
 
 /** Count each parameter at most once per URL, including repeated keys and empty values. */
@@ -25,6 +26,7 @@ export interface ParameterSummary {
   parameters: [name: string, urls: number][]
   /** More URLs had a query string than were read. */
   bounded: boolean
+  observations: ParameterObservation[]
 }
 
 const summaries = new Map<string, ParameterSummary>()
@@ -44,16 +46,19 @@ export async function parameterSummary(
     summaries.set(crawlId, known)
     return known
   }
+  const observations: ParameterObservation[] = []
   const counts = new Map<string, number>()
   let read = 0
   let after: number | null = null
   let bounded = false
   for (;;) {
-    const page: { urls: string[]; next: number | null } = await source.queryUrls(crawlId, {
-      after,
-      limit: Math.min(BATCH, PARAMETER_SCAN_LIMIT - read),
-    })
+    const page: { urls: string[]; observations?: ParameterObservation[]; next: number | null } =
+      await source.queryUrls(crawlId, {
+        after,
+        limit: Math.min(BATCH, PARAMETER_SCAN_LIMIT - read),
+      })
     countParameters(page.urls, counts)
+    observations.push(...(page.observations ?? page.urls.map((url) => ({ url, canonical: null }))))
     read += page.urls.length
     if (page.next === null) break
     if (read >= PARAMETER_SCAN_LIMIT) {
@@ -65,8 +70,74 @@ export async function parameterSummary(
   const summary: ParameterSummary = {
     parameters: [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
     bounded,
+    observations,
   }
   summaries.set(crawlId, summary)
   if (summaries.size > CACHED) summaries.delete(summaries.keys().next().value!)
   return summary
+}
+
+export interface ParameterObservation {
+  url: string
+  canonical: string | null
+}
+export type SuggestionReason = 'volatile' | 'canonical'
+const TRACKING = new Set([
+  'gclid',
+  'fbclid',
+  'msclkid',
+  'dclid',
+  'gbraid',
+  'wbraid',
+  'mc_cid',
+  'mc_eid',
+  '_ga',
+  '_gl',
+  'yclid',
+  'igshid',
+])
+
+export const isTrackingParameter = (name: string) => name.startsWith('utm_') || TRACKING.has(name)
+
+/** Compare unambiguous URL pairs only; multiple distinct values in a crawl are not volatility. */
+export function parameterSuggestions(
+  current: readonly ParameterObservation[],
+  previous: readonly ParameterObservation[] = [],
+): Map<string, SuggestionReason[]> {
+  type Stats = { groups: Map<string, Set<string>>; canonical: number; total: number }
+  const index = (rows: readonly ParameterObservation[]) => {
+    const names = new Map<string, Stats>()
+    for (const row of rows) {
+      const parsed = new URL(row.url)
+      for (const name of new Set(parsed.searchParams.keys())) {
+        const stats = names.get(name) ?? { groups: new Map(), canonical: 0, total: 0 }
+        const key = stripIgnoredParameters(row.url, [name])
+        const values = stats.groups.get(key) ?? new Set<string>()
+        values.add(JSON.stringify(parsed.searchParams.getAll(name)))
+        stats.groups.set(key, values)
+        stats.total++
+        if (row.canonical === key) stats.canonical++
+        names.set(name, stats)
+      }
+    }
+    return names
+  }
+  const before = index(previous)
+  const suggestions = new Map<string, SuggestionReason[]>()
+  for (const [name, stats] of index(current)) {
+    const reasons: SuggestionReason[] = []
+    if (isTrackingParameter(name)) continue
+    if (stats.total >= 5 && stats.canonical / stats.total >= 0.9) reasons.push('canonical')
+    let pairs = 0,
+      changed = 0
+    for (const [key, values] of stats.groups) {
+      const old = before.get(name)?.groups.get(key)
+      if (values.size !== 1 || old?.size !== 1) continue
+      pairs++
+      if ([...values][0] !== [...old][0]) changed++
+    }
+    if (pairs >= 5 && changed / pairs >= 0.9) reasons.push('volatile')
+    if (reasons.length) suggestions.set(name, reasons)
+  }
+  return suggestions
 }

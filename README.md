@@ -25,7 +25,9 @@ Raspberry Pi to a VPS.
   hidden. Thresholds that are conventions (title length, thin content…) can be set per domain.
 - **Issues and changes**: filter findings, spot template-wide problems, inspect current site files and crawl differences, and see who references broken or redirected targets.
 - **Where every link is**: its text, element and part of the page, how the crawler found each URL,
-  and where query parameters enter the site.
+  and where query parameters enter the site. Ignore selected parameters (exact names or prefixes)
+  from the next crawl; review volatile/canonical suggestions and separately marked tracking names
+  ([details](docs/ignored-parameters.md)).
 - **History and comparison** of crawls, a URL's history, rechecks of single URLs, alerts by email,
   and CSV exports of pages, findings, links and redirects.
 - **Crawl files**: `robots.txt` with the access of each AI bot, sitemaps, `llms.txt`, and on request

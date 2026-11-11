@@ -49,6 +49,8 @@ export const ALERT_EMAIL_COPY = {
       'Also: {accepted} accepted by a rule, {excluded} left out of the audit, {audited} now audited.',
     summaryNoFindings: 'Findings cannot be compared: one of the crawls has none.',
     summaryCut: 'Large changes were counted up to a limit: the real numbers are higher.',
+    noteIgnoredParameters:
+      'Ignored query parameters changed: added and not seen URLs may come from this setting.',
     noteIncomplete: 'A crawl stopped at its URL limit, so URLs it did not reach are not gone.',
     noteCatalog: 'The checks changed between the two crawls: some findings differ because of that.',
     noteAudit:
@@ -100,6 +102,8 @@ export const ALERT_EMAIL_COPY = {
       'Además: {accepted} aceptados por una regla, {excluded} fuera de la auditoría, {audited} ahora auditados.',
     summaryNoFindings: 'No se pueden comparar los hallazgos: uno de los rastreos no tiene.',
     summaryCut: 'Los cambios grandes se contaron hasta un límite: las cifras reales son mayores.',
+    noteIgnoredParameters:
+      'Han cambiado los parámetros ignorados: las URL añadidas y no vistas pueden deberse a este ajuste.',
     noteIncomplete:
       'Un rastreo se detuvo en su límite de URLs, así que las URLs que no alcanzó no han desaparecido.',
     noteCatalog:
@@ -151,7 +155,8 @@ export interface FindingsNotice {
   compareHref: string
 }
 
-export type PairNoteName = 'incomplete' | 'catalog' | 'audit' | 'legacy' | 'unanalysed' | 'pruned'
+export type PairNoteName =
+  'ignoredParameters' | 'incomplete' | 'catalog' | 'audit' | 'legacy' | 'unanalysed' | 'pruned'
 
 export type ChangeSummary =
   | { state: 'first'; pages: number }
@@ -203,6 +208,7 @@ const fill = (template: string, values: Record<string, string | number>) =>
   template.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ''))
 
 const NOTE_COPY = {
+  ignoredParameters: 'noteIgnoredParameters',
   incomplete: 'noteIncomplete',
   catalog: 'noteCatalog',
   audit: 'noteAudit',

@@ -5,6 +5,8 @@ export {
   isInternalUrl,
   normalizeCrawlUrl,
   parsePriorityUrl,
+  stripIgnoredParameters,
+  matchesIgnoredParameter,
 } from './normalize'
 
 /** Stable key of a URL. URLs can be too long to index directly on every database. */

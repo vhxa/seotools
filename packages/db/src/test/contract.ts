@@ -519,12 +519,19 @@ export function describeDatabaseContract(
           concurrency: 4,
           includePrefixes: ['/shop'],
           excludePrefixes: ['/shop/private'],
+          ignoredParameters: ['updatedAt', 'utm_*'],
           maxDepth: 5,
           maxUrls: null,
           retainCrawls: null,
         }
         await db.crawls.saveSettings(domainId, custom)
         expect(await db.crawls.settings(domainId)).toEqual(custom)
+        const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+        expect(crawl?.ignoredParameters).toEqual(custom.ignoredParameters)
+        await db.crawls.saveSettings(domainId, { ...custom, ignoredParameters: [] })
+        expect((await db.crawls.get(crawl!.id))?.ignoredParameters).toEqual(
+          custom.ignoredParameters,
+        )
         await db.crawls.saveSettings(domainId, { ...custom, concurrency: 8 })
         expect((await db.crawls.settings(domainId)).concurrency).toBe(8)
 
@@ -1599,7 +1606,14 @@ export function describeDatabaseContract(
           const second = newUrl(`${site}/b?page=2`)
           await db.crawls.addUrls(id, [plain, first, external, second])
           const all = await db.crawls.queryUrls(id, { after: null, limit: 10 })
-          expect(all).toEqual({ urls: [first.url, second.url], next: null })
+          expect(all).toEqual({
+            urls: [first.url, second.url],
+            observations: [
+              { url: first.url, canonical: null },
+              { url: second.url, canonical: null },
+            ],
+            next: null,
+          })
           const one = await db.crawls.queryUrls(id, { after: null, limit: 1 })
           expect(one.urls).toEqual([first.url])
           expect(one.next).not.toBeNull()
@@ -1607,6 +1621,7 @@ export function describeDatabaseContract(
             urls: [second.url],
           })
           expect(await db.crawls.queryUrls('missing', { after: null, limit: 10 })).toEqual({
+            observations: [],
             urls: [],
             next: null,
           })
@@ -1634,6 +1649,36 @@ export function describeDatabaseContract(
           })
           expect(next[0]?.url).toBe(url('/logo.png'))
           expect(next[0]?.referencedBy).toEqual({ total: 2, kinds: { resource: 2 } })
+        })
+
+        it('retains and pages coalesced link contexts independently on retries', async () => {
+          const crawlId = await crawlWithLinks()
+          const sourceHash = hashOf(url('/about'))
+          const links = [1, 2].map((occurrence) => ({
+            sourceHash,
+            targetHash: hashOf(home),
+            kind: 'anchor' as const,
+            occurrence,
+            context: { snippet: `<a href="/?updatedAt=${occurrence}">` },
+          }))
+          for (let retry = 0; retry < 2; retry++)
+            await db.crawls.recordResult({
+              crawlId,
+              urlHash: sourceHash,
+              result: result('page'),
+              links,
+            })
+          let after: OutLinkCursor | null = null
+          const snippets: string[] = []
+          for (let i = 0; i < 10; i++) {
+            const page: { links: OutLink[]; next: OutLinkCursor | null } =
+              await db.crawls.outlinksOf(crawlId, sourceHash, { after, limit: 1 })
+            for (const link of page.links)
+              if (link.context?.snippet) snippets.push(link.context.snippet)
+            if (!page.next) break
+            after = page.next
+          }
+          expect(snippets).toEqual(links.map((link) => link.context.snippet))
         })
 
         it('reads the links leaving a URL a page at a time, and URLs by their hash', async () => {

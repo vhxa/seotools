@@ -5,6 +5,7 @@ import {
   crawlFileKindOf,
   defaultResolution,
   crawlUrlHash,
+  stripIgnoredParameters,
   isInternalUrl,
   MAX_EVIDENCE_ITEMS,
   isRobotsAllowed,
@@ -348,7 +349,11 @@ function embedFailed(target: AuditedUrl | undefined): target is AuditedUrl {
 }
 
 /** Follows redirects and anchors from the home page, a redirect not being a click. */
-function measureClickDepth(urls: readonly AuditedUrl[], byHash: ReadonlyMap<string, AuditedUrl>) {
+function measureClickDepth(
+  urls: readonly AuditedUrl[],
+  byHash: ReadonlyMap<string, AuditedUrl>,
+  identity: (url: string) => string,
+) {
   let frontier = urls.filter((url) => url.url.source === 'seed')
   for (let depth = 0; frontier.length > 0; depth++) {
     const next: AuditedUrl[] = []
@@ -357,7 +362,9 @@ function measureClickDepth(urls: readonly AuditedUrl[], byHash: ReadonlyMap<stri
       const url = frontier[i]!
       if (url.clickDepth !== null) continue
       url.clickDepth = depth
-      const target = url.url.redirectTo ? byHash.get(crawlUrlHash(url.url.redirectTo)) : undefined
+      const target = url.url.redirectTo
+        ? byHash.get(crawlUrlHash(identity(url.url.redirectTo)))
+        : undefined
       if (target) frontier.push(target)
       for (const linked of url.linksTo) next.push(linked)
     }
@@ -483,7 +490,9 @@ export async function loadSite(
     }
     for (const { pageHash, lang, url } of declared) {
       byHash.get(pageHash)?.hreflang.push({ lang, url, source: 'sitemap' })
-      alternates.add(crawlUrlHash(url))
+      alternates.add(
+        crawlUrlHash(stripIgnoredParameters(url, crawl.ignoredParameters ?? [], domain.host)),
+      )
     }
   }
   for (const [target, count] of unattributed) {
@@ -495,7 +504,9 @@ export async function loadSite(
     if (alternates.has(target.url.urlHash)) target.sitemapsAmbiguous += count
     else target.sitemaps += count
   }
-  measureClickDepth(internal, byHash)
+  measureClickDepth(internal, byHash, (url) =>
+    stripIgnoredParameters(url, crawl.ignoredParameters ?? [], domain.host),
+  )
 
   // What pages are compared against each other: the audited ones that can be indexed. A page left
   // out of the audit stays in the site (links, canonicals, hreflang, redirects see it as it is) but
@@ -509,7 +520,10 @@ export async function loadSite(
     now,
     config,
     urls,
-    get: (url) => byHash.get(crawlUrlHash(url)),
+    get: (url) =>
+      byHash.get(
+        crawlUrlHash(stripIgnoredParameters(url, crawl.ignoredParameters ?? [], domain.host)),
+      ),
     answered: urls.some((url) => url.contentPage),
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
     titles: sharedValues(indexable, (url) => comparable(url.url.title)),

@@ -352,3 +352,17 @@ test('Core Web Vitals stays hidden without a key and Integrations remains access
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(testKey).toBeDisabled()
 })
+
+test('ignored parameter settings persist and explain next-crawl behavior', async ({ page }) => {
+  await page.goto(`${domain}/settings/crawl`)
+  const names = page.getByLabel('Ignored query parameters', { exact: true })
+  await names.fill('updatedAt\nutm_*')
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByRole('status')).toBeVisible()
+  await page.reload()
+  await expect(names).toHaveValue('updatedAt\nutm_*')
+  await expect(page.getByText(/Applies from the next crawl, only to internal URLs/)).toBeVisible()
+  await names.fill('')
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByRole('status')).toBeVisible()
+})

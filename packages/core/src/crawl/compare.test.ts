@@ -867,3 +867,21 @@ describe('issue summary comparability', () => {
     ])
   })
 })
+
+it('notes changed ignored parameter sets, treating legacy crawls as empty and order as immaterial', () => {
+  expect(assessPair(crawl(), crawl({ ignoredParameters: ['x'] })).notes).toContainEqual({
+    code: 'ignoredParameters',
+    sides: ['base', 'target'],
+  })
+  expect(
+    assessPair(crawl(), crawl({ ignoredParameters: [] })).notes.some(
+      (n) => n.code === 'ignoredParameters',
+    ),
+  ).toBe(false)
+  expect(
+    assessPair(
+      crawl({ ignoredParameters: ['x', 'y'] }),
+      crawl({ ignoredParameters: ['y', 'x'] }),
+    ).notes.some((n) => n.code === 'ignoredParameters'),
+  ).toBe(false)
+})

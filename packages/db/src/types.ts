@@ -330,6 +330,7 @@ export interface DomainRepository {
 }
 
 export interface Crawl {
+  ignoredParameters?: string[]
   seedUrls?: string[] | null
   id: string
   domainId: string
@@ -446,10 +447,12 @@ export interface CrawlUrl
 }
 
 export interface CrawlLink {
+  /** Stable ordinal for links coalesced by ignored parameters; legacy links use zero. */
+  occurrence?: number
   sourceHash: string
   targetHash: string
   kind: CrawlLinkKind
-  /** Where in the source page it was found. Kept for the first occurrence only. */
+  /** Where in the source page it was found. Distinct coalesced variants keep their own context. */
   context?: LinkContext
   /**
    * The `seq` of each end, when the writer knows them (the crawler does). Then the link is stored
@@ -556,6 +559,7 @@ export interface OutLink extends CrawlLinkRow {
 
 /** Where a page of the links leaving a URL ended: the next page starts after it. */
 export interface OutLinkCursor {
+  occurrence?: number
   target: number
   kind: string
 }
@@ -752,7 +756,11 @@ export interface CrawlRepository {
   queryUrls(
     crawlId: string,
     page: { after: number | null; limit: number },
-  ): Promise<{ urls: string[]; next: number | null }>
+  ): Promise<{
+    urls: string[]
+    observations?: { url: string; canonical: string | null }[]
+    next: number | null
+  }>
   /**
    * The links that bring query parameters their page does not have (they kept the tag as read,
    * `LinkContext.snippet`): where parameters enter the site. Ordered by target, then source.

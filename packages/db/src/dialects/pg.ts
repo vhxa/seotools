@@ -1433,6 +1433,7 @@ export function createPgDatabase(options: {
       },
 
       async start({ domainId, type, trigger, seedUrls }) {
+        const ignoredParameters = (await this.settings(domainId)).ignoredParameters
         const now = new Date()
         const id = randomUUID()
         const jobId = randomUUID()
@@ -1451,6 +1452,7 @@ export function createPgDatabase(options: {
                   type,
                   trigger,
                   seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
+                  ignoredParameters: JSON.stringify(ignoredParameters),
                   jobId,
                   activeKey: domainId,
                   ref: (last?.ref ?? 0) + 1,
@@ -1962,6 +1964,7 @@ export function createPgDatabase(options: {
         const rows = await db
           .select({
             target: crawlUrlLinks.target,
+            occurrence: crawlUrlLinks.occurrence,
             url: crawlUrls.url,
             urlHash: crawlUrls.urlHash,
             kind: crawlUrlLinks.kind,
@@ -1988,11 +1991,20 @@ export function createPgDatabase(options: {
                 ? or(
                     gt(crawlUrlLinks.target, after.target),
                     and(eq(crawlUrlLinks.target, after.target), gt(crawlUrlLinks.kind, after.kind)),
+                    and(
+                      eq(crawlUrlLinks.target, after.target),
+                      eq(crawlUrlLinks.kind, after.kind),
+                      gt(crawlUrlLinks.occurrence, after.occurrence ?? 0),
+                    ),
                   )
                 : undefined,
             ),
           )
-          .orderBy(asc(crawlUrlLinks.target), asc(crawlUrlLinks.kind))
+          .orderBy(
+            asc(crawlUrlLinks.target),
+            asc(crawlUrlLinks.kind),
+            asc(crawlUrlLinks.occurrence),
+          )
           .limit(limit)
         const last = rows.at(-1)
         return {
@@ -2000,13 +2012,16 @@ export function createPgDatabase(options: {
             sourceHash,
             ...toCrawlLinkRow(row),
           })),
-          next: last && rows.length === limit ? { target: last.target, kind: last.kind } : null,
+          next:
+            last && rows.length === limit
+              ? { target: last.target, kind: last.kind, occurrence: last.occurrence }
+              : null,
         }
       },
 
       async queryUrls(crawlId, { after, limit }) {
         const rows = await db
-          .select({ url: crawlUrls.url, seq: crawlUrls.seq })
+          .select({ url: crawlUrls.url, canonical: crawlUrls.canonical, seq: crawlUrls.seq })
           .from(crawlUrls)
           .where(
             and(
@@ -2022,6 +2037,7 @@ export function createPgDatabase(options: {
         const last = rows.at(-1)
         return {
           urls: rows.map((row) => row.url),
+          observations: rows.map(({ url, canonical }) => ({ url, canonical })),
           next: last && last.seq !== null && rows.length === limit ? last.seq : null,
         }
       },
@@ -2195,7 +2211,10 @@ export function createPgDatabase(options: {
           .from(crawlUrlLinks)
           .innerJoin(crawlUrls, crawlLinkJoin(crawlUrlLinks, crawlUrls, query.direction, crawlId))
           .where(crawlLinkWhere(crawlUrlLinks, crawlUrls.url, query, scope))
-          .orderBy(...crawlLinkOrder(crawlUrls.url, crawlUrls.urlHash, crawlUrlLinks.kind))
+          .orderBy(
+            ...crawlLinkOrder(crawlUrls.url, crawlUrls.urlHash, crawlUrlLinks.kind),
+            asc(crawlUrlLinks.occurrence),
+          )
           .limit(limit)
           .offset(offset)
         return rows.map(toCrawlLinkRow)
