@@ -38,17 +38,34 @@ describe('recorded Google responses', () => {
     )
     expect(await client.crux({ url: 'https://example.com/' }, 'PHONE')).toBeNull()
   })
-  it.each([400, 403, 404, 500, 503])('isolates URL HTTP %s for both APIs', async (status) => {
-    const fetcher = vi.fn<typeof fetch>(
-      async () =>
-        new Response(
-          JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'URL failed' } }),
-          { status },
-        ),
+  it.each([400, 500, 503])(
+    'reports URL HTTP %s as an error of Google for both APIs',
+    async (status) => {
+      const fetcher = vi.fn<typeof fetch>(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'URL failed' } }),
+            { status },
+          ),
+      )
+      const client = createVitalsClient('fixture-key', fetcher)
+      await expect(client.crux({ url: 'https://example.com/bad' }, 'PHONE')).rejects.toThrow('http')
+      await expect(client.psi('https://example.com/bad')).rejects.toThrow('http')
+    },
+  )
+  it.each([
+    [401, ''],
+    [403, ''],
+    [403, '{"error":{"status":"PERMISSION_DENIED","details":[{"reason":"SERVICE_DISABLED"}]}}'],
+  ])('reports a %s as the key being refused, whatever the body', async (status, body) => {
+    const client = createVitalsClient(
+      'fixture-key',
+      vi.fn<typeof fetch>(async () => new Response(body, { status })),
     )
-    const client = createVitalsClient('fixture-key', fetcher)
-    expect(await client.crux({ url: 'https://example.com/bad' }, 'PHONE')).toBeNull()
-    expect(await client.psi('https://example.com/bad')).toBeNull()
+    await expect(client.crux({ origin: 'https://www.google.com' }, 'PHONE')).rejects.toThrow(
+      'forbidden',
+    )
+    await expect(client.psi('https://www.google.com/')).rejects.toThrow('forbidden')
   })
   it.each([
     [400, 'API_KEY_INVALID', 'forbidden'],

@@ -134,16 +134,22 @@ export function createVitalsClient(key: string, fetcher: typeof fetch = fetch) {
                 (e) => e.reason,
               )
             : []
-          const forbidden = reasons.some(
-            (reason) =>
-              reason === 'PERMISSION_DENIED' ||
-              reason === 'API_KEY_INVALID' ||
-              reason === 'API_KEY_SERVICE_BLOCKED' ||
-              reason === 'API_KEY_HTTP_REFERRER_BLOCKED' ||
-              reason === 'API_KEY_IP_ADDRESS_BLOCKED' ||
-              reason === 'keyInvalid' ||
-              reason === 'accessNotConfigured',
-          )
+          // A 401/403 is about the key or the project (an API not enabled, a key restricted to
+          // other APIs), never about one URL.
+          const forbidden =
+            response.status === 401 ||
+            response.status === 403 ||
+            reasons.some(
+              (reason) =>
+                reason === 'PERMISSION_DENIED' ||
+                reason === 'API_KEY_INVALID' ||
+                reason === 'SERVICE_DISABLED' ||
+                reason === 'API_KEY_SERVICE_BLOCKED' ||
+                reason === 'API_KEY_HTTP_REFERRER_BLOCKED' ||
+                reason === 'API_KEY_IP_ADDRESS_BLOCKED' ||
+                reason === 'keyInvalid' ||
+                reason === 'accessNotConfigured',
+            )
           const quota =
             response.status === 429 ||
             reasons.some(
@@ -155,7 +161,10 @@ export function createVitalsClient(key: string, fetcher: typeof fetch = fetch) {
             )
           if (quota) throw new VitalsError('quota', retryAfter(response.headers.get('retry-after')))
           if (forbidden) throw new VitalsError('forbidden')
-          return null
+          // Only "not found" means Google has no data for it; anything else is an error the job
+          // records for that URL alone.
+          if (response.status === 404) return null
+          throw new VitalsError('http')
         }
         return lab ? parsePsi(body) : parseCrux(body)
       } catch (error) {
@@ -163,7 +172,9 @@ export function createVitalsClient(key: string, fetcher: typeof fetch = fetch) {
         if (!response.ok) {
           if (response.status === 429)
             throw new VitalsError('quota', retryAfter(response.headers.get('retry-after')))
-          return null
+          if (response.status === 401 || response.status === 403) throw new VitalsError('forbidden')
+          if (response.status === 404) return null
+          throw new VitalsError('http')
         }
         throw new VitalsError('invalid-response')
       }
