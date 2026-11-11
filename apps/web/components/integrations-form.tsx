@@ -37,11 +37,13 @@ export function IntegrationsForm({
           <input name="remove" type="checkbox" />
           {t('remove')}
         </Label>
-        <Button disabled={pending}>{t('save')}</Button>
+        <Button type="submit" disabled={pending}>
+          {t('save')}
+        </Button>
         {state.result && <p role="status">{t(`results.${state.result}`)}</p>}
       </form>
       <form onSubmit={run} className="grid gap-3">
-        <Button disabled={testing || !configured} variant="outline">
+        <Button type="submit" disabled={testing || !configured} variant="outline">
           {t('test')}
         </Button>
         <p className="text-sm text-muted-foreground">{t('testHint')}</p>
