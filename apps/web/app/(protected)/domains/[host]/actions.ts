@@ -279,12 +279,8 @@ export async function toggleIgnoredParameterAction(
   const { domain } = await requireDomainEditor(host)
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('Parameters')
-  // A row is an exact name, never a wildcard supplied through action arguments.
-  if (
-    !name ||
-    name.includes('*') ||
-    !crawlSettingsSchema.shape.ignoredParameters.safeParse([name]).success
-  )
+  // Rows include observed exact names and currently configured prefix rules.
+  if (!name || !crawlSettingsSchema.shape.ignoredParameters.safeParse([name]).success)
     return { error: t('invalid') }
   const db = await getDb()
   const settings = await db.crawls.settings(domain.id)
@@ -292,9 +288,9 @@ export async function toggleIgnoredParameterAction(
   const patterns = ignored
     ? settings.ignoredParameters.filter((pattern) => !matchesIgnoredParameter(name, [pattern]))
     : [...settings.ignoredParameters, name]
-  const parsed = crawlSettingsSchema.safeParse({ ...settings, ignoredParameters: patterns })
+  const parsed = crawlSettingsSchema.shape.ignoredParameters.safeParse(patterns)
   if (!parsed.success) return { error: t('invalid') }
-  await db.crawls.saveSettings(domain.id, parsed.data)
+  await db.crawls.saveIgnoredParameters(domain.id, parsed.data)
   revalidatePath(`/domains/${host}/urls/parameters`)
   revalidatePath(`/domains/${host}/settings`, 'layout')
   return { saved: true }

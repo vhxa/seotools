@@ -167,7 +167,6 @@ export async function runCrawl(
     context?: LinkContext,
   ) {
     if (!followLinks) return
-    const writtenUrl = url
     url = identity(url)
     if (admit(url, source, depth, into.urls, { seq: from.seq, kind })) {
       const targetHash = crawlUrlHash(url)
@@ -176,7 +175,6 @@ export async function runCrawl(
         sourceHash: from.urlHash,
         targetHash,
         kind,
-        ...(writtenUrl !== url ? { occurrence: into.links.length + 1 } : {}),
         // Unnumbered (queued before 0019): the database looks the ends up instead.
         ...(from.seq ? { sourceSeq: from.seq } : {}),
         ...(targetSeq ? { targetSeq } : {}),

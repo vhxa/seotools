@@ -4,6 +4,7 @@ import {
   crawlUrlHash,
   isInternalUrl,
   parseRobots,
+  stripIgnoredParameters,
   type AuditResolver,
   type AuditSnapshot,
   type CrawlLinkKind,
@@ -70,6 +71,7 @@ function siteOfARecheck(input: { now: Date; config: AuditSnapshot; answered: boo
 
 /** What a recheck has besides the URLs themselves. */
 export interface RecheckContext {
+  identity?: (url: string) => string
   host: string
   now: Date
   /** The audit configuration in force when the recheck ran. */
@@ -85,6 +87,7 @@ export interface RecheckContext {
 }
 
 export function recheckContext(input: {
+  ignoredParameters?: readonly string[]
   host: string
   now: Date
   config: AuditSnapshot
@@ -100,6 +103,7 @@ export function recheckContext(input: {
     robots.set(origin, { parsed: text !== null ? parseRobots(text) : null, status })
   }
   return {
+    identity: (url) => stripIgnoredParameters(url, input.ignoredParameters ?? [], input.host),
     host: input.host,
     now: input.now,
     config: input.config,
@@ -183,7 +187,7 @@ export function recheckSubject(
     state: 'done',
     fetchedAt: context.now,
   }
-  const url = withoutSiteContext(auditUrl(row, context.robots, context.resolver))
+  const url = withoutSiteContext(auditUrl(row, context.robots, context.resolver, context.identity))
   url.linksIn = input.linksIn
   url.internalAnchorsOut = input.anchors.internal
   url.nofollowAnchorsOut = input.anchors.nofollow
@@ -192,6 +196,7 @@ export function recheckSubject(
     config: context.config,
     answered: context.answered,
   })
+  site.identity = context.identity
   return { url, site }
 }
 

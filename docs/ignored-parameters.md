@@ -22,9 +22,9 @@ should not carry tracking parameters. This mark is informational, not an audit f
 can still be ignored manually. Stopping an ignore on a row removes matching prefix rules too, as
 explained by the button; edit the settings list for finer control.
 
-Ignored names disappear from new crawl URL lists. Browse an older retained crawl to inspect them.
+Ignored names disappear from new crawl URL lists but remain on the Parameters page with a stop-ignoring action. Browse an older retained crawl to inspect their previous URLs.
 Each crawl keeps its ignored names at creation, including across worker retries. Comparison warns
-when these sets change: added and not seen URLs can reflect the setting change.
+when these sets change: added and not seen URLs can reflect the setting change, and per-issue change summaries and alerts are unverified.
 
 ## Audit declarations
 
@@ -34,10 +34,10 @@ hreflang declarations and Open Graph comparisons) continue to inspect those valu
 lookups and redirect traversal resolve internal addresses through the crawl's ignored-name snapshot,
 so target status checks do not mistake a stripped target for an unknown URL. Link opening tags keep
 the original parameters; links to variants share the stripped destination sequence while preserving
-their separate contexts.
+the first link context for each source, target and kind.
 
 ## Upgrade
 
-This feature adds nullable settings and crawl snapshot columns, and a link occurrence column/key
-so coalesced variants retain both link contexts. Migrations move forward only; take a backup before
+Migration 0027 adds only nullable settings and crawl snapshot columns. Coalesced variants keep
+one link per source, target and kind, retaining the first context; the links table is not rebuilt. Migrations move forward only; take a backup before
 upgrading. Returning to an older image requires restoring that backup.

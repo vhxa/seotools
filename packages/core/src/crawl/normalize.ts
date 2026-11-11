@@ -75,13 +75,16 @@ export function stripIgnoredParameters(
   if (!patterns.length || (host !== undefined && !isInternalUrl(url, host))) return url
   const question = url.indexOf('?')
   if (question < 0) return url
+  let removed = false
   const kept = url
     .slice(question + 1)
     .split('&')
     .filter((part) => {
       const name = new URLSearchParams(part).keys().next().value
-      return name === undefined || !matchesIgnoredParameter(name, patterns)
+      const keep = name === undefined || !matchesIgnoredParameter(name, patterns)
+      if (!keep) removed = true
+      return keep
     })
     .join('&')
-  return url.slice(0, question) + (kept ? `?${kept}` : '')
+  return removed ? url.slice(0, question) + (kept ? `?${kept}` : '') : url
 }

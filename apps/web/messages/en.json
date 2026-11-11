@@ -2690,7 +2690,7 @@
       },
       "ignoredParameters": {
         "title": "Ignored query parameters changed",
-        "description": "Added and not seen URLs may come from the changed ignored parameters, rather than changes on the site."
+        "description": "Added and not seen URLs may reflect changed ignored parameters. Per-issue change summaries are unverified because URL identity changed."
       }
     },
     "rowsShown": "{shown, number} of {matching, number} URLs shown"
@@ -3313,7 +3313,7 @@
     "status": "Suggestions and settings",
     "suggested": "Suggested to ignore",
     "invalid": "Invalid parameter name or too many ignored names.",
-    "ignoredHelp": "Changes apply from the next crawl. Ignored parameters disappear from new crawl URLs; use older retained crawls to inspect them. Stopping ignores removes any matching prefix rule too.",
+    "ignoredHelp": "Changes apply from the next crawl. Ignored parameters disappear from new crawl URLs; use older retained crawls to inspect them. Stopping ignores removes any matching prefix rule too. Manage names and prefix rules in Settings → Crawl.",
     "reasons": {
       "volatile": "Values change in at least 90% of 5 or more URL pairs across the two latest retained crawls",
       "canonical": "At least 90% of 5 or more URLs declare the same URL without this parameter as canonical"

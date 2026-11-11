@@ -1,4 +1,4 @@
-import { crawlUrlHash, normalizeCrawlUrl, type IssueEvidence } from '@seotools/core'
+import { crawlIdentityHash, normalizeCrawlUrl, type IssueEvidence } from '@seotools/core'
 
 /**
  * At most this many addresses of a finding's evidence are looked up in the crawl to link to their
@@ -33,13 +33,15 @@ export async function crawlUrlsInEvidence(
   issues: readonly { evidence?: IssueEvidence }[],
   has: (url: string) => Promise<boolean>,
   limit = MAX_EVIDENCE_LOOKUPS,
-): Promise<Set<string>> {
-  const known = new Set<string>()
+  identity?: { ignoredParameters?: readonly string[]; host: string },
+): Promise<Map<string, string>> {
+  const known = new Map<string, string>()
+  const hash = (url: string) => crawlIdentityHash(url, identity ?? {}, identity?.host ?? '')
   for (const { evidence } of issues) {
     if (evidence?.kind !== 'related-urls') continue
     for (const url of evidence.urls) {
       const normalized = normalizeCrawlUrl(url)
-      if (normalized) known.add(normalized)
+      if (normalized) known.set(normalized, hash(normalized))
     }
   }
   const asked = evidenceAddresses(issues)
@@ -47,7 +49,7 @@ export async function crawlUrlsInEvidence(
     .slice(0, limit)
   const answers = await Promise.all(asked.map(has))
   asked.forEach((url, index) => {
-    if (answers[index]) known.add(url)
+    if (answers[index]) known.set(url, hash(url))
   })
   return known
 }
@@ -63,10 +65,17 @@ export type EvidenceTarget =
   | { kind: 'external'; url: string }
   | { kind: 'text' }
 
-export function evidenceTarget(url: string | null, known: ReadonlySet<string>): EvidenceTarget {
+export function evidenceTarget(
+  url: string | null,
+  known: ReadonlySet<string> | ReadonlyMap<string, string>,
+): EvidenceTarget {
   const normalized = url === null ? null : normalizeCrawlUrl(url)
   if (normalized === null) return { kind: 'text' }
   return known.has(normalized)
-    ? { kind: 'crawl', hash: crawlUrlHash(normalized), url: normalized }
+    ? {
+        kind: 'crawl',
+        hash: 'get' in known ? known.get(normalized)! : crawlIdentityHash(normalized, {}, ''),
+        url: normalized,
+      }
     : { kind: 'external', url: normalized }
 }

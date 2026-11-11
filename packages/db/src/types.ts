@@ -447,12 +447,10 @@ export interface CrawlUrl
 }
 
 export interface CrawlLink {
-  /** Stable ordinal for links coalesced by ignored parameters; legacy links use zero. */
-  occurrence?: number
   sourceHash: string
   targetHash: string
   kind: CrawlLinkKind
-  /** Where in the source page it was found. Distinct coalesced variants keep their own context. */
+  /** Where in the source page it was found. Kept for the first occurrence only. */
   context?: LinkContext
   /**
    * The `seq` of each end, when the writer knows them (the crawler does). Then the link is stored
@@ -559,7 +557,6 @@ export interface OutLink extends CrawlLinkRow {
 
 /** Where a page of the links leaving a URL ended: the next page starts after it. */
 export interface OutLinkCursor {
-  occurrence?: number
   target: number
   kind: string
 }
@@ -641,6 +638,7 @@ export interface CrawlRepository {
   requestSecrets(domainId: string): Promise<string | null>
   saveRequestSecrets(domainId: string, encrypted: string | null): Promise<void>
   settings(domainId: string): Promise<CrawlSettings>
+  saveIgnoredParameters(domainId: string, patterns: string[]): Promise<void>
   saveSettings(domainId: string, settings: CrawlSettings): Promise<void>
   /** The extra crawl files each domain turned on, by domain id. Domains with none are left out. */
   enabledFiles(): Promise<Map<string, ExtraCrawlFileKind[]>>

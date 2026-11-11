@@ -356,7 +356,6 @@ export const crawlUrlLinks = sqliteTable(
     source: integer('source').notNull(),
     target: integer('target').notNull(),
     kind: text('kind').notNull(),
-    occurrence: integer('occurrence').notNull().default(0),
     /** The anchor text, bounded. */
     text: text('text'),
     /** The element that holds the link, e.g. `a.dropdown-item[role=menuitem]`. */
@@ -367,7 +366,7 @@ export const crawlUrlLinks = sqliteTable(
     snippet: text('snippet'),
   },
   (t) => [
-    primaryKey({ columns: [t.crawlRef, t.source, t.target, t.kind, t.occurrence] }),
+    primaryKey({ columns: [t.crawlRef, t.source, t.target, t.kind] }),
     index('crawl_url_links_target_idx').on(t.crawlRef, t.target),
   ],
 )

@@ -745,6 +745,46 @@ const absolute = (at: string) => (at.startsWith('http') ? at : `${SITE}${at}`)
 const issuesAt = async (crawlId: string, at: string) =>
   db.crawls.issuesOf(crawlId, [crawlUrlHash(absolute(at))])
 
+it('uses crawl identity for canonical, self and return hreflang, and og:url declarations', async () => {
+  await db.crawls.saveIgnoredParameters(domainId, ['updatedAt'])
+  const id = await crawl(
+    websiteOf({
+      at: '/a',
+      pages: {
+        '/a': page('/a', {
+          canonical: `${SITE}/a?updatedAt=1`,
+          head: `<link rel="alternate" hreflang="en" href="${SITE}/a?updatedAt=2"><link rel="alternate" hreflang="es" href="${SITE}/b?updatedAt=3">`,
+          social: `<meta property="og:url" content="${SITE}/a?updatedAt=4">`,
+        }),
+        '/b': page('/b', {
+          head: `<link rel="alternate" hreflang="en" href="${SITE}/a?updatedAt=5"><link rel="alternate" hreflang="es" href="${SITE}/b?updatedAt=6">`,
+        }),
+        '/different': page('/different', { canonical: `${SITE}/a?updatedAt=7` }),
+      },
+    }),
+  )
+  const issues = (await issuesAt(id, '/a')).map((row) => row.issue)
+  for (const issue of [
+    'canonical-other',
+    'hreflang-no-self',
+    'hreflang-no-return',
+    'og-url-mismatch',
+  ])
+    expect(issues).not.toContain(issue)
+  const stored = await db.crawls.getUrl(id, crawlUrlHash(`${SITE}/a`))
+  expect(stored?.canonical).toBe(`${SITE}/a?updatedAt=1`)
+  const audit = await db.crawls.auditOf(id, [
+    crawlUrlHash(`${SITE}/a`),
+    crawlUrlHash(`${SITE}/different`),
+  ])
+  expect(audit.find((row) => row.urlHash === crawlUrlHash(`${SITE}/a`))?.indexability).toBe(
+    'indexable',
+  )
+  expect(audit.find((row) => row.urlHash === crawlUrlHash(`${SITE}/different`))?.indexability).toBe(
+    'not-indexable',
+  )
+})
+
 describe('each issue', () => {
   it('has a scenario', () => {
     expect(Object.keys(SCENARIOS).sort()).toEqual([...PAGE_ISSUE_IDS].sort())

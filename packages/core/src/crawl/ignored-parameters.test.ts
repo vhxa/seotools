@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { crawlIdentityHash, crawlUrlHash } from './url'
 import { stripIgnoredParameters } from './normalize'
 import { ignoredParametersSchema, crawlSettingsSchema, DEFAULT_CRAWL_SETTINGS } from './settings'
 describe('ignored parameters', () => {
@@ -25,4 +26,20 @@ describe('ignored parameters', () => {
       expect(ignoredParametersSchema.safeParse([value]).success).toBe(false)
     expect(ignoredParametersSchema.safeParse(Array(101).fill('a')).success).toBe(false)
   })
+})
+
+it('keeps untouched URL bytes and hashes declarations with the crawl snapshot and host', () => {
+  expect(stripIgnoredParameters('https://example.com/a?', ['x'])).toBe('https://example.com/a?')
+  expect(stripIgnoredParameters('https://example.com/a?y=%20', ['x'])).toBe(
+    'https://example.com/a?y=%20',
+  )
+  expect(
+    crawlIdentityHash('https://example.com/a?x=1', { ignoredParameters: ['x'] }, 'example.com'),
+  ).toBe(crawlUrlHash('https://example.com/a'))
+  expect(
+    crawlIdentityHash('https://other.com/a?x=1', { ignoredParameters: ['x'] }, 'example.com'),
+  ).toBe(crawlUrlHash('https://other.com/a?x=1'))
+  expect(crawlIdentityHash('https://example.com/a?x=1', {}, 'example.com')).toBe(
+    crawlUrlHash('https://example.com/a?x=1'),
+  )
 })

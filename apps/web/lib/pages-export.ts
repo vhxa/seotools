@@ -1,5 +1,5 @@
 import type { VitalMetrics } from '@seotools/core'
-import { crawlUrlHash } from '@seotools/core'
+import { crawlIdentityHash } from '@seotools/core'
 import { ANY_ACCEPTED, type FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type { Extractor } from '@seotools/core/crawl/extraction'
 import { evidenceKindOf } from '@seotools/core/crawl/evidence'
@@ -179,6 +179,7 @@ export function describeListing(
 
 /** What the file is about, the same on every row. */
 export interface ExportContext {
+  ignoredParameters?: string[]
   vitals?: ReadonlyMap<string, VitalMetrics>
   host: string
   crawlId: string
@@ -596,6 +597,7 @@ async function redirectChains(
   source: Pick<CrawlRepository, 'urlsOf'>,
   crawlId: string,
   urls: CrawlUrl[],
+  context: ExportContext,
 ): Promise<Map<string, RedirectChain>> {
   const chains = new Map<string, RedirectChain & { at: CrawlUrl; seen: Set<string> }>()
   for (const url of urls) {
@@ -618,13 +620,13 @@ async function redirectChains(
       (
         await source.urlsOf(
           crawlId,
-          moving.map((chain) => crawlUrlHash(chain.at.redirectTo!)),
+          moving.map((chain) => crawlIdentityHash(chain.at.redirectTo!, context, context.host)),
         )
       ).map((url) => [url.urlHash, url]),
     )
     for (const chain of moving) {
       const target = chain.at.redirectTo!
-      const hash = crawlUrlHash(target)
+      const hash = crawlIdentityHash(target, context, context.host)
       chain.hops++
       chain.finalUrl = target
       const reached = next.get(hash)
@@ -702,7 +704,7 @@ export async function* exportCsv(options: {
         checked ? source.acceptedOf(listing.crawlId, hashes) : [],
         source.auditOf(listing.crawlId, hashes),
         kind === 'redirects'
-          ? redirectChains(source, listing.crawlId, urls)
+          ? redirectChains(source, listing.crawlId, urls, context)
           : new Map<string, RedirectChain>(),
       ])
       const issuesByUrl = new Map<string, CrawlUrlIssue[]>()

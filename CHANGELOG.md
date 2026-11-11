@@ -18,13 +18,12 @@ Documentation, tests, CI and refactors that change nothing visible have no entry
 themselves, no release. Releases are prepared with `node scripts/release.mjs prepare <version>`,
 which moves the entries of `[Unreleased]` into the new version.
 
+## [Unreleased]
+
 ### Upgrade notes
 
-- Database migrations add ignored-parameter settings and per-crawl snapshots, and preserve separate
-  link contexts when URL variants coalesce. The default empty list changes no crawl behavior.
-  Migrations only move forward; returning to an older image requires restoring the pre-update backup.
-
-## [Unreleased]
+- Migration 0027 adds ignored-parameter settings and per-crawl snapshots without rebuilding link rows.
+  The default empty list changes no crawl behavior. Going back requires restoring the pre-update backup.
 
 ### Added
 

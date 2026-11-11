@@ -70,6 +70,7 @@ export async function GET(
     context: {
       host: domain.host,
       crawlId: crawl.id,
+      ignoredParameters: crawl.ignoredParameters ?? [],
       crawlDate: moment,
       filters: describeListing(query, unapplied, translate),
       onlyIssue: query.issue,

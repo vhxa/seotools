@@ -761,8 +761,10 @@ describe('a recheck of a URL', () => {
   const contextWith = (
     rules: NewAuditRule[],
     robots: Record<string, { status: number | null; text: string | null }> = {},
+    ignoredParameters: string[] = [],
   ) =>
     recheckContext({
+      ignoredParameters,
       host: 'example.com',
       now: new Date('2026-01-01T00:00:00Z'),
       config: auditSnapshotOf(
@@ -772,6 +774,26 @@ describe('a recheck of a URL', () => {
       robotsTexts: new Map(Object.entries(robots).map(([origin, value]) => [origin, value])),
       answered: true,
     })
+
+  it('resolves recheck declarations through the base crawl identity', () => {
+    const context = contextWith([], {}, ['updatedAt'])
+    const subject = recheckSubject(
+      answerOf('/x', {
+        canonical: `${SITE}/x?updatedAt=1`,
+        social: `<meta property="og:url" content="${SITE}/x?updatedAt=2">`,
+      }),
+      context,
+    )
+    expect(subject.url.canonicalised).toBe(false)
+    const outcome = evaluateRecheck(
+      answerOf('/x', {
+        canonical: `${SITE}/x?updatedAt=1`,
+        social: `<meta property="og:url" content="${SITE}/x?updatedAt=2">`,
+      }),
+      context,
+    )
+    expect(outcome.findings.map((finding) => finding.issue)).not.toContain('og-url-mismatch')
+  })
 
   it('settles the directives and the block in robots.txt, and finds what a rule requires', () => {
     const context = contextWith(

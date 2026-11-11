@@ -1229,7 +1229,7 @@ it('loads encrypted credentials for a crawl without exposing them as crawl setti
   })
 })
 
-it('coalesces ignored parameter links before hashing and keeps both written tags', async () => {
+it('coalesces ignored parameter links before hashing and keeps the first written tag', async () => {
   await db.crawls.saveSettings(domainId, {
     ...(await db.crawls.settings(domainId)),
     ignoredParameters: ['updatedAt'],
@@ -1252,8 +1252,8 @@ it('coalesces ignored parameter links before hashing and keeps both written tags
     limit: 10,
     offset: 0,
   })
-  expect(links).toHaveLength(2)
-  expect(links.map((l) => l.url)).toEqual(['https://example.com/a', 'https://example.com/a'])
+  expect(links).toHaveLength(1)
+  expect(links.map((l) => l.url)).toEqual(['https://example.com/a'])
   expect(links.map((l) => l.context?.snippet).join(' ')).toContain('updatedAt=1')
-  expect(links.map((l) => l.context?.snippet).join(' ')).toContain('updatedAt=2')
+  expect(links.map((l) => l.context?.snippet).join(' ')).not.toContain('updatedAt=2')
 })

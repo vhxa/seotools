@@ -102,3 +102,10 @@ describe('ignore suggestions', () => {
     expect(isTrackingParameter('UTM_source')).toBe(false)
   })
 })
+
+it('skips malformed suggestion observations and caches no observations', async () => {
+  expect(parameterSuggestions([{ url: 'invalid', canonical: null }]).size).toBe(0)
+  expect(
+    await parameterSummary({ queryUrls: pagedSource(1) }, 'no-observations'),
+  ).not.toHaveProperty('observations')
+})

@@ -509,6 +509,22 @@ export function describeDatabaseContract(
         return crawl
       }
 
+      it('updates only ignored parameters, preserving other settings and the crawl snapshot', async () => {
+        const domainId = await domain()
+        await db.crawls.saveIgnoredParameters(domainId, ['first'])
+        expect(await db.crawls.settings(domainId)).toEqual({
+          ...DEFAULT_CRAWL_SETTINGS,
+          ignoredParameters: ['first'],
+        })
+        const custom = { ...DEFAULT_CRAWL_SETTINGS, userAgent: 'CustomBot', concurrency: 7 }
+        await db.crawls.saveSettings(domainId, custom)
+        await db.crawls.saveIgnoredParameters(domainId, ['updatedAt'])
+        const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+        await db.crawls.saveIgnoredParameters(domainId, [])
+        expect(await db.crawls.settings(domainId)).toEqual(custom)
+        expect((await db.crawls.get(started!.id))?.ignoredParameters).toEqual(['updatedAt'])
+      })
+
       it('uses the defaults until a domain saves its settings', async () => {
         const domainId = await domain()
         expect(await db.crawls.settings(domainId)).toEqual(DEFAULT_CRAWL_SETTINGS)
@@ -1651,14 +1667,13 @@ export function describeDatabaseContract(
           expect(next[0]?.referencedBy).toEqual({ total: 2, kinds: { resource: 2 } })
         })
 
-        it('retains and pages coalesced link contexts independently on retries', async () => {
+        it('keeps the first coalesced link context on retries', async () => {
           const crawlId = await crawlWithLinks()
           const sourceHash = hashOf(url('/about'))
           const links = [1, 2].map((occurrence) => ({
             sourceHash,
-            targetHash: hashOf(home),
+            targetHash: hashOf(url('/blog/b')),
             kind: 'anchor' as const,
-            occurrence,
             context: { snippet: `<a href="/?updatedAt=${occurrence}">` },
           }))
           for (let retry = 0; retry < 2; retry++)
@@ -1678,7 +1693,7 @@ export function describeDatabaseContract(
             if (!page.next) break
             after = page.next
           }
-          expect(snippets).toEqual(links.map((link) => link.context.snippet))
+          expect(snippets).toEqual([links[0]!.context.snippet])
         })
 
         it('reads the links leaving a URL a page at a time, and URLs by their hash', async () => {

@@ -568,7 +568,6 @@ export function newCrawlLinkRow(crawlRef: number, source: number, target: number
     source,
     target,
     kind: link.kind,
-    occurrence: link.occurrence ?? 0,
     text: cleanText(context?.text, LINK_CONTEXT_LIMITS.text),
     element: cleanText(context?.element, LINK_CONTEXT_LIMITS.element),
     region: context?.region && LINK_REGIONS.includes(context.region) ? context.region : null,

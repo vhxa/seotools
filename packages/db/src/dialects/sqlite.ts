@@ -1455,6 +1455,14 @@ export function createSqliteDatabase(options: {
         return enabledFilesByDomain(db.select().from(crawlSettings).all())
       },
 
+      async saveIgnoredParameters(domainId, patterns) {
+        const values = { ignoredParameters: JSON.stringify(patterns), updatedAt: new Date() }
+        db.insert(crawlSettings)
+          .values({ domainId, ...crawlSettingsColumns(DEFAULT_CRAWL_SETTINGS), ...values })
+          .onConflictDoUpdate({ target: crawlSettings.domainId, set: values })
+          .run()
+      },
+
       async saveSettings(domainId, input) {
         const values = crawlSettingsColumns(input)
         const updatedAt = new Date()
@@ -1465,13 +1473,17 @@ export function createSqliteDatabase(options: {
       },
 
       async start({ domainId, type, trigger, seedUrls }) {
-        const ignoredParameters = (await this.settings(domainId)).ignoredParameters
         const now = new Date()
         const id = randomUUID()
         const jobId = randomUUID()
         try {
           db.transaction((tx) => {
             assertNotArchived(tx, domainId)
+            const snapshot = tx
+              .select({ ignoredParameters: crawlSettings.ignoredParameters })
+              .from(crawlSettings)
+              .where(eq(crawlSettings.domainId, domainId))
+              .get()
             tx.insert(jobs)
               .values(crawlJobValues(id, jobId, now))
               .run()
@@ -1488,7 +1500,7 @@ export function createSqliteDatabase(options: {
                 type,
                 trigger,
                 seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
-                ignoredParameters: JSON.stringify(ignoredParameters),
+                ignoredParameters: snapshot?.ignoredParameters ?? null,
                 jobId,
                 activeKey: domainId,
                 ref: last + 1,
@@ -2008,7 +2020,6 @@ export function createSqliteDatabase(options: {
         const rows = db
           .select({
             target: crawlUrlLinks.target,
-            occurrence: crawlUrlLinks.occurrence,
             url: crawlUrls.url,
             urlHash: crawlUrls.urlHash,
             kind: crawlUrlLinks.kind,
@@ -2035,20 +2046,11 @@ export function createSqliteDatabase(options: {
                 ? or(
                     gt(crawlUrlLinks.target, after.target),
                     and(eq(crawlUrlLinks.target, after.target), gt(crawlUrlLinks.kind, after.kind)),
-                    and(
-                      eq(crawlUrlLinks.target, after.target),
-                      eq(crawlUrlLinks.kind, after.kind),
-                      gt(crawlUrlLinks.occurrence, after.occurrence ?? 0),
-                    ),
                   )
                 : undefined,
             ),
           )
-          .orderBy(
-            asc(crawlUrlLinks.target),
-            asc(crawlUrlLinks.kind),
-            asc(crawlUrlLinks.occurrence),
-          )
+          .orderBy(asc(crawlUrlLinks.target), asc(crawlUrlLinks.kind))
           .limit(limit)
           .all()
         const last = rows.at(-1)
@@ -2057,10 +2059,7 @@ export function createSqliteDatabase(options: {
             sourceHash,
             ...toCrawlLinkRow(row),
           })),
-          next:
-            last && rows.length === limit
-              ? { target: last.target, kind: last.kind, occurrence: last.occurrence }
-              : null,
+          next: last && rows.length === limit ? { target: last.target, kind: last.kind } : null,
         }
       },
 
@@ -2255,10 +2254,7 @@ export function createSqliteDatabase(options: {
           .from(crawlUrlLinks)
           .innerJoin(crawlUrls, crawlLinkJoin(crawlUrlLinks, crawlUrls, query.direction, crawlId))
           .where(crawlLinkWhere(crawlUrlLinks, crawlUrls.url, query, scope))
-          .orderBy(
-            ...crawlLinkOrder(crawlUrls.url, crawlUrls.urlHash, crawlUrlLinks.kind),
-            asc(crawlUrlLinks.occurrence),
-          )
+          .orderBy(...crawlLinkOrder(crawlUrls.url, crawlUrls.urlHash, crawlUrlLinks.kind))
           .limit(limit)
           .offset(offset)
           .all()

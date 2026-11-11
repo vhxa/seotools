@@ -124,6 +124,7 @@ export async function runVerification(
   }
 
   const settings = await db.crawls.settings(domain.id)
+  const baseCrawl = await db.crawls.get(verification.baseCrawlId)
   const config = await currentAuditConfig(db, domain.id)
   const fetcher = options.createFetcher({
     siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
@@ -192,7 +193,14 @@ export async function runVerification(
         throw error
       }
     }
-    const context = recheckContext({ host, now: new Date(), config, robotsTexts, answered })
+    const context = recheckContext({
+      host,
+      ignoredParameters: baseCrawl?.ignoredParameters ?? [],
+      now: new Date(),
+      config,
+      robotsTexts,
+      answered,
+    })
 
     const markCancelled = () => {
       cancelled = true

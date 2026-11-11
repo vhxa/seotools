@@ -188,8 +188,11 @@ const hreflangTargets =
  */
 const HREFLANG_RELATIONS = {
   'hreflang-no-return': {
-    wrong: (target: AuditedUrl, page: AuditedUrl) =>
-      target.contentPage && !target.hreflang.some((entry) => entry.url === page.url.url),
+    wrong: (target: AuditedUrl, page: AuditedUrl, site: Site) =>
+      target.contentPage &&
+      !target.hreflang.some(
+        (entry) => identityOf(site, entry.url) === identityOf(site, page.url.url),
+      ),
     excused: excusesMissingReturn,
     blockers: (target: AuditedUrl): readonly IndexabilityBlocker[] => target.indexability.blockers,
   },
@@ -211,7 +214,7 @@ const unexcused =
   (issue: keyof typeof HREFLANG_RELATIONS) =>
   (target: AuditedUrl, page: AuditedUrl, site: Site) => {
     const relation = HREFLANG_RELATIONS[issue]
-    return relation.wrong(target, page) && !relation.excused(page, target, site)
+    return relation.wrong(target, page, site) && !relation.excused(page, target, site)
   }
 
 /** What the links that reach a URL say of it, whatever is expected of the URL. */
@@ -310,8 +313,9 @@ const OG_REQUIRED = [
 ] as const
 
 /** Whether `declared` is where the page says it lives: its canonical, or itself without one. */
-const ogUrlDiffers = (url: AuditedUrl, declared: string) =>
-  declared !== (url.url.canonical ?? url.url.url)
+const identityOf = (site: Site, url: string) => site.identity?.(url) ?? url
+const ogUrlDiffers = (url: AuditedUrl, declared: string, site: Site) =>
+  identityOf(site, declared) !== identityOf(site, url.url.canonical ?? url.url.url)
 
 /** The typed nodes of a page's JSON-LD that lack what Google asks, as `Type: missing, …`. */
 const structuredProblems = (facts: CrawlPageFacts, level: 'required' | 'recommended') =>
@@ -561,16 +565,18 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'hreflang-outside-head': hreflang((_, entries) => entries.filter((entry) => entry.outsideHead)),
   'hreflang-non-canonical': hreflang(hreflangTargets(unexcused('hreflang-non-canonical'))),
   'hreflang-noindex': hreflang(hreflangTargets(unexcused('hreflang-noindex'))),
-  'hreflang-same-language': hreflang((_, entries) => {
+  'hreflang-same-language': hreflang((_, entries, site) => {
     const urls = new Map<string, Set<string>>()
     for (const { lang, url } of entries) {
       const key = lang.trim().toLowerCase()
-      urls.set(key, (urls.get(key) ?? new Set()).add(url))
+      urls.set(key, (urls.get(key) ?? new Set()).add(identityOf(site, url)))
     }
     return entries.filter((entry) => (urls.get(entry.lang.trim().toLowerCase())?.size ?? 0) > 1)
   }),
-  'hreflang-no-self': hreflang((url, entries) =>
-    entries.some((entry) => entry.url === url.url.url) ? [] : entries,
+  'hreflang-no-self': hreflang((url, entries, site) =>
+    entries.some((entry) => identityOf(site, entry.url) === identityOf(site, url.url.url))
+      ? []
+      : entries,
   ),
   'hreflang-no-x-default': hreflang((_, entries) =>
     entries.some((entry) => entry.lang.trim().toLowerCase() === 'x-default') ? [] : entries,
@@ -670,7 +676,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
   }),
   'og-image-broken': onPage((url, facts, site) => brokenShareImage(url, facts, site)),
   'og-url-mismatch': onPage(
-    (url, facts) => facts.social?.url !== undefined && ogUrlDiffers(url, facts.social.url),
+    (url, facts, site) =>
+      facts.social?.url !== undefined && ogUrlDiffers(url, facts.social.url, site),
   ),
   'twitter-card-missing': onPage(
     (_, facts) => facts.social !== undefined && facts.social.twitterCard === undefined,
@@ -936,7 +943,7 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
       const target = site.get(entry.url)
       if (!target || target === url || !target.internal || seen.has(entry.url)) continue
       seen.add(entry.url)
-      if (!relation.wrong(target, url) || !relation.excused(url, target, site)) continue
+      if (!relation.wrong(target, url, site) || !relation.excused(url, target, site)) continue
       // A missing return is excused as much by the page being expected out as by the target.
       add(issue, relationAcceptance(url, target, relation.blockers(target)), target)
     }

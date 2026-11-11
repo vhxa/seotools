@@ -10,7 +10,7 @@ import { crawlMoment } from '@/lib/pages-export'
 import {
   PARAMETER_SCAN_LIMIT,
   parameterSummary,
-  parameterSuggestions,
+  crawlParameterSuggestions,
   isTrackingParameter,
 } from '@/lib/query-parameters'
 import { requireDomain } from '@/lib/workspace'
@@ -85,19 +85,25 @@ export default async function ParametersPage({
   }
   const { crawl } = selection
 
-  const summary = await parameterSummary(db.crawls, crawl.id)
-  const { parameters, bounded } = summary
-  const sortedParameters = [...parameters].sort(
-    (a, b) => Number(isTrackingParameter(b[0])) - Number(isTrackingParameter(a[0])),
-  )
   const settings = await db.crawls.settings(domain.id)
   const retained = (await browsableCrawls(db.crawls, domain.id))
     .filter((item) => !item.pruned)
     .slice(0, 2)
+  const summary = await parameterSummary(
+    db.crawls,
+    crawl.id,
+    retained.some((item) => item.id === crawl.id),
+  )
+  const { parameters, bounded } = summary
   const recent = await Promise.all(retained.map((item) => parameterSummary(db.crawls, item.id)))
-  const suggestions = parameterSuggestions(
-    recent[0]?.observations ?? [],
-    recent[1]?.observations ?? [],
+  const suggestions = await crawlParameterSuggestions(
+    db.crawls,
+    retained.map((item) => item.id),
+  )
+  const names = new Map(parameters)
+  for (const pattern of settings.ignoredParameters) if (!names.has(pattern)) names.set(pattern, 0)
+  const sortedParameters = [...names].sort(
+    (a, b) => Number(isTrackingParameter(b[0])) - Number(isTrackingParameter(a[0])),
   )
 
   const rawPage = typeof query.page === 'string' ? Number(query.page) : 1
@@ -123,7 +129,7 @@ export default async function ParametersPage({
             {t('bounded', { count: PARAMETER_SCAN_LIMIT })}
           </p>
         )}
-        {parameters.length === 0 ? (
+        {sortedParameters.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('none')}</p>
         ) : (
           <div className="overflow-x-auto">

@@ -2690,7 +2690,7 @@
       },
       "ignoredParameters": {
         "title": "Han cambiado los parámetros ignorados",
-        "description": "Las URL añadidas y no vistas pueden deberse al cambio de parámetros ignorados y no a cambios en el sitio."
+        "description": "Las URL añadidas o no vistas pueden reflejar cambios en los parámetros ignorados. Los resúmenes de cambios por problema no se verifican porque cambió la identidad de las URL."
       }
     },
     "rowsShown": "{shown, number} de {matching, number} URLs mostradas"
@@ -3313,7 +3313,7 @@
     "status": "Sugerencias y configuración",
     "suggested": "Se sugiere ignorar",
     "invalid": "Nombre de parámetro no válido o demasiados nombres ignorados.",
-    "ignoredHelp": "Los cambios se aplican desde el próximo rastreo. Los parámetros ignorados desaparecen de las URL nuevas; consulta los rastreos anteriores conservados. Dejar de ignorar elimina también las reglas de prefijo coincidentes.",
+    "ignoredHelp": "Los cambios se aplican desde el próximo rastreo. Los parámetros ignorados desaparecen de las URL nuevas; consulta los rastreos anteriores conservados. Dejar de ignorar elimina también las reglas de prefijo coincidentes. Gestiona nombres y prefijos en Ajustes → Rastreo.",
     "reasons": {
       "volatile": "Los valores cambian en al menos el 90% de 5 o más pares de URL entre los dos últimos rastreos conservados",
       "canonical": "Al menos el 90% de 5 o más URL declaran como canónica la misma URL sin este parámetro"

@@ -27,7 +27,7 @@ Raspberry Pi to a VPS.
 - **Where every link is**: its text, element and part of the page, how the crawler found each URL,
   and where query parameters enter the site. Ignore selected parameters (exact names or prefixes)
   from the next crawl; review volatile/canonical suggestions and separately marked tracking names
-  ([details](docs/ignored-parameters.md)).
+  and manage currently ignored names on the Parameters page ([details](docs/ignored-parameters.md)).
 - **History and comparison** of crawls, a URL's history, rechecks of single URLs, alerts by email,
   and CSV exports of pages, findings, links and redirects.
 - **Crawl files**: `robots.txt` with the access of each AI bot, sitemaps, `llms.txt`, and on request

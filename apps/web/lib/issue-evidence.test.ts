@@ -49,7 +49,12 @@ describe('which addresses of evidence the crawl has a page for', () => {
       has,
     )
     expect(known).toEqual(
-      new Set(['https://acme.com/b', 'https://acme.com/c', 'https://acme.com/a.png']),
+      new Map(
+        ['https://acme.com/b', 'https://acme.com/c', 'https://acme.com/a.png'].map((url) => [
+          url,
+          crawlUrlHash(url),
+        ]),
+      ),
     )
     // /b is a related page of another finding, so it was not asked about again.
     expect(has.mock.calls.map(([url]) => url).sort()).toEqual([
@@ -103,5 +108,20 @@ describe('how an address in evidence is shown', () => {
     'not a url',
   ])('shows %j as text, never as a link', (value) => {
     expect(evidenceTarget(value, known)).toEqual({ kind: 'text' })
+  })
+})
+
+it('links ignored-parameter evidence to the stored identity while preserving the written URL', async () => {
+  const written = 'https://acme.com/a?updatedAt=1'
+  const known = await crawlUrlsInEvidence(
+    [{ evidence: { kind: 'links', total: 1, items: [{ kind: 'anchor', url: written }] } }],
+    async () => true,
+    undefined,
+    { host: 'acme.com', ignoredParameters: ['updatedAt'] },
+  )
+  expect(evidenceTarget(written, known)).toEqual({
+    kind: 'crawl',
+    hash: crawlUrlHash('https://acme.com/a'),
+    url: written,
   })
 })

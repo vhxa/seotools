@@ -1423,6 +1423,14 @@ export function createPgDatabase(options: {
         return enabledFilesByDomain(await db.select().from(crawlSettings))
       },
 
+      async saveIgnoredParameters(domainId, patterns) {
+        const values = { ignoredParameters: JSON.stringify(patterns), updatedAt: new Date() }
+        await db
+          .insert(crawlSettings)
+          .values({ domainId, ...crawlSettingsColumns(DEFAULT_CRAWL_SETTINGS), ...values })
+          .onConflictDoUpdate({ target: crawlSettings.domainId, set: values })
+      },
+
       async saveSettings(domainId, input) {
         const values = crawlSettingsColumns(input)
         const updatedAt = new Date()
@@ -1433,7 +1441,6 @@ export function createPgDatabase(options: {
       },
 
       async start({ domainId, type, trigger, seedUrls }) {
-        const ignoredParameters = (await this.settings(domainId)).ignoredParameters
         const now = new Date()
         const id = randomUUID()
         const jobId = randomUUID()
@@ -1444,6 +1451,10 @@ export function createPgDatabase(options: {
             try {
               await db.transaction(async (tx) => {
                 await assertNotArchived(tx, domainId)
+                const [snapshot] = await tx
+                  .select({ ignoredParameters: crawlSettings.ignoredParameters })
+                  .from(crawlSettings)
+                  .where(eq(crawlSettings.domainId, domainId))
                 await tx.insert(jobs).values(crawlJobValues(id, jobId, now))
                 const [last] = await tx.select({ ref: max(crawls.ref) }).from(crawls)
                 await tx.insert(crawls).values({
@@ -1452,7 +1463,7 @@ export function createPgDatabase(options: {
                   type,
                   trigger,
                   seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
-                  ignoredParameters: JSON.stringify(ignoredParameters),
+                  ignoredParameters: snapshot?.ignoredParameters ?? null,
                   jobId,
                   activeKey: domainId,
                   ref: (last?.ref ?? 0) + 1,
@@ -1964,7 +1975,6 @@ export function createPgDatabase(options: {
         const rows = await db
           .select({
             target: crawlUrlLinks.target,
-            occurrence: crawlUrlLinks.occurrence,
             url: crawlUrls.url,
             urlHash: crawlUrls.urlHash,
             kind: crawlUrlLinks.kind,
@@ -1991,20 +2001,11 @@ export function createPgDatabase(options: {
                 ? or(
                     gt(crawlUrlLinks.target, after.target),
                     and(eq(crawlUrlLinks.target, after.target), gt(crawlUrlLinks.kind, after.kind)),
-                    and(
-                      eq(crawlUrlLinks.target, after.target),
-                      eq(crawlUrlLinks.kind, after.kind),
-                      gt(crawlUrlLinks.occurrence, after.occurrence ?? 0),
-                    ),
                   )
                 : undefined,
             ),
           )
-          .orderBy(
-            asc(crawlUrlLinks.target),
-            asc(crawlUrlLinks.kind),
-            asc(crawlUrlLinks.occurrence),
-          )
+          .orderBy(asc(crawlUrlLinks.target), asc(crawlUrlLinks.kind))
           .limit(limit)
         const last = rows.at(-1)
         return {
@@ -2012,10 +2013,7 @@ export function createPgDatabase(options: {
             sourceHash,
             ...toCrawlLinkRow(row),
           })),
-          next:
-            last && rows.length === limit
-              ? { target: last.target, kind: last.kind, occurrence: last.occurrence }
-              : null,
+          next: last && rows.length === limit ? { target: last.target, kind: last.kind } : null,
         }
       },
 
@@ -2211,10 +2209,7 @@ export function createPgDatabase(options: {
           .from(crawlUrlLinks)
           .innerJoin(crawlUrls, crawlLinkJoin(crawlUrlLinks, crawlUrls, query.direction, crawlId))
           .where(crawlLinkWhere(crawlUrlLinks, crawlUrls.url, query, scope))
-          .orderBy(
-            ...crawlLinkOrder(crawlUrls.url, crawlUrls.urlHash, crawlUrlLinks.kind),
-            asc(crawlUrlLinks.occurrence),
-          )
+          .orderBy(...crawlLinkOrder(crawlUrls.url, crawlUrls.urlHash, crawlUrlLinks.kind))
           .limit(limit)
           .offset(offset)
         return rows.map(toCrawlLinkRow)
