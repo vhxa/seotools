@@ -654,7 +654,7 @@ export function PagesTable({
           <AlertDescription>{recheckError}</AlertDescription>
         </Alert>
       )}
-      <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,1fr)_15rem]">
+      <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,1fr)_21rem]">
         {/* Search, selection and table controls share the toolbar above the scroll surface. */}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Search host={host} query={query} />
@@ -797,7 +797,7 @@ export function PagesTable({
       <div
         className={cn(
           'grid min-h-0 flex-1 gap-3',
-          panelOpen && 'xl:grid-cols-[minmax(0,1fr)_15rem]',
+          panelOpen && 'xl:grid-cols-[minmax(0,1fr)_21rem]',
         )}
       >
         <div className="flex min-h-0 min-w-0 flex-col gap-3">
