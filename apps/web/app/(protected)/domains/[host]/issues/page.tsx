@@ -154,7 +154,12 @@ export default async function IssuesPage({
       <form className="flex flex-wrap items-end gap-3" method="get">
         <label className="grid gap-1 text-sm">
           {t('filters.type')}
-          <select className={NATIVE_SELECT} name="type" defaultValue={type}>
+          <select
+            aria-label={t('filters.type')}
+            className={NATIVE_SELECT}
+            name="type"
+            defaultValue={type}
+          >
             <option value="">{t('filters.all')}</option>
             {(['issue', 'warning', 'opportunity'] as const).map((value) => (
               <option key={value} value={value}>
@@ -165,7 +170,12 @@ export default async function IssuesPage({
         </label>
         <label className="grid gap-1 text-sm">
           {t('filters.group')}
-          <select className={NATIVE_SELECT} name="group" defaultValue={group?.id ?? ''}>
+          <select
+            aria-label={t('filters.group')}
+            className={NATIVE_SELECT}
+            name="group"
+            defaultValue={group?.id ?? ''}
+          >
             <option value="">{t('filters.all')}</option>
             {ISSUE_GROUPS.map((value) => (
               <option key={value.id} value={value.id}>
@@ -176,7 +186,13 @@ export default async function IssuesPage({
         </label>
         <label className="grid gap-1 text-sm">
           {t('filters.search')}
-          <Input name="q" defaultValue={search} maxLength={200} className="w-56" />
+          <Input
+            aria-label={t('filters.search')}
+            name="q"
+            defaultValue={search}
+            maxLength={200}
+            className="w-56"
+          />
         </label>
         <Button type="submit" variant="outline">
           {t('filters.apply')}

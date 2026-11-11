@@ -210,14 +210,14 @@ const WIDTHS_KEY = 'seotools:pages-widths'
 /** Whether the issues panel beside the table is folded away (`'folded'`) or open (unset). */
 const PANEL_KEY = 'seotools:pages-issues-panel'
 const DEFAULT_WIDTHS: Record<string, number> = {
-  url: 190,
-  status: 100,
-  title: 160,
+  url: 180,
+  status: 80,
+  title: 120,
   issueDetail: 300,
   issues: 300,
   audit: 110,
   intent: 260,
-  indexability: 155,
+  indexability: 140,
   origin: 240,
   depth: 100,
   responseTime: 160,
