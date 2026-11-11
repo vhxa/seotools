@@ -38,6 +38,14 @@ Raspberry Pi to a VPS.
 - **Teams**: companies and domains, administrators, and editors or viewers per company or domain.
 - **English and Spanish**, SQLite or PostgreSQL, `linux/amd64` and `linux/arm64` images on GHCR.
 
+A look at the demo site: dashboard, findings, URL inventory and share preview.
+
+| Dashboard                                           | Issues                                                           |
+| --------------------------------------------------- | ---------------------------------------------------------------- |
+| ![Domain dashboard](docs/screenshots/dashboard.png) | ![Issues grouped by importance](docs/screenshots/issues.png)     |
+| URLs                                                | Share preview                                                    |
+| ![URL inventory](docs/screenshots/urls.png)         | ![Search and social preview](docs/screenshots/share-preview.png) |
+
 ## Quick start (Docker Compose)
 
 ```bash

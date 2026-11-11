@@ -466,6 +466,14 @@ already pruned.
 
 ## What has been validated
 
+The [0.3.0 → 0.4.0 integration rehearsal](rehearsals/2026-11-12-upgrade-0.4.0.md),
+run on **2026-11-11**, **stopped at a failed target startup**: SQLite migrations 0026 and 0027
+committed with matching journal hashes, then the worker exited with `SIGBUS` before verified health.
+Catalog reanalysis was only partial. PostgreSQL transfer was blocked by a read-only source mount;
+its upgrade and both downgrade probes were not reached. This does not validate the 0.4.0 upgrade.
+The report records counts, timings and limits; the successful older rehearsal below still applies
+only to its named images.
+
 Rehearsed on **2026-11-05** (MySQL, also rehearsed then, is no longer supported and its column was
 removed here; the [rehearsal evidence](rehearsals/2026-11-05-pending-migrations.md) keeps it),
 Docker Desktop (Linux ARM64 containers on macOS), with locally
