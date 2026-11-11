@@ -12,6 +12,7 @@ export type CrawlRenderingMode = (typeof CRAWL_RENDERING_MODES)[number]
 export const CRAWL_RENDERING_AVAILABLE: readonly CrawlRenderingMode[] = ['http']
 
 export interface CrawlSettings {
+  collectVitals: boolean
   includePrefixes: string[]
   excludePrefixes: string[]
   maxDepth: number | null
@@ -42,6 +43,7 @@ export interface CrawlSettings {
 }
 
 export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
+  collectVitals: true,
   includePrefixes: [],
   excludePrefixes: [],
   maxDepth: null,
@@ -110,6 +112,7 @@ export function crawlSkipReason(
 }
 
 export const crawlSettingsSchema = z.object({
+  collectVitals: z.boolean().default(true),
   includePrefixes: prefixesSchema.default([]),
   excludePrefixes: prefixesSchema.default([]),
   maxDepth: z.number().int().min(1).max(100).nullable().default(null),

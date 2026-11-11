@@ -51,27 +51,30 @@ describe('the issues whose input an older crawl did not record', () => {
   })
 
   it('says nothing is unobserved when every page recorded its input', () => {
-    expect(unobservedIssues([collected(), collected()])).toEqual([])
-    expect(unobservedIssues([])).toEqual([])
+    expect(unobservedIssues([collected(), collected()], true)).toEqual([])
+    expect(unobservedIssues([], true)).toEqual([])
   })
 
   it('names the issues of what a single page did not record, sorted', () => {
-    expect(unobservedIssues([collected(), older('social')])).toEqual([
+    expect(unobservedIssues([collected(), older('social')], true)).toEqual([
       'og-image-broken',
       'og-incomplete',
       'og-missing',
       'og-url-mismatch',
       'twitter-card-missing',
     ])
-    expect(unobservedIssues([older('document')])).toEqual([
+    expect(unobservedIssues([older('document')], true)).toEqual([
       'charset-missing',
       'html-lang-invalid',
       'html-lang-missing',
       'viewport-missing',
     ])
-    expect(unobservedIssues([older('structuredDataTypes', 'structuredDataProblems')])).toEqual([
-      'structured-data-recommended-missing',
-      'structured-data-required-missing',
-    ])
+    expect(
+      unobservedIssues([older('structuredDataTypes', 'structuredDataProblems')], true),
+    ).toEqual(['structured-data-recommended-missing', 'structured-data-required-missing'])
   })
+})
+
+it('keeps uncollected vitals unknown at crawl level', () => {
+  expect(unobservedIssues([collected()], false)).toEqual(['cls-poor', 'inp-poor', 'lcp-poor'])
 })

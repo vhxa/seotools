@@ -63,6 +63,8 @@ test.describe('a member with a viewer grant on one domain', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Administration' })).toHaveCount(0)
 
+    const integrations = await page.goto('/system/integrations')
+    expect(integrations?.status()).toBe(404)
     const system = await page.goto('/system')
     expect(system?.status()).toBe(404)
   })

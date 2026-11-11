@@ -1,3 +1,5 @@
+import { VitalsValues } from './vitals-values'
+import { urlVitals } from '@/lib/vitals'
 import { AUDIT_CONDITIONS, intentOutcome } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import { CircleHelpIcon, ExternalLinkIcon } from 'lucide-react'
@@ -103,6 +105,8 @@ export async function UrlDetail({
   const notSet = <span className="text-muted-foreground">{t('notSet')}</span>
   const text = (value: string | null | undefined) => (value ? value : notSet)
 
+  const v = await getTranslations('Vitals')
+  const vitals = urlVitals(await (await getDb()).vitals.urls(data.crawl.id), data.url.urlHash)
   return (
     <div className="@container/url-detail grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 [overflow-wrap:anywhere] [&_[data-slot=badge]]:max-w-full [&_[data-slot=select-trigger]]:max-w-full [&_[data-slot=select-trigger]]:min-w-0 [&_[data-slot=select-value]]:min-w-0">
       <div className="flex flex-wrap items-center gap-2">
@@ -131,6 +135,17 @@ export async function UrlDetail({
 
       {context}
       <AuditResultsNotice host={host} state={data.results} />
+      <Section title={v('title')}>
+        <p>{v('field')}</p>
+        <VitalsValues metrics={vitals.field} />
+        {vitals.field?.status === 'no-data' && <p>{v('noField')}</p>}
+        {vitals.lab && (
+          <>
+            <p>{v('lab')}</p>
+            <VitalsValues metrics={vitals.lab} lab />
+          </>
+        )}
+      </Section>
       <Section title={t('sections.summary')}>
         <p className="text-xs text-muted-foreground">
           {t('observedAt', {

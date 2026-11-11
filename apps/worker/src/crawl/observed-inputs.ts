@@ -54,7 +54,10 @@ export const INPUT_RECORDED: Partial<Record<PageIssueId, (facts: CrawlPageFacts)
  * The issues whose input was not recorded on at least one page: not reporting them says nothing,
  * so a comparison must not read their absence as "not there". Sorted, to be stored as it is.
  */
-export function unobservedIssues(pages: Iterable<CrawlPageFacts>): PageIssueId[] {
+export function unobservedIssues(
+  pages: Iterable<CrawlPageFacts>,
+  vitalsCollected = false,
+): PageIssueId[] {
   const pending = new Set(Object.keys(INPUT_RECORDED) as PageIssueId[])
   const unobserved = new Set<PageIssueId>()
   for (const facts of pages) {
@@ -66,5 +69,7 @@ export function unobservedIssues(pages: Iterable<CrawlPageFacts>): PageIssueId[]
     }
     if (pending.size === 0) break
   }
+  if (!vitalsCollected)
+    for (const issue of ['lcp-poor', 'inp-poor', 'cls-poor'] as const) unobserved.add(issue)
   return [...unobserved].sort()
 }

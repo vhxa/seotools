@@ -139,6 +139,9 @@ export async function analyseCrawl(
   }
   const unobserved = unobservedIssues(
     site.urls.flatMap((url) => (url.internal && url.facts ? [url.facts] : [])),
+    (await db.vitals.origins(crawlId)).some(
+      (row) => row.formFactor === 'all' && row.status === 'collected',
+    ),
   )
   const saved = await db.crawls.saveAnalysis({
     crawlId,

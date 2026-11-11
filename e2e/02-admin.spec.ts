@@ -331,3 +331,13 @@ test('issues filters stay in the address, with current site findings above them'
     page.getByRole('heading', { name: 'What changed since the previous crawl' }),
   ).toHaveCount(0)
 })
+
+test('Core Web Vitals stays hidden without a key and Integrations remains accessible', async ({
+  page,
+}) => {
+  await page.goto(domain)
+  await expect(page.getByRole('heading', { name: 'Core Web Vitals', exact: true })).toHaveCount(0)
+  await page.goto('/system/integrations')
+  await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible()
+  await expect(page.getByLabel('Google API key')).toBeVisible()
+})

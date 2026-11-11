@@ -1,7 +1,15 @@
 import { referenceGroup } from '@seotools/core/crawl/links'
 import { CRAWL_LINK_KINDS } from '@seotools/core'
-import { assertKnownMigrations } from '../migration-guard'
 import { randomUUID } from 'node:crypto'
+import {
+  GOOGLE_VITALS_KEY,
+  AUDIT_SEMANTICS,
+  DEFAULT_CRAWL_SETTINGS,
+  JOB_TYPES,
+  nextScheduledRun,
+  type CrawlLinkKind,
+} from '@seotools/core'
+import type { AlertKind } from '@seotools/core'
 import {
   and,
   asc,
@@ -29,6 +37,36 @@ import { alias } from 'drizzle-orm/pg-core'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import postgres from 'postgres'
+import { DomainArchivedError } from '../archive'
+import {
+  AUDIT_SEMANTICS_SETTING,
+  UPGRADED_DIMENSIONS,
+  inApplyOrder,
+  languageColumns,
+  languagesOf,
+  mutationResult,
+  planChanges,
+  planDeleteRule,
+  planDeleteMany,
+  planLanguages,
+  planUpgradeSemantics,
+  planSaveRule,
+  planSaveRuleSet,
+  planSetEnabled,
+  planSetEnabledMany,
+  planUrlConfig,
+  readAuditConfig,
+  recomputeJobValues,
+  recomputePayload,
+  toAuditRule,
+  type AuditPlan,
+  type AuditRuleRow,
+  type PlanContext,
+  planThresholds,
+  thresholdColumns,
+  thresholdsOf,
+  type AuditStateRow,
+} from '../audit'
 import {
   CREDENTIAL_PROVIDER,
   accessRows,
@@ -110,53 +148,18 @@ import {
   foldPortfolio,
 } from '../mapping'
 import {
-  AUDIT_SEMANTICS,
-  DEFAULT_CRAWL_SETTINGS,
-  JOB_TYPES,
-  nextScheduledRun,
-  type CrawlLinkKind,
-} from '@seotools/core'
-import {
-  AUDIT_SEMANTICS_SETTING,
-  UPGRADED_DIMENSIONS,
-  inApplyOrder,
-  languageColumns,
-  languagesOf,
-  mutationResult,
-  planChanges,
-  planDeleteRule,
-  planDeleteMany,
-  planLanguages,
-  planUpgradeSemantics,
-  planSaveRule,
-  planSaveRuleSet,
-  planSetEnabled,
-  planSetEnabledMany,
-  planUrlConfig,
-  readAuditConfig,
-  recomputeJobValues,
-  recomputePayload,
-  toAuditRule,
-  type AuditPlan,
-  type AuditRuleRow,
-  type PlanContext,
-  planThresholds,
-  thresholdColumns,
-  thresholdsOf,
-  type AuditStateRow,
-} from '../audit'
-import {
   alertColumns,
   alertJobId,
+  vitalsJobId,
+  vitalsJobValues,
   alertJobValues,
   knownAlertKinds,
   mailDeliveryRow,
   toAlertSubscription,
   toMailDelivery,
 } from '../mapping'
-import type { AlertKind } from '@seotools/core'
+import { assertKnownMigrations } from '../migration-guard'
 import * as schema from '../schema/pg'
-import { DomainArchivedError } from '../archive'
 import type {
   CrawlLink,
   CrawlUrlAudit,
@@ -192,6 +195,8 @@ const {
   crawlFileChecks,
   crawlFiles,
   crawlSettings,
+  crawlVitals,
+  crawlUrlVitals,
   crawlSchedules,
   crawls,
   crawlUrls,
@@ -640,7 +645,7 @@ export function createPgDatabase(options: {
           .select({ id: crawls.jobId, crawlId: crawls.id })
           .from(crawls)
           .where(inArray(crawls.domainId, domainIds))
-      ).flatMap((row) => [row.id, alertJobId(row.crawlId)]),
+      ).flatMap((row) => [row.id, alertJobId(row.crawlId), vitalsJobId(row.crawlId)]),
       ...(
         await tx
           .select({ id: urlVerifications.jobId })
@@ -870,6 +875,50 @@ export function createPgDatabase(options: {
       },
     },
 
+    vitals: {
+      async latestCrawl(domainId) {
+        const [row] = await db
+          .select()
+          .from(crawls)
+          .where(
+            and(
+              eq(crawls.domainId, domainId),
+              eq(crawls.type, 'full'),
+              inArray(crawls.status, ['completed', 'incomplete']),
+              exists(db.select().from(crawlVitals).where(eq(crawlVitals.crawlId, crawls.id))),
+            ),
+          )
+          .orderBy(desc(crawls.createdAt), desc(crawls.id))
+          .limit(1)
+        return row ? toCrawl(row) : null
+      },
+      async origins(crawlId) {
+        return db.select().from(crawlVitals).where(eq(crawlVitals.crawlId, crawlId))
+      },
+      async urls(crawlId) {
+        return db.select().from(crawlUrlVitals).where(eq(crawlUrlVitals.crawlId, crawlId))
+      },
+      async saveOrigin(row) {
+        await db
+          .insert(crawlVitals)
+          .values(row)
+          .onConflictDoUpdate({ target: [crawlVitals.crawlId, crawlVitals.formFactor], set: row })
+      },
+      async saveUrl(row) {
+        await db
+          .insert(crawlUrlVitals)
+          .values(row)
+          .onConflictDoUpdate({
+            target: [
+              crawlUrlVitals.crawlId,
+              crawlUrlVitals.formFactor,
+              crawlUrlVitals.urlHash,
+              crawlUrlVitals.source,
+            ],
+            set: row,
+          })
+      },
+    },
     settings: {
       async get(key) {
         const [row] = await db.select().from(settings).where(eq(settings.key, key))
@@ -1580,7 +1629,10 @@ export function createPgDatabase(options: {
         const counts = await this.countUrls(id)
         return db.transaction(async (tx) => {
           const crawl = (
-            await tx.select({ type: crawls.type }).from(crawls).where(eq(crawls.id, id))
+            await tx
+              .select({ type: crawls.type, domainId: crawls.domainId })
+              .from(crawls)
+              .where(eq(crawls.id, id))
           )[0]
           const result = await tx
             .update(crawls)
@@ -1596,6 +1648,16 @@ export function createPgDatabase(options: {
           // The one place a crawl ends: whoever asked to be told hears of a full crawl from here.
           if (crawl?.type === 'full') {
             await tx.insert(jobs).values(alertJobValues(id, new Date())).onConflictDoNothing()
+            const [key] = await tx
+              .select()
+              .from(settings)
+              .where(eq(settings.key, GOOGLE_VITALS_KEY))
+            const [config] = await tx
+              .select()
+              .from(crawlSettings)
+              .where(eq(crawlSettings.domainId, crawl.domainId))
+            if (key && config?.collectVitals !== false)
+              await tx.insert(jobs).values(vitalsJobValues(id, new Date())).onConflictDoNothing()
           }
           return true
         })
@@ -1671,6 +1733,7 @@ export function createPgDatabase(options: {
               .where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
             await tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId))
             await tx.delete(crawlSitemapHreflang).where(eq(crawlSitemapHreflang.crawlId, crawlId))
+            await tx.delete(crawlUrlVitals).where(eq(crawlUrlVitals.crawlId, crawlId))
             await tx.delete(crawlUrls).where(eq(crawlUrls.crawlId, crawlId))
             await tx
               .update(crawls)

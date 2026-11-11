@@ -1,3 +1,4 @@
+import type { VitalMetrics } from '@seotools/core'
 import {
   assessIndexability,
   compileAuditSnapshot,
@@ -98,6 +99,7 @@ export function unavailableAfter(directives: ReadonlySet<string>): Date | null {
 }
 
 export interface AuditedUrl {
+  vitals?: VitalMetrics
   url: CrawlUrl
   internal: boolean
   /** What the crawl recorded from its HTML. `null` if it is not a page, or from before the checks. */
@@ -415,11 +417,17 @@ export async function loadSite(
   const robots = robotsOf(crawl)
   const urls: AuditedUrl[] = []
   const byHash = new Map<string, AuditedUrl>()
+  const vitals = new Map(
+    (await db.vitals.urls(crawl.id))
+      .filter((row) => row.source === 'field' && row.formFactor === 'PHONE')
+      .map((row) => [row.urlHash, row]),
+  )
   for (const view of VIEWS) {
     for (let offset = 0; ; offset += BATCH) {
       const batch = await db.crawls.listUrls({ crawlId: crawl.id, view, limit: BATCH, offset })
       for (const row of batch) {
         const url = auditUrl(row, robots, resolver)
+        url.vitals = vitals.get(row.urlHash)
         urls.push(url)
         byHash.set(row.urlHash, url)
       }

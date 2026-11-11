@@ -76,6 +76,11 @@ export async function GET(
       onlyAccepted: query.accepted,
       analysed: crawl.pagesByWorstIssue !== null,
       translate,
+      vitals: new Map(
+        (await db.vitals.urls(crawl.id))
+          .filter((row) => row.source === 'field' && row.formFactor === 'PHONE')
+          .map((row) => [row.urlHash, row]),
+      ),
       extractors: (await db.crawls.settings(domain.id)).extractors,
     },
   })

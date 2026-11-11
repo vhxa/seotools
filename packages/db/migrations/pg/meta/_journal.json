@@ -183,6 +183,13 @@
       "when": 1793979905053,
       "tag": "0025_custom_extraction",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794290646262,
+      "tag": "0026_core_web_vitals",
+      "breakpoints": true
     }
   ]
 }

@@ -364,6 +364,9 @@ const SEARCH_PARAMETERS = new Set(['s', 'q', 'query', 'search', 'keyword', 'keyw
 
 /** What each issue of `PAGE_ISSUES` looks for. Each check says itself which URLs it applies to. */
 export const CHECKS: Record<PageIssueId, Check> = {
+  'lcp-poor': (url) => (url.vitals?.lcp ?? 0) > 4000,
+  'inp-poor': (url) => (url.vitals?.inp ?? 0) > 500,
+  'cls-poor': (url) => (url.vitals?.cls ?? 0) > 0.25,
   // --- what is expected of a URL's indexation, against what the crawl saw ---------------------
   // Only for pages that answered (not images, stylesheets, redirects or what the crawler only tried),
   // and only for the blockers that say something the page's other findings do not: an error response

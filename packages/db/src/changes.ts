@@ -207,6 +207,7 @@ export async function compareWithPrevious(input: {
               target.id,
             ) ?? []
           for (const finding of changes) {
+            if (['lcp-poor', 'inp-poor', 'cls-poor'].includes(finding.issue)) continue
             // A URL can both gain and lose findings: each is counted in the direction it went.
             const gained = change === 'gained' && finding.reportedBy === 'target'
             const lost = change === 'lost' && finding.reportedBy === 'base'

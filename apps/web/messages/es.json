@@ -735,7 +735,10 @@
       "finalStatus": "Estado de la URL final",
       "hops": "Redirecciones en la cadena",
       "loop": "Bucle",
-      "referencedBy": "Referenciada por"
+      "referencedBy": "Referenciada por",
+      "lcp": "LCP (usuarios reales, móvil)",
+      "inp": "INP (usuarios reales, móvil)",
+      "cls": "CLS (usuarios reales, móvil)"
     },
     "values": {
       "internal": "Este sitio",
@@ -1511,6 +1514,18 @@
     "twitter-card-missing": {
       "name": "Sin Twitter Card",
       "description": "La página no tiene twitter:card, así que X no sabe qué tarjeta mostrar. Lee las etiquetas Open Graph para el texto, pero no para el tipo de tarjeta."
+    },
+    "lcp-poor": {
+      "name": "LCP deficiente",
+      "description": "El percentil 75 de LCP de los usuarios móviles supera el umbral deficiente de Google."
+    },
+    "inp-poor": {
+      "name": "INP deficiente",
+      "description": "El percentil 75 de INP de los usuarios móviles supera el umbral deficiente de Google."
+    },
+    "cls-poor": {
+      "name": "CLS deficiente",
+      "description": "El percentil 75 de CLS de los usuarios móviles supera el umbral deficiente de Google."
     }
   },
   "LinkKinds": {
@@ -2094,7 +2109,8 @@
       "urls": "URLs",
       "security": "Seguridad",
       "html": "HTML",
-      "indexing-intent": "Expectativas declaradas"
+      "indexing-intent": "Expectativas declaradas",
+      "performance": "Rendimiento"
     },
     "types": {
       "issue": "Issue",
@@ -2792,7 +2808,8 @@
     "robots-block-required-missing": "Añade el bloqueo previsto en robots.txt para el bot auditado o corrige la regla que lo exige. Un bloqueo en robots.txt no garantiza la eliminación del índice.",
     "sitemap-required-missing": "Incluye esta URL como entrada en un sitemap que el rastreador pueda leer o corrige la regla que lo exige. Ejecuta un rastreo completo para verificar su presencia.",
     "sitemap-forbidden-present": "Elimina la entrada de la URL de los sitemaps afectados o corrige la regla si debe figurar en ellos. Ejecuta un rastreo completo para verificar el cambio.",
-    "social": "Añade las etiquetas Open Graph (og:title, og:type, og:image, og:url) y una twitter:card al head de la plantilla. Usa un og:url igual al canonical y una imagen que responda por HTTPS, y vuelve a rastrear."
+    "social": "Añade las etiquetas Open Graph (og:title, og:type, og:image, og:url) y una twitter:card al head de la plantilla. Usa un og:url igual al canonical y una imagen que responda por HTTPS, y vuelve a rastrear.",
+    "performance": "Rendimiento"
   },
   "Companies": {
     "metaTitle": "Empresas · Administración · seotools",
@@ -3261,7 +3278,8 @@
     "companies": "Empresas",
     "users": "Usuarios",
     "email": "Correo",
-    "updates": "Actualizaciones"
+    "updates": "Actualizaciones",
+    "integrations": "Integraciones"
   },
   "Parameters": {
     "metaTitle": "Parámetros de consulta · {host} · seotools",
@@ -3422,5 +3440,57 @@
     "archived": "Dominios archivados",
     "archivedHelp": "Los dominios archivados conservan sus datos y ya no se rastrean.",
     "open": "Abrir {host}"
+  },
+  "Vitals": {
+    "title": "Core Web Vitals",
+    "integrations": "Integraciones",
+    "privacy": "Con una clave de Google guardada, se envían a Google las direcciones de las páginas del dominio y su origen después de cada rastreo completo, si la recopilación está activada.",
+    "key": "Clave de API de Google",
+    "keep": "Deja el campo vacío para conservar la clave. Nunca se vuelve a mostrar.",
+    "configured": "Clave guardada",
+    "no-key": "No hay una clave de Google configurada para Core Web Vitals.",
+    "remove": "Eliminar la clave",
+    "save": "Guardar",
+    "test": "Probar",
+    "testHint": "Envía una solicitud a CrUX para https://www.google.com.",
+    "collect": "Recopilar Core Web Vitals",
+    "PHONE": "Móvil (p75)",
+    "DESKTOP": "Escritorio (p75)",
+    "field": "Datos de usuarios reales (CrUX, móvil, p75)",
+    "lab": "Medición de laboratorio (PageSpeed Insights)",
+    "noField": "Sin datos de usuarios reales: Google tiene muy poco tráfico para esta URL.",
+    "failed": "Error de recopilación: {reason}",
+    "metrics": {
+      "lcp": "LCP",
+      "inp": "INP",
+      "cls": "CLS",
+      "fcp": "FCP",
+      "ttfb": "TTFB",
+      "tbt": "TBT"
+    },
+    "states": {
+      "good": "Bueno",
+      "needs-improvement": "Necesita mejorar",
+      "poor": "Deficiente",
+      "no-data": "Sin datos"
+    },
+    "results": {
+      "saved": "Guardado",
+      "invalid": "Clave no válida",
+      "paused": "Automatización pausada",
+      "no-key": "No hay clave",
+      "success": "Google respondió correctamente",
+      "no-data": "Google no tiene datos",
+      "quota": "Cuota de Google agotada",
+      "forbidden": "Google rechazó la solicitud",
+      "network": "Error de red",
+      "timeout": "Tiempo de espera agotado",
+      "http": "Error de Google",
+      "invalid-response": "Respuesta de Google no válida",
+      "unchanged": "No hay cambios que guardar.",
+      "throttled": "Espera 10 segundos antes de volver a probar."
+    },
+    "unreadable": "Guardada pero ilegible; introduce la clave de nuevo.",
+    "crawlSource": "Rastreo n.º {ref} · {date}"
   }
 }

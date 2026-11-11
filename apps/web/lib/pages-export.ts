@@ -1,3 +1,4 @@
+import type { VitalMetrics } from '@seotools/core'
 import { crawlUrlHash } from '@seotools/core'
 import { ANY_ACCEPTED, type FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type { Extractor } from '@seotools/core/crawl/extraction'
@@ -178,6 +179,7 @@ export function describeListing(
 
 /** What the file is about, the same on every row. */
 export interface ExportContext {
+  vitals?: ReadonlyMap<string, VitalMetrics>
   host: string
   crawlId: string
   crawlDate: Date
@@ -333,6 +335,10 @@ export const PAGES_COLUMNS: readonly UrlColumn[] = [
       wasChecked(row, c) ? new Set(row.accepted?.map(({ issue }) => issue)).size : null,
   },
   { header: 'referencedBy', cell: ({ url }) => url.referencedBy?.total },
+  ...(['lcp', 'inp', 'cls'] as const).map((metric): UrlColumn => ({
+    header: metric,
+    cell: ({ url }, context) => context.vitals?.get(url.urlHash)?.[metric] ?? null,
+  })),
 ]
 
 /** What a finding stores about a URL, in words: where a hreflang came from, what keeps it out. */

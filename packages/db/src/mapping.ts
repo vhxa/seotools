@@ -1716,3 +1716,8 @@ export function newestVerifiedPerUrl(rows: VerifiedUrl[]): VerifiedUrl[] {
 /** The rechecks beyond the newest `keep` of those that ended: what `prune` removes. */
 export const expiredVerifications = (ended: readonly { id: string }[], keep: number): string[] =>
   ended.slice(Math.max(0, keep)).map((verification) => verification.id)
+
+export const vitalsJobId = (crawlId: string) => `cwv:${crawlId}`
+export function vitalsJobValues(crawlId: string, now: Date) {
+  return { ...alertJobValues(crawlId, now), id: vitalsJobId(crawlId), type: JOB_TYPES.cwvCollect }
+}

@@ -1,5 +1,5 @@
-import { hostname } from 'node:os'
 import { randomBytes } from 'node:crypto'
+import { hostname } from 'node:os'
 import {
   DEFAULT_CRAWL_SETTINGS,
   EnvError,
@@ -17,16 +17,17 @@ import {
 } from '@seotools/core'
 import { createDatabase } from '@seotools/db'
 import pkg from '../package.json' with { type: 'json' }
-import { createCrawlFileRefresher } from './crawl/file-refresher'
 import { createHttpFetcher } from './crawl/fetcher'
+import { createCrawlFileRefresher } from './crawl/file-refresher'
 import { reanalyseOutdatedCrawls } from './crawl/reanalysis'
 import { createFaviconRefresher } from './favicon/refresh'
 import { handlers } from './handlers'
 import { createAccessEmailHandler } from './handlers/access-email'
 import { createAuditRecomputeHandler } from './handlers/audit-recompute'
 import { createCrawlAlertsHandler } from './handlers/crawl-alerts'
-import { createMailSendHandler } from './handlers/mail-send'
 import { createCrawlRunHandler } from './handlers/crawl-run'
+import { createCwvCollectHandler } from './handlers/cwv-collect'
+import { createMailSendHandler } from './handlers/mail-send'
 import { createUrlVerifyHandler } from './handlers/url-verify'
 import { createRunner } from './runner'
 import { runDueSchedules } from './scheduler'
@@ -82,7 +83,7 @@ async function main() {
       [JOB_TYPES.mailSend]: createMailSendHandler({ db }),
     },
     concurrency: env.WORKER_CONCURRENCY,
-    excludeTypes: crawlTypes,
+    excludeTypes: [...crawlTypes, JOB_TYPES.cwvCollect],
   })
   // A crawl can take hours, so crawls get slots of their own: they must not hold up other jobs.
   const crawlRunner = createRunner({
@@ -105,6 +106,14 @@ async function main() {
     concurrency: env.CRAWL_CONCURRENCY,
     types: crawlTypes,
   })
+  const vitalsRunner = createRunner({
+    ...shared,
+    log: log.child({ lane: 'vitals' }),
+    handlers: { [JOB_TYPES.cwvCollect]: createCwvCollectHandler({ db, settings, paused }) },
+    concurrency: 1,
+    types: [JOB_TYPES.cwvCollect],
+  })
+  vitalsRunner.start()
   runner.start()
   crawlRunner.start()
 
@@ -191,6 +200,7 @@ async function main() {
     await Promise.all([
       runner.stop(),
       crawlRunner.stop(0),
+      vitalsRunner.stop(0),
       favicons.stop(),
       crawlFiles.stop(),
       updates.stop(),

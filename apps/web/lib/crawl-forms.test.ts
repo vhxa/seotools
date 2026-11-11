@@ -9,6 +9,7 @@ import {
 
 const formOf = (values: Record<string, string | undefined>) => {
   const form = new FormData()
+  form.set('collectVitals', 'on')
   for (const [key, value] of Object.entries(values)) {
     if (value !== undefined) form.set(key, value)
   }
