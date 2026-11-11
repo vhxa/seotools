@@ -366,8 +366,15 @@ test('ignored parameter settings persist and explain next-crawl behavior', async
   const ignoredRow = page
     .getByRole('row')
     .filter({ has: page.getByRole('link', { name: 'updatedAt', exact: true }) })
-  await expect(ignoredRow.getByRole('button', { name: 'Stop ignoring', exact: true })).toBeVisible()
-  await ignoredRow.getByRole('button', { name: 'Stop ignoring', exact: true }).click()
+  await expect(
+    ignoredRow.getByRole('button', {
+      name: 'Stop ignoring (including matching prefixes)',
+      exact: true,
+    }),
+  ).toBeVisible()
+  await ignoredRow
+    .getByRole('button', { name: 'Stop ignoring (including matching prefixes)', exact: true })
+    .click()
   await page.goto(`${domain}/settings/crawl`)
   await expect(names).toHaveValue('utm_*')
   await names.fill('')
