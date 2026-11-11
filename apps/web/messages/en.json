@@ -1666,7 +1666,7 @@
       "indexNowKey": "The IndexNow key must be 8 to 128 letters, numbers or dashes.",
       "indexNowKeyRequired": "Enter the IndexNow key, or turn IndexNow off.",
       "historyDays": "The days of history must be between {min} and {max}.",
-      "scope": "Enter up to 100 valid path prefixes per list and a depth from 1 to 100.",
+      "scope": "Enter up to 100 valid path prefixes per list and a depth from 1 to 100. Check ignored parameter names too: no =, &, ?, # or embedded *.",
       "requestSecrets": "Invalid request credentials or headers (maximum 10; Host and transport headers are refused).",
       "extractors": "Each extraction needs a name and a valid CSS selector, and there can be at most {max}."
     },
@@ -1717,7 +1717,11 @@
         "description": "Headers or Basic Auth the site needs to answer. Stored encrypted and sent only to this site."
       }
     },
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "ignoredParameters": {
+      "label": "Ignored query parameters",
+      "hint": "One case-sensitive name per line; a trailing * matches a prefix (utm_*). Up to 100 names of 100 characters. Applies from the next crawl, only to internal URLs."
+    }
   },
   "CrawlFiles": {
     "refresh": {
@@ -2683,6 +2687,10 @@
           "both": "Both crawls stopped at their URL limit"
         },
         "description": "URLs it did not reach are not missing, and findings that look at other pages (duplicates, inbound links, redirects) are not called new or resolved for it."
+      },
+      "ignoredParameters": {
+        "title": "Ignored query parameters changed",
+        "description": "Added and not seen URLs may reflect changed ignored parameters. Per-issue change summaries are unverified because URL identity changed."
       }
     },
     "rowsShown": "{shown, number} of {matching, number} URLs shown"
@@ -3298,7 +3306,21 @@
     "noContext": "No entry points were stored for this crawl. Crawls from before this version did not keep them.",
     "pagination": "Entry points pages",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "ignore": "Ignore",
+    "stopIgnoring": "Stop ignoring (including matching prefixes)",
+    "ignored": "Currently ignored",
+    "status": "Suggestions and settings",
+    "suggested": "Suggested to ignore",
+    "invalid": "Invalid parameter name or too many ignored names.",
+    "ignoredHelp": "Changes apply from the next crawl. Ignored parameters disappear from new crawl URLs; use older retained crawls to inspect them. Stopping ignores removes any matching prefix rule too. Manage names and prefix rules in Settings → Crawl.",
+    "reasons": {
+      "volatile": "Values change in at least 90% of 5 or more URL pairs across the two latest retained crawls",
+      "canonical": "At least 90% of 5 or more URLs declare the same URL without this parameter as canonical"
+    },
+    "tracking": "Tracking parameter",
+    "trackingHelp": "Internal links should not carry tracking parameters. These rows appear first; inspect where they enter below.",
+    "notIgnored": "Not ignored"
   },
   "CrawlsArea": {
     "title": "Crawls",

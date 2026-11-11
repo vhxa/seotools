@@ -330,6 +330,7 @@ export interface DomainRepository {
 }
 
 export interface Crawl {
+  ignoredParameters?: string[]
   seedUrls?: string[] | null
   id: string
   domainId: string
@@ -637,6 +638,7 @@ export interface CrawlRepository {
   requestSecrets(domainId: string): Promise<string | null>
   saveRequestSecrets(domainId: string, encrypted: string | null): Promise<void>
   settings(domainId: string): Promise<CrawlSettings>
+  saveIgnoredParameters(domainId: string, patterns: string[]): Promise<void>
   saveSettings(domainId: string, settings: CrawlSettings): Promise<void>
   /** The extra crawl files each domain turned on, by domain id. Domains with none are left out. */
   enabledFiles(): Promise<Map<string, ExtraCrawlFileKind[]>>
@@ -752,7 +754,11 @@ export interface CrawlRepository {
   queryUrls(
     crawlId: string,
     page: { after: number | null; limit: number },
-  ): Promise<{ urls: string[]; next: number | null }>
+  ): Promise<{
+    urls: string[]
+    observations?: { url: string; canonical: string | null }[]
+    next: number | null
+  }>
   /**
    * The links that bring query parameters their page does not have (they kept the tag as read,
    * `LinkContext.snippet`): where parameters enter the site. Ordered by target, then source.

@@ -20,8 +20,18 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Migration 0027 adds ignored-parameter settings and per-crawl snapshots without rebuilding link rows.
+  The default empty list changes no crawl behavior. Going back requires restoring the pre-update backup.
+
 ### Added
 
+- Issues filters, per-issue crawl changes and template badges; current site-file findings; dashboard differences and comparison links; distinct referring-URL counts in Errors and Redirects and CSV exports.
+- Per-domain ignored query parameters (exact names or trailing `*` prefixes), applied to internal
+  URL identity from the next crawl, with comparison caveats when the setting changes. Parameters
+  suggests volatile or canonical-redundant names and separately highlights tracking parameters,
+  never suggesting that tracking names be ignored. Defaults preserve existing crawl behavior.
 - The user menu has an Administration entry for administrators.
 - An error page and a loading skeleton for the signed-in app, so a failing page offers to try again instead of a blank screen.
 - A domain that has never been crawled shows a prompt on its overview to run the first full crawl.

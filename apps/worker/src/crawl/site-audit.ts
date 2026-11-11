@@ -5,6 +5,7 @@ import {
   crawlFileKindOf,
   defaultResolution,
   crawlUrlHash,
+  stripIgnoredParameters,
   isInternalUrl,
   MAX_EVIDENCE_ITEMS,
   isRobotsAllowed,
@@ -192,6 +193,7 @@ export interface Site {
   /** The audit configuration this analysis applies, whole: no URL is judged by another version. */
   config: AuditSnapshot
   urls: AuditedUrl[]
+  identity?: (url: string) => string
   get(url: string): AuditedUrl | undefined
   /** Whether any URL of the site answered as a page, unlike a site that is down. */
   answered: boolean
@@ -263,6 +265,7 @@ export function auditUrl(
   url: CrawlUrl,
   robots: ReadonlyMap<string, RobotsFile>,
   resolver: AuditResolver,
+  identity: (url: string) => string = (url) => url,
 ): AuditedUrl {
   const parsed = new URL(url.url)
   const internal = url.scope === 'internal'
@@ -281,7 +284,7 @@ export function auditUrl(
   ])
   const noindex = directives.has('noindex') || directives.has('none')
   const nofollow = directives.has('nofollow') || directives.has('none')
-  const canonicalised = url.canonical !== null && url.canonical !== url.url
+  const canonicalised = url.canonical !== null && identity(url.canonical) !== identity(url.url)
   const fileOfTheCrawl = crawlFileKindOf(url.source) !== null
   const robotsFile = robots.get(parsed.origin)
   const parsedRobots = robotsFile?.parsed ?? undefined
@@ -348,7 +351,11 @@ function embedFailed(target: AuditedUrl | undefined): target is AuditedUrl {
 }
 
 /** Follows redirects and anchors from the home page, a redirect not being a click. */
-function measureClickDepth(urls: readonly AuditedUrl[], byHash: ReadonlyMap<string, AuditedUrl>) {
+function measureClickDepth(
+  urls: readonly AuditedUrl[],
+  byHash: ReadonlyMap<string, AuditedUrl>,
+  identity: (url: string) => string,
+) {
   let frontier = urls.filter((url) => url.url.source === 'seed')
   for (let depth = 0; frontier.length > 0; depth++) {
     const next: AuditedUrl[] = []
@@ -357,7 +364,9 @@ function measureClickDepth(urls: readonly AuditedUrl[], byHash: ReadonlyMap<stri
       const url = frontier[i]!
       if (url.clickDepth !== null) continue
       url.clickDepth = depth
-      const target = url.url.redirectTo ? byHash.get(crawlUrlHash(url.url.redirectTo)) : undefined
+      const target = url.url.redirectTo
+        ? byHash.get(crawlUrlHash(identity(url.url.redirectTo)))
+        : undefined
       if (target) frontier.push(target)
       for (const linked of url.linksTo) next.push(linked)
     }
@@ -414,6 +423,8 @@ export async function loadSite(
   if (!domain) throw new Error(`Domain ${crawl.domainId} not found`)
   // As the analysis that kept this configuration would resolve it: what it meant, and its languages.
   const resolver = compileAuditSnapshot(config, domain.host)
+  const identity = (url: string) =>
+    stripIgnoredParameters(url, crawl.ignoredParameters ?? [], domain.host)
   const robots = robotsOf(crawl)
   const urls: AuditedUrl[] = []
   const byHash = new Map<string, AuditedUrl>()
@@ -426,7 +437,7 @@ export async function loadSite(
     for (let offset = 0; ; offset += BATCH) {
       const batch = await db.crawls.listUrls({ crawlId: crawl.id, view, limit: BATCH, offset })
       for (const row of batch) {
-        const url = auditUrl(row, robots, resolver)
+        const url = auditUrl(row, robots, resolver, identity)
         url.vitals = vitals.get(row.urlHash)
         urls.push(url)
         byHash.set(row.urlHash, url)
@@ -483,7 +494,7 @@ export async function loadSite(
     }
     for (const { pageHash, lang, url } of declared) {
       byHash.get(pageHash)?.hreflang.push({ lang, url, source: 'sitemap' })
-      alternates.add(crawlUrlHash(url))
+      alternates.add(crawlUrlHash(identity(url)))
     }
   }
   for (const [target, count] of unattributed) {
@@ -495,7 +506,7 @@ export async function loadSite(
     if (alternates.has(target.url.urlHash)) target.sitemapsAmbiguous += count
     else target.sitemaps += count
   }
-  measureClickDepth(internal, byHash)
+  measureClickDepth(internal, byHash, identity)
 
   // What pages are compared against each other: the audited ones that can be indexed. A page left
   // out of the audit stays in the site (links, canonicals, hreflang, redirects see it as it is) but
@@ -507,9 +518,10 @@ export async function loadSite(
   })
   return {
     now,
+    identity,
     config,
     urls,
-    get: (url) => byHash.get(crawlUrlHash(url)),
+    get: (url) => byHash.get(crawlUrlHash(identity(url))),
     answered: urls.some((url) => url.contentPage),
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
     titles: sharedValues(indexable, (url) => comparable(url.url.title)),

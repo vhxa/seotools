@@ -15,6 +15,7 @@ export interface CrawlSettings {
   collectVitals: boolean
   includePrefixes: string[]
   excludePrefixes: string[]
+  ignoredParameters: string[]
   maxDepth: number | null
   renderingMode: CrawlRenderingMode
   /** `null` uses `defaultCrawlerUserAgent`. */
@@ -46,6 +47,7 @@ export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
   collectVitals: true,
   includePrefixes: [],
   excludePrefixes: [],
+  ignoredParameters: [],
   maxDepth: null,
   renderingMode: 'http',
   userAgent: null,
@@ -111,10 +113,23 @@ export function crawlSkipReason(
   if (settings.maxDepth !== null && depth > settings.maxDepth) return 'depth'
 }
 
+export const ignoredParametersSchema = z
+  .array(
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .regex(/^[^=&?#*]+\*?$/),
+  )
+  .max(100)
+  .transform((names) => [...new Set(names)])
+
 export const crawlSettingsSchema = z.object({
   collectVitals: z.boolean().default(true),
   includePrefixes: prefixesSchema.default([]),
   excludePrefixes: prefixesSchema.default([]),
+  ignoredParameters: ignoredParametersSchema.default([]),
   maxDepth: z.number().int().min(1).max(100).nullable().default(null),
   extractors: extractorsSchema.default([]),
   renderingMode: z.enum(CRAWL_RENDERING_MODES),

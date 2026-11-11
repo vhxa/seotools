@@ -1423,6 +1423,14 @@ export function createPgDatabase(options: {
         return enabledFilesByDomain(await db.select().from(crawlSettings))
       },
 
+      async saveIgnoredParameters(domainId, patterns) {
+        const values = { ignoredParameters: JSON.stringify(patterns), updatedAt: new Date() }
+        await db
+          .insert(crawlSettings)
+          .values({ domainId, ...crawlSettingsColumns(DEFAULT_CRAWL_SETTINGS), ...values })
+          .onConflictDoUpdate({ target: crawlSettings.domainId, set: values })
+      },
+
       async saveSettings(domainId, input) {
         const values = crawlSettingsColumns(input)
         const updatedAt = new Date()
@@ -1443,6 +1451,10 @@ export function createPgDatabase(options: {
             try {
               await db.transaction(async (tx) => {
                 await assertNotArchived(tx, domainId)
+                const [snapshot] = await tx
+                  .select({ ignoredParameters: crawlSettings.ignoredParameters })
+                  .from(crawlSettings)
+                  .where(eq(crawlSettings.domainId, domainId))
                 await tx.insert(jobs).values(crawlJobValues(id, jobId, now))
                 const [last] = await tx.select({ ref: max(crawls.ref) }).from(crawls)
                 await tx.insert(crawls).values({
@@ -1451,6 +1463,7 @@ export function createPgDatabase(options: {
                   type,
                   trigger,
                   seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
+                  ignoredParameters: snapshot?.ignoredParameters ?? null,
                   jobId,
                   activeKey: domainId,
                   ref: (last?.ref ?? 0) + 1,
@@ -2006,7 +2019,7 @@ export function createPgDatabase(options: {
 
       async queryUrls(crawlId, { after, limit }) {
         const rows = await db
-          .select({ url: crawlUrls.url, seq: crawlUrls.seq })
+          .select({ url: crawlUrls.url, canonical: crawlUrls.canonical, seq: crawlUrls.seq })
           .from(crawlUrls)
           .where(
             and(
@@ -2022,6 +2035,7 @@ export function createPgDatabase(options: {
         const last = rows.at(-1)
         return {
           urls: rows.map((row) => row.url),
+          observations: rows.map(({ url, canonical }) => ({ url, canonical })),
           next: last && last.seq !== null && rows.length === limit ? last.seq : null,
         }
       },

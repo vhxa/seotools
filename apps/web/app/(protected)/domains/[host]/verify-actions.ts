@@ -1,6 +1,6 @@
 'use server'
 
-import { MAX_VERIFICATION_URLS, crawlUrlHash } from '@seotools/core'
+import { MAX_VERIFICATION_URLS, crawlIdentityHash } from '@seotools/core'
 import type { NewVerificationUrl } from '@seotools/db'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
@@ -49,9 +49,9 @@ export async function recheckUrlsAction(host: string, urls: unknown): Promise<Re
 
   const accepted: NewVerificationUrl[] = []
   for (const url of parsed.urls) {
-    const urlHash = crawlUrlHash(url)
+    const urlHash = crawlIdentityHash(url, crawl, domain.host)
     const stored = await db.crawls.getUrl(crawl.id, urlHash)
-    if (stored && canRecheck(stored))
+    if (stored && canRecheck(stored) && !accepted.some((item) => item.urlHash === urlHash))
       accepted.push({ url: stored.url, urlHash, source: stored.source })
   }
   if (accepted.length === 0) return { error: t('notInCrawl') }

@@ -270,8 +270,15 @@ export function foldUsage(
 
 export type CrawlRow = Omit<
   Crawl,
-  'seedUrls' | 'robots' | 'pagesByWorstIssue' | 'pagesWithType' | 'pagesAudit' | 'auditSnapshot'
+  | 'ignoredParameters'
+  | 'seedUrls'
+  | 'robots'
+  | 'pagesByWorstIssue'
+  | 'pagesWithType'
+  | 'pagesAudit'
+  | 'auditSnapshot'
 > & {
+  ignoredParameters: string | null
   seedUrls: string | null
   robots: string | null
   pagesWorstIssueCount: number | null
@@ -301,6 +308,7 @@ export type CrawlUrlRow = Omit<
 export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
 
 export const toCrawl = ({
+  ignoredParameters,
   seedUrls,
   robots,
   pagesWorstIssueCount: issue,
@@ -335,6 +343,7 @@ export const toCrawl = ({
       ? null
       : { audited, excluded, indexable, notIndexable, unknownIndexability },
   auditSnapshot: parseAuditSnapshot(auditSnapshot),
+  ignoredParameters: (parseJson(ignoredParameters) ?? []) as string[],
   seedUrls: seedUrls === null ? null : (JSON.parse(seedUrls) as string[]),
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
 })
@@ -1296,13 +1305,14 @@ export function toDomainFavicon(row: {
 
 export type CrawlSettingsRow = Omit<
   CrawlSettings,
-  'optionalFiles' | 'includePrefixes' | 'excludePrefixes' | 'extractors'
+  'optionalFiles' | 'includePrefixes' | 'excludePrefixes' | 'extractors' | 'ignoredParameters'
 > & {
   optionalFiles: string | null
   extractors: string | null
   requestSecrets: string | null
   includePrefixes: string | null
   excludePrefixes: string | null
+  ignoredParameters: string | null
   domainId: string
   updatedAt: Date
 }
@@ -1314,6 +1324,7 @@ export const toCrawlSettings = ({
   requestSecrets: _requestSecrets,
   includePrefixes,
   excludePrefixes,
+  ignoredParameters,
   extractors,
   ...row
 }: CrawlSettingsRow): CrawlSettings => ({
@@ -1322,6 +1333,7 @@ export const toCrawlSettings = ({
   extractors: extractorsSchema.catch([]).parse(parseJson(extractors) ?? []),
   includePrefixes: (parseJson(includePrefixes) ?? []) as string[],
   excludePrefixes: (parseJson(excludePrefixes) ?? []) as string[],
+  ignoredParameters: (parseJson(ignoredParameters) ?? []) as string[],
   optionalFiles: (parseJson(optionalFiles) ?? []) as CrawlSettings['optionalFiles'],
 })
 
@@ -1339,6 +1351,7 @@ export const crawlSettingsColumns = ({
   optionalFiles,
   includePrefixes,
   excludePrefixes,
+  ignoredParameters,
   extractors,
   ...settings
 }: CrawlSettings) => ({
@@ -1347,6 +1360,7 @@ export const crawlSettingsColumns = ({
   optionalFiles: JSON.stringify(optionalFiles),
   includePrefixes: JSON.stringify(includePrefixes),
   excludePrefixes: JSON.stringify(excludePrefixes),
+  ignoredParameters: JSON.stringify(ignoredParameters),
 })
 
 // --- crawl files ---------------------------------------------------------

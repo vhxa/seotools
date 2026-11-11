@@ -352,3 +352,33 @@ test('Core Web Vitals stays hidden without a key and Integrations remains access
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(testKey).toBeDisabled()
 })
+
+test('ignored parameter settings persist and explain next-crawl behavior', async ({ page }) => {
+  await page.goto(`${domain}/settings/crawl`)
+  const names = page.getByLabel('Ignored query parameters', { exact: true })
+  await names.fill('updatedAt\nutm_*')
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByRole('status')).toBeVisible()
+  await page.reload()
+  await expect(names).toHaveValue('updatedAt\nutm_*')
+  await expect(page.getByText(/Applies from the next crawl, only to internal URLs/)).toBeVisible()
+  await page.goto(`${domain}/urls/parameters`)
+  const ignoredRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('link', { name: 'updatedAt', exact: true }) })
+  await expect(
+    ignoredRow.getByRole('button', {
+      name: 'Stop ignoring (including matching prefixes)',
+      exact: true,
+    }),
+  ).toBeVisible()
+  await ignoredRow
+    .getByRole('button', { name: 'Stop ignoring (including matching prefixes)', exact: true })
+    .click()
+  await expect(ignoredRow).toHaveCount(0)
+  await page.goto(`${domain}/settings/crawl`)
+  await expect(names).toHaveValue('utm_*')
+  await names.fill('')
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByRole('status')).toBeVisible()
+})

@@ -106,6 +106,7 @@ export function fieldChanges(base: UrlSnapshot, target: UrlSnapshot): FieldChang
 
 /** What this module needs of a crawl; `Crawl` in `@seotools/db` satisfies it. */
 export interface CrawlLike {
+  ignoredParameters?: string[]
   id: string
   status: CrawlStatus
   createdAt: Date
@@ -197,6 +198,7 @@ export function crawlAuditScope(crawl: CrawlLike): string | null {
 
 /** What a crawl can vouch for when its findings are compared with those of another. */
 export interface CrawlFacts {
+  identity?: string
   /** Its full results per URL are still stored: links, evidence, everything a comparison reads. */
   retained: boolean
   /**
@@ -226,6 +228,7 @@ export interface CrawlFacts {
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
   return {
+    identity: JSON.stringify([...new Set(crawl.ignoredParameters ?? [])].sort()),
     retained: !crawl.pruned,
     observable: keepsUrlHistory(crawl),
     analysed: crawl.pagesByWorstIssue !== null,
@@ -264,6 +267,7 @@ export type PairSide = 'base' | 'target'
  */
 export const PAIR_NOTES = [
   'pruned',
+  'ignoredParameters',
   'unanalysed',
   'legacy',
   'catalog',
@@ -304,6 +308,9 @@ export function assessPair(base: CrawlLike, target: CrawlLike): PairAssessment {
     if (found.length > 0) notes.push({ code, sides: found })
   }
 
+  const ignoredKey = (crawl: CrawlLike) =>
+    JSON.stringify([...new Set(crawl.ignoredParameters ?? [])].sort())
+  if (ignoredKey(base) !== ignoredKey(target)) add('ignoredParameters', ['base', 'target'])
   const pruned = sides((f) => !f.retained)
   add('pruned', pruned)
   const urls = pruned.length === 0
@@ -470,6 +477,7 @@ export interface Evidence {
 
 /** What has to be the same for two observations to be compared. */
 interface Basis {
+  identity?: string
   catalog: string | null
   intent: string
   conditions: string
@@ -502,6 +510,7 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   return {
     presence: url.issues.has(issue) ? 'present' : 'absent',
     basis: {
+      identity: crawl.identity,
       catalog: crawl.catalog,
       intent: url.intent ?? 'unknown',
       conditions: url.conditions,
@@ -513,6 +522,7 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
 
 /** Why two observations cannot be set against each other, or `null` when they can. */
 function incomparable(issue: string, a: Basis, b: Basis): UnknownReason | null {
+  if ((a.identity ?? '[]') !== (b.identity ?? '[]')) return 'audit'
   if (a.catalog === null || b.catalog === null || a.catalog !== b.catalog) return 'catalog'
   // What the URL is expected to be, and what rules ask of its conditions, change which findings it
   // keeps and which it raises (`applyAuditPolicy`).
@@ -781,6 +791,8 @@ export function findingChangesBetween(
 /** Pair-wide limits on an issue summary; URL-specific limits still come from classification. */
 export function issuePairReasons(notes: readonly PairNoteCode[], issue: string): UnknownReason[] {
   return notes.flatMap((note): UnknownReason[] => {
+    // Changed identity can coalesce URLs and alter both page-local and site-wide findings.
+    if (note === 'ignoredParameters') return ['audit']
     if ((note === 'audit' || note === 'incomplete') && isPageLocalIssue(issue)) return []
     return [note === 'legacy' ? 'participation' : note]
   })

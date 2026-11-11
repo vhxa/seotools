@@ -237,7 +237,7 @@ export function CrawlSettingsForm({
         title={t('sections.scope.title')}
         description={t('sections.scope.description')}
       >
-        {(['includePrefixes', 'excludePrefixes'] as const).map((name) => (
+        {(['includePrefixes', 'excludePrefixes', 'ignoredParameters'] as const).map((name) => (
           <div key={name} className="grid gap-2">
             <Label htmlFor={name}>{t(`${name}.label`)}</Label>
             <Textarea

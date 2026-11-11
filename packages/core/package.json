@@ -17,6 +17,7 @@
     "./crawl/listing": "./src/crawl/listing.ts",
     "./crawl/links": "./src/crawl/links.ts",
     "./crawl/schedule": "./src/crawl/schedule.ts",
+    "./crawl/normalize": "./src/crawl/normalize.ts",
     "./crawl/settings": "./src/crawl/settings.ts",
     "./crawl/structured-data": "./src/crawl/structured-data.ts",
     "./crawl/thresholds": "./src/crawl/thresholds.ts",

@@ -1666,7 +1666,7 @@
       "indexNowKey": "La clave de IndexNow debe tener de 8 a 128 letras, números o guiones.",
       "indexNowKeyRequired": "Introduce la clave de IndexNow o desactiva IndexNow.",
       "historyDays": "Los días de historial deben estar entre {min} y {max}.",
-      "scope": "Introduce hasta 100 prefijos válidos por lista y una profundidad de 1 a 100.",
+      "scope": "Introduce hasta 100 prefijos válidos por lista y una profundidad de 1 a 100. Comprueba también los parámetros ignorados: sin =, &, ?, # ni * intermedio.",
       "requestSecrets": "Credenciales o cabeceras no válidas (máximo 10; Host y cabeceras de transporte no permitidas).",
       "extractors": "Cada extracción necesita un nombre y un selector CSS válido, y puede haber {max} como máximo."
     },
@@ -1717,7 +1717,11 @@
         "description": "Cabeceras o Basic Auth que la web necesita para responder. Se guardan cifradas y solo se envían a esta web."
       }
     },
-    "saving": "Guardando…"
+    "saving": "Guardando…",
+    "ignoredParameters": {
+      "label": "Parámetros de consulta ignorados",
+      "hint": "Un nombre por línea, distingue mayúsculas; * al final indica un prefijo (utm_*). Hasta 100 nombres de 100 caracteres. Se aplica desde el próximo rastreo, solo a URL internas."
+    }
   },
   "CrawlFiles": {
     "refresh": {
@@ -2683,6 +2687,10 @@
           "both": "Ambos rastreos se detuvieron en su límite de URL"
         },
         "description": "Las URL a las que no llegó no están ausentes, y los hallazgos que miran otras páginas (duplicados, enlaces entrantes, redirecciones) no se llaman nuevos ni resueltos para él."
+      },
+      "ignoredParameters": {
+        "title": "Han cambiado los parámetros ignorados",
+        "description": "Las URL añadidas o no vistas pueden reflejar cambios en los parámetros ignorados. Los resúmenes de cambios por problema no se verifican porque cambió la identidad de las URL."
       }
     },
     "rowsShown": "{shown, number} de {matching, number} URLs mostradas"
@@ -3298,7 +3306,21 @@
     "noContext": "Este rastreo no guardó puntos de entrada. Los rastreos anteriores a esta versión no los conservaban.",
     "pagination": "Páginas de puntos de entrada",
     "previous": "Anterior",
-    "next": "Siguiente"
+    "next": "Siguiente",
+    "ignore": "Ignorar",
+    "stopIgnoring": "Dejar de ignorar (incluidos prefijos coincidentes)",
+    "ignored": "Ignorado actualmente",
+    "status": "Sugerencias y configuración",
+    "suggested": "Se sugiere ignorar",
+    "invalid": "Nombre de parámetro no válido o demasiados nombres ignorados.",
+    "ignoredHelp": "Los cambios se aplican desde el próximo rastreo. Los parámetros ignorados desaparecen de las URL nuevas; consulta los rastreos anteriores conservados. Dejar de ignorar elimina también las reglas de prefijo coincidentes. Gestiona nombres y prefijos en Ajustes → Rastreo.",
+    "reasons": {
+      "volatile": "Los valores cambian en al menos el 90% de 5 o más pares de URL entre los dos últimos rastreos conservados",
+      "canonical": "Al menos el 90% de 5 o más URL declaran como canónica la misma URL sin este parámetro"
+    },
+    "tracking": "Parámetro de seguimiento",
+    "trackingHelp": "Los enlaces internos no deberían llevar parámetros de seguimiento. Estas filas aparecen primero; consulta abajo dónde entran.",
+    "notIgnored": "No ignorado"
   },
   "CrawlsArea": {
     "title": "Rastreos",

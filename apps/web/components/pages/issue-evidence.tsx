@@ -9,7 +9,7 @@ import { evidenceTarget } from '@/lib/issue-evidence'
 
 type Place = {
   /** The crawl's URLs the evidence links to the detail of. */
-  known: ReadonlySet<string>
+  known: ReadonlyMap<string, string>
   hrefFor: (urlHash: string) => string
 }
 

@@ -867,3 +867,39 @@ describe('issue summary comparability', () => {
     ])
   })
 })
+
+it('notes changed ignored parameter sets, treating legacy crawls as empty and order as immaterial', () => {
+  expect(assessPair(crawl(), crawl({ ignoredParameters: ['x'] })).notes).toContainEqual({
+    code: 'ignoredParameters',
+    sides: ['base', 'target'],
+  })
+  expect(
+    assessPair(crawl(), crawl({ ignoredParameters: [] })).notes.some(
+      (n) => n.code === 'ignoredParameters',
+    ),
+  ).toBe(false)
+  expect(
+    assessPair(
+      crawl({ ignoredParameters: ['x', 'y'] }),
+      crawl({ ignoredParameters: ['y', 'x'] }),
+    ).notes.some((n) => n.code === 'ignoredParameters'),
+  ).toBe(false)
+})
+
+it('marks per-issue changes unverified when identity changes, including page-local issues', () => {
+  expect(issuePairReasons(['ignoredParameters'], 'title-missing')).toEqual(['audit'])
+  expect(issuePairReasons(['ignoredParameters'], 'links-to-broken')).toEqual(['audit'])
+})
+
+it('never labels findings new, resolved or reappeared across changed URL identities', () => {
+  const before = crawlFactsOf(crawl())
+  const after = crawlFactsOf(crawl({ ignoredParameters: ['updatedAt'] }))
+  for (const issue of ['title-missing', 'links-to-broken']) {
+    expect(
+      classifyFinding(issue, { base: seen([], {}, before), target: seen([issue], {}, after) }),
+    ).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+    expect(
+      classifyFinding(issue, { base: seen([issue], {}, before), target: seen([], {}, after) }),
+    ).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+  }
+})

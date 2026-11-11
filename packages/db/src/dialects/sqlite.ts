@@ -1455,6 +1455,14 @@ export function createSqliteDatabase(options: {
         return enabledFilesByDomain(db.select().from(crawlSettings).all())
       },
 
+      async saveIgnoredParameters(domainId, patterns) {
+        const values = { ignoredParameters: JSON.stringify(patterns), updatedAt: new Date() }
+        db.insert(crawlSettings)
+          .values({ domainId, ...crawlSettingsColumns(DEFAULT_CRAWL_SETTINGS), ...values })
+          .onConflictDoUpdate({ target: crawlSettings.domainId, set: values })
+          .run()
+      },
+
       async saveSettings(domainId, input) {
         const values = crawlSettingsColumns(input)
         const updatedAt = new Date()
@@ -1471,6 +1479,11 @@ export function createSqliteDatabase(options: {
         try {
           db.transaction((tx) => {
             assertNotArchived(tx, domainId)
+            const snapshot = tx
+              .select({ ignoredParameters: crawlSettings.ignoredParameters })
+              .from(crawlSettings)
+              .where(eq(crawlSettings.domainId, domainId))
+              .get()
             tx.insert(jobs)
               .values(crawlJobValues(id, jobId, now))
               .run()
@@ -1487,6 +1500,7 @@ export function createSqliteDatabase(options: {
                 type,
                 trigger,
                 seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
+                ignoredParameters: snapshot?.ignoredParameters ?? null,
                 jobId,
                 activeKey: domainId,
                 ref: last + 1,
@@ -2051,7 +2065,7 @@ export function createSqliteDatabase(options: {
 
       async queryUrls(crawlId, { after, limit }) {
         const rows = db
-          .select({ url: crawlUrls.url, seq: crawlUrls.seq })
+          .select({ url: crawlUrls.url, canonical: crawlUrls.canonical, seq: crawlUrls.seq })
           .from(crawlUrls)
           .where(
             and(
@@ -2068,6 +2082,7 @@ export function createSqliteDatabase(options: {
         const last = rows.at(-1)
         return {
           urls: rows.map((row) => row.url),
+          observations: rows.map(({ url, canonical }) => ({ url, canonical })),
           next: last && last.seq !== null && rows.length === limit ? last.seq : null,
         }
       },

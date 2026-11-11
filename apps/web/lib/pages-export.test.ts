@@ -1198,39 +1198,42 @@ describe('the links and redirects files', () => {
     }
   })
 
-  it('follows a redirect chain through what the crawl recorded, and tells a loop', async () => {
-    const hop = (path: string, to: string | null, status = 301): CrawlUrl => ({
-      ...crawlUrl(path),
-      kind: to ? 'redirect' : 'page',
-      statusCode: to ? status : 200,
-      redirectTo: to ? `${SITE}${to}` : null,
-    })
-    const known = [hop('/b', '/c'), hop('/c', null), hop('/x', '/y'), hop('/y', '/x')]
-    const byHash = new Map(known.map((url) => [url.urlHash, url]))
-    const start = [hop('/a', '/b'), hop('/x', '/y')]
-    const source = {
-      listUrls: vi.fn(async ({ offset }: { offset: number }) => (offset === 0 ? start : [])),
-      issuesOf: vi.fn(async () => []),
-      acceptedOf: vi.fn(async () => []),
-      auditOf: vi.fn(async () => []),
-      outlinksOf: vi.fn(async () => ({ links: [], next: null })),
-      urlsOf: vi.fn(async (_id: string, hashes: string[]) =>
-        hashes.flatMap((hash) => byHash.get(hash) ?? []),
-      ),
-    } as unknown as ExportSource
-    const chunks: string[] = []
-    for await (const piece of exportCsv({
-      kind: 'redirects',
-      source,
-      listing: { crawlId: 'c1', view: 'redirects' },
-      context,
-      expected: 2,
-    })) {
-      chunks.push(piece)
-    }
-    const [, a, x] = chunks.join('').trim().split('\r\n')
-    expect(a).toContain(`${SITE}/c`)
-    expect(a).toContain(',2,')
-    expect(x).toContain('Export.values.yes')
-  })
+  it.each([{ ignoredParameters: [] as string[] }, { ignoredParameters: ['updatedAt'] }])(
+    'follows redirect chains with snapshot %j and tells a loop',
+    async ({ ignoredParameters }) => {
+      const hop = (path: string, to: string | null, status = 301): CrawlUrl => ({
+        ...crawlUrl(path),
+        kind: to ? 'redirect' : 'page',
+        statusCode: to ? status : 200,
+        redirectTo: to ? `${SITE}${to}${ignoredParameters.length ? '?updatedAt=1' : ''}` : null,
+      })
+      const known = [hop('/b', '/c'), hop('/c', null), hop('/x', '/y'), hop('/y', '/x')]
+      const byHash = new Map(known.map((url) => [url.urlHash, url]))
+      const start = [hop('/a', '/b'), hop('/x', '/y')]
+      const source = {
+        listUrls: vi.fn(async ({ offset }: { offset: number }) => (offset === 0 ? start : [])),
+        issuesOf: vi.fn(async () => []),
+        acceptedOf: vi.fn(async () => []),
+        auditOf: vi.fn(async () => []),
+        outlinksOf: vi.fn(async () => ({ links: [], next: null })),
+        urlsOf: vi.fn(async (_id: string, hashes: string[]) =>
+          hashes.flatMap((hash) => byHash.get(hash) ?? []),
+        ),
+      } as unknown as ExportSource
+      const chunks: string[] = []
+      for await (const piece of exportCsv({
+        kind: 'redirects',
+        source,
+        listing: { crawlId: 'c1', view: 'redirects' },
+        context: { ...context, ignoredParameters },
+        expected: 2,
+      })) {
+        chunks.push(piece)
+      }
+      const [, a, x] = chunks.join('').trim().split('\r\n')
+      expect(a).toContain(`${SITE}/c`)
+      expect(a).toContain(',2,')
+      expect(x).toContain('Export.values.yes')
+    },
+  )
 })
