@@ -29,6 +29,8 @@ Raspberry Pi to a VPS.
 - **Crawl files**: `robots.txt` with the access of each AI bot, sitemaps, `llms.txt`, and on request
   `ads.txt`, `security.txt`, feeds, OpenSearch and IndexNow.
 - **Custom extraction** of any value with a CSS selector.
+- **Portfolio and structure**: a home with every domain by company (last crawl, figures and trend), and
+  a per-domain view of the site by directory with pages, errors and findings.
 - **Teams**: companies and domains, administrators, and editors or viewers per company or domain.
 - **English and Spanish**, SQLite or PostgreSQL, `linux/amd64` and `linux/arm64` images on GHCR.
 

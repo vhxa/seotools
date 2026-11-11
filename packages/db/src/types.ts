@@ -381,6 +381,23 @@ export interface Crawl {
   finishedAt: Date | null
 }
 
+/** A domain's recent crawls and whether one is active, for the portfolio home. */
+export interface PortfolioEntry {
+  /** Finished full crawls (completed, incomplete, failed or cancelled), newest first. */
+  crawls: Crawl[]
+  /** A crawl of any type is pending or running. */
+  running: boolean
+}
+
+/** What the structure of a site needs to know of one URL. */
+export interface StructureUrl {
+  urlHash: string
+  url: string
+  kind: CrawlUrlKind
+  statusCode: number | null
+  state: 'queued' | 'done' | 'skipped'
+}
+
 export type CrawlCounts = Pick<
   Crawl,
   'pagesCount' | 'urlsCount' | 'urlsDoneCount' | 'externalCount'
@@ -641,6 +658,22 @@ export interface CrawlRepository {
   list(domainId: string, options?: { limit?: number; type?: CrawlType }): Promise<Crawl[]>
   /** The newest crawl of a type that finished with usable results. */
   latestWithResults(domainId: string, type: CrawlType): Promise<Crawl | null>
+  /**
+   * What the portfolio home needs of every domain at once, in a fixed number of queries whatever the
+   * number of domains: its last `recent` (8 by default) finished full crawls and whether a crawl is
+   * active. Domains with neither are not in the map. Reads no results per URL; the crawls come
+   * without `robots`, `seedUrls` and `auditSnapshot` (always `null` here).
+   */
+  portfolio(options?: { recent?: number }): Promise<Map<string, PortfolioEntry>>
+  /**
+   * The URLs of the site (not external ones) of a crawl, a bounded page at a time, ordered by hash:
+   * `after` is the hash the previous page ended with, `null` for the first. What the structure of a
+   * domain is worked out from, without ever holding the whole crawl.
+   */
+  listStructureUrls(
+    crawlId: string,
+    page: { after: string | null; limit: number },
+  ): Promise<StructureUrl[]>
   /** Moves an active crawl to `running`. `null` when it is no longer active (e.g. cancelled). */
   markRunning(id: string): Promise<Crawl | null>
   updateCounts(id: string, counts: CrawlCounts): Promise<void>
