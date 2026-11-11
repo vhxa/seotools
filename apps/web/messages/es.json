@@ -3239,7 +3239,9 @@
       "title": "Sitio",
       "description": "Hallazgos actuales de los archivos, independientes de los rastreos y excluidos de los totales del panel.",
       "read": "Última lectura: {when}",
-      "never": "nunca"
+      "never": "nunca",
+      "severe": "Roto",
+      "none": "Nada que señalar en los archivos que publica el sitio."
     },
     "template": {
       "label": "Plantilla",
@@ -3248,7 +3250,8 @@
     "changes": {
       "unavailable": "No se puede comparar",
       "fresh": "{count} nuevos",
-      "resolved": "{count} resueltos"
+      "resolved": "{count} resueltos",
+      "cut": "Han cambiado demasiadas URL para contarlas aquí: abre la comparación para verlas."
     }
   },
   "SystemNav": {

@@ -45,8 +45,11 @@ export default async function DomainDashboardPage({
     db.crawls.list(domain.id, { type: 'full', limit: HISTORY_CRAWLS }),
     db.audit.config(domain.id),
   ])
+  // Only the URL totals: the tiles' differences come from the crawls' own figures.
   const comparison =
-    latest && !latest.pruned ? await compareWithPrevious({ db, target: latest, exact: true }) : null
+    latest && !latest.pruned
+      ? await compareWithPrevious({ db, target: latest, findings: false })
+      : null
   const previousFigures = comparison?.base ? trendFigures(comparison.base) : null
   const compareText = await getTranslations('CrawlCompare')
   const delta = (
@@ -190,17 +193,17 @@ export default async function DomainDashboardPage({
       {comparison?.base && latest && (
         <section className="grid gap-2">
           <h2 className="text-lg font-medium">{t('changesTitle')}</h2>
-          {comparison.notes
-            .filter((note) => note === 'catalog' || note === 'audit')
-            .map((note) => (
-              <p
-                key={note}
-                className="text-xs text-muted-foreground"
-                title={compareText(`notes.${note}.description`)}
-              >
-                {t('configurationChanged')}
-              </p>
-            ))}
+          {comparison.notes.some((note) => note === 'catalog' || note === 'audit') && (
+            <p
+              className="text-xs text-muted-foreground"
+              title={comparison.notes
+                .filter((note) => note === 'catalog' || note === 'audit')
+                .map((note) => compareText(`notes.${note}.description`))
+                .join(' ')}
+            >
+              {t('configurationChanged')}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">{compareText('totals.description')}</p>
           <div className="flex flex-wrap gap-4 text-sm">
             {(['added', 'missing', 'gained', 'lost'] as const).map((change) => (

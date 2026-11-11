@@ -3239,7 +3239,9 @@
       "title": "Site",
       "description": "Current file findings, independent of crawls and excluded from dashboard totals.",
       "read": "Last read: {when}",
-      "never": "never"
+      "never": "never",
+      "severe": "Broken",
+      "none": "Nothing to report in the files the site publishes."
     },
     "template": {
       "label": "Template",
@@ -3248,7 +3250,8 @@
     "changes": {
       "unavailable": "Cannot be compared",
       "fresh": "{count} new",
-      "resolved": "{count} resolved"
+      "resolved": "{count} resolved",
+      "cut": "Too many URLs changed to count them here: open the comparison to see them."
     }
   },
   "SystemNav": {

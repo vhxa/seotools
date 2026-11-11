@@ -119,6 +119,11 @@ export async function compareWithPrevious(input: {
   signal?: AbortSignal
   /** Web summaries need exact counts; alerts may cap classification work. */
   exact?: boolean
+  /**
+   * `false`: only the URL totals (one aggregate query per view), without classifying the findings
+   * of every changed URL; `findings` stays `null`. For pages that show no per-issue change.
+   */
+  findings?: boolean
 }): Promise<CrawlComparison> {
   const { db, target, signal } = input
   const maximum = input.exact ? Number.POSITIVE_INFINITY : MAX_CLASSIFIED_URLS
@@ -163,7 +168,7 @@ export async function compareWithPrevious(input: {
       robots: result.urls.robots + counts.robots,
     }
   }
-  if (!assessment.findings) return result
+  if (!assessment.findings || input.findings === false) return result
 
   const totals = {
     fresh: 0,

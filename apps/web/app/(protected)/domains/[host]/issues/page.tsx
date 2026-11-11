@@ -13,6 +13,9 @@ import { getFormatter, getTranslations } from 'next-intl/server'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { InfoHelp } from '@/components/help'
 import { IssueRows } from '@/components/pages/issue-rows'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { siteFindings } from '@/lib/crawl-files'
 import { compareHref, parseCompareQuery } from '@/lib/compare-query'
 import { getDb } from '@/lib/db'
@@ -27,6 +30,10 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   const t = await getTranslations('Issues')
   return { title: t('metaTitle', { host }) }
 }
+
+/** A plain `<select>`, so the filters work as a GET form without script, styled like `Input`. */
+const NATIVE_SELECT =
+  'h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30'
 
 /** Every finding of the latest full crawl, by importance, each leading to its URLs. */
 export default async function IssuesPage({
@@ -59,7 +66,8 @@ export default async function IssuesPage({
     getFormatter(),
     db.crawlFiles.list(domain.id, ['robots', 'sitemap', 'llms', 'security']),
     db.crawls.settings(domain.id),
-    latest && !latest.pruned ? compareWithPrevious({ db, target: latest, exact: true }) : null,
+    // Capped like the alerts: past the cap the counts are not shown, never shown short.
+    latest && !latest.pruned ? compareWithPrevious({ db, target: latest }) : null,
   ])
   const site = siteFindings(
     {
@@ -106,9 +114,15 @@ export default async function IssuesPage({
           {t('site.title')}
         </h2>
         <p className="text-sm text-muted-foreground">{t('site.description')}</p>
+        {site.length === 0 && <p className="text-sm text-muted-foreground">{t('site.none')}</p>}
         <ul className="divide-y">
           {site.map((row) => (
             <li key={`${row.file}-${row.finding}`} className="py-2 text-sm">
+              {row.severe && (
+                <Badge variant="destructive" className="mr-2">
+                  {t('site.severe')}
+                </Badge>
+              )}
               <Link
                 className="font-medium hover:underline"
                 href={`/domains/${domain.host}/crawl-files/${row.file}`}
@@ -137,10 +151,10 @@ export default async function IssuesPage({
           ))}
         </ul>
       </section>
-      <form className="flex flex-wrap gap-3" method="get">
-        <label>
-          {t('filters.type')}{' '}
-          <select aria-label={t('filters.type')} name="type" defaultValue={type}>
+      <form className="flex flex-wrap items-end gap-3" method="get">
+        <label className="grid gap-1 text-sm">
+          {t('filters.type')}
+          <select className={NATIVE_SELECT} name="type" defaultValue={type}>
             <option value="">{t('filters.all')}</option>
             {(['issue', 'warning', 'opportunity'] as const).map((value) => (
               <option key={value} value={value}>
@@ -149,9 +163,9 @@ export default async function IssuesPage({
             ))}
           </select>
         </label>
-        <label>
-          {t('filters.group')}{' '}
-          <select aria-label={t('filters.group')} name="group" defaultValue={group?.id ?? ''}>
+        <label className="grid gap-1 text-sm">
+          {t('filters.group')}
+          <select className={NATIVE_SELECT} name="group" defaultValue={group?.id ?? ''}>
             <option value="">{t('filters.all')}</option>
             {ISSUE_GROUPS.map((value) => (
               <option key={value.id} value={value.id}>
@@ -160,13 +174,13 @@ export default async function IssuesPage({
             ))}
           </select>
         </label>
-        <label>
-          {t('filters.search')}{' '}
-          <input name="q" defaultValue={search} maxLength={200} className="rounded border px-2" />
+        <label className="grid gap-1 text-sm">
+          {t('filters.search')}
+          <Input name="q" defaultValue={search} maxLength={200} className="w-56" />
         </label>
-        <button type="submit" className="rounded border px-3">
+        <Button type="submit" variant="outline">
           {t('filters.apply')}
-        </button>
+        </Button>
       </form>
       <AuditResultsNotice host={domain.host} state={state} />
 
@@ -216,9 +230,11 @@ export default async function IssuesPage({
                           )}
                         {comparison?.base && (
                           <span className="text-xs tabular-nums">
-                            {!comparison.findings ||
-                            issuePairReasons(comparison.notes, issue).length > 0 ||
-                            comparison.byIssue.get(issue)?.unverified ? (
+                            {comparison.cut ? (
+                              <span title={t('changes.cut')}>{t('changes.unavailable')}</span>
+                            ) : !comparison.findings ||
+                              issuePairReasons(comparison.notes, issue).length > 0 ||
+                              comparison.byIssue.get(issue)?.unverified ? (
                               <span
                                 title={
                                   comparison.byIssue
