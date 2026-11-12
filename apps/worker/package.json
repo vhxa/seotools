@@ -16,7 +16,7 @@
   "devDependencies": {
     "@seotools/core": "workspace:*",
     "@seotools/db": "workspace:*",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.6",
     "css-select": "^6.0.0",
     "domhandler": "^6.0.1",
     "htmlparser2": "^12.0.0",
