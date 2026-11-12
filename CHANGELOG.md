@@ -20,17 +20,7 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
-### Upgrade notes
-
-- Migrations 0029–0033 add bot access tests, optional audit rule grouping, saved user language,
-  site incidents and finding states. Existing audit rules are unchanged. Going back requires
-  restoring the backup taken before updating together with the previous image, as described in
-  `docs/updating.md`.
-- Nothing is dismissed after updating.
-- On first start, retained crawls are analysed again because the issue catalog changed, using each
-  crawl's own configuration. Existing configurations keep the same findings and accepted rows.
-- The first observation of each file after updating is a baseline and does not report an existing
-  problem; certificate and availability thresholds still apply.
+## [0.5.0] - 2026-11-12
 
 ### Added
 
@@ -76,6 +66,18 @@ which moves the entries of `[Unreleased]` into the new version.
 ### Security
 
 - Next.js 16.4.5 and other dependency updates with upstream security fixes.
+
+### Upgrade notes
+
+- Migrations 0029–0033 add bot access tests, optional audit rule grouping, saved user language,
+  site incidents and finding states. Existing audit rules are unchanged. Going back requires
+  restoring the backup taken before updating together with the previous image, as described in
+  `docs/updating.md`.
+- Nothing is dismissed after updating.
+- On first start, retained crawls are analysed again because the issue catalog changed, using each
+  crawl's own configuration. Existing configurations keep the same findings and accepted rows.
+- The first observation of each file after updating is a baseline and does not report an existing
+  problem; certificate and availability thresholds still apply.
 
 ## [0.4.0] - 2026-11-12
 
