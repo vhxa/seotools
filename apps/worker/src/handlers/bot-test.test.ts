@@ -1,4 +1,4 @@
-import { createLogger, type Job } from '@seotools/core'
+import { createLogger, domainRequestSettings, type Job } from '@seotools/core'
 import { BOT_USER_AGENTS } from '@seotools/core/bot-access'
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
@@ -162,4 +162,35 @@ it('steps aside if a crawl starts after the baseline', async () => {
   })
   await expect(make(fetch)(job(), ctx())).rejects.toBeInstanceOf(JobDeferredError)
   expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+it('preserves credentials but prevents a custom header from overriding the tested UA', async () => {
+  await domainRequestSettings(db.crawls, domainId, 'test-key').setJson(
+    'request',
+    {
+      headers: [
+        { name: 'User-Agent', value: 'Override' },
+        { name: 'Cookie', value: 'staging=yes' },
+      ],
+      username: 'user',
+      password: 'secret',
+    },
+    { encrypted: true },
+  )
+  const configs: string[] = []
+  const handler = createBotTestHandler({
+    db,
+    settingsSecret: 'test-key',
+    allowPrivateNetworks: false,
+    createFetcher: (config) => {
+      expect(config.siteHeaders?.headers).toEqual({
+        cookie: 'staging=yes',
+        authorization: 'Basic dXNlcjpzZWNyZXQ=',
+      })
+      configs.push(config.userAgent)
+      return { fetch: async () => response(), close() {} }
+    },
+  })
+  await handler(job(), ctx())
+  expect(configs.slice(1)).toEqual(BOT_USER_AGENTS.map((bot) => bot.userAgent))
 })

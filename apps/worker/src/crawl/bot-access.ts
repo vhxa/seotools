@@ -43,6 +43,12 @@ export async function runBotTest(runId: string, options: BotTestOptions) {
   await db.botTests.markRunning(runId)
   const settings = await db.crawls.settings(domain.id)
   const headers = await siteHeaders(db, domain.id, domain.host, options.settingsSecret)
+  // Custom request headers may contain a UA too. It must not override the identity being tested.
+  if (headers) {
+    headers.headers = Object.fromEntries(
+      Object.entries(headers.headers).filter(([name]) => name.toLowerCase() !== 'user-agent'),
+    )
+  }
   const stored = new Map(
     (await db.botTests.results(runId)).map((result) => [result.botToken, result]),
   )
