@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from './zod'
 import { RELEASES_REPOSITORY } from './repository'
 import type { Settings } from './settings'
 import {

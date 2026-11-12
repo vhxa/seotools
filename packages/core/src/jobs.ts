@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from './zod'
 
 export const JOB_STATUSES = ['pending', 'running', 'completed', 'failed'] as const
 export type JobStatus = (typeof JOB_STATUSES)[number]
@@ -39,6 +39,7 @@ export const JOB_TYPES = {
   accessEmail: 'access.email',
   /** Tells the people who asked for it that a full crawl ended, if there is something to act on. */
   crawlAlerts: 'crawl.alerts',
+  cwvCollect: 'cwv.collect',
 } as const
 
 export const exampleEchoPayload = z.object({
@@ -82,3 +83,7 @@ export type AccessEmailPayload = z.infer<typeof accessEmailPayload>
 
 export const crawlAlertsPayload = z.object({ crawlId: z.string().min(1) })
 export type CrawlAlertsPayload = z.infer<typeof crawlAlertsPayload>
+
+export const cwvCollectPayload = z.object({ crawlId: z.string().min(1) })
+
+export type CwvCollectPayload = z.infer<typeof cwvCollectPayload>

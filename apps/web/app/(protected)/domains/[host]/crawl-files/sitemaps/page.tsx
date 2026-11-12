@@ -14,15 +14,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { sitemapsView, type SitemapFinding } from '@/lib/crawl-files'
+import { SEVERE_FINDINGS, sitemapsView } from '@/lib/crawl-files'
 import { getDb } from '@/lib/db'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 100
-const SEVERE: ReadonlySet<SitemapFinding> = new Set(['declared-broken'])
-
 export async function generateMetadata({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
   const t = await getTranslations('CrawlFiles.sitemaps')
@@ -73,7 +71,7 @@ export default async function SitemapsPage({
         view.findings.map((finding) => (
           <Finding
             key={finding}
-            severe={SEVERE.has(finding)}
+            severe={SEVERE_FINDINGS.sitemaps.has(finding)}
             title={t(`findings.${finding}.title`)}
             description={t(`findings.${finding}.description`)}
           />

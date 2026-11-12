@@ -1,4 +1,12 @@
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import {
+  real,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core'
 
 const ts = (name: string) => integer(name, { mode: 'timestamp_ms' })
 const now = () => new Date()
@@ -159,6 +167,7 @@ export const domainFavicons = sqliteTable(
 
 /** One row per domain once its crawl settings have been saved; until then, the defaults apply. */
 export const crawlSettings = sqliteTable('crawl_settings', {
+  collectVitals: integer('collect_vitals', { mode: 'boolean' }).notNull().default(true),
   domainId: text('domain_id')
     .primaryKey()
     .references(() => domains.id, { onDelete: 'cascade' }),
@@ -181,6 +190,7 @@ export const crawlSettings = sqliteTable('crawl_settings', {
   indexNowKey: text('index_now_key'),
   includePrefixes: text('include_prefixes'),
   excludePrefixes: text('exclude_prefixes'),
+  ignoredParameters: text('ignored_parameters'),
   /** JSON array of `Extractor` (custom extraction). `null`: none. */
   extractors: text('extractors'),
   maxDepth: integer('max_depth'),
@@ -231,6 +241,7 @@ export const crawls = sqliteTable(
     jobId: text('job_id').notNull(),
     /** The domain id while the crawl is active, `null` after: unique, so one per domain at most. */
     seedUrls: text('seed_urls'),
+    ignoredParameters: text('ignored_parameters'),
     activeKey: text('active_key').unique(),
     pagesCount: integer('pages_count').notNull().default(0),
     urlsCount: integer('urls_count').notNull().default(0),
@@ -833,3 +844,55 @@ export const alertNotices = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.crawlId, t.userId, t.kind] })],
 )
+
+export const crawlVitals = sqliteTable(
+  'crawl_vitals',
+  {
+    crawlId: text('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    formFactor: text('form_factor').notNull(),
+    status: text('status').notNull(),
+    error: text('error'),
+    lcp: real('lcp'),
+    inp: real('inp'),
+    cls: real('cls'),
+    fcp: real('fcp'),
+    ttfb: real('ttfb'),
+    tbt: real('tbt'),
+    collectedAt: ts('collected_at').notNull().$defaultFn(now),
+  },
+  (t) => [primaryKey({ columns: [t.crawlId, t.formFactor] })],
+)
+
+export const crawlUrlVitals = sqliteTable(
+  'crawl_url_vitals',
+  {
+    crawlId: text('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    formFactor: text('form_factor').notNull(),
+    urlHash: text('url_hash').notNull(),
+    source: text('source').notNull(),
+    status: text('status').notNull(),
+    error: text('error'),
+    lcp: real('lcp'),
+    inp: real('inp'),
+    cls: real('cls'),
+    fcp: real('fcp'),
+    ttfb: real('ttfb'),
+    tbt: real('tbt'),
+    collectedAt: ts('collected_at').notNull().$defaultFn(now),
+  },
+  (t) => [primaryKey({ columns: [t.crawlId, t.formFactor, t.urlHash, t.source] })],
+)
+
+/** Personal preferences belong to the account, independently of domain ownership. */
+export const userPreferences = sqliteTable('user_preferences', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  favouriteDomainId: text('favourite_domain_id').references(() => domains.id, {
+    onDelete: 'set null',
+  }),
+})

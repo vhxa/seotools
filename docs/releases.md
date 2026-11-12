@@ -189,8 +189,10 @@ V=0.3.0
 docker buildx imagetools inspect ghcr.io/vhxa/seotools:$V      # linux/amd64 and linux/arm64
 docker buildx imagetools inspect ghcr.io/vhxa/seotools:0.3     # the same digest as $V
 docker buildx imagetools inspect ghcr.io/vhxa/seotools:latest  # the same digest, if it is the newest
-docker run --rm -d --name rc -p 3000:3000 -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
+docker volume create seotools-release-check-data
+docker run --rm -d --name rc -v seotools-release-check-data:/data -p 3000:3000 -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
   ghcr.io/vhxa/seotools:$V && sleep 30 && curl -s localhost:3000/api/health; docker rm -f rc
+docker volume rm seotools-release-check-data
 ```
 
 - `/api/health` says the version and `"channel": "release"`.

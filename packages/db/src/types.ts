@@ -1,3 +1,4 @@
+import type { VitalMetrics } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
   AccessGrant,
@@ -88,6 +89,12 @@ export interface JobRepository {
   release(input: { id: string; workerId: string; runAt?: Date }): Promise<void>
   /** Recovers jobs whose worker died: back to `pending`, or `failed` if out of attempts. */
   requeueStale(input: { lockedBefore: Date }): Promise<number>
+  /**
+   * Deletes finished jobs: `completed` ones last updated before `finishedBefore`, `failed` ones
+   * before `failedBefore`. Never `pending` or `running`, nor a job an active crawl or recheck still
+   * points at (`failOrphaned` reads it). Returns how many were deleted.
+   */
+  prune(input: { finishedBefore: Date; failedBefore: Date }): Promise<number>
 }
 
 export interface Heartbeat {
@@ -323,6 +330,7 @@ export interface DomainRepository {
 }
 
 export interface Crawl {
+  ignoredParameters?: string[]
   seedUrls?: string[] | null
   id: string
   domainId: string
@@ -375,6 +383,23 @@ export interface Crawl {
   finishedAt: Date | null
 }
 
+/** A domain's recent crawls and whether one is active, for the portfolio home. */
+export interface PortfolioEntry {
+  /** Finished full crawls (completed, incomplete, failed or cancelled), newest first. */
+  crawls: Crawl[]
+  /** A crawl of any type is pending or running. */
+  running: boolean
+}
+
+/** What the structure of a site needs to know of one URL. */
+export interface StructureUrl {
+  urlHash: string
+  url: string
+  kind: CrawlUrlKind
+  statusCode: number | null
+  state: 'queued' | 'done' | 'skipped'
+}
+
 export type CrawlCounts = Pick<
   Crawl,
   'pagesCount' | 'urlsCount' | 'urlsDoneCount' | 'externalCount'
@@ -418,6 +443,7 @@ export interface CrawlUrl
   crawlId: string
   state: CrawlUrlState
   fetchedAt: Date | null
+  referencedBy?: { total: number; kinds: Record<string, number> }
 }
 
 export interface CrawlLink {
@@ -442,7 +468,8 @@ export interface CrawlLink {
 export type { CrawlUrlView }
 
 /** What a list of URLs can be ordered by. Without one, shallowest first, then by URL. */
-export type CrawlUrlSort = 'url' | 'title' | 'status' | 'depth' | 'responseTime' | 'bytes'
+export type CrawlUrlSort =
+  'referencedBy' | 'url' | 'title' | 'status' | 'depth' | 'responseTime' | 'bytes'
 
 /** Which URLs of a crawl a list shows. */
 export interface CrawlUrlQuery {
@@ -611,6 +638,7 @@ export interface CrawlRepository {
   requestSecrets(domainId: string): Promise<string | null>
   saveRequestSecrets(domainId: string, encrypted: string | null): Promise<void>
   settings(domainId: string): Promise<CrawlSettings>
+  saveIgnoredParameters(domainId: string, patterns: string[]): Promise<void>
   saveSettings(domainId: string, settings: CrawlSettings): Promise<void>
   /** The extra crawl files each domain turned on, by domain id. Domains with none are left out. */
   enabledFiles(): Promise<Map<string, ExtraCrawlFileKind[]>>
@@ -633,6 +661,22 @@ export interface CrawlRepository {
   list(domainId: string, options?: { limit?: number; type?: CrawlType }): Promise<Crawl[]>
   /** The newest crawl of a type that finished with usable results. */
   latestWithResults(domainId: string, type: CrawlType): Promise<Crawl | null>
+  /**
+   * What the portfolio home needs of every domain at once, in a fixed number of queries whatever the
+   * number of domains: its last `recent` (8 by default) finished full crawls and whether a crawl is
+   * active. Domains with neither are not in the map. Reads no results per URL; the crawls come
+   * without `robots`, `seedUrls` and `auditSnapshot` (always `null` here).
+   */
+  portfolio(options?: { recent?: number }): Promise<Map<string, PortfolioEntry>>
+  /**
+   * The URLs of the site (not external ones) of a crawl, a bounded page at a time, ordered by hash:
+   * `after` is the hash the previous page ended with, `null` for the first. What the structure of a
+   * domain is worked out from, without ever holding the whole crawl.
+   */
+  listStructureUrls(
+    crawlId: string,
+    page: { after: string | null; limit: number },
+  ): Promise<StructureUrl[]>
   /** Moves an active crawl to `running`. `null` when it is no longer active (e.g. cancelled). */
   markRunning(id: string): Promise<Crawl | null>
   updateCounts(id: string, counts: CrawlCounts): Promise<void>
@@ -710,7 +754,11 @@ export interface CrawlRepository {
   queryUrls(
     crawlId: string,
     page: { after: number | null; limit: number },
-  ): Promise<{ urls: string[]; next: number | null }>
+  ): Promise<{
+    urls: string[]
+    observations?: { url: string; canonical: string | null }[]
+    next: number | null
+  }>
   /**
    * The links that bring query parameters their page does not have (they kept the tag as read,
    * `LinkContext.snippet`): where parameters enter the site. Ordered by target, then source.
@@ -1281,7 +1329,33 @@ export interface CrawlFileRepository {
   deferCheck(input: { domainId: string; nextCheckAt: Date }): Promise<void>
 }
 
+export interface VitalsRecord extends VitalMetrics {
+  crawlId: string
+  formFactor: string
+  status: string
+  error: string | null
+  collectedAt: Date
+}
+export interface UrlVitalsRecord extends VitalsRecord {
+  urlHash: string
+  source: string
+}
+export interface VitalsRepository {
+  /** Latest finished full crawl with origin rows, including retained origin-only history. */
+  latestCrawl(domainId: string): Promise<Crawl | null>
+  origins(crawlId: string): Promise<VitalsRecord[]>
+  urls(crawlId: string): Promise<UrlVitalsRecord[]>
+  saveOrigin(row: VitalsRecord): Promise<void>
+  saveUrl(row: UrlVitalsRecord): Promise<void>
+}
+export interface UserPreferencesRepository {
+  favouriteDomainId(userId: string): Promise<string | null>
+  setFavouriteDomain(userId: string, domainId: string | null): Promise<void>
+}
+
 export interface Database {
+  readonly userPreferences: UserPreferencesRepository
+  readonly vitals: VitalsRepository
   readonly dialect: Dialect
   readonly jobs: JobRepository
   readonly heartbeats: HeartbeatRepository

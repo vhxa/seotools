@@ -49,6 +49,14 @@ export function lastFetched(files: CrawlFile[]): CrawlFile | null {
   )
 }
 
+/** Findings that say something is broken, as against merely missing or improvable. */
+export const SEVERE_FINDINGS = {
+  robots: new Set<RobotsFinding>(['unavailable', 'invalid', 'site-blocked']),
+  sitemaps: new Set<SitemapFinding>(['declared-broken']),
+  llms: new Set<LlmsFinding>(['invalid', 'unavailable']),
+  security: new Set<SecurityFinding>(['expired']),
+} as const
+
 export type RobotsFinding =
   | 'missing'
   | 'unavailable'
@@ -255,3 +263,59 @@ export const indexNowKeyMatches = (file: CrawlFile, key: string) => file.body?.t
 
 /** Files found at guessed locations only matter if they are there. */
 export const presentFiles = (files: CrawlFile[]) => files.filter((file) => stateOf(file) === 'ok')
+
+/** The files whose findings the Issues page lists, each with the page that explains it. */
+export const SITE_FINDING_FILES = ['robots', 'sitemaps', 'llms', 'security'] as const
+export type SiteFindingFile = (typeof SITE_FINDING_FILES)[number]
+
+export interface SiteFinding {
+  file: SiteFindingFile
+  /** The key of the finding in `CrawlFiles.<file>.findings` (`CrawlFiles.extra.security.findings`). */
+  finding: string
+  severe: boolean
+  /** When any request for the file was last answered. `null`: never. */
+  readAt: Date | null
+}
+
+/**
+ * What the files the site publishes say about the site, as it stands now: the findings the pages of
+ * `crawl-files` show, in one list. They are the current state of `crawl_files`, not part of any
+ * crawl, so nothing here is counted with the findings of a crawl. `security` is `null` when the
+ * domain does not request security.txt; a file that is not there is not a finding.
+ */
+export function siteFindings(
+  files: {
+    robots: CrawlFile[]
+    sitemap: CrawlFile[]
+    llms: CrawlFile[]
+    security: CrawlFile[] | null
+  },
+  host: string,
+  now: Date,
+): SiteFinding[] {
+  const found: SiteFinding[] = []
+  const add = (
+    file: SiteFindingFile,
+    source: CrawlFile[],
+    findings: string[],
+    severe: ReadonlySet<string>,
+  ) => {
+    const readAt = lastFetched(source)?.fetchedAt ?? null
+    for (const finding of findings) {
+      found.push({ file, finding, severe: severe.has(finding), readAt })
+    }
+  }
+  add('robots', files.robots, robotsView(files.robots).findings, SEVERE_FINDINGS.robots)
+  add(
+    'sitemaps',
+    files.sitemap,
+    sitemapsView(files.sitemap, files.robots, host).findings,
+    SEVERE_FINDINGS.sitemaps,
+  )
+  add('llms', files.llms, llmsView(files.llms).findings, SEVERE_FINDINGS.llms)
+  const security = files.security ? primaryFile(files.security) : null
+  if (files.security && security) {
+    add('security', files.security, securityView(security, now).findings, SEVERE_FINDINGS.security)
+  }
+  return found
+}

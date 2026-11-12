@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { trendFigures, trendPoints } from './dashboard'
+import { dashboardDifference, trendFigures, trendPoints } from './dashboard'
 
 const crawl = (at: number, over: Record<string, unknown> = {}) => ({
   status: 'completed' as const,
@@ -28,5 +28,15 @@ describe('trendPoints', () => {
 describe('trendFigures', () => {
   it('is null for a crawl without findings counts', () => {
     expect(trendFigures({ pagesWithType: null, pagesAudit: null })).toBeNull()
+  })
+})
+
+describe('dashboardDifference', () => {
+  it('keeps unavailable baselines unknown and preserves the direction of changes', () => {
+    expect(dashboardDifference(null, 12)).toBeNull()
+    expect(dashboardDifference(10, undefined)).toBeNull()
+    expect(dashboardDifference(10, 7)).toBe(-3)
+    expect(dashboardDifference(0, 12)).toBe(12)
+    expect(dashboardDifference(10, 10)).toBe(0)
   })
 })

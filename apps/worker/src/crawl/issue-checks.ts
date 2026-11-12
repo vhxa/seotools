@@ -22,7 +22,7 @@ import {
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
-import { isValidHreflang } from './language-codes'
+import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
 import {
   excusedBlockers,
   excusesInlinks,
@@ -36,6 +36,7 @@ import {
   comparable,
   followRedirects,
   isGuess,
+  REFUSES_BOTS,
   unavailableAfter,
   type AuditedUrl,
   type Site,
@@ -72,9 +73,6 @@ const SUBSECTIONS_MIN_WORDS = 300
 const DOCUMENT_MAX_BYTES = 2 * 1024 * 1024
 const SITEMAP_MAX_ENTRIES = 50_000
 const SITEMAP_MAX_BYTES = 50 * 1024 * 1024
-
-/** Servers often refuse bots with these while the page works fine for people. */
-const REFUSES_BOTS = new Set([401, 403, 405, 406, 429, 451])
 
 /** The issue applies to pages that answered and were parsed, not to redirects or failures. */
 const onPage =
@@ -190,8 +188,11 @@ const hreflangTargets =
  */
 const HREFLANG_RELATIONS = {
   'hreflang-no-return': {
-    wrong: (target: AuditedUrl, page: AuditedUrl) =>
-      target.contentPage && !target.hreflang.some((entry) => entry.url === page.url.url),
+    wrong: (target: AuditedUrl, page: AuditedUrl, site: Site) =>
+      target.contentPage &&
+      !target.hreflang.some(
+        (entry) => identityOf(site, entry.url) === identityOf(site, page.url.url),
+      ),
     excused: excusesMissingReturn,
     blockers: (target: AuditedUrl): readonly IndexabilityBlocker[] => target.indexability.blockers,
   },
@@ -213,7 +214,7 @@ const unexcused =
   (issue: keyof typeof HREFLANG_RELATIONS) =>
   (target: AuditedUrl, page: AuditedUrl, site: Site) => {
     const relation = HREFLANG_RELATIONS[issue]
-    return relation.wrong(target, page) && !relation.excused(page, target, site)
+    return relation.wrong(target, page, site) && !relation.excused(page, target, site)
   }
 
 /** What the links that reach a URL say of it, whatever is expected of the URL. */
@@ -271,11 +272,14 @@ const pointsAt = (target: AuditedUrl, details?: string[]): Found => {
 
 /** The URLs of the site a page's anchors link to that `wrong` picks, once each, as evidence. */
 const linkedTargets =
-  (wrong: (target: AuditedUrl) => boolean): Check =>
+  (
+    wrong: (target: AuditedUrl) => boolean,
+    list: (url: AuditedUrl) => readonly AuditedUrl[] = (url) => url.linksTo,
+  ): Check =>
   (url) => {
     if (!url.contentPage) return false
     const picked = new Set<AuditedUrl>()
-    for (const target of url.linksTo) if (target !== url && wrong(target)) picked.add(target)
+    for (const target of list(url)) if (target !== url && wrong(target)) picked.add(target)
     if (picked.size === 0) return false
     const urls: string[] = []
     for (const target of picked) {
@@ -285,6 +289,33 @@ const linkedTargets =
     }
     return backedBy({ kind: 'related-urls', total: picked.size, urls })
   }
+
+/**
+ * The image a page offers to be shared with, when the crawl requested it and it does not load: a
+ * failure, or a redirect. One the crawl did not request (on another site) is not known to be broken.
+ */
+function brokenShareImage(url: AuditedUrl, facts: CrawlPageFacts, site: Site): Found | false {
+  const address = facts.social?.image ?? facts.social?.twitterImage
+  const target = address ? site.get(address) : undefined
+  if (!target || target === url) return false
+  const failed = target.internal
+    ? fails(target)
+    : fails(target) && !REFUSES_BOTS.has(target.url.statusCode ?? 0)
+  return failed || redirects(target) ? pointsAt(target) : false
+}
+
+/** The Open Graph properties a page that has some of them lacks. */
+const OG_REQUIRED = [
+  ['og:title', 'title'],
+  ['og:type', 'type'],
+  ['og:image', 'image'],
+  ['og:url', 'url'],
+] as const
+
+/** Whether `declared` is where the page says it lives: its canonical, or itself without one. */
+const identityOf = (site: Site, url: string) => site.identity?.(url) ?? url
+const ogUrlDiffers = (url: AuditedUrl, declared: string, site: Site) =>
+  identityOf(site, declared) !== identityOf(site, url.url.canonical ?? url.url.url)
 
 /** The typed nodes of a page's JSON-LD that lack what Google asks, as `Type: missing, …`. */
 const structuredProblems = (facts: CrawlPageFacts, level: 'required' | 'recommended') =>
@@ -337,6 +368,9 @@ const SEARCH_PARAMETERS = new Set(['s', 'q', 'query', 'search', 'keyword', 'keyw
 
 /** What each issue of `PAGE_ISSUES` looks for. Each check says itself which URLs it applies to. */
 export const CHECKS: Record<PageIssueId, Check> = {
+  'lcp-poor': (url) => (url.vitals?.lcp ?? 0) > 4000,
+  'inp-poor': (url) => (url.vitals?.inp ?? 0) > 500,
+  'cls-poor': (url) => (url.vitals?.cls ?? 0) > 0.25,
   // --- what is expected of a URL's indexation, against what the crawl saw ---------------------
   // Only for pages that answered (not images, stylesheets, redirects or what the crawler only tried),
   // and only for the blockers that say something the page's other findings do not: an error response
@@ -386,6 +420,14 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'refresh-redirect': onPage((_, facts) => facts.refresh !== null),
   'robots-blocked': answer((url) => url.robotsBlocked),
   'redirect-3xx': answer((url) => url.url.kind === 'redirect'),
+  // Temporary, so search engines keep the old URL. Not a guess, which the crawler only tried.
+  'redirect-temporary': answer(
+    (url) =>
+      url.url.kind === 'redirect' && (url.url.statusCode === 302 || url.url.statusCode === 307),
+  ),
+  // Read from the answer, never from facts: it exists in every crawl.
+  'slow-response': (url, site) =>
+    url.contentPage && (url.url.responseTimeMs ?? 0) > figures(site).responseTimeMaxMs,
   'broken-external-link': (url) =>
     !url.internal &&
     url.url.state === 'done' &&
@@ -523,16 +565,18 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'hreflang-outside-head': hreflang((_, entries) => entries.filter((entry) => entry.outsideHead)),
   'hreflang-non-canonical': hreflang(hreflangTargets(unexcused('hreflang-non-canonical'))),
   'hreflang-noindex': hreflang(hreflangTargets(unexcused('hreflang-noindex'))),
-  'hreflang-same-language': hreflang((_, entries) => {
+  'hreflang-same-language': hreflang((_, entries, site) => {
     const urls = new Map<string, Set<string>>()
     for (const { lang, url } of entries) {
       const key = lang.trim().toLowerCase()
-      urls.set(key, (urls.get(key) ?? new Set()).add(url))
+      urls.set(key, (urls.get(key) ?? new Set()).add(identityOf(site, url)))
     }
     return entries.filter((entry) => (urls.get(entry.lang.trim().toLowerCase())?.size ?? 0) > 1)
   }),
-  'hreflang-no-self': hreflang((url, entries) =>
-    entries.some((entry) => entry.url === url.url.url) ? [] : entries,
+  'hreflang-no-self': hreflang((url, entries, site) =>
+    entries.some((entry) => identityOf(site, entry.url) === identityOf(site, url.url.url))
+      ? []
+      : entries,
   ),
   'hreflang-no-x-default': hreflang((_, entries) =>
     entries.some((entry) => entry.lang.trim().toLowerCase() === 'x-default') ? [] : entries,
@@ -619,9 +663,40 @@ export const CHECKS: Record<PageIssueId, Check> = {
     structuredProblems(facts, 'recommended'),
   ),
 
+  // --- social --------------------------------------------------------------
+  // What the page says when shared. A page parsed before this was kept (`social` absent) is not
+  // looked at: it never reads as having no tags.
+  'og-missing': onPage(
+    (_, facts) => facts.social !== undefined && facts.social.openGraphTags === 0,
+  ),
+  'og-incomplete': onPage((_, facts) => {
+    const { social } = facts
+    if (!social || social.openGraphTags === 0) return false
+    return OG_REQUIRED.filter(([, field]) => social[field] === undefined).map(([name]) => name)
+  }),
+  'og-image-broken': onPage((url, facts, site) => brokenShareImage(url, facts, site)),
+  'og-url-mismatch': onPage(
+    (url, facts, site) =>
+      facts.social?.url !== undefined && ogUrlDiffers(url, facts.social.url, site),
+  ),
+  'twitter-card-missing': onPage(
+    (_, facts) => facts.social !== undefined && facts.social.twitterCard === undefined,
+  ),
+
   // --- links ---------------------------------------------------------------
   'link-to-localhost': linkProblem('localhost', (facts) => facts.localhostLinks),
   'links-to-broken': linkedTargets(fails),
+  // What a page loads that fails (the crawl kept only those), reported on the page that loads it.
+  'resources-broken': (url) => {
+    const { total, sample } = url.failedEmbeds
+    if (!url.contentPage || total === 0) return false
+    const urls: string[] = []
+    for (const target of sample) {
+      const address = boundedUrl(target.url.url)
+      if (address) urls.push(address)
+    }
+    return backedBy({ kind: 'related-urls', total, urls })
+  },
   'links-to-redirect': linkedTargets(redirects),
   'links-to-canonicalised': linkedTargets((target) => target.contentPage && target.canonicalised),
   'links-tracking-parameters': linkedTargets(hasTrackingParameters),
@@ -686,6 +761,23 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'multiple-head-or-body': onPage((_, facts) => facts.heads > 1 || facts.bodies > 1),
   'document-too-big': onPage(({ url }) => (url.bytes ?? 0) > DOCUMENT_MAX_BYTES),
   'content-before-head': onPage((_, facts) => facts.headNotFirst),
+  // What the document declares. Pages parsed before it was kept (`document` absent) are not judged.
+  'html-lang-missing': onPage((_, facts) => facts.document !== undefined && !facts.document.lang),
+  // `lang=""` is valid HTML ("unknown language"), but it tells a screen reader and a search engine
+  // nothing: it is read as missing (`html-lang-missing`), never as invalid.
+  'html-lang-invalid': onPage(
+    (_, facts) => !!facts.document?.lang && !isWellFormedLanguageTag(facts.document.lang),
+  ),
+  'viewport-missing': onPage(
+    (_, facts) => facts.document !== undefined && !facts.document.viewport,
+  ),
+  // The header counts as much as the document does.
+  'charset-missing': onPage(
+    (url, facts) =>
+      facts.document !== undefined &&
+      !facts.document.charset &&
+      !/charset\s*=/i.test((url.url.contentType ?? '').slice(0, 200)),
+  ),
 }
 
 export type Finding = { issue: PageIssueId; details?: string[]; evidence?: IssueEvidence }
@@ -851,7 +943,7 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
       const target = site.get(entry.url)
       if (!target || target === url || !target.internal || seen.has(entry.url)) continue
       seen.add(entry.url)
-      if (!relation.wrong(target, url) || !relation.excused(url, target, site)) continue
+      if (!relation.wrong(target, url, site) || !relation.excused(url, target, site)) continue
       // A missing return is excused as much by the page being expected out as by the target.
       add(issue, relationAcceptance(url, target, relation.blockers(target)), target)
     }

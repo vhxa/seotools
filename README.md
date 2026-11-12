@@ -8,26 +8,44 @@ Raspberry Pi to a VPS.
 
 ## What it does
 
+- **Core Web Vitals** from Google CrUX (field) and PageSpeed Insights (lab), with trends and URL findings.
+  Paused, archived, disabled or keyless runs record nothing and are not caught up later.
 - **Crawls whole sites** from the home page, the sitemaps and every link, including what
   `robots.txt` blocks (auditing it is the point), with per-domain scope, depth, rate limits, request
-  headers and Basic Auth for staging sites, lists of URLs and schedules in your time zone.
-- **119 checks** grouped by what they are: indexation (noindex, robots.txt, canonicals, sitemaps,
+  headers and Basic Auth for staging sites and lists of URLs. The Crawls area brings runs,
+  comparison and rechecks together; schedules, in your time zone, live in Settings → Schedules.
+- **131 checks** grouped by what they are: indexation (noindex, robots.txt, canonicals, sitemaps,
   hreflang), broken references (links, canonicals, hreflang or sitemap entries that fail or
   redirect), and quality (titles, descriptions, headings, content, images, structured data against
-  Google's rich result requirements, accessibility, security, HTML). Each finding says why it
-  matters and shows the evidence: which images, links, declarations or pages.
+  Google's rich result requirements, Open Graph and Twitter tags, accessibility, security, HTML).
+  Each finding says why it matters and shows the evidence: which images, links, declarations or
+  pages. The detail of each URL previews its search result and its share card.
 - **Your own rules**: say which URLs are expected out of the index, which must carry a noindex or be
   in a sitemap, which are left out of the audit; findings a rule expects are shown as accepted, not
   hidden. Thresholds that are conventions (title length, thin content…) can be set per domain.
+- **Issues and changes**: filter findings, spot template-wide problems, inspect current site files and crawl differences, and see who references broken or redirected targets.
 - **Where every link is**: its text, element and part of the page, how the crawler found each URL,
-  and where query parameters enter the site.
+  and where query parameters enter the site. Ignore selected parameters (exact names or prefixes)
+  from the next crawl; review volatile/canonical suggestions and separately marked tracking names
+  and manage currently ignored names on the Parameters page ([details](docs/ignored-parameters.md)).
 - **History and comparison** of crawls, a URL's history, rechecks of single URLs, alerts by email,
   and CSV exports of pages, findings, links and redirects.
 - **Crawl files**: `robots.txt` with the access of each AI bot, sitemaps, `llms.txt`, and on request
   `ads.txt`, `security.txt`, feeds, OpenSearch and IndexNow.
 - **Custom extraction** of any value with a CSS selector.
+- **Portfolio and structure**: a home with every domain by company (last crawl, figures and trend), and
+  a per-domain view of the site by directory with pages, errors and findings.
+- **Favourite domain** per user: open it automatically and reach all domains from the switcher.
 - **Teams**: companies and domains, administrators, and editors or viewers per company or domain.
 - **English and Spanish**, SQLite or PostgreSQL, `linux/amd64` and `linux/arm64` images on GHCR.
+
+A look at the demo site: dashboard, findings, URL inventory and share preview.
+
+| Dashboard                                           | Issues                                                           |
+| --------------------------------------------------- | ---------------------------------------------------------------- |
+| ![Domain dashboard](docs/screenshots/dashboard.png) | ![Issues grouped by importance](docs/screenshots/issues.png)     |
+| URLs                                                | Share preview                                                    |
+| ![URL inventory](docs/screenshots/urls.png)         | ![Search and social preview](docs/screenshots/share-preview.png) |
 
 ## Quick start (Docker Compose)
 
@@ -50,9 +68,9 @@ docker compose up -d
 Open <http://localhost:3000>. The first time, it asks you to create the admin account (name,
 email and password), signs you in, and then asks for your first company and domain (`example.com`,
 without `https://` or `www.`). Domains are grouped by company, like an agency groups them by
-client, and you switch between them from the selector in the header, which also searches any URL of the domain. Run a full crawl
-from the domain's overview; **Administration → Status** shows whether the database and the worker
-are healthy.
+client, and you switch between them from the domain selector in the header; the search box next to
+it finds any URL of the domain. Run a full crawl from the domain's overview; **Administration →
+Status** shows whether the database and the worker are healthy.
 
 Data lives in the `seotools-data` volume (`/data` in the container). To build the image yourself
 instead of pulling it, use `docker compose up -d --build`.
@@ -60,11 +78,9 @@ instead of pulling it, use `docker compose up -d --build`.
 This pulls the newest **stable release**. For anything you rely on, pin a version
 (`SEOTOOLS_IMAGE` in `.env`) and update it on purpose: see [Updating](#updating).
 
-> **No release has been published yet**, so `latest` does not exist yet. Until the first one, build
-> the image from source (`docker compose up -d --build`) or run a development build of `main` with
-> `SEOTOOLS_IMAGE=ghcr.io/vhxa/seotools:edge` in `.env`.
-
 ## Configuration
+
+Administrators can save an encrypted Google API key in **Administration → Integrations**. With collection enabled in a domain’s Crawling settings, its page addresses and origin are sent to Google after each full crawl. The key's Google Cloud project needs the **Chrome UX Report API** (field data) and the **PageSpeed Insights API** (lab data) enabled, and a key restricted to APIs must allow both. Data is collected after the next full crawl; earlier crawls are not filled in.
 
 All configuration is through environment variables. See [`.env.example`](.env.example) for the
 annotated list.
@@ -111,10 +127,6 @@ The image is `ghcr.io/vhxa/seotools`. `1.2.3` is one release, `1.2` follows its 
 from 1.0.0, `1` follows its minor versions), `latest` is the newest stable release, and `edge` and
 `sha-<commit>` are development builds of `main`, never releases. What each tag means and which one
 to use is in [docs/updating.md](docs/updating.md#image-tags). In production, pin one.
-
-> A package published to GHCR is **private** until you make it public (GitHub → Packages →
-> seotools → Package settings → Change visibility). Do that once so anyone can `docker pull`
-> without logging in.
 
 ### VPS with Docker Compose
 

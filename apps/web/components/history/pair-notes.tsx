@@ -27,6 +27,8 @@ export function PairNotes({ assessment }: { assessment: PairAssessment }) {
         return t(`incomplete.title.${sides}`)
       case 'catalog':
         return t('catalog.title')
+      case 'ignoredParameters':
+        return t('ignoredParameters.title')
       case 'audit':
         return t('audit.title')
     }

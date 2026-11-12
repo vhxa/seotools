@@ -58,3 +58,33 @@ export function parsePriorityUrl(input: string, host: string): string | null {
   const url = normalizeCrawlUrl(withScheme)
   return url && isInternalUrl(url, host) ? url : null
 }
+
+/** Names are decoded like URLSearchParams; retained query bytes and their order stay unchanged. */
+export function matchesIgnoredParameter(name: string, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) =>
+    pattern.endsWith('*') ? name.startsWith(pattern.slice(0, -1)) : name === pattern,
+  )
+}
+
+/** Apply only to internal URLs at the crawl boundary; external addresses remain as written. */
+export function stripIgnoredParameters(
+  url: string,
+  patterns: readonly string[],
+  host?: string,
+): string {
+  if (!patterns.length || (host !== undefined && !isInternalUrl(url, host))) return url
+  const question = url.indexOf('?')
+  if (question < 0) return url
+  let removed = false
+  const kept = url
+    .slice(question + 1)
+    .split('&')
+    .filter((part) => {
+      const name = new URLSearchParams(part).keys().next().value
+      const keep = name === undefined || !matchesIgnoredParameter(name, patterns)
+      if (!keep) removed = true
+      return keep
+    })
+    .join('&')
+  return removed ? url.slice(0, question) + (kept ? `?${kept}` : '') : url
+}

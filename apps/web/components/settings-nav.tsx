@@ -1,6 +1,13 @@
 'use client'
 
-import { BellIcon, RadarIcon, ShieldCheckIcon, StarIcon, type LucideIcon } from 'lucide-react'
+import {
+  BellIcon,
+  CalendarClockIcon,
+  RadarIcon,
+  ShieldCheckIcon,
+  StarIcon,
+  type LucideIcon,
+} from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -9,10 +16,11 @@ import { cn } from '@/lib/utils'
 
 /** The sections of a domain's settings. Each one is a route under `/domains/[host]/settings`. */
 const SECTIONS: readonly {
-  id: 'crawl' | 'audit' | 'priority' | 'alerts'
+  id: 'crawl' | 'schedules' | 'audit' | 'priority' | 'alerts'
   icon: LucideIcon
 }[] = [
   { id: 'crawl', icon: RadarIcon },
+  { id: 'schedules', icon: CalendarClockIcon },
   { id: 'audit', icon: ShieldCheckIcon },
   { id: 'priority', icon: StarIcon },
   { id: 'alerts', icon: BellIcon },

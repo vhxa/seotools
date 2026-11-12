@@ -15,10 +15,11 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   const isAdmin = viewer.role === 'admin'
   const t = await getTranslations('ProtectedShell')
   const db = await getDb()
-  const [companies, faviconVersions, enabledFiles] = await Promise.all([
+  const [companies, faviconVersions, enabledFiles, favouriteDomainId] = await Promise.all([
     visibleCompanies(viewer),
     db.favicons.versions(),
     db.crawls.enabledFiles(),
+    db.userPreferences.favouriteDomainId(session.user.id),
   ])
   // Nothing to manage yet: finish the onboarding first. A company left without domains is still
   // something to manage, so it does not send anyone back to the onboarding.
@@ -52,7 +53,12 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
         >
           {t('skipToContent')}
         </a>
-        <AppHeader isAdmin={isAdmin} companies={switcherCompanies} user={user} />
+        <AppHeader
+          favouriteDomainId={favouriteDomainId}
+          isAdmin={isAdmin}
+          companies={switcherCompanies}
+          user={user}
+        />
         <div className="flex min-h-0 flex-1">
           <AppSidebar isAdmin={isAdmin} companies={switcherCompanies} />
           {/* A plain div, not SidebarInset: that one renders a <main> and pages bring their own. */}

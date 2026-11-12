@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './support/test'
 import { ADMIN, ADMIN_STATE } from './support/env'
 import { signIn, signOut } from './support/helpers'
 
@@ -15,14 +15,17 @@ test('the first run creates the administrator, who can sign in and out', async (
   await page.getByLabel('Password', { exact: true }).fill(ADMIN.password)
   await page.getByLabel('Confirm password').fill(ADMIN.password)
   await page.getByRole('button', { name: 'Create admin account' }).click()
-  // Creating the account signs it in: with a domain already there, it lands on that domain.
+  // Creating the account signs it in: with two domains already there, it lands on the portfolio.
+  await expect(page).toHaveURL(/localhost:\d+\/$/)
+  await expect(page.getByRole('heading', { name: 'All domains', level: 1 })).toBeVisible()
+  await page.getByRole('link', { name: 'Open example.com' }).click()
   await expect(page).toHaveURL(/\/domains\/example\.com/)
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Administration' })).toBeVisible()
 
   await signOut(page, ADMIN.name)
   await signIn(page, ADMIN)
-  await expect(page).toHaveURL(/\/domains\/example\.com/)
+  await expect(page.getByRole('heading', { name: 'All domains', level: 1 })).toBeVisible()
 
   await signOut(page, ADMIN.name)
   // Setup is closed once a user exists.

@@ -6,7 +6,7 @@ import type {
   CrawlUrlAcceptedIssue,
   CrawlUrlIssue,
 } from '@seotools/db'
-import { crawlUrlHash } from '@seotools/core'
+import { crawlIdentityHash } from '@seotools/core'
 import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
 import { automaticFileChecks } from './automatic-checks'
 import { getDb } from './db'
@@ -33,7 +33,7 @@ export interface UrlDetailData {
    * The addresses in the evidence of `issues` that the crawl has a page for, as normalized URLs:
    * the only ones the detail links to its own detail.
    */
-  evidenceUrls: ReadonlySet<string>
+  evidenceUrls: ReadonlyMap<string, string>
   /**
    * The first page of the links that arrive at this URL and of those that leave it, navigation
    * links as a list opens on. The rest is read a page at a time (`loadLinksAction`).
@@ -122,7 +122,10 @@ export async function loadUrlDetail(input: {
     : false
   const evidenceUrls = await crawlUrlsInEvidence(
     [...issues, ...accepted],
-    async (address) => (await db.crawls.getUrl(crawl.id, crawlUrlHash(address))) !== null,
+    async (address) =>
+      (await db.crawls.getUrl(crawl.id, crawlIdentityHash(address, crawl, host))) !== null,
+    undefined,
+    { ...crawl, host: host },
   )
   return {
     automaticCheck: (await automaticFileChecks(db.crawls, crawl.id, [url])).has(urlHash),

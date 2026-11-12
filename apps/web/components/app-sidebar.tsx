@@ -5,6 +5,7 @@ import {
   CircleAlertIcon,
   FileCode2Icon,
   FileTextIcon,
+  FolderTreeIcon,
   LayoutDashboardIcon,
   RadarIcon,
   SettingsIcon,
@@ -30,6 +31,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
+import { isNavActive, isSectionOpen, type SectionOverride } from '@/lib/sidebar-nav'
 import { cn } from '@/lib/utils'
 
 interface NavLink {
@@ -38,6 +40,8 @@ interface NavLink {
   icon: LucideIcon
   /** Active only on this exact path, not on its sub-pages. */
   exact?: boolean
+  /** Other paths that belong to this link. */
+  also?: string[]
 }
 
 interface NavSection {
@@ -48,16 +52,20 @@ interface NavSection {
 
 type NavItem = NavLink | NavSection
 
-const isActive = (link: { href: string; exact?: boolean }, pathname: string) =>
-  pathname === link.href || (!link.exact && pathname.startsWith(`${link.href}/`))
+const isActive = isNavActive
 
 /** Options that unfold in place. */
 function NavCollapsible({ section, pathname }: { section: NavSection; pathname: string }) {
   const active = section.links.some((link) => isActive(link, pathname))
-  const [open, setOpen] = useState(active)
+  const [override, setOverride] = useState<SectionOverride | null>(null)
+  const open = isSectionOpen(active, override, pathname)
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+    <Collapsible
+      open={open}
+      onOpenChange={(next) => setOverride({ pathname, open: next })}
+      render={<SidebarMenuItem />}
+    >
       <CollapsibleTrigger render={<SidebarMenuButton />}>
         <section.icon />
         <span>{section.label}</span>
@@ -140,18 +148,12 @@ export function AppSidebar({
         { label: t('issues'), href: `/domains/${activeHost}/issues`, icon: CircleAlertIcon },
         {
           label: t('urls'),
-          href: `/domains/${activeHost}/pages/details`,
+          href: `/domains/${activeHost}/urls`,
           icon: FileTextIcon,
         },
-        {
-          label: t('crawls'),
-          icon: RadarIcon,
-          links: [
-            { label: t('crawlsRun'), href: `/domains/${activeHost}/jobs` },
-            { label: t('crawlsHistory'), href: `/domains/${activeHost}/pages/history` },
-            { label: t('crawlsCompare'), href: `/domains/${activeHost}/pages/compare` },
-          ],
-        },
+        { label: t('structure'), href: `/domains/${activeHost}/structure`, icon: FolderTreeIcon },
+        // One link: the list, the comparison and the rechecks are tabs of the area.
+        { label: t('crawls'), href: `/domains/${activeHost}/crawls`, icon: RadarIcon },
         {
           label: t('crawlFiles'),
           icon: FileCode2Icon,

@@ -1228,3 +1228,32 @@ it('loads encrypted credentials for a crawl without exposing them as crawl setti
     headers: { cookie: 'secret-cookie', authorization: 'Basic c3RhZ2U6c2VjcmV0' },
   })
 })
+
+it('coalesces ignored parameter links before hashing and keeps the first written tag', async () => {
+  await db.crawls.saveSettings(domainId, {
+    ...(await db.crawls.settings(domainId)),
+    ignoredParameters: ['updatedAt'],
+  })
+  const site = fakeSite({
+    'https://example.com/': html(
+      '<a href="/a?updatedAt=1">One</a><a href="/a?updatedAt=2">Two</a>',
+    ),
+    'https://example.com/a': html('<title>A</title>'),
+  })
+  const { crawl } = await crawlWith(site)
+  expect((await urls(crawl.id, 'pages')).filter((u) => u.includes('/a'))).toEqual([
+    'https://example.com/a',
+  ])
+  const links = await db.crawls.listLinks({
+    crawlId: crawl.id,
+    urlHash: crawlUrlHash('https://example.com/'),
+    direction: 'out',
+    kinds: ['anchor'],
+    limit: 10,
+    offset: 0,
+  })
+  expect(links).toHaveLength(1)
+  expect(links.map((l) => l.url)).toEqual(['https://example.com/a'])
+  expect(links.map((l) => l.context?.snippet).join(' ')).toContain('updatedAt=1')
+  expect(links.map((l) => l.context?.snippet).join(' ')).not.toContain('updatedAt=2')
+})

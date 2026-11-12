@@ -31,6 +31,8 @@ import {
   ChevronDownIcon,
   Columns3Icon,
   ListFilterIcon,
+  PanelRightCloseIcon,
+  PanelRightOpenIcon,
   RefreshCwIcon,
   EyeOffIcon,
   ExternalLinkIcon,
@@ -102,6 +104,7 @@ import { cn } from '@/lib/utils'
 
 /** What the table needs of a URL. Plain data: it crosses from the server to this component. */
 export interface PageRow {
+  referencedBy?: { total: number; kinds: Record<string, number> }
   automaticCheck: boolean
   urlHash: string
   url: string
@@ -147,8 +150,9 @@ const helper = createColumnHelper<typeof features, PageRow>()
 const columns = helper.columns([
   helper.display({ id: 'select', enableHiding: false }),
   helper.display({ id: 'url', enableHiding: false }),
-  helper.display({ id: 'title' }),
   helper.display({ id: 'status' }),
+  helper.display({ id: 'referencedBy' }),
+  helper.display({ id: 'title' }),
   // Only there when filtering by an issue that details something: the filter says, not the user.
   helper.display({ id: 'issueDetail', enableHiding: false }),
   helper.display({ id: 'issues' }),
@@ -166,6 +170,7 @@ const columns = helper.columns([
 
 /** Columns the server can sort by. */
 const SORTABLE: Partial<Record<string, CrawlUrlSort>> = {
+  referencedBy: 'referencedBy',
   url: 'url',
   title: 'title',
   status: 'status',
@@ -176,6 +181,7 @@ const SORTABLE: Partial<Record<string, CrawlUrlSort>> = {
 
 /** URL, title and status; the actions are always there. The rest is up to each user. */
 const DEFAULT_VISIBILITY: ColumnVisibilityState = {
+  audit: false,
   issues: false,
   intent: false,
   origin: false,
@@ -186,8 +192,8 @@ const DEFAULT_VISIBILITY: ColumnVisibilityState = {
   redirectTo: false,
 }
 const HIDEABLE = [
-  'title',
   'status',
+  'title',
   'issues',
   'audit',
   'intent',
@@ -201,15 +207,17 @@ const HIDEABLE = [
 ]
 const STORAGE_KEY = 'seotools:pages-columns'
 const WIDTHS_KEY = 'seotools:pages-widths'
+/** Whether the issues panel beside the table is folded away (`'folded'`) or open (unset). */
+const PANEL_KEY = 'seotools:pages-issues-panel'
 const DEFAULT_WIDTHS: Record<string, number> = {
-  url: 360,
-  title: 280,
-  status: 140,
+  url: 180,
+  status: 80,
+  title: 120,
   issueDetail: 300,
   issues: 300,
-  audit: 160,
+  audit: 110,
   intent: 260,
-  indexability: 200,
+  indexability: 140,
   origin: 240,
   depth: 100,
   responseTime: 160,
@@ -375,6 +383,20 @@ function Cell({
         </span>
       ) : (
         <Muted>—</Muted>
+      )
+    case 'referencedBy':
+      return row.referencedBy ? (
+        <Link
+          href={`/domains/${host}/urls/${row.urlHash}${query.crawl ? `?crawl=${query.crawl}` : ''}#inbound-links`}
+          title={Object.entries(row.referencedBy.kinds)
+            .map(([kind, count]) => `${t(`references.${kind as 'link'}`)}: ${count}`)
+            .join(', ')}
+          className="underline"
+        >
+          {row.referencedBy.total}
+        </Link>
+      ) : (
+        '—'
       )
     case 'status':
       if (row.notRequested) return <Muted>{t(`notRequested.${row.notRequested}`)}</Muted>
@@ -576,6 +598,8 @@ export function PagesTable({
   const router = useRouter()
   const [recheckError, setRecheckError] = useState<string | null>(null)
   const [stored, saveColumns] = useLocalStorage(STORAGE_KEY)
+  const [panelState, savePanel] = useLocalStorage(PANEL_KEY)
+  const panelOpen = panelState !== 'folded'
   const columnVisibility = useMemo(() => parseVisibility(stored), [stored])
   const detail: IssueDetailKind | undefined =
     query.issue && isPageIssueId(query.issue) ? PAGE_ISSUES[query.issue].detail : undefined
@@ -591,7 +615,12 @@ export function PagesTable({
     getRowId: (row) => row.urlHash,
     state: {
       // Selecting only leads to actions: who cannot take them is not offered the checkboxes.
-      columnVisibility: { ...columnVisibility, issueDetail: detail !== undefined, select: canEdit },
+      columnVisibility: {
+        ...columnVisibility,
+        referencedBy: query.view === 'errors' || query.view === 'redirects',
+        issueDetail: detail !== undefined,
+        select: canEdit,
+      },
       rowSelection: selection,
     },
     onRowSelectionChange: (updater: Updater<Record<string, true>>) =>
@@ -651,11 +680,14 @@ export function PagesTable({
         {/* Search, selection and table controls share the toolbar above the scroll surface. */}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Search host={host} query={query} />
-          {selected.length > 0 && (
+          {
             <div
               role="group"
               aria-label={t('selected', { count: selected.length })}
-              className="flex shrink-0 items-center gap-1"
+              className={cn(
+                'order-last flex h-8 basis-full items-center gap-1',
+                selected.length === 0 && 'invisible',
+              )}
             >
               <span className="px-1 text-sm font-medium whitespace-nowrap">
                 {t('selected', { count: selected.length })}
@@ -714,9 +746,22 @@ export function PagesTable({
                 </DropdownMenu>
               )}
             </div>
-          )}
+          }
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <TableFilters>{filters}</TableFilters>
+            {/* On wide screens the issues sit in a panel beside the table, which can be folded
+                away to give the columns the room: the choice stays in this browser. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden xl:inline-flex"
+              aria-pressed={panelOpen}
+              title={t(panelOpen ? 'issuesPanel.hide' : 'issuesPanel.show')}
+              onClick={() => savePanel(panelOpen ? 'folded' : null)}
+            >
+              {panelOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+              {t('issuesMenu')}
+            </Button>
             <Sheet>
               <SheetTrigger render={<Button variant="outline" size="sm" className="xl:hidden" />}>
                 <ListFilterIcon />
@@ -757,6 +802,7 @@ export function PagesTable({
                   onClick={() => {
                     saveColumns(null)
                     saveWidths(null)
+                    savePanel(null)
                   }}
                 >
                   {t('columnsMenu.reset')}
@@ -770,7 +816,12 @@ export function PagesTable({
           {analysis}
         </div>
       </div>
-      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_21rem]">
+      <div
+        className={cn(
+          'grid min-h-0 flex-1 gap-3',
+          panelOpen && 'xl:grid-cols-[minmax(0,1fr)_21rem]',
+        )}
+      >
         <div className="flex min-h-0 min-w-0 flex-col gap-3">
           {status && <div className="shrink-0">{status}</div>}
           <ResultsTable footer={footer} fill>
@@ -919,7 +970,7 @@ export function PagesTable({
             </table>
           </ResultsTable>
         </div>
-        <div className="hidden min-h-0 xl:block">{issues}</div>
+        {panelOpen && <div className="hidden min-h-0 xl:block">{issues}</div>}
       </div>
       <AuditDialog
         host={host}

@@ -1,4 +1,4 @@
-import type { z } from 'zod'
+import type { z } from './zod'
 import { decryptString, encryptString, UndecryptableError } from './crypto'
 
 /** What a read of a setting found: nothing saved, a value, or one the current key cannot read. */

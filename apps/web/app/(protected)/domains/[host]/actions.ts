@@ -3,6 +3,8 @@
 import { EXTRACTION_LIMITS } from '@seotools/core/crawl/extraction'
 import {
   CRAWL_SETTINGS_LIMITS,
+  crawlSettingsSchema,
+  matchesIgnoredParameter,
   domainRequestSettings,
   requestSettingsSchema,
   EMPTY_REQUEST_SETTINGS,
@@ -37,14 +39,14 @@ export interface AddPriorityUrlState {
 
 /** Where priority pages are listed (settings) and where they can be starred (pages). */
 function revalidatePriorityUrls(host: string) {
-  revalidatePath(`/domains/${host}/pages`)
-  revalidatePath(`/domains/${host}/pages/details`)
+  revalidatePath(`/domains/${host}`)
+  revalidatePath(`/domains/${host}/urls`)
   revalidatePath(`/domains/${host}/settings/priority`)
 }
 
 function revalidateDomain(host: string) {
-  revalidatePath(`/domains/${host}/pages`)
-  revalidatePath(`/domains/${host}/jobs`)
+  revalidatePath(`/domains/${host}`)
+  revalidatePath(`/domains/${host}/crawls`)
 }
 
 /** Starts a crawl now. A domain only runs one at a time, whatever its type. */
@@ -144,7 +146,8 @@ export async function saveScheduleAction(
     enabled: parsed.enabled,
     nextRunAt: nextScheduledRun(parsed.recurrence, new Date()),
   })
-  revalidatePath(`/domains/${host}/jobs`)
+  revalidatePath(`/domains/${host}/settings/schedules`)
+  revalidatePath(`/domains/${host}/crawls`)
   return { saved: true }
 }
 
@@ -263,5 +266,32 @@ export async function startListCrawlAction(
   ).crawls.start({ domainId: domain.id, type: 'priority', trigger: 'manual', seedUrls })
   if (!crawl) return { error: t('alreadyRunning') }
   revalidateDomain(host)
+  return { saved: true }
+}
+
+/** Change the current setting, never the settings snapshot of an existing crawl. */
+export async function toggleIgnoredParameterAction(
+  host: string,
+  name: string,
+  _previous: ActionState,
+  _form: FormData,
+): Promise<ActionState> {
+  const { domain } = await requireDomainEditor(host)
+  if (domain.archivedAt) return { error: await archivedMessage() }
+  const t = await getTranslations('Parameters')
+  // Rows include observed exact names and currently configured prefix rules.
+  if (!name || !crawlSettingsSchema.shape.ignoredParameters.safeParse([name]).success)
+    return { error: t('invalid') }
+  const db = await getDb()
+  const settings = await db.crawls.settings(domain.id)
+  const ignored = matchesIgnoredParameter(name, settings.ignoredParameters)
+  const patterns = ignored
+    ? settings.ignoredParameters.filter((pattern) => !matchesIgnoredParameter(name, [pattern]))
+    : [...settings.ignoredParameters, name]
+  const parsed = crawlSettingsSchema.shape.ignoredParameters.safeParse(patterns)
+  if (!parsed.success) return { error: t('invalid') }
+  await db.crawls.saveIgnoredParameters(domain.id, parsed.data)
+  revalidatePath(`/domains/${host}/urls/parameters`)
+  revalidatePath(`/domains/${host}/settings`, 'layout')
   return { saved: true }
 }

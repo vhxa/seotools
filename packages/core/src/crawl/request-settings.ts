@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '../zod'
 import { createSettings, type SettingsStore } from '../settings'
 
 const headerName = z

@@ -1,7 +1,6 @@
 import { defaultCrawlerUserAgent } from '@seotools/core'
 import { getTranslations } from 'next-intl/server'
 import { CrawlSettingsForm } from '@/components/crawl/crawl-settings-form'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
 import { requireDomain } from '@/lib/workspace'
 
@@ -20,19 +19,17 @@ export default async function CrawlSettingsPage({ params }: { params: Promise<{ 
   const settings = await (await getDb()).crawls.settings(domain.id)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('title')}</CardTitle>
-        <CardDescription>{t('description', { host: domain.host })}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <CrawlSettingsForm
-          host={domain.host}
-          settings={settings}
-          secretsSaved={Boolean(await (await getDb()).crawls.requestSecrets(domain.id))}
-          defaultUserAgent={defaultCrawlerUserAgent(process.env.APP_VERSION)}
-        />
-      </CardContent>
-    </Card>
+    <>
+      <div className="grid gap-1">
+        <h2 className="text-lg font-semibold">{t('title')}</h2>
+        <p className="text-sm text-muted-foreground">{t('description', { host: domain.host })}</p>
+      </div>
+      <CrawlSettingsForm
+        host={domain.host}
+        settings={settings}
+        secretsSaved={Boolean(await (await getDb()).crawls.requestSecrets(domain.id))}
+        defaultUserAgent={defaultCrawlerUserAgent(process.env.APP_VERSION)}
+      />
+    </>
   )
 }

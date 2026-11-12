@@ -11,10 +11,15 @@ import {
   type Logger,
   type Mailer,
 } from '@seotools/core'
-import type { Crawl, Database, Domain } from '@seotools/db'
+import {
+  compareWithPrevious,
+  type Crawl,
+  type CrawlComparison,
+  type Database,
+  type Domain,
+} from '@seotools/db'
 import { deliver } from '../mail/deliver'
 import { JobDeferredError, JobInterruptedError, PermanentJobError } from '../types'
-import { compareWithPrevious, type CrawlComparison } from './changes'
 import { issueName } from './issue-names'
 
 /** How long a crawl may wait to be analysed before its findings are given up on. */
@@ -156,7 +161,7 @@ export async function runCrawlAlerts(input: {
               urls: crawl.urlsCount,
             },
             links: {
-              history: appLink(publicUrl, `/domains/${domain.host}/pages/history`),
+              history: appLink(publicUrl, `/domains/${domain.host}/crawls`),
               crawlSettings: appLink(publicUrl, `/domains/${domain.host}/settings/crawl`),
             },
             ...(comparison
@@ -208,7 +213,7 @@ function sectionsOf(
   const compareHref = base
     ? appLink(
         publicUrl,
-        `/domains/${domain.host}/pages/compare?${new URLSearchParams({ from: base.id, to: crawl.id, change: 'gained' })}`,
+        `/domains/${domain.host}/crawls/compare?${new URLSearchParams({ from: base.id, to: crawl.id, change: 'gained' })}`,
       )
     : ''
   const out: { findings?: FindingsNotice; summary?: ChangeSummary } = {}
@@ -225,7 +230,7 @@ function sectionsOf(
         samples: tally.samples,
         href: appLink(
           publicUrl,
-          `/domains/${domain.host}/pages/details?${new URLSearchParams({ crawl: crawl.id, issue: tally.issue })}`,
+          `/domains/${domain.host}/urls?${new URLSearchParams({ crawl: crawl.id, issue: tally.issue })}`,
         ),
       })),
     }

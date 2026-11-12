@@ -652,6 +652,12 @@ describe('the configuration an analysis used', () => {
     ).toBe('excluded')
   })
 
+  it('keeps what the crawl could not observe, and a snapshot from before has none', () => {
+    const snapshot = { ...auditSnapshotOf(3, rules), unobserved: ['og-missing'] }
+    expect(parseAuditSnapshot(serializeAuditSnapshot(snapshot))).toEqual(snapshot)
+    expect(parseAuditSnapshot('{"version":1,"rules":[]}')).not.toHaveProperty('unobserved')
+  })
+
   it.each([null, '', 'not json', '{}', '{"version":-1,"rules":[]}', '{"version":1,"rules":[{}]}'])(
     'does not take %j for a snapshot',
     (raw) => {

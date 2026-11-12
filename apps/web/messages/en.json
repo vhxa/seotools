@@ -8,6 +8,7 @@
       "noResponse": "No response"
     },
     "account": "Account",
+    "administration": "Administration",
     "theme": {
       "system": "System theme",
       "light": "Light theme",
@@ -90,7 +91,9 @@
     "addDomain": "Add domain",
     "addCompany": "Add company",
     "archived": "Archived",
-    "manageCompanies": "Manage companies"
+    "manageCompanies": "Manage companies",
+    "allDomains": "All domains",
+    "favourite": "Favourite"
   },
   "Header": {
     "home": "seotools home",
@@ -99,7 +102,8 @@
     "searchOpen": "Search",
     "searchClose": "Close search",
     "searching": "Searching…",
-    "noResults": "No URLs match."
+    "noResults": "No URLs match.",
+    "domainOverview": "Overview of {host}"
   },
   "Sidebar": {
     "toggle": "Toggle sidebar",
@@ -114,11 +118,9 @@
     "issues": "Issues",
     "urls": "URLs",
     "crawls": "Crawls",
-    "crawlsRun": "Run and schedule",
-    "crawlsHistory": "History",
-    "crawlsCompare": "Compare",
     "administration": "Administration",
-    "navLabel": "Main"
+    "navLabel": "Main",
+    "structure": "Structure"
   },
   "ProtectedShell": {
     "skipToContent": "Skip to main content"
@@ -284,7 +286,7 @@
     },
     "errors": {
       "alreadyRunning": "This domain already has a crawl in progress.",
-      "noPriorityUrls": "There are no priority pages yet. Mark some in Pages first.",
+      "noPriorityUrls": "There are no priority URLs yet. Mark some in URLs first.",
       "invalidPriorityUrl": "Enter a URL of {host}, like /pricing or https://{host}/pricing.",
       "invalidSchedule": "Check the frequency, day and time of the schedule.",
       "listLimit": "Enter between 1 and 1000 URLs.",
@@ -391,7 +393,7 @@
     },
     "results": {
       "metaTitle": "Recheck · {host} · seotools",
-      "back": "Back to jobs",
+      "back": "Back to rechecks",
       "title": "Recheck of {count, plural, one {# URL} other {# URLs}}",
       "cancel": "Cancel",
       "summary": "{done, number} of {total, number} URLs requested again · started {when}",
@@ -427,8 +429,9 @@
       "queued": "Waiting"
     },
     "jobs": {
+      "metaTitle": "Rechecks · {host} · seotools",
       "title": "Rechecks",
-      "description": "Requests some URLs again after a fix, without a crawl, and judges what each one answers on its own. Start one from the pages table or the detail of a URL.",
+      "description": "Requests some URLs again after a fix, without a crawl, and judges what each one answers on its own. Start one from the URLs table or the detail of a URL.",
       "status": "Status",
       "started": "Started",
       "urls": "URLs",
@@ -495,7 +498,7 @@
     "metaTitle": "URLs · {host} · seotools",
     "title": "URLs",
     "description": "Every URL of the last full crawl. Select some to act on them together.",
-    "neverCrawled": "This domain has not been crawled yet. Run a full crawl from the pages overview.",
+    "neverCrawled": "This domain has not been crawled yet. Run a full crawl from the overview.",
     "viewsLabel": "Views",
     "views": {
       "pages": "Pages",
@@ -537,7 +540,8 @@
       "intent": "Indexing intent",
       "indexability": "Technical state",
       "origin": "Configuration source",
-      "actions": "Actions"
+      "actions": "Actions",
+      "referencedBy": "Referenced by"
     },
     "sortBy": "Sort by {column}",
     "sortedAscending": "Sorted ascending, click to sort descending",
@@ -655,7 +659,18 @@
       "excluded": "Not requested: excluded by the crawl settings",
       "depth": "Not requested: maximum depth exceeded"
     },
-    "secondaryFinding": "On a non-indexable page"
+    "secondaryFinding": "On a non-indexable page",
+    "issuesPanel": {
+      "hide": "Fold the issues panel",
+      "show": "Show the issues panel"
+    },
+    "references": {
+      "link": "Links",
+      "resource": "Resources",
+      "canonical": "Canonical",
+      "hreflang": "Hreflang",
+      "sitemap": "Sitemap"
+    }
   },
   "Export": {
     "menu": {
@@ -693,6 +708,11 @@
       "audit": "Audit",
       "expectation": "Expected indexing",
       "title": "Title",
+      "ogTitle": "og:title",
+      "ogDescription": "og:description",
+      "ogImage": "og:image",
+      "twitterCard": "twitter:card",
+      "htmlLang": "HTML lang",
       "issues": "Number of issues",
       "warnings": "Number of warnings",
       "opportunities": "Number of opportunities",
@@ -717,7 +737,11 @@
       "finalUrl": "Final URL",
       "finalStatus": "Final URL status",
       "hops": "Redirects in the chain",
-      "loop": "Loop"
+      "loop": "Loop",
+      "referencedBy": "Referenced by",
+      "lcp": "LCP (field, phone)",
+      "inp": "INP (field, phone)",
+      "cls": "CLS (field, phone)"
     },
     "values": {
       "internal": "This site",
@@ -749,7 +773,8 @@
       "linksOut": "Links to",
       "audit": "Audit and indexing",
       "technical": "Technical metadata",
-      "ruleOrigins": "Rule origins"
+      "ruleOrigins": "Rule origins",
+      "preview": "Search and social preview"
     },
     "fields": {
       "contentType": "Content type",
@@ -834,7 +859,19 @@
     },
     "words": "Words",
     "inbound": "Inbound links",
-    "viewHistory": "View URL history"
+    "viewHistory": "View URL history",
+    "preview": {
+      "google": "In search results",
+      "social": "When shared",
+      "card": "Twitter card: {card}",
+      "noTitle": "No title: Google picks one",
+      "noSocialTitle": "No title: networks pick one",
+      "noDescription": "No meta description: Google picks a snippet from the page",
+      "notRecorded": "Not recorded by this crawl: run a new crawl to see it.",
+      "untagged": "The page has no Open Graph tags: social networks choose what to show.",
+      "imageInsecure": "Image not shown: it is not served over HTTPS",
+      "noImage": "No image"
+    }
   },
   "UrlLinks": {
     "in": {
@@ -923,8 +960,10 @@
       "anchor-empty": "Links with no text",
       "anchor-vague": "Links with vague text",
       "canonical-broken": "Canonical target",
+      "og-image-broken": "Share image",
       "canonical-redirect": "Canonical target",
       "links-to-broken": "Broken URLs it links to",
+      "resources-broken": "Broken resources it loads",
       "links-to-redirect": "Redirecting URLs it links to",
       "links-to-canonicalised": "Canonicalised URLs it links to",
       "links-tracking-parameters": "URLs with tracking parameters it links to"
@@ -994,6 +1033,14 @@
     "redirect-3xx": {
       "name": "3xx redirect (internal)",
       "description": "A URL of this site that redirects. Links to it should point at its target."
+    },
+    "redirect-temporary": {
+      "name": "Temporary redirect (302/307)",
+      "description": "A URL of this site answers with a temporary redirect, so search engines keep the old URL. If the move is permanent, use a 301 or 308."
+    },
+    "slow-response": {
+      "name": "Slow response",
+      "description": "The page took longer to answer than the threshold set for this domain (Settings → Audit → Thresholds). Slow responses hold back crawling and hurt visitors."
     },
     "broken-external-link": {
       "name": "Broken external link",
@@ -1359,6 +1406,22 @@
       "name": "Content misplaced before the '<head>'",
       "description": "Something comes before the '<head>', which can make browsers end it early."
     },
+    "html-lang-missing": {
+      "name": "No language on '<html>'",
+      "description": "The '<html>' tag has no lang attribute, so screen readers and translators have to guess the language of the page."
+    },
+    "html-lang-invalid": {
+      "name": "Invalid language on '<html>'",
+      "description": "The lang attribute of '<html>' is not a valid language tag. Use a code such as en, es or pt-BR."
+    },
+    "viewport-missing": {
+      "name": "No viewport meta tag",
+      "description": "The page has no '<meta name=\"viewport\">', so phones show it as a shrunken desktop page. It matters for mobile-first indexing."
+    },
+    "charset-missing": {
+      "name": "No character set declared",
+      "description": "Neither the Content-Type header nor the document declares a character set, so a browser may guess it wrong."
+    },
     "expected-indexable-blocked": {
       "name": "Expected indexable but blocked",
       "description": "You declared this URL should be indexable, but the crawl found something in the way: a noindex, a canonical to another URL, a robots.txt block or a redirect. The details name what it found. An error response is reported by its own response-code issue."
@@ -1411,6 +1474,10 @@
       "name": "Links to broken URLs",
       "description": "The page links to URLs of this site that answer 4xx/5xx or do not answer. Fix or remove those links."
     },
+    "resources-broken": {
+      "name": "Loads broken resources",
+      "description": "The page loads images, scripts, stylesheets, media or frames that answer 4xx/5xx or do not answer. Fix or remove them. Only resources the crawl requested are judged."
+    },
     "links-to-redirect": {
       "name": "Links to redirects",
       "description": "The page links to URLs that redirect. Link to the final URL."
@@ -1430,6 +1497,38 @@
     "structured-data-recommended-missing": {
       "name": "Structured data missing recommended properties",
       "description": "The JSON-LD declares a type that can show as a rich result but lacks properties Google recommends, as listed. Adding them can make the result richer."
+    },
+    "og-missing": {
+      "name": "No Open Graph tags",
+      "description": "The page has no Open Graph tag, so social networks and chat apps pick the title, description and image on their own when it is shared."
+    },
+    "og-incomplete": {
+      "name": "Open Graph tags missing",
+      "description": "The page has some Open Graph tags but lacks the ones listed: og:title, og:type, og:image or og:url."
+    },
+    "og-image-broken": {
+      "name": "Share image broken",
+      "description": "The image the page offers for sharing (og:image, or twitter:image if there is none) is a URL of this crawl that fails or redirects, so shared links show no picture. Only images the crawl requested are judged."
+    },
+    "og-url-mismatch": {
+      "name": "og:url differs from the canonical",
+      "description": "The page's og:url is not its canonical URL (or its own address when it has none), so shares and likes may be counted for another URL."
+    },
+    "twitter-card-missing": {
+      "name": "No Twitter Card",
+      "description": "The page has no twitter:card, so X does not know which card to show. It reads the Open Graph tags for the text, but not for the card type."
+    },
+    "lcp-poor": {
+      "name": "LCP is poor",
+      "description": "The mobile field LCP at the 75th percentile exceeds Google’s poor threshold."
+    },
+    "inp-poor": {
+      "name": "INP is poor",
+      "description": "The mobile field INP at the 75th percentile exceeds Google’s poor threshold."
+    },
+    "cls-poor": {
+      "name": "CLS is poor",
+      "description": "The mobile field CLS at the 75th percentile exceeds Google’s poor threshold."
     }
   },
   "LinkKinds": {
@@ -1452,67 +1551,13 @@
     "other": "Other",
     "anchor-nofollow": "Nofollow link"
   },
-  "Jobs": {
-    "metaTitle": "Run and schedule · {host} · seotools",
-    "title": "Run and schedule",
-    "description": "Run each type of crawl now or on a recurring schedule. A domain runs one crawl at a time.",
-    "typeDescriptions": {
-      "full": "Requests every URL of the site: from the home page, the sitemaps and everything linked anywhere, ignoring robots.txt and meta robots.",
-      "priority": "Requests only the pages marked as priority in Pages, without following their links."
-    },
-    "schedule": {
-      "enabled": "Run on a schedule",
-      "frequency": "Frequency",
-      "frequencies": {
-        "hourly": "Every hour",
-        "daily": "Every day",
-        "weekly": "Every week",
-        "monthly": "Every month"
-      },
-      "dayOfWeek": "Day of the week",
-      "dayOfMonth": "Day of the month",
-      "time": "Time",
-      "minuteOfHour": "At the minute of",
-      "timeZoneHint": "Times are in {timeZone}.",
-      "hourlyHint": "Only the minutes count: it runs every hour at that minute.",
-      "save": "Save schedule",
-      "saved": "Saved.",
-      "nextRun": "Next run: {when}.",
-      "lastOutcome": {
-        "started": "Last run started {when}.",
-        "skipped-active": "Last run skipped {when}: another crawl was in progress.",
-        "skipped-empty": "Last run skipped {when}: no priority pages marked."
-      },
-      "timeZone": "Time zone"
-    },
-    "history": {
-      "title": "Recent crawls",
-      "type": "Type",
-      "status": "Status",
-      "trigger": "Started by",
-      "started": "Started",
-      "pages": "Pages",
-      "urls": "URLs",
-      "external": "External",
-      "triggers": {
-        "manual": "Manual",
-        "schedule": "Schedule"
-      },
-      "empty": "No crawls yet."
-    },
-    "list": {
-      "label": "Crawl a URL list",
-      "hint": "One URL per line, up to 1000; links are not followed.",
-      "start": "Start list crawl",
-      "started": "List crawl started."
-    }
-  },
   "DomainSettings": {
     "title": "Settings",
     "description": "Everything that can be configured for {host}.",
     "navLabel": "Settings sections",
     "sections": {
       "crawl": "Crawling",
+      "schedules": "Schedules",
       "priority": "Priority pages",
       "audit": "Audit",
       "alerts": "Alerts"
@@ -1624,7 +1669,7 @@
       "indexNowKey": "The IndexNow key must be 8 to 128 letters, numbers or dashes.",
       "indexNowKeyRequired": "Enter the IndexNow key, or turn IndexNow off.",
       "historyDays": "The days of history must be between {min} and {max}.",
-      "scope": "Enter up to 100 valid path prefixes per list and a depth from 1 to 100.",
+      "scope": "Enter up to 100 valid path prefixes per list and a depth from 1 to 100. Check ignored parameter names too: no =, &, ?, # or embedded *.",
       "requestSecrets": "Invalid request credentials or headers (maximum 10; Host and transport headers are refused).",
       "extractors": "Each extraction needs a name and a valid CSS selector, and there can be at most {max}."
     },
@@ -1653,6 +1698,32 @@
       "label": "Custom extraction",
       "placeholder": "Price | meta[property=\"product:price:amount\"] | content",
       "hint": "One per line: name | CSS selector | attribute (leave it out to read the text). Read from every page from the next crawl."
+    },
+    "sections": {
+      "requests": {
+        "title": "Requests",
+        "description": "How the crawler asks for each URL: who it says it is and how fast it goes."
+      },
+      "scope": {
+        "title": "Scope",
+        "description": "Which part of the site a full crawl walks, and how far."
+      },
+      "extraction": {
+        "title": "Extraction",
+        "description": "Extra data to read from every page."
+      },
+      "retention": {
+        "title": "Retention",
+        "description": "How long the results of past crawls are kept."
+      },
+      "credentials": {
+        "description": "Headers or Basic Auth the site needs to answer. Stored encrypted and sent only to this site."
+      }
+    },
+    "saving": "Saving…",
+    "ignoredParameters": {
+      "label": "Ignored query parameters",
+      "hint": "One case-sensitive name per line; a trailing * matches a prefix (utm_*). Up to 100 names of 100 characters. Applies from the next crawl, only to internal URLs."
     }
   },
   "CrawlFiles": {
@@ -2006,7 +2077,7 @@
   "PrioritySettings": {
     "metaTitle": "Priority pages · {host} · seotools",
     "title": "Priority pages",
-    "description": "Pages of {host} that the priority crawl requests, with their most recent result from any crawl. Starring a page in the Pages list adds it here too.",
+    "description": "URLs of {host} that the priority crawl requests, with their most recent result from any crawl. Starring a URL in the URLs list adds it here too.",
     "columns": {
       "url": "URL",
       "status": "Status",
@@ -2040,11 +2111,13 @@
       "content": "Content",
       "images": "Images",
       "structured-data": "Structured data",
+      "social": "Social",
       "links": "Links",
       "urls": "URLs",
       "security": "Security",
       "html": "HTML",
-      "indexing-intent": "Declared expectations"
+      "indexing-intent": "Declared expectations",
+      "performance": "Performance"
     },
     "types": {
       "issue": "Issue",
@@ -2060,7 +2133,8 @@
       "hreflang-source": "Source",
       "security-header": "Header",
       "indexability-blocker": "Blocker",
-      "structured-data-missing": "Missing"
+      "structured-data-missing": "Missing",
+      "social-missing": "Missing"
     },
     "hreflangSources": {
       "html": "HTML",
@@ -2362,6 +2436,10 @@
         "imageMaxKb": {
           "label": "Heaviest image",
           "unit": "Kilobytes"
+        },
+        "responseTimeMaxMs": {
+          "label": "Slowest response",
+          "unit": "Milliseconds"
         }
       }
     }
@@ -2413,36 +2491,6 @@
       "prunedBody": "The results per URL of this crawl were removed by the retention setting. Only its totals remain: {pages} pages and {urls} URLs were found. Choose a crawl that still has its results.",
       "prunedSettings": "Change how many crawls keep their results"
     },
-    "list": {
-      "metaTitle": "Crawl history · {host} · seotools",
-      "title": "Crawl history",
-      "description": "Every full crawl of this domain that finished with results, newest first. A crawl keeps the audit configuration it was analysed with, and its results per URL until the retention setting removes them.",
-      "empty": "This domain has no finished full crawl yet. Run one from the pages overview.",
-      "compare": {
-        "title": "Compare two crawls",
-        "description": "Choose the crawls to see what was discovered, not seen again and changed between them."
-      },
-      "columns": {
-        "crawled": "Crawled",
-        "results": "Results",
-        "found": "Found",
-        "config": "Audit configuration",
-        "findings": "Pages with findings"
-      },
-      "trigger": {
-        "manual": "Manual",
-        "schedule": "Scheduled"
-      },
-      "latest": "Latest",
-      "found": "{pages} pages · {urls} URLs",
-      "configDiffers": "Now: {current}",
-      "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
-      "view": "View",
-      "compareWithPrevious": "Compare with previous",
-      "retention": "How many crawls keep their results per URL is set in the crawl settings; older ones keep only their totals.",
-      "settings": "Crawl settings",
-      "capped": "Showing the newest {count} crawls. Older ones are not listed."
-    },
     "url": {
       "title": "History of this URL",
       "description": "What each retained full crawl recorded of this URL, newest first ({count, plural, one {# crawl} other {# crawls}}). A crawl without results says so; it is never read as the URL being absent.",
@@ -2480,7 +2528,6 @@
   },
   "CrawlCompare": {
     "metaTitle": "Compare crawls · {host} · seotools",
-    "title": "Compare crawls",
     "description": "What changed between two full crawls, read from what they stored. Nothing is requested from the site. Where the evidence does not say why something changed, the page does not either.",
     "needTwo": "Comparing needs two finished full crawls of this domain. Run another crawl first.",
     "sameCrawl": "Both ends are the same crawl. Choose two different crawls.",
@@ -2600,7 +2647,8 @@
       "participation": "the analysis did not keep whether the URL was audited",
       "incomplete": "a crawl stopped at its URL limit and this finding depends on other pages",
       "catalog": "the issue catalogs differ",
-      "audit": "the audit configuration or the expectation for the URL differs"
+      "audit": "the audit configuration or the expectation for the URL differs",
+      "unobserved": "a crawl did not record what this check needs: compare with crawls made after the update"
     },
     "notes": {
       "pruned": {
@@ -2642,6 +2690,10 @@
           "both": "Both crawls stopped at their URL limit"
         },
         "description": "URLs it did not reach are not missing, and findings that look at other pages (duplicates, inbound links, redirects) are not called new or resolved for it."
+      },
+      "ignoredParameters": {
+        "title": "Ignored query parameters changed",
+        "description": "Added and not seen URLs may reflect changed ignored parameters. Per-issue change summaries are unverified because URL identity changed."
       }
     },
     "rowsShown": "{shown, number} of {matching, number} URLs shown"
@@ -2766,7 +2818,9 @@
     "nofollow-required-missing": "Add the required nofollow directive in the page head or HTTP header, or correct the rule if links should be followed. Nofollow does not prevent indexing.",
     "robots-block-required-missing": "Add the intended block in robots.txt for the audited bot, or correct the rule that requires it. A robots.txt block does not guarantee removal from the index.",
     "sitemap-required-missing": "Include this URL as an entry in a sitemap that the crawler can read, or correct the rule requiring it. Run a full crawl to verify membership.",
-    "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change."
+    "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change.",
+    "social": "Add the Open Graph tags (og:title, og:type, og:image, og:url) and a twitter:card to the head of the page template. Use an og:url equal to the canonical and an image that answers over HTTPS, then crawl again.",
+    "performance": "Performance"
   },
   "Companies": {
     "metaTitle": "Companies · Administration · seotools",
@@ -3119,10 +3173,22 @@
     "main": "Main content",
     "aside": "Sidebar"
   },
+  "AppError": {
+    "title": "Something went wrong",
+    "description": "This page could not be shown. Try again; if it keeps failing, check the server logs.",
+    "reference": "Reference: {digest}",
+    "retry": "Try again",
+    "home": "Go home"
+  },
   "Dashboard": {
     "metaTitle": "{host} · seotools",
     "lastCrawl": "Last full crawl finished {when}.",
     "neverCrawled": "This domain has not been crawled yet.",
+    "firstCrawl": {
+      "title": "Nothing has been crawled yet",
+      "description": "Run the first full crawl to find the URLs of this site and check them. The figures, the trend and the findings to review appear here when it finishes.",
+      "viewerDescription": "Nothing has been crawled yet. The figures and findings appear here once someone who can edit this domain runs the first full crawl."
+    },
     "lastAttempt": "Most recent full crawl attempt:",
     "jobs": "View crawls",
     "incomplete": {
@@ -3165,7 +3231,9 @@
     "noPriorities": "No findings were recorded in this analysis.",
     "affectedUrls": "{count, plural, one {# URL} other {# URLs}}",
     "allIssues": "All issues",
-    "notCheckedFindings": "This crawl does not have the analysis needed to show findings. Run a new full crawl to collect current data."
+    "notCheckedFindings": "This crawl does not have the analysis needed to show findings. Run a new full crawl to collect current data.",
+    "changesTitle": "What changed since the previous crawl",
+    "configurationChanged": "Configuration changed"
   },
   "Issues": {
     "metaTitle": "Issues · {host} · seotools",
@@ -3188,6 +3256,31 @@
       "title": "Accepted by a rule",
       "help": "The crawl still sees these, and a rule says they are expected. They are not pending, and they are not fixed: remove the rule and they count again.",
       "viewAll": "View every URL with an accepted finding"
+    },
+    "filters": {
+      "type": "Type",
+      "group": "Group",
+      "search": "Issue name",
+      "all": "All",
+      "apply": "Apply"
+    },
+    "site": {
+      "title": "Site",
+      "description": "Current file findings, independent of crawls and excluded from dashboard totals.",
+      "read": "Last read: {when}",
+      "never": "never",
+      "severe": "Broken",
+      "none": "Nothing to report in the files the site publishes."
+    },
+    "template": {
+      "label": "Template",
+      "help": "Almost every page has it: it probably comes from the site's template, and fixing it there fixes it everywhere"
+    },
+    "changes": {
+      "unavailable": "Cannot be compared",
+      "fresh": "{count} new",
+      "resolved": "{count} resolved",
+      "cut": "Too many URLs changed to count them here: open the comparison to see them."
     }
   },
   "SystemNav": {
@@ -3196,7 +3289,8 @@
     "companies": "Companies",
     "users": "Users",
     "email": "Email",
-    "updates": "Updates"
+    "updates": "Updates",
+    "integrations": "Integrations"
   },
   "Parameters": {
     "metaTitle": "Query parameters · {host} · seotools",
@@ -3215,6 +3309,217 @@
     "noContext": "No entry points were stored for this crawl. Crawls from before this version did not keep them.",
     "pagination": "Entry points pages",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "ignore": "Ignore",
+    "stopIgnoring": "Stop ignoring (including matching prefixes)",
+    "ignored": "Currently ignored",
+    "status": "Suggestions and settings",
+    "suggested": "Suggested to ignore",
+    "invalid": "Invalid parameter name or too many ignored names.",
+    "ignoredHelp": "Changes apply from the next crawl. Ignored parameters disappear from new crawl URLs; use older retained crawls to inspect them. Stopping ignores removes any matching prefix rule too. Manage names and prefix rules in Settings → Crawl.",
+    "reasons": {
+      "volatile": "Values change in at least 90% of 5 or more URL pairs across the two latest retained crawls",
+      "canonical": "At least 90% of 5 or more URLs declare the same URL without this parameter as canonical"
+    },
+    "tracking": "Tracking parameter",
+    "trackingHelp": "Internal links should not carry tracking parameters. These rows appear first; inspect where they enter below.",
+    "notIgnored": "Not ignored"
+  },
+  "CrawlsArea": {
+    "title": "Crawls",
+    "nav": {
+      "label": "Crawls sections",
+      "list": "Crawls",
+      "compare": "Compare",
+      "rechecks": "Rechecks"
+    }
+  },
+  "Crawls": {
+    "metaTitle": "Crawls · {host} · seotools",
+    "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the audit configuration it was analysed with, and its results per URL until the retention setting removes them.",
+    "columns": {
+      "crawl": "Crawl",
+      "results": "Results",
+      "found": "Found",
+      "config": "Audit configuration",
+      "findings": "Pages with findings"
+    },
+    "trigger": {
+      "manual": "Manual",
+      "schedule": "Scheduled"
+    },
+    "latest": "Latest",
+    "found": "{pages} pages · {urls} URLs · {external} external",
+    "configDiffers": "Now: {current}",
+    "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
+    "view": "View",
+    "compareWithPrevious": "Compare with previous",
+    "retention": "How many crawls keep their results per URL is set in the crawl settings; older ones keep only their totals.",
+    "settings": "Crawl settings",
+    "capped": "Showing the newest {count} crawls. Older ones are not listed.",
+    "empty": "No crawls yet.",
+    "schedules": {
+      "when": {
+        "hourly": "every hour at minute {minute}",
+        "daily": "every day at {time}",
+        "weekly": "every week on {weekday} at {time}",
+        "monthly": "every month on day {day} at {time}"
+      },
+      "none": "no schedule",
+      "change": "Change schedules",
+      "set": "Set a schedule"
+    },
+    "list": {
+      "open": "Crawl a URL list",
+      "title": "Crawl a URL list",
+      "description": "Requests only the URLs you list, without following their links.",
+      "label": "URLs",
+      "hint": "One URL per line, up to 1000; links are not followed.",
+      "start": "Start list crawl"
+    },
+    "started": "Started {when}",
+    "finished": "Finished {when}"
+  },
+  "Schedules": {
+    "metaTitle": "Schedules · {host} · seotools",
+    "title": "Schedules",
+    "description": "Run each type of crawl by itself on a recurring schedule. A domain runs one crawl at a time.",
+    "toCrawls": "Run a crawl now.",
+    "typeDescriptions": {
+      "full": "Requests every URL of the site: from the home page, the sitemaps and everything linked anywhere, ignoring robots.txt and meta robots.",
+      "priority": "Requests only the URLs marked as priority in URLs, without following their links."
+    },
+    "form": {
+      "enabled": "Run on a schedule",
+      "frequency": "Frequency",
+      "frequencies": {
+        "hourly": "Every hour",
+        "daily": "Every day",
+        "weekly": "Every week",
+        "monthly": "Every month"
+      },
+      "dayOfWeek": "Day of the week",
+      "dayOfMonth": "Day of the month",
+      "time": "Time",
+      "minuteOfHour": "At the minute of",
+      "timeZoneHint": "Times are in {timeZone}.",
+      "hourlyHint": "Only the minutes count: it runs every hour at that minute.",
+      "save": "Save schedule",
+      "saved": "Saved.",
+      "nextRun": "Next run: {when}.",
+      "lastOutcome": {
+        "started": "Last run started {when}.",
+        "skipped-active": "Last run skipped {when}: another crawl was in progress.",
+        "skipped-empty": "Last run skipped {when}: no priority pages marked."
+      },
+      "timeZone": "Time zone"
+    }
+  },
+  "Structure": {
+    "metaTitle": "Structure · {host} · seotools",
+    "title": "Structure",
+    "description": "The directories of the last full crawl and what is in each: pages, errors and pages with findings.",
+    "noCrawl": "The structure appears here once the domain has been crawled.",
+    "notChecked": "The last full crawl has not been checked for findings, so only pages and errors are counted. Run a new full crawl to see them here.",
+    "findingsHidden": "Findings are not shown while the analysis does not reflect the current audit configuration.",
+    "incomplete": "The last crawl stopped at its URL limit after {urls, number} URLs: these counts do not cover the whole site.",
+    "tree": "Directories",
+    "treeHelp": "Each directory counts every URL below it. Up to {depth} levels are shown at once; open a directory to see what is below it. Each figure lists those URLs in the URL table, found by their address.",
+    "breadcrumb": "Directory",
+    "directory": "Directory",
+    "columns": {
+      "errors": "Errors",
+      "issue": "Pages with issues",
+      "warning": "Pages with warnings",
+      "opportunity": "Pages with opportunities"
+    },
+    "hasMore": "has more",
+    "other": "{count, plural, one {# other directory} other {# other directories}}",
+    "otherMany": "Other directories",
+    "emptyPath": "There are no URLs in this directory.",
+    "languages": "Language directories",
+    "languagesHelp": "The directories declared in the audit configuration (Settings → Audit). Nothing else is assumed about languages.",
+    "unprefixed": "Without a language directory",
+    "rest": "Everything else",
+    "truncated": "This site has more directories than can be kept in memory: the smallest ones are only counted in \"other\"."
+  },
+  "Portfolio": {
+    "metaTitle": "All domains · seotools",
+    "title": "All domains",
+    "description": "The last full crawl of every domain you can see, by company.",
+    "domainsCount": "{count, plural, one {# domain} other {# domains}}",
+    "lastCrawl": "Last full crawl {when}",
+    "neverCrawled": "Never crawled",
+    "notChecked": "Not checked yet",
+    "running": "Crawling now",
+    "trend": "Pages with issues over the last full crawls",
+    "trendEmpty": "No trend yet",
+    "trendPoint": "{date}: {count, number} pages with issues",
+    "figures": {
+      "crawled": "Pages",
+      "indexable": "Indexable",
+      "issues": "Issues",
+      "warnings": "Warnings",
+      "opportunities": "Opportunities"
+    },
+    "archived": "Archived domains",
+    "archivedHelp": "Archived domains keep their data and no longer crawl.",
+    "open": "Open {host}"
+  },
+  "Vitals": {
+    "title": "Core Web Vitals",
+    "integrations": "Integrations",
+    "privacy": "With a saved Google key and collection enabled, the domain’s page addresses and origin are sent to Google after each full crawl.",
+    "key": "Google API key",
+    "keep": "Leave blank to keep the saved key. It is never shown again.",
+    "configured": "Key saved",
+    "no-key": "No Google key is configured for Core Web Vitals.",
+    "remove": "Remove key",
+    "save": "Save",
+    "test": "Test",
+    "testHint": "Makes one request to the Chrome UX Report API for https://www.google.com. The key also needs the PageSpeed Insights API for lab data.",
+    "collect": "Collect Core Web Vitals",
+    "PHONE": "Phone (p75)",
+    "DESKTOP": "Desktop (p75)",
+    "field": "Field data (CrUX, phone, p75)",
+    "lab": "Lab measurement (PageSpeed Insights)",
+    "noField": "No field data: Google has too little traffic for this URL",
+    "failed": "Collection failed: {reason}",
+    "metrics": {
+      "lcp": "LCP",
+      "inp": "INP",
+      "cls": "CLS",
+      "fcp": "FCP",
+      "ttfb": "TTFB",
+      "tbt": "TBT"
+    },
+    "states": {
+      "good": "Good",
+      "needs-improvement": "Needs improvement",
+      "poor": "Poor",
+      "no-data": "No data"
+    },
+    "results": {
+      "saved": "Saved",
+      "invalid": "Invalid key",
+      "paused": "Automation is paused",
+      "no-key": "No key saved",
+      "success": "Google returned field data",
+      "no-data": "Google has no data",
+      "quota": "Google quota exceeded",
+      "forbidden": "Google refused the key. Enable the Chrome UX Report API and the PageSpeed Insights API in the key's Google Cloud project, and if the key is restricted to some APIs, allow both.",
+      "network": "Network error",
+      "timeout": "Request timed out",
+      "http": "Google HTTP error",
+      "invalid-response": "Invalid Google response",
+      "unchanged": "No changes to save.",
+      "throttled": "Wait 10 seconds before testing again."
+    },
+    "unreadable": "Saved but unreadable; enter the key again.",
+    "crawlSource": "Crawl #{ref} · {date}"
+  },
+  "FavouriteDomain": {
+    "set": "Set {host} as favourite",
+    "clear": "Clear {host} as favourite"
   }
 }

@@ -43,3 +43,11 @@ export function trendPoints(
     })
     .sort((a, b) => a.at - b.at)
 }
+
+/** A missing measurement is unknown, including an analysis that predates the metric. */
+export function dashboardDifference(
+  before: number | null | undefined,
+  after: number | null | undefined,
+): number | null {
+  return before == null || after == null ? null : after - before
+}

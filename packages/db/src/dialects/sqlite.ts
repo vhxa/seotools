@@ -1,7 +1,17 @@
-import { assertKnownMigrations } from '../migration-guard'
+import { referenceGroup } from '@seotools/core/crawl/links'
+import { CRAWL_LINK_KINDS } from '@seotools/core'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import {
+  GOOGLE_VITALS_KEY,
+  AUDIT_SEMANTICS,
+  DEFAULT_CRAWL_SETTINGS,
+  JOB_TYPES,
+  nextScheduledRun,
+  type CrawlLinkKind,
+} from '@seotools/core'
+import type { AlertKind } from '@seotools/core'
 import BetterSqlite3 from 'better-sqlite3'
 import {
   and,
@@ -10,6 +20,7 @@ import {
   desc,
   eq,
   exists,
+  getTableColumns,
   gt,
   gte,
   inArray,
@@ -25,9 +36,39 @@ import {
   or,
   sql,
 } from 'drizzle-orm'
-import { alias, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
+import { alias, type SQLiteColumn, type SQLiteTable } from 'drizzle-orm/sqlite-core'
+import { DomainArchivedError } from '../archive'
+import {
+  AUDIT_SEMANTICS_SETTING,
+  UPGRADED_DIMENSIONS,
+  inApplyOrder,
+  languageColumns,
+  languagesOf,
+  mutationResult,
+  planChanges,
+  planDeleteRule,
+  planDeleteMany,
+  planLanguages,
+  planUpgradeSemantics,
+  planSaveRule,
+  planSaveRuleSet,
+  planSetEnabled,
+  planSetEnabledMany,
+  planUrlConfig,
+  readAuditConfig,
+  recomputeJobValues,
+  recomputePayload,
+  toAuditRule,
+  type AuditPlan,
+  type AuditRuleRow,
+  type PlanContext,
+  planThresholds,
+  thresholdColumns,
+  thresholdsOf,
+  type AuditStateRow,
+} from '../audit'
 import { sqlitePathFromUrl } from '../dialect'
 import {
   CREDENTIAL_PROVIDER,
@@ -107,55 +148,21 @@ import {
   type LinkScope,
   foldIssueCounts,
   toLinkContext,
+  foldPortfolio,
 } from '../mapping'
-import {
-  AUDIT_SEMANTICS,
-  DEFAULT_CRAWL_SETTINGS,
-  JOB_TYPES,
-  nextScheduledRun,
-  type CrawlLinkKind,
-} from '@seotools/core'
-import {
-  AUDIT_SEMANTICS_SETTING,
-  UPGRADED_DIMENSIONS,
-  inApplyOrder,
-  languageColumns,
-  languagesOf,
-  mutationResult,
-  planChanges,
-  planDeleteRule,
-  planDeleteMany,
-  planLanguages,
-  planUpgradeSemantics,
-  planSaveRule,
-  planSaveRuleSet,
-  planSetEnabled,
-  planSetEnabledMany,
-  planUrlConfig,
-  readAuditConfig,
-  recomputeJobValues,
-  recomputePayload,
-  toAuditRule,
-  type AuditPlan,
-  type AuditRuleRow,
-  type PlanContext,
-  planThresholds,
-  thresholdColumns,
-  thresholdsOf,
-  type AuditStateRow,
-} from '../audit'
 import {
   alertColumns,
   alertJobId,
+  vitalsJobId,
+  vitalsJobValues,
   alertJobValues,
   knownAlertKinds,
   mailDeliveryRow,
   toAlertSubscription,
   toMailDelivery,
 } from '../mapping'
-import type { AlertKind } from '@seotools/core'
+import { assertKnownMigrations } from '../migration-guard'
 import * as schema from '../schema/sqlite'
-import { DomainArchivedError } from '../archive'
 import type {
   CrawlLink,
   CrawlUrlAudit,
@@ -172,6 +179,7 @@ import type {
   CrawlUrlTrace,
   DiscoveryStep,
   CrawlUrl,
+  StructureUrl,
 } from '../types'
 
 const {
@@ -191,6 +199,8 @@ const {
   crawlFileChecks,
   crawlFiles,
   crawlSettings,
+  crawlVitals,
+  crawlUrlVitals,
   crawlSchedules,
   crawls,
   crawlUrls,
@@ -648,7 +658,7 @@ export function createSqliteDatabase(options: {
         .from(crawls)
         .where(inArray(crawls.domainId, domainIds))
         .all()
-        .flatMap((row) => [row.id, alertJobId(row.crawlId)]),
+        .flatMap((row) => [row.id, alertJobId(row.crawlId), vitalsJobId(row.crawlId)]),
       ...tx
         .select({ id: urlVerifications.jobId })
         .from(urlVerifications)
@@ -844,6 +854,28 @@ export function createSqliteDatabase(options: {
           return failed + requeued
         })
       },
+
+      async prune({ finishedBefore, failedBefore }) {
+        // `updated_at` is when the job last changed: for a finished job, when it ended.
+        const old = or(
+          and(eq(jobs.status, 'completed'), lt(jobs.updatedAt, finishedBefore)),
+          and(eq(jobs.status, 'failed'), lt(jobs.updatedAt, failedBefore)),
+        )
+        const notInUse = and(
+          notInArray(
+            jobs.id,
+            db.select({ id: crawls.jobId }).from(crawls).where(isNotNull(crawls.activeKey)),
+          ),
+          notInArray(
+            jobs.id,
+            db
+              .select({ id: urlVerifications.jobId })
+              .from(urlVerifications)
+              .where(isNotNull(urlVerifications.activeKey)),
+          ),
+        )
+        return db.delete(jobs).where(and(old, notInUse)).run().changes
+      },
     },
 
     heartbeats: {
@@ -867,6 +899,70 @@ export function createSqliteDatabase(options: {
       },
     },
 
+    vitals: {
+      async latestCrawl(domainId) {
+        const row = db
+          .select()
+          .from(crawls)
+          .where(
+            and(
+              eq(crawls.domainId, domainId),
+              eq(crawls.type, 'full'),
+              inArray(crawls.status, ['completed', 'incomplete']),
+              exists(db.select().from(crawlVitals).where(eq(crawlVitals.crawlId, crawls.id))),
+            ),
+          )
+          .orderBy(desc(crawls.createdAt), desc(crawls.id))
+          .limit(1)
+          .get()
+        return row ? toCrawl(row) : null
+      },
+      async origins(crawlId) {
+        return db.select().from(crawlVitals).where(eq(crawlVitals.crawlId, crawlId)).all()
+      },
+      async urls(crawlId) {
+        return db.select().from(crawlUrlVitals).where(eq(crawlUrlVitals.crawlId, crawlId)).all()
+      },
+      async saveOrigin(row) {
+        db.insert(crawlVitals)
+          .values(row)
+          .onConflictDoUpdate({ target: [crawlVitals.crawlId, crawlVitals.formFactor], set: row })
+          .run()
+      },
+      async saveUrl(row) {
+        db.insert(crawlUrlVitals)
+          .values(row)
+          .onConflictDoUpdate({
+            target: [
+              crawlUrlVitals.crawlId,
+              crawlUrlVitals.formFactor,
+              crawlUrlVitals.urlHash,
+              crawlUrlVitals.source,
+            ],
+            set: row,
+          })
+          .run()
+      },
+    },
+    userPreferences: {
+      async favouriteDomainId(userId) {
+        const [row] = db
+          .select()
+          .from(schema.userPreferences)
+          .where(eq(schema.userPreferences.userId, userId))
+          .all()
+        return row?.favouriteDomainId ?? null
+      },
+      async setFavouriteDomain(userId, domainId) {
+        db.insert(schema.userPreferences)
+          .values({ userId, favouriteDomainId: domainId })
+          .onConflictDoUpdate({
+            target: schema.userPreferences.userId,
+            set: { favouriteDomainId: domainId },
+          })
+          .run()
+      },
+    },
     settings: {
       async get(key) {
         const row = db.select().from(settings).where(eq(settings.key, key)).get()
@@ -1378,6 +1474,14 @@ export function createSqliteDatabase(options: {
         return enabledFilesByDomain(db.select().from(crawlSettings).all())
       },
 
+      async saveIgnoredParameters(domainId, patterns) {
+        const values = { ignoredParameters: JSON.stringify(patterns), updatedAt: new Date() }
+        db.insert(crawlSettings)
+          .values({ domainId, ...crawlSettingsColumns(DEFAULT_CRAWL_SETTINGS), ...values })
+          .onConflictDoUpdate({ target: crawlSettings.domainId, set: values })
+          .run()
+      },
+
       async saveSettings(domainId, input) {
         const values = crawlSettingsColumns(input)
         const updatedAt = new Date()
@@ -1394,6 +1498,11 @@ export function createSqliteDatabase(options: {
         try {
           db.transaction((tx) => {
             assertNotArchived(tx, domainId)
+            const snapshot = tx
+              .select({ ignoredParameters: crawlSettings.ignoredParameters })
+              .from(crawlSettings)
+              .where(eq(crawlSettings.domainId, domainId))
+              .get()
             tx.insert(jobs)
               .values(crawlJobValues(id, jobId, now))
               .run()
@@ -1410,6 +1519,7 @@ export function createSqliteDatabase(options: {
                 type,
                 trigger,
                 seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
+                ignoredParameters: snapshot?.ignoredParameters ?? null,
                 jobId,
                 activeKey: domainId,
                 ref: last + 1,
@@ -1474,6 +1584,68 @@ export function createSqliteDatabase(options: {
         return row ? toCrawl(row) : null
       },
 
+      async portfolio({ recent = 8 } = {}) {
+        const ranked = db
+          .select({
+            id: crawls.id,
+            rank: sql<number>`row_number() over (partition by ${crawls.domainId} order by ${crawls.createdAt} desc)`.as(
+              'rank',
+            ),
+          })
+          .from(crawls)
+          .where(
+            and(
+              eq(crawls.type, 'full'),
+              inArray(crawls.status, ['completed', 'incomplete', 'failed', 'cancelled']),
+            ),
+          )
+          .as('ranked')
+        const { robots: _r, seedUrls: _s, auditSnapshot: _a, ...columns } = getTableColumns(crawls)
+        const rows = db
+          .select(columns)
+          .from(crawls)
+          .where(
+            inArray(
+              crawls.id,
+              db.select({ id: ranked.id }).from(ranked).where(lte(ranked.rank, recent)),
+            ),
+          )
+          .orderBy(desc(crawls.createdAt))
+          .all()
+        const active = db
+          .select({ domainId: crawls.domainId })
+          .from(crawls)
+          .where(isNotNull(crawls.activeKey))
+          .all()
+        return foldPortfolio(
+          rows.map((row) => ({ ...row, robots: null, seedUrls: null, auditSnapshot: null })),
+          active,
+        )
+      },
+
+      async listStructureUrls(crawlId, { after, limit }) {
+        const rows = db
+          .select({
+            urlHash: crawlUrls.urlHash,
+            url: crawlUrls.url,
+            kind: crawlUrls.kind,
+            statusCode: crawlUrls.statusCode,
+            state: crawlUrls.state,
+          })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'internal'),
+              after === null ? undefined : gt(crawlUrls.urlHash, after),
+            ),
+          )
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+          .all()
+        return rows as StructureUrl[]
+      },
+
       async outdatedAnalyses(catalog, limit) {
         const rows = db
           .select()
@@ -1523,7 +1695,11 @@ export function createSqliteDatabase(options: {
       async finish(id, { status, error }) {
         const counts = await this.countUrls(id)
         return db.transaction((tx) => {
-          const crawl = tx.select({ type: crawls.type }).from(crawls).where(eq(crawls.id, id)).get()
+          const crawl = tx
+            .select({ type: crawls.type, domainId: crawls.domainId })
+            .from(crawls)
+            .where(eq(crawls.id, id))
+            .get()
           const result = tx
             .update(crawls)
             .set({
@@ -1539,6 +1715,14 @@ export function createSqliteDatabase(options: {
           // The one place a crawl ends: whoever asked to be told hears of a full crawl from here.
           if (crawl?.type === 'full') {
             tx.insert(jobs).values(alertJobValues(id, new Date())).onConflictDoNothing().run()
+            const key = tx.select().from(settings).where(eq(settings.key, GOOGLE_VITALS_KEY)).get()
+            const config = tx
+              .select()
+              .from(crawlSettings)
+              .where(eq(crawlSettings.domainId, crawl.domainId))
+              .get()
+            if (key && config?.collectVitals !== false)
+              tx.insert(jobs).values(vitalsJobValues(id, new Date())).onConflictDoNothing().run()
           }
           return true
         })
@@ -1616,6 +1800,7 @@ export function createSqliteDatabase(options: {
               .run()
             tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId)).run()
             tx.delete(crawlSitemapHreflang).where(eq(crawlSitemapHreflang.crawlId, crawlId)).run()
+            tx.delete(crawlUrlVitals).where(eq(crawlUrlVitals.crawlId, crawlId)).run()
             tx.delete(crawlUrls).where(eq(crawlUrls.crawlId, crawlId)).run()
             tx.update(crawls)
               .set({ pruned: true, history: keepHistory })
@@ -1761,15 +1946,63 @@ export function createSqliteDatabase(options: {
       },
 
       async listUrls({ limit, offset, sort, direction, ...query }) {
+        const crawl = db
+          .select({ ref: crawls.ref })
+          .from(crawls)
+          .where(eq(crawls.id, query.crawlId))
+          .get()
+        const references = sql<number>`(select count(distinct ${crawlUrlLinks.source}) from ${crawlUrlLinks} where ${crawlUrlLinks.crawlRef} = ${crawl?.ref ?? -1} and ${crawlUrlLinks.target} = ${crawlUrls.seq})`
         const rows = db
           .select()
           .from(crawlUrls)
           .where(crawlUrlWhere(urlColumns, query, subqueries(query.crawlId)))
-          .orderBy(...crawlUrlOrder(urlColumns, sort, direction))
+          .orderBy(
+            ...(sort === 'referencedBy'
+              ? [
+                  (direction === 'desc' ? desc : asc)(references),
+                  ...crawlUrlOrder(urlColumns, 'url', 'asc'),
+                ]
+              : crawlUrlOrder(urlColumns, sort, direction)),
+          )
           .limit(limit)
           .offset(offset)
           .all()
-        return rows.map(toCrawlUrl)
+        const seqs = rows.flatMap((row) => (row.seq === null ? [] : [row.seq]))
+        if (!seqs.length || crawl?.ref == null) return rows.map(toCrawlUrl)
+        const referenceKind = sql<string>`case when ${inArray(
+          crawlUrlLinks.kind,
+          CRAWL_LINK_KINDS.filter((kind) => referenceGroup(kind) === 'resource'),
+        )} then 'resource' when ${inArray(crawlUrlLinks.kind, ['canonical', 'hreflang', 'sitemap'])} then ${crawlUrlLinks.kind} else 'link' end`
+        const grouped = db
+          .select({
+            target: crawlUrlLinks.target,
+            kind: referenceKind,
+            count: sql<number>`count(distinct ${crawlUrlLinks.source})`,
+          })
+          .from(crawlUrlLinks)
+          .where(and(eq(crawlUrlLinks.crawlRef, crawl.ref), inArray(crawlUrlLinks.target, seqs)))
+          .groupBy(crawlUrlLinks.target, sql`2`)
+          .all()
+        const totals = db
+          .select({
+            target: crawlUrlLinks.target,
+            count: sql<number>`count(distinct ${crawlUrlLinks.source})`,
+          })
+          .from(crawlUrlLinks)
+          .where(and(eq(crawlUrlLinks.crawlRef, crawl.ref), inArray(crawlUrlLinks.target, seqs)))
+          .groupBy(crawlUrlLinks.target)
+          .all()
+        return rows.map((row) => ({
+          ...toCrawlUrl(row),
+          referencedBy: {
+            total: Number(totals.find((item) => item.target === row.seq)?.count ?? 0),
+            kinds: Object.fromEntries(
+              grouped
+                .filter((item) => item.target === row.seq)
+                .map((item) => [item.kind, Number(item.count)]),
+            ),
+          },
+        }))
       },
 
       async countListed(query) {
@@ -1851,7 +2084,7 @@ export function createSqliteDatabase(options: {
 
       async queryUrls(crawlId, { after, limit }) {
         const rows = db
-          .select({ url: crawlUrls.url, seq: crawlUrls.seq })
+          .select({ url: crawlUrls.url, canonical: crawlUrls.canonical, seq: crawlUrls.seq })
           .from(crawlUrls)
           .where(
             and(
@@ -1868,6 +2101,7 @@ export function createSqliteDatabase(options: {
         const last = rows.at(-1)
         return {
           urls: rows.map((row) => row.url),
+          observations: rows.map(({ url, canonical }) => ({ url, canonical })),
           next: last && last.seq !== null && rows.length === limit ? last.seq : null,
         }
       },

@@ -1,7 +1,14 @@
 'use client'
 
 import type { ExtraCrawlFileKind } from '@seotools/core'
-import { BuildingIcon, CheckIcon, ChevronsUpDownIcon, PlusIcon } from 'lucide-react'
+import {
+  LayoutListIcon,
+  StarIcon,
+  BuildingIcon,
+  CheckIcon,
+  ChevronsUpDownIcon,
+  PlusIcon,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -40,9 +47,11 @@ export interface SwitcherCompany {
  * and each browser tab can sit on a different domain.
  */
 export function DomainSwitcher({
+  favouriteDomainId,
   companies,
   canManage,
 }: {
+  favouriteDomainId: string | null
   companies: SwitcherCompany[]
   /** Adding and managing companies is for administrators. */
   canManage: boolean
@@ -75,6 +84,9 @@ export function DomainSwitcher({
     <DropdownMenuItem key={domain.id} render={<Link href={hrefFor(domain.host)} />}>
       <DomainIcon host={domain.host} version={domain.faviconVersion} size="sm" />
       <span className="flex-1 truncate">{domain.host}</span>
+      {domain.id === favouriteDomainId && (
+        <StarIcon className="size-3 fill-current text-amber-600" aria-label={t('favourite')} />
+      )}
       {domain.host === currentHost && <CheckIcon />}
     </DropdownMenuItem>
   )
@@ -108,6 +120,13 @@ export function DomainSwitcher({
         side="bottom"
         sideOffset={4}
       >
+        <DropdownMenuGroup>
+          <DropdownMenuItem render={<Link href="/domains" />}>
+            <LayoutListIcon />
+            {t('allDomains')}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
         {withActive.map((company, index) => (
           <DropdownMenuGroup key={company.id}>
             {index > 0 && <DropdownMenuSeparator />}

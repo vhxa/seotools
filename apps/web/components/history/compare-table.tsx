@@ -51,7 +51,7 @@ export function CompareTable({
   const urlCell = (row: ComparisonRow) => (
     <TableCell className="results-url bg-background align-top">
       <Link
-        href={`/domains/${host}/pages/details/${row.urlHash}?crawl=${row.target ? targetId : baseId}`}
+        href={`/domains/${host}/urls/${row.urlHash}?crawl=${row.target ? targetId : baseId}`}
         title={row.url}
         className="block font-mono text-xs break-all whitespace-normal hover:underline"
       >

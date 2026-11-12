@@ -27,6 +27,7 @@ export const PAGES_PAGE_SIZE = 50
  */
 export const DETAIL_VIEWS = URL_VIEWS
 export const DETAIL_SORTS = [
+  'referencedBy',
   'url',
   'title',
   'status',
@@ -288,7 +289,7 @@ export function detailHref(
   if (next.page > 1) params.set('page', String(next.page))
   if (next.url) params.set('url', next.url)
   const search = params.toString()
-  return `/domains/${host}/pages/details${search ? `?${search}` : ''}`
+  return `/domains/${host}/urls${search ? `?${search}` : ''}`
 }
 
 /**
@@ -302,7 +303,7 @@ export function exportHref(
   kind: 'pages' | 'findings' | 'links' | 'redirects',
 ): string {
   const search = detailHref(host, query, { page: 1, url: null }).split('?')[1]
-  return `/domains/${host}/pages/export/${kind}${search ? `?${search}` : ''}`
+  return `/domains/${host}/urls/export/${kind}${search ? `?${search}` : ''}`
 }
 
 /** The direction a column header should sort in when clicked: asc, then desc, then back to default. */

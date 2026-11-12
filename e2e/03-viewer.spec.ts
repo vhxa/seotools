@@ -1,5 +1,5 @@
 import { createDatabase, inviteUser, redeemUserToken } from '@seotools/db'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './support/test'
 import { DATABASE_URL, HOST, OTHER_HOST, VIEWER, VIEWER_STATE } from './support/env'
 import { signIn } from './support/helpers'
 
@@ -41,9 +41,18 @@ test.describe('a member with a viewer grant on one domain', () => {
     await expect(page.getByText(/Last full crawl finished/)).toBeVisible()
     await expect(page.getByRole('button', { name: 'Run full crawl' })).toHaveCount(0)
 
-    await page.goto(`${domain}/pages/details`)
+    await page.goto(`${domain}/urls`)
     await expect(page.getByRole('heading', { name: 'URLs', level: 1 })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Mark as priority' })).toHaveCount(0)
+  })
+
+  test('reads the Crawls area without being offered to run anything', async ({ page }) => {
+    await page.goto(`${domain}/crawls`)
+    await expect(page.getByRole('heading', { name: 'Crawls', level: 1 })).toBeVisible()
+    await expect(page.getByRole('table').getByText('completed')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Run full crawl' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Run priority crawl' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Crawl a URL list' })).toHaveCount(0)
   })
 
   test('does not find a domain without a grant, nor the administration', async ({ page }) => {
@@ -54,6 +63,8 @@ test.describe('a member with a viewer grant on one domain', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Administration' })).toHaveCount(0)
 
+    const integrations = await page.goto('/system/integrations')
+    expect(integrations?.status()).toBe(404)
     const system = await page.goto('/system')
     expect(system?.status()).toBe(404)
   })

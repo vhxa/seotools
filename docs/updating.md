@@ -86,6 +86,13 @@ release it descends from, not a release.
 
 ## Before updating
 
+**Docker Desktop (macOS/Windows): `/data` must use a named Docker volume, not a host-directory
+bind mount.** SQLite in WAL mode is shared by the web app and worker and can crash with SIGBUS
+on host-shared mounts. This is a pre-existing issue, reproduced with 0.3.0, not a 0.4.0 regression.
+The supplied Compose file already uses `seotools-data:/data`. If you currently bind-mount a host
+directory, stop all writers, take the backup below, and restore it into a named volume before
+updating. A bind mount used only to read a backup at `/backup` is separate from the live `/data`.
+
 1. **Read the release notes** of every version between yours and the target: the
    [GitHub releases](https://github.com/vhxa/seotools/releases) or
    [`CHANGELOG.md`](../CHANGELOG.md). Look for **Breaking** and **Upgrade notes**. Say no to an
@@ -465,6 +472,15 @@ versioned file archives. Backups preserve only data that existed when taken, nev
 already pruned.
 
 ## What has been validated
+
+The [0.3.0 → 0.4.0 integration rehearsal](rehearsals/2026-11-12-upgrade-0.4.0.md),
+run on **2026-11-11**, passed using **named volumes**: SQLite and PostgreSQL 17 applied
+0026/0027, all 28 image journal timestamp/hash pairs matched on both dialects, and eligible
+catalog reanalysis completed. Published 0.3.0 refused both upgraded databases without changing
+data. The initial macOS bind-mount attempt crashed with SIGBUS; diagnosis reproduced that
+pre-existing problem with 0.3.0 too. It is not a 0.4.0 regression. The report retains all stages,
+counts, timings and limits. Windows Desktop, Dokploy and authenticated real-data UI were not
+exercised in this completion stage.
 
 Rehearsed on **2026-11-05** (MySQL, also rehearsed then, is no longer supported and its column was
 removed here; the [rehearsal evidence](rehearsals/2026-11-05-pending-migrations.md) keeps it),

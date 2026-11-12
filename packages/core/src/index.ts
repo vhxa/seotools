@@ -11,3 +11,5 @@ export * from './repository'
 export * from './settings'
 export * from './updates'
 export * from './version'
+
+export * from './vitals'

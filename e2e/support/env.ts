@@ -1,7 +1,8 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-export const PORT = 3210
+/** `E2E_PORT` moves the suite to another port (and another database folder) when 3210 is taken. */
+export const PORT = Number(process.env.E2E_PORT ?? 3210)
 export const BASE_URL = `http://localhost:${PORT}`
 /** A fresh folder per run: the database lives and dies here, never in `/data`. */
 export const WORK_DIR = join(tmpdir(), `seotools-e2e-${PORT}`)

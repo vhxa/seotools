@@ -508,3 +508,150 @@ describe('landmarks of deeply nested links', () => {
     expect(elapsed).toBeLessThan(3000)
   })
 })
+
+describe('social and document facts', () => {
+  const factsOf = (html: string) => extractHtml(html, PAGE).facts
+
+  it('reads Open Graph and Twitter tags, taking the first of each', () => {
+    const { social } = factsOf(`<html><head>
+      <meta property="og:title" content="  First   title ">
+      <meta property="og:title" content="Second">
+      <meta property="og:description" content="A description">
+      <meta property="og:type" content="article">
+      <meta property="og:site_name" content="Example">
+      <meta property="og:image" content="/img/share.png">
+      <meta property="og:image:width" content="1200">
+      <meta property="og:image:height" content="630px">
+      <meta property="og:url" content="https://example.com/blog/post">
+      <meta name="twitter:card" content="summary_large_image">
+      <meta name="twitter:title" content="Tweet title">
+      <meta name="twitter:description" content="Tweet description">
+      <meta name="twitter:image" content="https://cdn.example.net/t.png">
+      <meta name="og:locale" content="en_US">
+    </head></html>`)
+    expect(social).toEqual({
+      openGraphTags: 10,
+      title: 'First title',
+      description: 'A description',
+      type: 'article',
+      siteName: 'Example',
+      image: 'https://example.com/img/share.png',
+      imageWidth: 1200,
+      url: 'https://example.com/blog/post',
+      twitterCard: 'summary_large_image',
+      twitterTitle: 'Tweet title',
+      twitterDescription: 'Tweet description',
+      twitterImage: 'https://cdn.example.net/t.png',
+    })
+  })
+
+  it('records that it looked, with nothing in it, when a page has no tags', () => {
+    const facts = factsOf('<html><head><title>A page</title></head></html>')
+    expect(facts.social).toEqual({ openGraphTags: 0 })
+    expect(facts.document).toEqual({ lang: null, viewport: null, charset: null })
+  })
+
+  it('counts a tag with no content as a tag, but does not keep what it does not say', () => {
+    const { social } = factsOf(
+      '<meta property="og:title" content=""><meta property="og:image" content="javascript:alert(1)">',
+    )
+    expect(social).toEqual({ openGraphTags: 2 })
+  })
+
+  it('uses the other names of an image only when the plain one is not there', () => {
+    expect(
+      factsOf('<meta property="og:image:secure_url" content="https://a.example/s.png">').social
+        ?.image,
+    ).toBe('https://a.example/s.png')
+    expect(
+      factsOf(
+        '<meta property="og:image:secure_url" content="https://a.example/s.png"><meta property="og:image" content="https://a.example/p.png">',
+      ).social?.image,
+    ).toBe('https://a.example/p.png')
+    expect(
+      factsOf('<meta name="twitter:image:src" content="https://a.example/t.png">').social
+        ?.twitterImage,
+    ).toBe('https://a.example/t.png')
+  })
+
+  it('bounds what a site wrote', () => {
+    const { social } = factsOf(
+      `<meta property="og:title" content="${'x'.repeat(5000)}">
+       <meta property="og:image" content="https://example.com/${'a'.repeat(3000)}">
+       <meta property="og:image:width" content="99999999999">`,
+    )
+    expect(social?.title).toHaveLength(200)
+    expect(social?.title?.endsWith('…')).toBe(true)
+    expect(social?.image).toBeUndefined()
+    expect(social?.imageWidth).toBeUndefined()
+  })
+
+  it('reads the language, viewport and charset of the document, the first of each', () => {
+    expect(
+      factsOf(
+        '<html lang=" es-ES "><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><meta name="viewport" content="other"></head></html>',
+      ).document,
+    ).toEqual({ lang: 'es-ES', viewport: 'width=device-width', charset: 'utf-8' })
+  })
+
+  it('reads the charset an http-equiv declares', () => {
+    expect(
+      factsOf('<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">').document
+        ?.charset,
+    ).toBe('iso-8859-1')
+    expect(
+      factsOf('<meta http-equiv="Content-Type" content="text/html">').document?.charset,
+    ).toBeNull()
+  })
+
+  it('keeps the tags it follows as links', () => {
+    expect(urlsOf('<meta property="og:image" content="/share.png">', 'meta')).toEqual([
+      'https://example.com/share.png',
+    ])
+  })
+
+  it('takes the language from the real document root, not from a template or foreign content', () => {
+    expect(
+      factsOf('<template><html lang="es"><body></body></html></template><html lang="en"></html>')
+        .document?.lang,
+    ).toBe('en')
+    expect(
+      factsOf('<template><html lang="es"></html></template><html></html>').document?.lang,
+    ).toBe(null)
+    expect(
+      factsOf('<svg><html lang="es"></html></svg><html lang="en"></html>').document?.lang,
+    ).toBe('en')
+    expect(
+      factsOf('<math><html lang="es"></html></math><html lang="en"></html>').document?.lang,
+    ).toBe('en')
+    // Only the first real root counts.
+    expect(factsOf('<html lang="en"></html><html lang="es"></html>').document?.lang).toBe('en')
+  })
+
+  it('does not read an empty lang as a language', () => {
+    expect(factsOf('<html lang=""></html>').document?.lang).toBeNull()
+  })
+
+  it('ignores preview and document meta inside templates and foreign content', () => {
+    const facts = factsOf(`<html><head></head><body>
+      <template>
+        <meta property="og:title" content="Inert">
+        <meta name="twitter:card" content="summary">
+        <meta name="viewport" content="width=device-width">
+        <meta charset="utf-8">
+      </template>
+      <svg><meta property="og:image" content="/inert.png"><meta name="viewport" content="svg"></svg>
+      <math><meta charset="latin1"></math>
+    </body></html>`)
+    expect(facts.social).toEqual({ openGraphTags: 0 })
+    expect(facts.document).toEqual({ lang: null, viewport: null, charset: null })
+  })
+
+  it('reads the meta that follows a template', () => {
+    const facts = factsOf(`<template><meta property="og:title" content="Inert"></template>
+      <svg></svg><math></math>
+      <meta property="og:title" content="Real"><meta name="viewport" content="width=device-width">`)
+    expect(facts.social).toEqual({ openGraphTags: 1, title: 'Real' })
+    expect(facts.document?.viewport).toBe('width=device-width')
+  })
+})

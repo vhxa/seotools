@@ -1,20 +1,32 @@
+import { getTranslations } from 'next-intl/server'
 import { redirect } from 'next/navigation'
+import { DomainPortfolio } from '@/components/portfolio/domain-portfolio'
+import { getDb } from '@/lib/db'
 import { requireViewer } from '@/lib/session'
 import { visibleCompanies } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * There is no home of its own: land on the first active domain the person can see (an archived one
- * only if nothing else is left). With none, an administrator goes to the companies, or to the
- * onboarding if none exists, and anyone else is told to ask for access.
- */
+export async function generateMetadata() {
+  const t = await getTranslations('Portfolio')
+  return { title: t('metaTitle') }
+}
+
 export default async function HomePage() {
   const viewer = await requireViewer()
   const companies = await visibleCompanies(viewer)
   const domains = companies.flatMap((company) => company.domains)
-  const first = domains.find((domain) => !domain.archivedAt) ?? domains[0]
-  if (first) redirect(`/domains/${first.host}`)
-  if (viewer.role !== 'admin') redirect('/no-access')
-  redirect(companies.length > 0 ? '/system/companies' : '/onboarding')
+  const favouriteDomainId = await (
+    await getDb()
+  ).userPreferences.favouriteDomainId(viewer.session.user.id)
+  const favourite = domains.find((domain) => domain.id === favouriteDomainId)
+  if (favourite) redirect(`/domains/${favourite.host}`)
+  if (domains.length < 2) {
+    const first = domains.find((domain) => !domain.archivedAt) ?? domains[0]
+    if (first) redirect(`/domains/${first.host}`)
+    if (viewer.role !== 'admin') redirect('/no-access')
+    redirect(companies.length > 0 ? '/system/companies' : '/onboarding')
+  }
+
+  return <DomainPortfolio companies={companies} favouriteDomainId={favouriteDomainId} />
 }

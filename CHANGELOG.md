@@ -20,6 +20,93 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Three migrations (0026–0028): 0026 adds the Core Web Vitals tables, 0027 the ignored query
+  parameters (settings and a per-crawl snapshot; link rows are not rebuilt), and 0028 personal
+  favourite domain preferences. Take the backup in
+  `docs/updating.md` first: an older image refuses to start on the updated database, so going back
+  needs that backup together with the previous image.
+- On the first start, earlier crawls are analysed again under the new checks. Checks that read
+  something older crawls did not keep (Open Graph and Twitter tags, the document language,
+  viewport and charset) show as not verifiable on them, never as fixed or new.
+- Core Web Vitals sends nothing until an administrator saves a Google API key in
+  Administration → Integrations. From then on, after each full crawl of a domain with collection
+  on (the default), its origin and page addresses are sent to Google's Chrome UX Report and
+  PageSpeed Insights APIs; the key's Google Cloud project must have both enabled and allowed.
+- With Docker Desktop (macOS, Windows), `/data` must be a named Docker volume, as in the supplied
+  Compose file, not a bind-mounted host directory: SQLite shared by the web app and the worker can
+  crash there (SIGBUS). This also affects earlier versions.
+
+### Added
+
+- Each user can star one favourite domain to open automatically; the header logo opens the current
+  domain overview, and the domain switcher always offers the all-domains list at `/domains`.
+- Issues filters, per-issue crawl changes and template badges; current site-file findings; dashboard differences and comparison links; distinct referring-URL counts in Errors and Redirects and CSV exports.
+- Core Web Vitals: field data from the Chrome UX Report (origin trend on the dashboard and per
+  URL) and PageSpeed Insights lab measurements for priority URLs, CSV columns, and warnings for
+  poor mobile field LCP, INP and CLS (Google's thresholds). Administration → Integrations stores an
+  encrypted Google API key with a test; each domain can turn collection off in its Crawling
+  settings. No request is made without a key, while automation is paused, or for archived domains.
+  Vitals do not trigger alerts yet.
+- Per-domain ignored query parameters (exact names or trailing `*` prefixes), applied to internal
+  URL identity from the next crawl, with comparison caveats when the setting changes. Parameters
+  suggests volatile or canonical-redundant names and separately highlights tracking parameters,
+  never suggesting that tracking names be ignored. Defaults preserve existing crawl behavior.
+- The user menu has an Administration entry for administrators.
+- An error page and a loading skeleton for the signed-in app, so a failing page offers to try again instead of a blank screen.
+- A domain that has never been crawled shows a prompt on its overview to run the first full crawl.
+- Twelve new checks: Open Graph and Twitter Card tags (missing, incomplete, `og:url` that differs
+  from the canonical, a share image that fails or redirects), `lang`, viewport and charset of the
+  document, temporary redirects (302/307), slow responses and broken resources a page loads. The
+  slowest response a page may have is a new threshold per domain (Settings → Audit → Thresholds,
+  1000 ms by default). The checks that read the HTML show from the next full crawl; temporary
+  redirects, slow responses and broken resources also appear in retained crawls when they are
+  analysed again, and a crawl from before the tags were kept is never reported as lacking them.
+- The URL detail previews how a page appears in search results and when it is shared (Open Graph
+  image, title and description), and the pages CSV has `og:title`, `og:description`, `og:image`,
+  `twitter:card` and HTML lang columns.
+- A portfolio home: anyone who can see two or more domains lands on `/` with every domain grouped by
+  company (last full crawl, pages crawled, indexable pages, issues, warnings, opportunities, a small
+  trend of the last full crawls and whether a crawl is running); archived domains are in a collapsed
+  list. With one domain or none, `/` still goes straight to it (or to the companies, onboarding or
+  the no-access page).
+- A Structure page per domain (sidebar): the directories of the latest full crawl with their pages,
+  errors and pages with issues, warnings and opportunities, each figure leading to the URLs table
+  searched by that directory's address, plus a breakdown by the language directories declared in the audit
+  configuration. A directory opens through the address (`?path=/blog/`).
+
+### Changed
+
+- One Crawls area replaces the three overlapping pages "Run and schedule", "History" and "Compare": a single sidebar entry opens the list of every crawl (with its type, status, results, audit configuration and findings, and the run actions "Run full crawl", "Run priority crawl" and "Crawl a URL list", now in a dialog), with Compare and Rechecks as tabs.
+- Crawl schedules moved from the Crawls page to a new Schedules section of the domain's settings, after Crawling. The Crawls page shows when each crawl is scheduled and links to it.
+- Pages of a domain have addresses named after the interface: `/urls` (was `/pages/details`), `/urls/parameters`, `/urls/export/…`, `/crawls` (was `/jobs` and `/pages/history`), `/crawls/compare` and `/crawls/rechecks/…`. The old addresses redirect, query string included, so bookmarks and alert emails already sent keep working.
+- The URLs table fits more at 1280 px: Status comes before Title, the URL column is narrower, and the issues panel beside the table can be folded away (the choice is remembered in the browser).
+- Crawl settings are grouped in titled sections (Requests, Scope, Extraction, Retention, Request credentials, Other crawl files) with a save bar that stays in view.
+- The "Query parameters" link on the URLs page is a button with an icon.
+
+### Fixed
+
+- A broken image, script or stylesheet is now reported on the page that loads it (`resources-broken`).
+- Comparing with a crawl made before a check could see its input (structured data before 0.2.0,
+  Open Graph and the document language before this version) no longer reports those findings as new
+  or resolved: they show as not verifiable.
+- The record of finished jobs no longer grows forever: the worker deletes completed jobs after 30
+  days and failed ones after 90, checking every hour. Pending and running jobs are never touched.
+- The Crawls and Crawl files sections of the sidebar open, and mark the current page, when you navigate into them.
+- Query parameters now marks URLs as the current section in the sidebar.
+- Some messages still called the URLs list "Pages".
+- The trend charts no longer repeat a date when several crawls ran the same day, and their legend follows the order of the figures above.
+
+### Security
+
+- The app sends the security headers it checks for on the sites it audits: a Content-Security-Policy
+  that lets only its own scripts run and keeps it out of frames, `X-Frame-Options`,
+  `X-Content-Type-Options`, `Referrer-Policy`, a `Permissions-Policy`, and HSTS when
+  `BETTER_AUTH_URL` is an `https://` address.
+- Search engines are told not to index the app: every response says `noindex`, and `/robots.txt`
+  disallows everything. A sign-in page of a public installation no longer ends up in search results.
+
 ## [0.3.0] - 2026-11-08
 
 ### Changed

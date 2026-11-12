@@ -106,6 +106,7 @@ export function fieldChanges(base: UrlSnapshot, target: UrlSnapshot): FieldChang
 
 /** What this module needs of a crawl; `Crawl` in `@seotools/db` satisfies it. */
 export interface CrawlLike {
+  ignoredParameters?: string[]
   id: string
   status: CrawlStatus
   createdAt: Date
@@ -197,6 +198,7 @@ export function crawlAuditScope(crawl: CrawlLike): string | null {
 
 /** What a crawl can vouch for when its findings are compared with those of another. */
 export interface CrawlFacts {
+  identity?: string
   /** Its full results per URL are still stored: links, evidence, everything a comparison reads. */
   retained: boolean
   /**
@@ -217,10 +219,16 @@ export interface CrawlFacts {
   perUrlAudit: boolean
   /** The figures it was analysed with (`null` when it was not analysed). */
   thresholds: AuditThresholds | null
+  /**
+   * The issues whose input it did not record (it was made before a check could read it), so that
+   * not reporting them says nothing. Absent: none.
+   */
+  unobserved?: ReadonlySet<string>
 }
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
   return {
+    identity: JSON.stringify([...new Set(crawl.ignoredParameters ?? [])].sort()),
     retained: !crawl.pruned,
     observable: keepsUrlHistory(crawl),
     analysed: crawl.pagesByWorstIssue !== null,
@@ -231,6 +239,7 @@ export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
     // A snapshot without figures used the defaults: they are the values the checks always had.
     thresholds:
       crawl.pagesByWorstIssue === null ? null : resolveThresholds(crawl.auditSnapshot?.thresholds),
+    unobserved: new Set(crawl.auditSnapshot?.unobserved),
   }
 }
 
@@ -258,6 +267,7 @@ export type PairSide = 'base' | 'target'
  */
 export const PAIR_NOTES = [
   'pruned',
+  'ignoredParameters',
   'unanalysed',
   'legacy',
   'catalog',
@@ -298,6 +308,9 @@ export function assessPair(base: CrawlLike, target: CrawlLike): PairAssessment {
     if (found.length > 0) notes.push({ code, sides: found })
   }
 
+  const ignoredKey = (crawl: CrawlLike) =>
+    JSON.stringify([...new Set(crawl.ignoredParameters ?? [])].sort())
+  if (ignoredKey(base) !== ignoredKey(target)) add('ignoredParameters', ['base', 'target'])
   const pruned = sides((f) => !f.retained)
   add('pruned', pruned)
   const urls = pruned.length === 0
@@ -344,6 +357,8 @@ const PAGE_LOCAL_LIST = [
   'soft-404-possible',
   'refresh-redirect',
   'redirect-3xx',
+  'redirect-temporary',
+  'slow-response',
   'directive-outside-head',
   'directives-conflict',
   'directives-conflict-snippets',
@@ -388,6 +403,10 @@ const PAGE_LOCAL_LIST = [
   'structured-data-required-missing',
   'structured-data-recommended-missing',
   'no-structured-data',
+  'og-missing',
+  'og-incomplete',
+  'og-url-mismatch',
+  'twitter-card-missing',
   'link-to-localhost',
   'uncrawlable-links',
   'anchor-empty',
@@ -411,6 +430,10 @@ const PAGE_LOCAL_LIST = [
   'multiple-head-or-body',
   'document-too-big',
   'content-before-head',
+  'html-lang-missing',
+  'html-lang-invalid',
+  'viewport-missing',
+  'charset-missing',
 ] as const satisfies readonly PageIssueId[]
 
 const PAGE_LOCAL: ReadonlySet<string> = new Set(PAGE_LOCAL_LIST)
@@ -429,6 +452,7 @@ export type UnknownReason =
   | 'incomplete'
   | 'catalog'
   | 'audit'
+  | 'unobserved'
 
 /** What one crawl says about a URL, for the findings it reports. */
 export interface UrlEvidence {
@@ -453,6 +477,7 @@ export interface Evidence {
 
 /** What has to be the same for two observations to be compared. */
 interface Basis {
+  identity?: string
   catalog: string | null
   intent: string
   conditions: string
@@ -477,12 +502,15 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   if (!url.requested) return unknown('not-requested')
   if (url.participation === 'excluded') return unknown('excluded')
   if (url.participation === null) return unknown('participation')
+  // A crawl that never recorded what the check reads cannot say the URL does not have the issue.
+  if (crawl.unobserved?.has(issue)) return unknown('unobserved')
   // An incomplete crawl lacks pages that others link from, copy or point to: it can report what is
   // not there, and miss what is.
   if (!crawl.complete && !isPageLocalIssue(issue)) return unknown('incomplete')
   return {
     presence: url.issues.has(issue) ? 'present' : 'absent',
     basis: {
+      identity: crawl.identity,
       catalog: crawl.catalog,
       intent: url.intent ?? 'unknown',
       conditions: url.conditions,
@@ -494,6 +522,7 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
 
 /** Why two observations cannot be set against each other, or `null` when they can. */
 function incomparable(issue: string, a: Basis, b: Basis): UnknownReason | null {
+  if ((a.identity ?? '[]') !== (b.identity ?? '[]')) return 'audit'
   if (a.catalog === null || b.catalog === null || a.catalog !== b.catalog) return 'catalog'
   // What the URL is expected to be, and what rules ask of its conditions, change which findings it
   // keeps and which it raises (`applyAuditPolicy`).
@@ -756,5 +785,15 @@ export function findingChangesBetween(
     target,
     earlier: evidence.slice(0, baseIndex),
     between: evidence.slice(baseIndex + 1, targetIndex),
+  })
+}
+
+/** Pair-wide limits on an issue summary; URL-specific limits still come from classification. */
+export function issuePairReasons(notes: readonly PairNoteCode[], issue: string): UnknownReason[] {
+  return notes.flatMap((note): UnknownReason[] => {
+    // Changed identity can coalesce URLs and alter both page-local and site-wide findings.
+    if (note === 'ignoredParameters') return ['audit']
+    if ((note === 'audit' || note === 'incomplete') && isPageLocalIssue(issue)) return []
+    return [note === 'legacy' ? 'participation' : note]
   })
 }

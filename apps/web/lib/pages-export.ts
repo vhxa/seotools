@@ -1,4 +1,5 @@
-import { crawlUrlHash } from '@seotools/core'
+import type { VitalMetrics } from '@seotools/core'
+import { crawlIdentityHash } from '@seotools/core'
 import { ANY_ACCEPTED, type FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type { Extractor } from '@seotools/core/crawl/extraction'
 import { evidenceKindOf } from '@seotools/core/crawl/evidence'
@@ -178,6 +179,8 @@ export function describeListing(
 
 /** What the file is about, the same on every row. */
 export interface ExportContext {
+  ignoredParameters?: string[]
+  vitals?: ReadonlyMap<string, VitalMetrics>
   host: string
   crawlId: string
   crawlDate: Date
@@ -317,6 +320,12 @@ export const PAGES_COLUMNS: readonly UrlColumn[] = [
   },
   { header: 'expectation', cell: expectationOf },
   { header: 'title', cell: ({ url }) => url.title },
+  // Empty where the crawl did not store it: a crawl from before the tags were kept, or no tag.
+  { header: 'ogTitle', cell: ({ url }) => url.data?.facts?.social?.title },
+  { header: 'ogDescription', cell: ({ url }) => url.data?.facts?.social?.description },
+  { header: 'ogImage', cell: ({ url }) => url.data?.facts?.social?.image },
+  { header: 'twitterCard', cell: ({ url }) => url.data?.facts?.social?.twitterCard },
+  { header: 'htmlLang', cell: ({ url }) => url.data?.facts?.document?.lang },
   typeColumn('issues', 'issue'),
   typeColumn('warnings', 'warning'),
   typeColumn('opportunities', 'opportunity'),
@@ -326,6 +335,11 @@ export const PAGES_COLUMNS: readonly UrlColumn[] = [
     cell: (row, c) =>
       wasChecked(row, c) ? new Set(row.accepted?.map(({ issue }) => issue)).size : null,
   },
+  { header: 'referencedBy', cell: ({ url }) => url.referencedBy?.total },
+  ...(['lcp', 'inp', 'cls'] as const).map((metric): UrlColumn => ({
+    header: metric,
+    cell: ({ url }, context) => context.vitals?.get(url.urlHash)?.[metric] ?? null,
+  })),
 ]
 
 /** What a finding stores about a URL, in words: where a hreflang came from, what keeps it out. */
@@ -583,6 +597,7 @@ async function redirectChains(
   source: Pick<CrawlRepository, 'urlsOf'>,
   crawlId: string,
   urls: CrawlUrl[],
+  context: ExportContext,
 ): Promise<Map<string, RedirectChain>> {
   const chains = new Map<string, RedirectChain & { at: CrawlUrl; seen: Set<string> }>()
   for (const url of urls) {
@@ -605,13 +620,13 @@ async function redirectChains(
       (
         await source.urlsOf(
           crawlId,
-          moving.map((chain) => crawlUrlHash(chain.at.redirectTo!)),
+          moving.map((chain) => crawlIdentityHash(chain.at.redirectTo!, context, context.host)),
         )
       ).map((url) => [url.urlHash, url]),
     )
     for (const chain of moving) {
       const target = chain.at.redirectTo!
-      const hash = crawlUrlHash(target)
+      const hash = crawlIdentityHash(target, context, context.host)
       chain.hops++
       chain.finalUrl = target
       const reached = next.get(hash)
@@ -689,7 +704,7 @@ export async function* exportCsv(options: {
         checked ? source.acceptedOf(listing.crawlId, hashes) : [],
         source.auditOf(listing.crawlId, hashes),
         kind === 'redirects'
-          ? redirectChains(source, listing.crawlId, urls)
+          ? redirectChains(source, listing.crawlId, urls, context)
           : new Map<string, RedirectChain>(),
       ])
       const issuesByUrl = new Map<string, CrawlUrlIssue[]>()

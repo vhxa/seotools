@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { robotsView, type RobotsFinding } from '@/lib/crawl-files'
+import { SEVERE_FINDINGS, robotsView } from '@/lib/crawl-files'
 import { getDb } from '@/lib/db'
 import { requireDomain } from '@/lib/workspace'
 
@@ -23,8 +23,6 @@ export const dynamic = 'force-dynamic'
 /** The rules of a group shown in the page. The whole file is one click away. */
 const MAX_RULES_SHOWN = 50
 const MAX_ISSUES_SHOWN = 50
-
-const SEVERE: ReadonlySet<RobotsFinding> = new Set(['unavailable', 'invalid', 'site-blocked'])
 
 const ACCESS_VARIANTS: Record<RobotsAccess['access'], 'outline' | 'secondary' | 'destructive'> = {
   allowed: 'outline',
@@ -66,7 +64,7 @@ export default async function RobotsPage({ params }: { params: Promise<{ host: s
       {view.findings.map((finding) => (
         <Finding
           key={finding}
-          severe={SEVERE.has(finding)}
+          severe={SEVERE_FINDINGS.robots.has(finding)}
           title={t(`findings.${finding}.title`)}
           description={t(`findings.${finding}.description`)}
         />

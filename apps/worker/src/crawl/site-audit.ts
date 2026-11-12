@@ -1,10 +1,13 @@
+import type { VitalMetrics } from '@seotools/core'
 import {
   assessIndexability,
   compileAuditSnapshot,
   crawlFileKindOf,
   defaultResolution,
   crawlUrlHash,
+  stripIgnoredParameters,
   isInternalUrl,
+  MAX_EVIDENCE_ITEMS,
   isRobotsAllowed,
   parseRobots,
   type AuditParticipation,
@@ -24,6 +27,10 @@ import { findNearDuplicates } from './fingerprint'
 import { emptyPageFacts } from './page-facts'
 
 const BATCH = 1000
+/** Link kinds that load a resource into the page. `head-link` is left out: it says nothing of what it is. */
+const EMBED_KINDS: ReadonlySet<string> = new Set(['image', 'script', 'style', 'media', 'frame'])
+/** What an external server answers to a crawler that it would not answer to a person. */
+export const REFUSES_BOTS = new Set([401, 403, 405, 406, 429, 451])
 const VIEWS: readonly CrawlUrlView[] = ['pages', 'other', 'external']
 /** The bot robots.txt and meta robots are read for, with `*` as its fallback. */
 const SEARCH_BOT = 'Googlebot'
@@ -93,6 +100,7 @@ export function unavailableAfter(directives: ReadonlySet<string>): Date | null {
 }
 
 export interface AuditedUrl {
+  vitals?: VitalMetrics
   url: CrawlUrl
   internal: boolean
   /** What the crawl recorded from its HTML. `null` if it is not a page, or from before the checks. */
@@ -169,6 +177,12 @@ export interface AuditedUrl {
   nofollowAnchorsOut: number
   /** The URLs of the site its anchors link to. */
   linksTo: AuditedUrl[]
+  /**
+   * What it loads (images, scripts, stylesheets, media, frames) that was requested and failed: how
+   * many, once each, and the first `MAX_EVIDENCE_ITEMS` as a sample. Bounded, because a site with
+   * a broken resource that every page loads would otherwise keep it once per page.
+   */
+  failedEmbeds: { total: number; sample: AuditedUrl[] }
   /** Clicks from the home page. `null`: following links does not get here. */
   clickDepth: number | null
 }
@@ -179,6 +193,7 @@ export interface Site {
   /** The audit configuration this analysis applies, whole: no URL is judged by another version. */
   config: AuditSnapshot
   urls: AuditedUrl[]
+  identity?: (url: string) => string
   get(url: string): AuditedUrl | undefined
   /** Whether any URL of the site answered as a page, unlike a site that is down. */
   answered: boolean
@@ -250,6 +265,7 @@ export function auditUrl(
   url: CrawlUrl,
   robots: ReadonlyMap<string, RobotsFile>,
   resolver: AuditResolver,
+  identity: (url: string) => string = (url) => url,
 ): AuditedUrl {
   const parsed = new URL(url.url)
   const internal = url.scope === 'internal'
@@ -268,7 +284,7 @@ export function auditUrl(
   ])
   const noindex = directives.has('noindex') || directives.has('none')
   const nofollow = directives.has('nofollow') || directives.has('none')
-  const canonicalised = url.canonical !== null && url.canonical !== url.url
+  const canonicalised = url.canonical !== null && identity(url.canonical) !== identity(url.url)
   const fileOfTheCrawl = crawlFileKindOf(url.source) !== null
   const robotsFile = robots.get(parsed.origin)
   const parsedRobots = robotsFile?.parsed ?? undefined
@@ -320,12 +336,26 @@ export function auditUrl(
     internalAnchorsOut: 0,
     nofollowAnchorsOut: 0,
     linksTo: [],
+    failedEmbeds: { total: 0, sample: [] },
     clickDepth: null,
   }
 }
 
+/** A requested URL that answered with an error or did not answer (bots refused elsewhere do not count). */
+function embedFailed(target: AuditedUrl | undefined): target is AuditedUrl {
+  if (!target || target.url.state !== 'done') return false
+  const { error, statusCode } = target.url
+  if (error !== null) return true
+  if (statusCode === null || statusCode < 400 || statusCode > 599) return false
+  return target.internal || !REFUSES_BOTS.has(statusCode)
+}
+
 /** Follows redirects and anchors from the home page, a redirect not being a click. */
-function measureClickDepth(urls: readonly AuditedUrl[], byHash: ReadonlyMap<string, AuditedUrl>) {
+function measureClickDepth(
+  urls: readonly AuditedUrl[],
+  byHash: ReadonlyMap<string, AuditedUrl>,
+  identity: (url: string) => string,
+) {
   let frontier = urls.filter((url) => url.url.source === 'seed')
   for (let depth = 0; frontier.length > 0; depth++) {
     const next: AuditedUrl[] = []
@@ -334,7 +364,9 @@ function measureClickDepth(urls: readonly AuditedUrl[], byHash: ReadonlyMap<stri
       const url = frontier[i]!
       if (url.clickDepth !== null) continue
       url.clickDepth = depth
-      const target = url.url.redirectTo ? byHash.get(crawlUrlHash(url.url.redirectTo)) : undefined
+      const target = url.url.redirectTo
+        ? byHash.get(crawlUrlHash(identity(url.url.redirectTo)))
+        : undefined
       if (target) frontier.push(target)
       for (const linked of url.linksTo) next.push(linked)
     }
@@ -391,14 +423,22 @@ export async function loadSite(
   if (!domain) throw new Error(`Domain ${crawl.domainId} not found`)
   // As the analysis that kept this configuration would resolve it: what it meant, and its languages.
   const resolver = compileAuditSnapshot(config, domain.host)
+  const identity = (url: string) =>
+    stripIgnoredParameters(url, crawl.ignoredParameters ?? [], domain.host)
   const robots = robotsOf(crawl)
   const urls: AuditedUrl[] = []
   const byHash = new Map<string, AuditedUrl>()
+  const vitals = new Map(
+    (await db.vitals.urls(crawl.id))
+      .filter((row) => row.source === 'field' && row.formFactor === 'PHONE')
+      .map((row) => [row.urlHash, row]),
+  )
   for (const view of VIEWS) {
     for (let offset = 0; ; offset += BATCH) {
       const batch = await db.crawls.listUrls({ crawlId: crawl.id, view, limit: BATCH, offset })
       for (const row of batch) {
-        const url = auditUrl(row, robots, resolver)
+        const url = auditUrl(row, robots, resolver, identity)
+        url.vitals = vitals.get(row.urlHash)
         urls.push(url)
         byHash.set(row.urlHash, url)
       }
@@ -414,6 +454,9 @@ export async function loadSite(
   const alternates = new Set<string>()
   for (let start = 0; start < internal.length; start += BATCH) {
     const hashes = internal.slice(start, start + BATCH).map((url) => url.url.urlHash)
+    // Every link of a source is in this batch, so what a page was seen to load is only kept until the
+    // batch ends: what stays is its total and a sample.
+    const failedEmbedsSeen = new Map<AuditedUrl, Set<AuditedUrl>>()
     const [links, declared] = await Promise.all([
       db.crawls.linksFrom(crawl.id, hashes),
       db.crawls.sitemapHreflangOf(crawl.id, hashes),
@@ -422,7 +465,20 @@ export async function loadSite(
       if (sourceHash === targetHash) continue
       const source = byHash.get(sourceHash)
       const target = byHash.get(targetHash)
-      if (!source || !target?.internal) continue
+      if (!source) continue
+      if (EMBED_KINDS.has(kind) && target !== source && embedFailed(target)) {
+        // Of the site, or of another that the crawl requested because an anchor links to it.
+        let seen = failedEmbedsSeen.get(source)
+        if (!seen) failedEmbedsSeen.set(source, (seen = new Set()))
+        if (!seen.has(target)) {
+          seen.add(target)
+          source.failedEmbeds.total++
+          if (source.failedEmbeds.sample.length < MAX_EVIDENCE_ITEMS) {
+            source.failedEmbeds.sample.push(target)
+          }
+        }
+      }
+      if (!target?.internal) continue
       if (kind === 'sitemap') {
         if (storedAlike(source)) unattributed.set(target, (unattributed.get(target) ?? 0) + 1)
         else target.sitemaps++
@@ -438,7 +494,7 @@ export async function loadSite(
     }
     for (const { pageHash, lang, url } of declared) {
       byHash.get(pageHash)?.hreflang.push({ lang, url, source: 'sitemap' })
-      alternates.add(crawlUrlHash(url))
+      alternates.add(crawlUrlHash(identity(url)))
     }
   }
   for (const [target, count] of unattributed) {
@@ -450,7 +506,7 @@ export async function loadSite(
     if (alternates.has(target.url.urlHash)) target.sitemapsAmbiguous += count
     else target.sitemaps += count
   }
-  measureClickDepth(internal, byHash)
+  measureClickDepth(internal, byHash, identity)
 
   // What pages are compared against each other: the audited ones that can be indexed. A page left
   // out of the audit stays in the site (links, canonicals, hreflang, redirects see it as it is) but
@@ -462,9 +518,10 @@ export async function loadSite(
   })
   return {
     now,
+    identity,
     config,
     urls,
-    get: (url) => byHash.get(crawlUrlHash(url)),
+    get: (url) => byHash.get(crawlUrlHash(identity(url))),
     answered: urls.some((url) => url.contentPage),
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
     titles: sharedValues(indexable, (url) => comparable(url.url.title)),

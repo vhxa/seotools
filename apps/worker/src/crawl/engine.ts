@@ -9,6 +9,7 @@ import {
   defaultCrawlerUserAgent,
   isInternalUrl,
   normalizeCrawlUrl,
+  stripIgnoredParameters,
   type CrawlLinkKind,
   type LinkContext,
   type CrawlRobotsFiles,
@@ -86,7 +87,9 @@ export async function runCrawl(
   if (!domain) return null
 
   const settings: CrawlSettings = await db.crawls.settings(crawl.domainId)
+  settings.ignoredParameters = crawl.ignoredParameters ?? []
   const { host } = domain
+  const identity = (url: string) => stripIgnoredParameters(url, settings.ignoredParameters, host)
   const followLinks = crawl.type === 'full'
   const log = parentLog.child({ crawlId, host, crawlType: crawl.type })
   const fetcher = options.createFetcher({
@@ -126,6 +129,7 @@ export async function runCrawl(
     out: NewCrawlUrl[],
     from?: { seq: number; kind: CrawlLinkKind },
   ): boolean {
+    url = identity(url)
     const urlHash = crawlUrlHash(url)
     if (seen.has(urlHash)) return true
     const scope = isInternalUrl(url, host) ? 'internal' : 'external'
@@ -163,6 +167,7 @@ export async function runCrawl(
     context?: LinkContext,
   ) {
     if (!followLinks) return
+    url = identity(url)
     if (admit(url, source, depth, into.urls, { seq: from.seq, kind })) {
       const targetHash = crawlUrlHash(url)
       const targetSeq = seen.get(targetHash)
@@ -275,7 +280,7 @@ export async function runCrawl(
       await db.crawls.addSitemapHreflang(
         crawlId,
         sitemap.hreflang.map(({ page, lang, url }) => ({
-          pageHash: crawlUrlHash(page),
+          pageHash: crawlUrlHash(identity(page)),
           lang,
           url,
         })),

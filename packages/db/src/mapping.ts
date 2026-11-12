@@ -70,6 +70,7 @@ import type {
   UserRecord,
   CrawlUrlAcceptedIssue,
   Crawl,
+  PortfolioEntry,
   CrawlCounts,
   CrawlFile,
   CrawlFileCheck,
@@ -269,8 +270,15 @@ export function foldUsage(
 
 export type CrawlRow = Omit<
   Crawl,
-  'seedUrls' | 'robots' | 'pagesByWorstIssue' | 'pagesWithType' | 'pagesAudit' | 'auditSnapshot'
+  | 'ignoredParameters'
+  | 'seedUrls'
+  | 'robots'
+  | 'pagesByWorstIssue'
+  | 'pagesWithType'
+  | 'pagesAudit'
+  | 'auditSnapshot'
 > & {
+  ignoredParameters: string | null
   seedUrls: string | null
   robots: string | null
   pagesWorstIssueCount: number | null
@@ -300,6 +308,7 @@ export type CrawlUrlRow = Omit<
 export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
 
 export const toCrawl = ({
+  ignoredParameters,
   seedUrls,
   robots,
   pagesWorstIssueCount: issue,
@@ -334,9 +343,23 @@ export const toCrawl = ({
       ? null
       : { audited, excluded, indexable, notIndexable, unknownIndexability },
   auditSnapshot: parseAuditSnapshot(auditSnapshot),
+  ignoredParameters: (parseJson(ignoredParameters) ?? []) as string[],
   seedUrls: seedUrls === null ? null : (JSON.parse(seedUrls) as string[]),
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
 })
+
+/** Groups the rows `portfolio` reads (newest first) and the domains with an active crawl. */
+export function foldPortfolio(rows: CrawlRow[], active: { domainId: string }[]) {
+  const entries = new Map<string, PortfolioEntry>()
+  const entry = (domainId: string) => {
+    let found = entries.get(domainId)
+    if (!found) entries.set(domainId, (found = { crawls: [], running: false }))
+    return found
+  }
+  for (const row of rows) entry(row.domainId).crawls.push(toCrawl(row))
+  for (const { domainId } of active) entry(domainId).running = true
+  return entries
+}
 
 /** The columns of `crawls` that an analysis writes: its totals and the configuration it used. */
 export const crawlAnalysisColumns = (analysis: {
@@ -634,7 +657,7 @@ export function foldViewCounts(
 }
 
 /** The columns of `crawl_urls` that listing, filtering and ordering URLs look at. */
-export interface CrawlUrlColumns extends Record<CrawlUrlSort, AnyColumn> {
+export interface CrawlUrlColumns extends Record<Exclude<CrawlUrlSort, 'referencedBy'>, AnyColumn> {
   crawlId: AnyColumn
   state: AnyColumn
   scope: AnyColumn
@@ -795,7 +818,7 @@ export function crawlUrlOrder(
   sort: CrawlUrlSort = 'depth',
   direction: 'asc' | 'desc' = 'asc',
 ): SQL[] {
-  const column = columns[sort]
+  const column = columns[sort === 'referencedBy' ? 'url' : sort]
   return [
     asc(sql`${column} is null`),
     (direction === 'desc' ? desc : asc)(column),
@@ -1282,13 +1305,14 @@ export function toDomainFavicon(row: {
 
 export type CrawlSettingsRow = Omit<
   CrawlSettings,
-  'optionalFiles' | 'includePrefixes' | 'excludePrefixes' | 'extractors'
+  'optionalFiles' | 'includePrefixes' | 'excludePrefixes' | 'extractors' | 'ignoredParameters'
 > & {
   optionalFiles: string | null
   extractors: string | null
   requestSecrets: string | null
   includePrefixes: string | null
   excludePrefixes: string | null
+  ignoredParameters: string | null
   domainId: string
   updatedAt: Date
 }
@@ -1300,6 +1324,7 @@ export const toCrawlSettings = ({
   requestSecrets: _requestSecrets,
   includePrefixes,
   excludePrefixes,
+  ignoredParameters,
   extractors,
   ...row
 }: CrawlSettingsRow): CrawlSettings => ({
@@ -1308,6 +1333,7 @@ export const toCrawlSettings = ({
   extractors: extractorsSchema.catch([]).parse(parseJson(extractors) ?? []),
   includePrefixes: (parseJson(includePrefixes) ?? []) as string[],
   excludePrefixes: (parseJson(excludePrefixes) ?? []) as string[],
+  ignoredParameters: (parseJson(ignoredParameters) ?? []) as string[],
   optionalFiles: (parseJson(optionalFiles) ?? []) as CrawlSettings['optionalFiles'],
 })
 
@@ -1325,6 +1351,7 @@ export const crawlSettingsColumns = ({
   optionalFiles,
   includePrefixes,
   excludePrefixes,
+  ignoredParameters,
   extractors,
   ...settings
 }: CrawlSettings) => ({
@@ -1333,6 +1360,7 @@ export const crawlSettingsColumns = ({
   optionalFiles: JSON.stringify(optionalFiles),
   includePrefixes: JSON.stringify(includePrefixes),
   excludePrefixes: JSON.stringify(excludePrefixes),
+  ignoredParameters: JSON.stringify(ignoredParameters),
 })
 
 // --- crawl files ---------------------------------------------------------
@@ -1702,3 +1730,8 @@ export function newestVerifiedPerUrl(rows: VerifiedUrl[]): VerifiedUrl[] {
 /** The rechecks beyond the newest `keep` of those that ended: what `prune` removes. */
 export const expiredVerifications = (ended: readonly { id: string }[], keep: number): string[] =>
   ended.slice(Math.max(0, keep)).map((verification) => verification.id)
+
+export const vitalsJobId = (crawlId: string) => `cwv:${crawlId}`
+export function vitalsJobValues(crawlId: string, now: Date) {
+  return { ...alertJobValues(crawlId, now), id: vitalsJobId(crawlId), type: JOB_TYPES.cwvCollect }
+}

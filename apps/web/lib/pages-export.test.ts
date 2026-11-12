@@ -360,6 +360,43 @@ describe('the pages file', () => {
     expect(text).toMatch(/,200,/)
   })
 
+  it('writes the social tags and the language of the page, empty where the crawl did not store them', () => {
+    const facts = {
+      social: {
+        openGraphTags: 3,
+        title: '=SUM(1+1)',
+        description: 'Shared, with a comma',
+        image: 'https://cdn.example.net/a.png',
+        twitterCard: 'summary',
+      },
+      document: { lang: 'es', viewport: null, charset: null },
+    }
+    const url = crawlUrl('/', { data: { facts } as unknown as CrawlUrl['data'] })
+    const [row] = asObjects(
+      'pages',
+      exportRecords('pages', { url, issues: [], audit: audit(url) }, context()).join(''),
+    )
+    expect(row).toMatchObject({
+      'og:title': "'=SUM(1+1)",
+      'og:description': 'Shared, with a comma',
+      'og:image': 'https://cdn.example.net/a.png',
+      'twitter:card': 'summary',
+      'HTML lang': 'es',
+    })
+    const older = crawlUrl('/old')
+    const [empty] = asObjects(
+      'pages',
+      exportRecords('pages', { url: older, issues: [], audit: audit(older) }, context()).join(''),
+    )
+    expect(empty).toMatchObject({
+      'og:title': '',
+      'og:description': '',
+      'og:image': '',
+      'twitter:card': '',
+      'HTML lang': '',
+    })
+  })
+
   it('keeps the HTTP status a bare number, even a negative-looking one is not text', () => {
     const url = crawlUrl('/')
     const record = exportRecords('pages', { url, issues: [], audit: undefined }, context()).join('')
@@ -748,7 +785,7 @@ describe('the address of an export', () => {
   it('carries what the table lists and not the page or the drawer', () => {
     const href = exportHref('example.com', query, 'findings')
     const [path, search] = href.split('?')
-    expect(path).toBe('/domains/example.com/pages/export/findings')
+    expect(path).toBe('/domains/example.com/urls/export/findings')
     const back = parseDetailQuery(rawParamsOf(new URLSearchParams(search)))
     expect(back).toEqual({ ...query, page: 1, url: null })
   })
@@ -765,7 +802,7 @@ describe('the address of an export', () => {
 
   it('has no query for the default table', () => {
     expect(exportHref('example.com', parseDetailQuery({}), 'pages')).toBe(
-      '/domains/example.com/pages/export/pages',
+      '/domains/example.com/urls/export/pages',
     )
   })
 })
@@ -1161,39 +1198,42 @@ describe('the links and redirects files', () => {
     }
   })
 
-  it('follows a redirect chain through what the crawl recorded, and tells a loop', async () => {
-    const hop = (path: string, to: string | null, status = 301): CrawlUrl => ({
-      ...crawlUrl(path),
-      kind: to ? 'redirect' : 'page',
-      statusCode: to ? status : 200,
-      redirectTo: to ? `${SITE}${to}` : null,
-    })
-    const known = [hop('/b', '/c'), hop('/c', null), hop('/x', '/y'), hop('/y', '/x')]
-    const byHash = new Map(known.map((url) => [url.urlHash, url]))
-    const start = [hop('/a', '/b'), hop('/x', '/y')]
-    const source = {
-      listUrls: vi.fn(async ({ offset }: { offset: number }) => (offset === 0 ? start : [])),
-      issuesOf: vi.fn(async () => []),
-      acceptedOf: vi.fn(async () => []),
-      auditOf: vi.fn(async () => []),
-      outlinksOf: vi.fn(async () => ({ links: [], next: null })),
-      urlsOf: vi.fn(async (_id: string, hashes: string[]) =>
-        hashes.flatMap((hash) => byHash.get(hash) ?? []),
-      ),
-    } as unknown as ExportSource
-    const chunks: string[] = []
-    for await (const piece of exportCsv({
-      kind: 'redirects',
-      source,
-      listing: { crawlId: 'c1', view: 'redirects' },
-      context,
-      expected: 2,
-    })) {
-      chunks.push(piece)
-    }
-    const [, a, x] = chunks.join('').trim().split('\r\n')
-    expect(a).toContain(`${SITE}/c`)
-    expect(a).toContain(',2,')
-    expect(x).toContain('Export.values.yes')
-  })
+  it.each([{ ignoredParameters: [] as string[] }, { ignoredParameters: ['updatedAt'] }])(
+    'follows redirect chains with snapshot %j and tells a loop',
+    async ({ ignoredParameters }) => {
+      const hop = (path: string, to: string | null, status = 301): CrawlUrl => ({
+        ...crawlUrl(path),
+        kind: to ? 'redirect' : 'page',
+        statusCode: to ? status : 200,
+        redirectTo: to ? `${SITE}${to}${ignoredParameters.length ? '?updatedAt=1' : ''}` : null,
+      })
+      const known = [hop('/b', '/c'), hop('/c', null), hop('/x', '/y'), hop('/y', '/x')]
+      const byHash = new Map(known.map((url) => [url.urlHash, url]))
+      const start = [hop('/a', '/b'), hop('/x', '/y')]
+      const source = {
+        listUrls: vi.fn(async ({ offset }: { offset: number }) => (offset === 0 ? start : [])),
+        issuesOf: vi.fn(async () => []),
+        acceptedOf: vi.fn(async () => []),
+        auditOf: vi.fn(async () => []),
+        outlinksOf: vi.fn(async () => ({ links: [], next: null })),
+        urlsOf: vi.fn(async (_id: string, hashes: string[]) =>
+          hashes.flatMap((hash) => byHash.get(hash) ?? []),
+        ),
+      } as unknown as ExportSource
+      const chunks: string[] = []
+      for await (const piece of exportCsv({
+        kind: 'redirects',
+        source,
+        listing: { crawlId: 'c1', view: 'redirects' },
+        context: { ...context, ignoredParameters },
+        expected: 2,
+      })) {
+        chunks.push(piece)
+      }
+      const [, a, x] = chunks.join('').trim().split('\r\n')
+      expect(a).toContain(`${SITE}/c`)
+      expect(a).toContain(',2,')
+      expect(x).toContain('Export.values.yes')
+    },
+  )
 })

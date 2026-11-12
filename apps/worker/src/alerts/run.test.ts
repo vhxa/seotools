@@ -170,11 +170,9 @@ describe('a new important finding', () => {
     // Three samples of the four, as plain URLs of the site.
     expect(text.match(/^ {4}https:\/\/example\.com\/\S*$/gm)).toHaveLength(3)
     // Where to look, through the public address of the app.
+    expect(text).toContain(`${PUBLIC_URL}/domains/example.com/urls?crawl=${second}&issue=noindex`)
     expect(text).toContain(
-      `${PUBLIC_URL}/domains/example.com/pages/details?crawl=${second}&issue=noindex`,
-    )
-    expect(text).toContain(
-      `${PUBLIC_URL}/domains/example.com/pages/compare?from=${first}&to=${second}&change=gained`,
+      `${PUBLIC_URL}/domains/example.com/crawls/compare?from=${first}&to=${second}&change=gained`,
     )
     expect(text).not.toContain('\n\n\n')
   })
@@ -315,7 +313,7 @@ describe('a crawl that did not go well', () => {
     expect(to(sent[0]!)).toBe(await emailOf(ana))
     expect(sent[0]!.subject).toBe('example.com: the crawl failed')
     expect(sent[0]!.text).toContain('Reason: The site did not answer at all')
-    expect(sent[0]!.text).toContain(`${PUBLIC_URL}/domains/example.com/pages/history`)
+    expect(sent[0]!.text).toContain(`${PUBLIC_URL}/domains/example.com/crawls`)
   })
 
   it('tells of a crawl that stopped at its limit', async () => {

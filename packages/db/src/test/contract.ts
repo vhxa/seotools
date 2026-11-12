@@ -1,3 +1,4 @@
+import { describeVitals } from './vitals'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -52,6 +53,7 @@ export function describeDatabaseContract(
     db: Database
     reset: () => Promise<void>
     legacy: LegacyWrites
+    deleteUser: (id: string) => Promise<void>
     /** Rows in a table, by its name: for proving that nothing is left behind. */
     countRows: (table: string) => Promise<number>
   }>,
@@ -60,17 +62,53 @@ export function describeDatabaseContract(
   describe.skipIf(options.skip)(`database contract: ${name}`, () => {
     let db: Database
     let reset: () => Promise<void>
+    let deleteUser: (id: string) => Promise<void>
     let legacy: LegacyWrites
     let countRows: (table: string) => Promise<number>
 
     beforeAll(async () => {
-      ;({ db, reset, legacy, countRows } = await setup())
+      ;({ db, reset, legacy, countRows, deleteUser } = await setup())
     })
     afterAll(async () => {
       await db?.close()
     })
     beforeEach(async () => {
       await reset()
+    })
+
+    it('stores one favourite per user, replaces and clears it, and enforces foreign keys', async () => {
+      const user = await db.users.create({
+        name: 'Member',
+        email: 'member@example.com',
+        role: 'member',
+      })
+      const other = await db.users.create({
+        name: 'Other',
+        email: 'other@example.com',
+        role: 'member',
+      })
+      const company = await createCompany(db, { name: 'Example', domain: 'example.com' })
+      if (!company.ok) throw new Error('setup failed')
+      const second = await addDomain(db, { companyId: company.company.id, domain: 'other.com' })
+      if (!second.ok) throw new Error('setup failed')
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBeNull()
+      await db.userPreferences.setFavouriteDomain(user.id, company.domain.id)
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBe(company.domain.id)
+      expect(await db.userPreferences.favouriteDomainId(other.id)).toBeNull()
+      await db.userPreferences.setFavouriteDomain(user.id, second.domain.id)
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBe(second.domain.id)
+      await db.userPreferences.setFavouriteDomain(user.id, null)
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBeNull()
+      await expect(db.userPreferences.setFavouriteDomain(user.id, 'missing')).rejects.toThrow()
+      await expect(
+        db.userPreferences.setFavouriteDomain('missing', company.domain.id),
+      ).rejects.toThrow()
+      await db.userPreferences.setFavouriteDomain(user.id, company.domain.id)
+      await db.domains.delete(company.domain.id)
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBeNull()
+      expect(await countRows('user_preferences')).toBe(1)
+      await deleteUser(user.id)
+      expect(await countRows('user_preferences')).toBe(0)
     })
 
     it('answers ping', async () => {
@@ -98,6 +136,42 @@ export function describeDatabaseContract(
         expect(job).toMatchObject({ type: 't', status: 'pending', attempts: 0, maxAttempts: 3 })
         expect((await db.jobs.get(job.id))?.payload).toEqual({ a: 1, nested: { b: [1, 2] } })
         expect(await db.jobs.get('missing')).toBeNull()
+      })
+
+      it('prunes finished jobs by age and never pending or running ones', async () => {
+        const now = new Date()
+        const due = new Date(now.getTime() + 5000)
+        const finishedBefore = new Date(now.getTime() + minutes(1))
+        const failedBefore = new Date(now.getTime() - minutes(1))
+        const done = await db.jobs.enqueue({ type: 'prune-done' })
+        const bad = await db.jobs.enqueue({ type: 'prune-bad', maxAttempts: 1 })
+        const waiting = await db.jobs.enqueue({
+          type: 'prune-wait',
+          runAt: new Date(now.getTime() + minutes(10)),
+        })
+        const claimed = await db.jobs.claim({
+          workerId: 'w1',
+          limit: 10,
+          now: due,
+          types: ['prune-done', 'prune-bad'],
+        })
+        expect(claimed).toHaveLength(2)
+        await db.jobs.complete({ id: done.id, workerId: 'w1' })
+        await db.jobs.fail({ id: bad.id, workerId: 'w1', error: 'boom' })
+        const running = await db.jobs.enqueue({ type: 'prune-run' })
+        await db.jobs.claim({ workerId: 'w1', limit: 1, now: due, types: ['prune-run'] })
+
+        // Failed jobs are kept longer than completed ones: the failed one is not old enough yet.
+        expect(await db.jobs.prune({ finishedBefore, failedBefore })).toBe(1)
+        expect(await db.jobs.get(done.id)).toBeNull()
+        expect(await db.jobs.get(bad.id)).not.toBeNull()
+
+        const later = new Date(now.getTime() + minutes(1))
+        expect(await db.jobs.prune({ finishedBefore: later, failedBefore: later })).toBe(1)
+        expect(await db.jobs.get(bad.id)).toBeNull()
+        expect(await db.jobs.get(waiting.id)).not.toBeNull()
+        expect(await db.jobs.get(running.id)).not.toBeNull()
+        expect(await db.jobs.prune({ finishedBefore: later, failedBefore: later })).toBe(0)
       })
 
       it('claims only due jobs, oldest first, up to the limit', async () => {
@@ -281,6 +355,7 @@ export function describeDatabaseContract(
       })
     })
 
+    describeVitals(() => db)
     describeLifecycle(
       () => db,
       (table) => countRows(table),
@@ -471,6 +546,22 @@ export function describeDatabaseContract(
         return crawl
       }
 
+      it('updates only ignored parameters, preserving other settings and the crawl snapshot', async () => {
+        const domainId = await domain()
+        await db.crawls.saveIgnoredParameters(domainId, ['first'])
+        expect(await db.crawls.settings(domainId)).toEqual({
+          ...DEFAULT_CRAWL_SETTINGS,
+          ignoredParameters: ['first'],
+        })
+        const custom = { ...DEFAULT_CRAWL_SETTINGS, userAgent: 'CustomBot', concurrency: 7 }
+        await db.crawls.saveSettings(domainId, custom)
+        await db.crawls.saveIgnoredParameters(domainId, ['updatedAt'])
+        const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+        await db.crawls.saveIgnoredParameters(domainId, [])
+        expect(await db.crawls.settings(domainId)).toEqual(custom)
+        expect((await db.crawls.get(started!.id))?.ignoredParameters).toEqual(['updatedAt'])
+      })
+
       it('uses the defaults until a domain saves its settings', async () => {
         const domainId = await domain()
         expect(await db.crawls.settings(domainId)).toEqual(DEFAULT_CRAWL_SETTINGS)
@@ -481,12 +572,19 @@ export function describeDatabaseContract(
           concurrency: 4,
           includePrefixes: ['/shop'],
           excludePrefixes: ['/shop/private'],
+          ignoredParameters: ['updatedAt', 'utm_*'],
           maxDepth: 5,
           maxUrls: null,
           retainCrawls: null,
         }
         await db.crawls.saveSettings(domainId, custom)
         expect(await db.crawls.settings(domainId)).toEqual(custom)
+        const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+        expect(crawl?.ignoredParameters).toEqual(custom.ignoredParameters)
+        await db.crawls.saveSettings(domainId, { ...custom, ignoredParameters: [] })
+        expect((await db.crawls.get(crawl!.id))?.ignoredParameters).toEqual(
+          custom.ignoredParameters,
+        )
         await db.crawls.saveSettings(domainId, { ...custom, concurrency: 8 })
         expect((await db.crawls.settings(domainId)).concurrency).toBe(8)
 
@@ -598,6 +696,98 @@ export function describeDatabaseContract(
         expect(await db.crawls.finish(crawl.id, { status: 'completed' })).toBe(false)
         expect(await db.crawls.get(crawl.id)).toMatchObject({ status: 'cancelled' })
         expect((await db.crawls.get(crawl.id))?.finishedAt).toBeInstanceOf(Date)
+      })
+
+      it('reads the recent full crawls and the active one of every domain at once', async () => {
+        const first = await domain('one.com')
+        const second = await domain('two.com')
+        const idle = await domain('idle.com')
+        const crawls = []
+        for (let i = 0; i < 3; i++) crawls.push(await finishedCrawl(first))
+        // A crawl that was never usable still ends the list, and a priority crawl is not a full one.
+        const failed = await startCrawl(second)
+        await db.crawls.finish(failed.id, { status: 'failed', error: 'boom' })
+        await new Promise((r) => setTimeout(r, 5))
+        const priority = await startCrawl(second, 'priority')
+        await db.crawls.finish(priority.id, { status: 'completed' })
+        await new Promise((r) => setTimeout(r, 5))
+        const running = await startCrawl(second)
+
+        const portfolio = await db.crawls.portfolio({ recent: 2 })
+        // The newest two of the three, newest first; nothing is running.
+        expect(portfolio.get(first)).toMatchObject({ running: false })
+        expect(portfolio.get(first)?.crawls.map(({ id }) => id)).toEqual([
+          crawls[2]!.id,
+          crawls[1]!.id,
+        ])
+        // Only finished full crawls are listed, and the active one only says it is running.
+        expect(portfolio.get(second)?.crawls.map(({ id }) => id)).toEqual([failed.id])
+        expect(portfolio.get(second)?.running).toBe(true)
+        expect(portfolio.get(second)?.crawls[0]).toMatchObject({
+          id: failed.id,
+          status: 'failed',
+          robots: null,
+          auditSnapshot: null,
+        })
+        expect(portfolio.has(idle)).toBe(false)
+        expect((await db.crawls.portfolio()).get(first)?.crawls).toHaveLength(3)
+        await db.crawls.cancel(running.id)
+        expect((await db.crawls.portfolio()).get(second)?.running).toBe(false)
+      })
+
+      it('keeps the counts of a crawl in the portfolio, analysed or not', async () => {
+        const domainId = await domain()
+        const analysed = await finishedCrawl(domainId)
+        await saveIssues({
+          crawlId: analysed.id,
+          issues: [],
+          pages: { issue: 0, warning: 0, opportunity: 0 },
+          withType: { issue: 1, warning: 2, opportunity: 3 },
+          catalog: 'test',
+          audit: { pages: { ...NO_PAGES, audited: 1, indexable: 1 } },
+        })
+        const plain = await finishedCrawl(domainId)
+        const [latest, previous] = (await db.crawls.portfolio()).get(domainId)!.crawls
+        expect(latest).toMatchObject({ id: plain.id, pagesWithType: null, pagesAudit: null })
+        expect(previous).toMatchObject({
+          id: analysed.id,
+          pagesCount: 1,
+          pagesWithType: { issue: 1, warning: 2, opportunity: 3 },
+          pagesAudit: { indexable: 1 },
+        })
+      })
+
+      it('pages through the URLs of the site by hash, leaving external ones out', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const paths = ['/', '/a/', '/a/b', '/c', '/d', '/e/f/g', '/h']
+        await db.crawls.addUrls(id, [
+          ...paths.map((path) => newUrl(`https://acme.com${path}`)),
+          newUrl('https://elsewhere.org/x', { scope: 'external' }),
+        ])
+        await db.crawls.recordResult({
+          crawlId: id,
+          urlHash: crawlUrlHash('https://acme.com/c'),
+          result: result('page', { statusCode: 404 }),
+        })
+        const seen: string[] = []
+        let after: string | null = null
+        for (;;) {
+          const page = await db.crawls.listStructureUrls(id, { after, limit: 3 })
+          if (page.length === 0) break
+          expect(page.length).toBeLessThanOrEqual(3)
+          seen.push(...page.map(({ url }) => url))
+          after = page[page.length - 1]!.urlHash
+        }
+        expect(seen.toSorted()).toEqual(paths.map((path) => `https://acme.com${path}`).toSorted())
+        const [gone] = await db.crawls
+          .listStructureUrls(id, {
+            after: null,
+            limit: 100,
+          })
+          .then((rows) => rows.filter(({ url }) => url.endsWith('/c')))
+        expect(gone).toMatchObject({ kind: 'page', statusCode: 404, state: 'done' })
+        expect(await db.crawls.listStructureUrls('missing', { after: null, limit: 5 })).toEqual([])
       })
 
       it('queues internal URLs shallowest first and only records external ones', async () => {
@@ -1469,7 +1659,14 @@ export function describeDatabaseContract(
           const second = newUrl(`${site}/b?page=2`)
           await db.crawls.addUrls(id, [plain, first, external, second])
           const all = await db.crawls.queryUrls(id, { after: null, limit: 10 })
-          expect(all).toEqual({ urls: [first.url, second.url], next: null })
+          expect(all).toEqual({
+            urls: [first.url, second.url],
+            observations: [
+              { url: first.url, canonical: null },
+              { url: second.url, canonical: null },
+            ],
+            next: null,
+          })
           const one = await db.crawls.queryUrls(id, { after: null, limit: 1 })
           expect(one.urls).toEqual([first.url])
           expect(one.next).not.toBeNull()
@@ -1477,9 +1674,63 @@ export function describeDatabaseContract(
             urls: [second.url],
           })
           expect(await db.crawls.queryUrls('missing', { after: null, limit: 10 })).toEqual({
+            observations: [],
             urls: [],
             next: null,
           })
+        })
+
+        it('counts distinct referring URLs, groups kinds and sorts before paging', async () => {
+          const crawlId = await crawlWithLinks()
+          const rows = await db.crawls.listUrls({
+            crawlId,
+            view: 'all',
+            sort: 'referencedBy',
+            direction: 'desc',
+            limit: 1,
+            offset: 0,
+          })
+          expect(rows[0]?.url).toBe(home)
+          expect(rows[0]?.referencedBy).toEqual({ total: 4, kinds: { link: 3, canonical: 2 } })
+          const next = await db.crawls.listUrls({
+            crawlId,
+            view: 'all',
+            sort: 'referencedBy',
+            direction: 'desc',
+            limit: 1,
+            offset: 1,
+          })
+          expect(next[0]?.url).toBe(url('/logo.png'))
+          expect(next[0]?.referencedBy).toEqual({ total: 2, kinds: { resource: 2 } })
+        })
+
+        it('keeps the first coalesced link context on retries', async () => {
+          const crawlId = await crawlWithLinks()
+          const sourceHash = hashOf(url('/about'))
+          const links = [1, 2].map((occurrence) => ({
+            sourceHash,
+            targetHash: hashOf(url('/blog/b')),
+            kind: 'anchor' as const,
+            context: { snippet: `<a href="/?updatedAt=${occurrence}">` },
+          }))
+          for (let retry = 0; retry < 2; retry++)
+            await db.crawls.recordResult({
+              crawlId,
+              urlHash: sourceHash,
+              result: result('page'),
+              links,
+            })
+          let after: OutLinkCursor | null = null
+          const snippets: string[] = []
+          for (let i = 0; i < 10; i++) {
+            const page: { links: OutLink[]; next: OutLinkCursor | null } =
+              await db.crawls.outlinksOf(crawlId, sourceHash, { after, limit: 1 })
+            for (const link of page.links)
+              if (link.context?.snippet) snippets.push(link.context.snippet)
+            if (!page.next) break
+            after = page.next
+          }
+          expect(snippets).toEqual([links[0]!.context.snippet])
         })
 
         it('reads the links leaving a URL a page at a time, and URLs by their hash', async () => {

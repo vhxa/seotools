@@ -43,6 +43,9 @@ const U = 'url'
 const S = 'site'
 
 const SCOPE: Record<PageIssueId, VerificationScope> = {
+  'lcp-poor': S,
+  'inp-poor': S,
+  'cls-poor': S,
   // response codes. The redirect trail goes through other URLs; a broken link is not on this site.
   'no-response': U,
   'server-error': U,
@@ -54,6 +57,8 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'refresh-redirect': U,
   'robots-blocked': U, // against a robots.txt the recheck requests again, not the one of the crawl
   'redirect-3xx': U,
+  'redirect-temporary': U,
+  'slow-response': U, // a recheck measures the answer again
   'broken-external-link': S,
   // what is expected of the indexation, against what the recheck saw
   'expected-indexable-blocked': U,
@@ -143,10 +148,18 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'structured-data-required-missing': U,
   'structured-data-recommended-missing': U,
   'no-structured-data': U,
+  // social: what the page declares is its own; whether its image answers is about another URL
+  'og-missing': U,
+  'og-incomplete': U,
+  'og-image-broken': S,
+  'og-url-mismatch': U,
+  'twitter-card-missing': U,
   // links. The links a page has are its own; who links to it, and how far it is, are not.
   'link-to-localhost': U,
   // Whether what a page links to fails, redirects or is canonicalised is a fact about other URLs.
   'links-to-broken': S,
+  // Whether an embedded resource fails is a fact about another URL.
+  'resources-broken': S,
   'links-to-redirect': S,
   'links-to-canonicalised': S,
   'links-tracking-parameters': S,
@@ -181,6 +194,10 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'multiple-head-or-body': U,
   'document-too-big': U,
   'content-before-head': U,
+  'html-lang-missing': U,
+  'html-lang-invalid': U,
+  'viewport-missing': U,
+  'charset-missing': U,
 }
 
 export const verificationScopeOf = (issue: PageIssueId): VerificationScope => SCOPE[issue]
@@ -249,6 +266,11 @@ export interface VerificationComparison {
   /** The recheck found it and the crawl did not. */
   appeared: PageIssueId[]
   /**
+   * The recheck found it, and the crawl did not record what the check needs (it predates it): it is
+   * neither new nor known before.
+   */
+  unobserved: PageIssueId[]
+  /**
    * What the crawl found at this URL that only a full crawl can confirm gone. It is the crawl's
    * word, from its date, and the recheck says nothing about it.
    */
@@ -269,12 +291,15 @@ export function compareWithCrawl(input: {
   unchecked?: readonly string[]
   /** The issues the recheck saw and a rule accepts. Left out for a recheck that did not keep them. */
   accepted?: readonly string[]
+  /** The issues the crawl could not see (`AuditSnapshot.unobserved`): it cannot say they were absent. */
+  unobserved?: readonly string[]
 }): VerificationComparison {
   const unchecked = new Set(input.unchecked ?? [])
   const accepted = new Set(input.accepted ?? [])
   const before = new Set(input.crawl.filter(isPageIssueId))
   const after = new Set(input.recheck.filter(isPageIssueId))
   const settled = (issue: PageIssueId) => SCOPE[issue] === 'url' && !unchecked.has(issue)
+  const blind = new Set(input.unobserved ?? [])
   return {
     fixed: byCatalog(
       [...before].filter((issue) => settled(issue) && !after.has(issue) && !accepted.has(issue)),
@@ -283,7 +308,12 @@ export function compareWithCrawl(input: {
       [...before].filter((issue) => settled(issue) && !after.has(issue) && accepted.has(issue)),
     ),
     remaining: byCatalog([...before].filter((issue) => settled(issue) && after.has(issue))),
-    appeared: byCatalog([...after].filter((issue) => settled(issue) && !before.has(issue))),
+    appeared: byCatalog(
+      [...after].filter((issue) => settled(issue) && !before.has(issue) && !blind.has(issue)),
+    ),
+    unobserved: byCatalog(
+      [...after].filter((issue) => settled(issue) && !before.has(issue) && blind.has(issue)),
+    ),
     pendingFullCrawl: byCatalog([...before].filter((issue) => !settled(issue))),
   }
 }
