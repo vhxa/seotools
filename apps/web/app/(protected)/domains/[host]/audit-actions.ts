@@ -1,6 +1,6 @@
 'use server'
 
-import type { AuditSelector } from '@seotools/core'
+import { selectorKey, type AuditSelector } from '@seotools/core'
 import { AUDIT_THRESHOLDS } from '@seotools/core/crawl/thresholds'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
@@ -62,16 +62,27 @@ export async function saveAuditRuleAction(
   if (parsed.id !== null && !isRuleId(parsed.id)) return { error: t('notFound') }
 
   const db = await getDb()
-  let editing: AuditSelector | undefined
+  let editing: string | AuditSelector | undefined
+  let selectors = [parsed.selector]
   if (parsed.id !== null) {
     // Looked up in this domain only: an id of another domain is not a rule here.
-    const found = (await db.audit.config(domain.id)).rules.find((rule) => rule.id === parsed.id)
+    const config = await db.audit.config(domain.id)
+    const found = config.rules.find((rule) => rule.id === parsed.id)
     if (!found) return { error: t('notFound') }
-    editing = found.selector
+    editing = found.set ?? found.selector
+    if (found.set) {
+      const rows = config.rules.filter((rule) => rule.set === found.set)
+      const others = rows
+        .map((rule) => rule.selector)
+        .filter((s) => selectorKey(s) !== selectorKey(found.selector))
+      selectors = [
+        ...new Map([parsed.selector, ...others].map((s) => [selectorKey(s), s])).values(),
+      ]
+    }
   }
   const saved = await db.audit.saveRuleSet({
     domainId: domain.id,
-    selector: parsed.selector,
+    selectors,
     statements: parsed.statements,
     reason: parsed.reason,
     enabled: parsed.enabled,
@@ -136,10 +147,11 @@ export async function previewAuditRuleAction(
     db.crawls.latestWithResults(domain.id, 'full'),
     db.audit.config(domain.id),
   ])
-  const editing =
+  const edited =
     typeof input.id === 'string' && isRuleId(input.id)
-      ? (config.rules.find((rule) => rule.id === input.id)?.selector ?? null)
+      ? config.rules.find((rule) => rule.id === input.id)
       : null
+  const editing = edited ? (edited.set ?? edited.selector) : null
   return previewRule({
     db,
     host: domain.host,

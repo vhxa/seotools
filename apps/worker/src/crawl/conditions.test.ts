@@ -147,14 +147,16 @@ const findings = async (crawlId: string, path: string) =>
 const stateOf = async (crawlId: string, path: string) =>
   (await db.crawls.auditOf(crawlId, [hashOf(path)]))[0]
 
-const MISSING: Record<AuditCondition, PageIssueId> = {
+type OldCondition = Exclude<AuditCondition, 'canonical' | 'unlinked'>
+const OLD_CONDITIONS = ['noindex', 'nofollow', 'robots', 'sitemap'] as const
+const MISSING: Record<OldCondition, PageIssueId> = {
   noindex: 'noindex-required-missing',
   nofollow: 'nofollow-required-missing',
   robots: 'robots-block-required-missing',
   sitemap: 'sitemap-required-missing',
 }
 /** What a condition that is there raises when it is forbidden. */
-const PRESENT: Record<AuditCondition, PageIssueId> = {
+const PRESENT: Record<OldCondition, PageIssueId> = {
   noindex: 'noindex',
   nofollow: 'nofollow',
   robots: 'robots-blocked',
@@ -166,7 +168,7 @@ const GENERIC_IF_MISSING: Partial<Record<AuditCondition, PageIssueId>> = {
 }
 
 /** A site where `/x` has the condition and `/y` does not. */
-function withAndWithout(condition: AuditCondition) {
+function withAndWithout(condition: OldCondition) {
   switch (condition) {
     case 'noindex':
       return website({
@@ -191,7 +193,7 @@ function withAndWithout(condition: AuditCondition) {
   }
 }
 
-describe.each(AUDIT_CONDITIONS)('the %s condition', (condition) => {
+describe.each(OLD_CONDITIONS)('the %s condition', (condition) => {
   const rule = (requirement: Requirement) => asking(prefix('/'), condition, requirement)
 
   it('behaves as it always did when no rule states it', async () => {
@@ -733,48 +735,48 @@ describe('the issues of conditions in the catalog', () => {
   })
 })
 
-describe('a recheck of a URL', () => {
-  const answerOf = (path: string, overrides: Parameters<typeof page>[1] = {}) => {
-    const { result } = analyseResponse({
-      item: { url: absolute(path), source: 'link' },
-      response: {
-        statusCode: 200,
-        headers: {},
-        body: null,
-        truncated: false,
-        bytes: 0,
-        responseTimeMs: 1,
-        ...page(path, overrides),
-      },
-      optionalFiles: [],
-      log,
-      discover: () => {},
-    })
-    return {
-      url: absolute(path),
-      source: 'link' as const,
-      answer: result,
-      linksIn: 1,
-      anchors: { internal: 1, nofollow: 0 },
-    }
+const answerOf = (path: string, overrides: Parameters<typeof page>[1] = {}) => {
+  const { result } = analyseResponse({
+    item: { url: absolute(path), source: 'link' },
+    response: {
+      statusCode: 200,
+      headers: {},
+      body: null,
+      truncated: false,
+      bytes: 0,
+      responseTimeMs: 1,
+      ...page(path, overrides),
+    },
+    optionalFiles: [],
+    log,
+    discover: () => {},
+  })
+  return {
+    url: absolute(path),
+    source: 'link' as const,
+    answer: result,
+    linksIn: 1,
+    anchors: { internal: 1, nofollow: 0 },
   }
-  const contextWith = (
-    rules: NewAuditRule[],
-    robots: Record<string, { status: number | null; text: string | null }> = {},
-    ignoredParameters: string[] = [],
-  ) =>
-    recheckContext({
-      ignoredParameters,
-      host: 'example.com',
-      now: new Date('2026-01-01T00:00:00Z'),
-      config: auditSnapshotOf(
-        1,
-        rules.map((rule, index) => ({ ...rule, id: `r${index}` }) as AuditRule),
-      ),
-      robotsTexts: new Map(Object.entries(robots).map(([origin, value]) => [origin, value])),
-      answered: true,
-    })
+}
+const contextWith = (
+  rules: NewAuditRule[],
+  robots: Record<string, { status: number | null; text: string | null }> = {},
+  ignoredParameters: string[] = [],
+) =>
+  recheckContext({
+    ignoredParameters,
+    host: 'example.com',
+    now: new Date('2026-01-01T00:00:00Z'),
+    config: auditSnapshotOf(
+      1,
+      rules.map((rule, index) => ({ ...rule, id: `r${index}` }) as AuditRule),
+    ),
+    robotsTexts: new Map(Object.entries(robots).map(([origin, value]) => [origin, value])),
+    answered: true,
+  })
 
+describe('a recheck of a URL', () => {
   it('resolves recheck declarations through the base crawl identity', () => {
     const context = contextWith([], {}, ['updatedAt'])
     const subject = recheckSubject(
@@ -870,5 +872,158 @@ describe('a recheck of a URL', () => {
     const context = contextWith([asking(prefix('/'), 'nofollow', 'allowed')])
     const outcome = evaluateRecheck(answerOf('/x', { head: meta('nofollow') }), context)
     expect(outcome.findings.map((f) => f.issue)).not.toContain('nofollow')
+  })
+})
+
+describe('canonical and internal-link conditions', () => {
+  it.each(['required', 'allowed', 'forbidden'] as const)(
+    'judges canonical %s and leaves broken references intact',
+    async (requirement) => {
+      await addRules([asking(prefix('/'), 'canonical', requirement)])
+      const id = await crawl(
+        website({
+          '/a': page('/a', { canonical: `${SITE}/missing` }),
+          '/b': page('/b'),
+          '/missing': { statusCode: 404, headers: {}, body: Buffer.from('gone') },
+        }),
+      )
+      expect(await findings(id, '/a')).toContain('canonical-broken')
+      expect((await findings(id, '/a')).includes('canonical-forbidden-present')).toBe(
+        requirement === 'forbidden',
+      )
+      expect((await findings(id, '/b')).includes('canonical-required-missing')).toBe(
+        requirement === 'required',
+      )
+    },
+  )
+  it('still reports the explicit indexable contradiction when a canonical is required', async () => {
+    await addRules([
+      asking(exactPath('/a'), 'canonical', 'required'),
+      expecting(exactPath('/a'), 'indexable'),
+    ])
+    const id = await crawl(website({ '/a': page('/a', { canonical: `${SITE}/b` }) }))
+    expect(await findings(id, '/a')).toContain('expected-indexable-blocked')
+  })
+  it.each(['required', 'allowed', 'forbidden'] as const)(
+    'judges unlinked %s and records accepted orphans',
+    async (requirement) => {
+      await addRules([asking(prefix('/'), 'unlinked', requirement)])
+      const id = await crawl(website({ '/': page('/', { links: '<a href="/b">B</a>' }) }))
+      const a = await findings(id, '/a')
+      expect(a.includes('orphan-in-sitemap')).toBe(requirement === 'forbidden')
+      expect((await findings(id, '/b')).includes('unlinked-required-missing')).toBe(
+        requirement === 'required',
+      )
+      const accepted = await db.crawls.acceptedOf(id, [hashOf('/a')])
+      expect(accepted.some((f) => f.issue === 'orphan-in-sitemap')).toBe(
+        requirement !== 'forbidden',
+      )
+    },
+  )
+  it('does not infer unlinked from an incomplete crawl, but a link still proves absence', async () => {
+    const id = await crawl(website())
+    const { loadSite } = await import('./site-audit')
+    const stored = (await db.crawls.get(id))!
+    const site = await loadSite(db, { ...stored, status: 'incomplete' }, auditSnapshotOf(0, []))
+    const a = site.get(`${SITE}/a`)!
+    a.anchorsIn = 0
+    expect(presenceOf('unlinked', a, site)).toBe('unknown')
+    a.anchorsIn = 1
+    expect(presenceOf('unlinked', a, site)).toBe('absent')
+  })
+  it('a recheck judges canonical and neither judges nor observes unlinked', () => {
+    const context = contextWith([
+      asking(prefix('/'), 'canonical', 'required'),
+      asking(prefix('/'), 'unlinked', 'required'),
+    ])
+    const outcome = evaluateRecheck(answerOf('/x'), context)
+    expect(outcome.findings.map((f) => f.issue)).toContain('canonical-required-missing')
+    expect(outcome.audit.conditions.unlinked?.observed).toBeNull()
+    const { url, site } = recheckSubject(answerOf('/x'), context)
+    expect(() => presenceOf('unlinked', url, site)).toThrow(SiteContextError)
+  })
+})
+
+describe('unchanged semantics 5 snapshots', () => {
+  it('repeats old four-condition findings and accepted rows with the old snapshot', async () => {
+    await addRules([
+      asking(exactPath('/a'), 'noindex', 'allowed'),
+      asking(exactPath('/a'), 'nofollow', 'allowed'),
+      asking(exactPath('/b'), 'robots', 'allowed'),
+      asking(exactPath('/c'), 'sitemap', 'forbidden'),
+    ])
+    const id = await crawl(
+      website(
+        { '/a': page('/a', { head: meta('noindex, nofollow') }) },
+        { robots: robotsTxt('User-agent: *\nDisallow: /b') },
+      ),
+    )
+    const stored = (await db.crawls.get(id))!
+    const snapshot = stored.auditSnapshot!
+    expect(snapshot.semantics).toBe(5)
+    expect(
+      snapshot.rules.every((r) => r.dimension !== 'canonical' && r.dimension !== 'unlinked'),
+    ).toBe(true)
+    const hashes = ['/a', '/b', '/c'].map(hashOf)
+    const before = {
+      findings: await db.crawls.issuesOf(id, hashes),
+      accepted: await db.crawls.acceptedOf(id, hashes),
+    }
+    expect(before.accepted.map((f) => f.issue).sort()).toEqual([
+      'nofollow',
+      'noindex',
+      'robots-blocked',
+    ])
+    expect(before.findings.some((f) => f.issue === 'sitemap-forbidden-present')).toBe(true)
+    // A catalog reanalysis must use this old snapshot even when today's rules state new conditions.
+    await addRules([
+      asking(prefix('/'), 'canonical', 'required'),
+      asking(prefix('/'), 'unlinked', 'required'),
+    ])
+    await analyseCrawl(db, id, snapshot)
+    expect({
+      findings: await db.crawls.issuesOf(id, hashes),
+      accepted: await db.crawls.acceptedOf(id, hashes),
+    }).toEqual(before)
+  })
+})
+
+describe('canonical blocker acceptance', () => {
+  it.each(['required', 'allowed', 'forbidden'] as const)(
+    'uses the origin canonical %s condition for relations',
+    async (requirement) => {
+      const [canonicalRule] = await addRules([asking(exactPath('/a'), 'canonical', requirement)])
+      const id = await crawl(
+        website({
+          '/a': page('/a', { canonical: `${SITE}/b`, links: '<a href="/c">C</a>' }),
+          '/b': page('/b', { head: meta('noindex') }),
+          '/c': page('/c', { canonical: `${SITE}/b` }),
+        }),
+      )
+      expect((await findings(id, '/a')).includes('canonical-not-indexable')).toBe(
+        requirement === 'forbidden',
+      )
+      expect((await findings(id, '/a')).includes('links-to-canonicalised')).toBe(
+        requirement === 'forbidden',
+      )
+      const accepted = await db.crawls.acceptedOf(id, [hashOf('/a')])
+      const canonical = accepted.find((f) => f.issue === 'canonical-not-indexable')
+      if (requirement !== 'forbidden')
+        expect(canonical?.acceptance).toMatchObject({
+          kind: 'relation',
+          end: 'origin',
+          rules: [canonicalRule],
+        })
+    },
+  )
+  it('does not let the destination canonical condition excuse an indexable origin', async () => {
+    await addRules([asking(exactPath('/b'), 'canonical', 'allowed')])
+    const id = await crawl(
+      website({
+        '/a': page('/a', { links: '<a href="/b">B</a>' }),
+        '/b': page('/b', { canonical: `${SITE}/c` }),
+      }),
+    )
+    expect(await findings(id, '/a')).toContain('links-to-canonicalised')
   })
 })

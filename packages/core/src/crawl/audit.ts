@@ -6,7 +6,7 @@
  * - `intent`: what the user expects of its indexation. It is a statement of intent, never evidence
  *   that a search engine indexed (or did not index) anything.
  *
- * - `conditions`: four facts about a URL (a `noindex`, a `nofollow`, a block in robots.txt, being in a
+ * - `conditions`: six facts about a URL (a `noindex`, a `nofollow`, a block in robots.txt, being in a
  *   sitemap), each resolved on its own as `required`, `allowed` or `forbidden`. They are about one
  *   directive or file each: never about whether the URL as a whole can be indexed, which is the
  *   `intent`, and a block in robots.txt is never read as the URL being out of the index.
@@ -36,8 +36,17 @@ import { isInternalUrl, normalizeCrawlUrl } from './normalize'
  * - `robots`: robots.txt blocks the URL for the bot the audit follows. That is a crawling rule: it says
  *   nothing about whether the URL is, or stays, out of a search engine's index.
  * - `sitemap`: a sitemap lists the URL.
+ * - `canonical`: the page declares another URL as canonical.
+ * - `unlinked`: no internal anchor link points at the URL.
  */
-export const AUDIT_CONDITIONS = ['noindex', 'nofollow', 'robots', 'sitemap'] as const
+export const AUDIT_CONDITIONS = [
+  'noindex',
+  'nofollow',
+  'robots',
+  'sitemap',
+  'canonical',
+  'unlinked',
+] as const
 export type AuditCondition = (typeof AUDIT_CONDITIONS)[number]
 
 /**
@@ -108,7 +117,9 @@ export const ORIGIN_RELATIONS_SEMANTICS = 5
  */
 export const reachesRelations = (rule: { dimension: string; value: string }) =>
   (rule.dimension === 'intent' && rule.value === 'not-indexable') ||
-  ((rule.dimension === 'noindex' || rule.dimension === 'robots') &&
+  ((rule.dimension === 'noindex' ||
+    rule.dimension === 'robots' ||
+    rule.dimension === 'canonical') &&
     (rule.value === 'required' || rule.value === 'allowed'))
 
 /** What a URL can be expected to be, which is what a rule or an exception can say. */
@@ -137,7 +148,9 @@ export const AUDIT_LIMITS = {
   /** Characters of a path or a query typed into a selector. */
   selector: 2048,
   /** Rules a domain can have, enabled or not: the analysis of a crawl keeps a copy of them. */
-  rulesPerDomain: 200,
+  rulesPerDomain: 500,
+  /** Selectors one path rule can cover. */
+  pathsPerRule: 20,
   /** URLs one action configures at a time: a page of the pages table is far below it. */
   bulkUrls: 200,
 } as const
@@ -172,6 +185,8 @@ export const SELECTOR_KINDS = ['url', 'path', 'prefix'] as const
 export type SelectorKind = (typeof SELECTOR_KINDS)[number]
 
 interface RuleBase {
+  /** Optional grouping only: never changes resolution or comparison scope. */
+  set?: string | null
   id: string
   selector: AuditSelector
   /** Why the user set it. Shown wherever the rule is the reason for what a URL is. */
@@ -521,6 +536,8 @@ const noConditions = (): ResolvedConditions => ({
   nofollow: { requirement: null, rule: null },
   robots: { requirement: null, rule: null },
   sitemap: { requirement: null, rule: null },
+  canonical: { requirement: null, rule: null },
+  unlinked: { requirement: null, rule: null },
 })
 
 /** What a URL is when no rule covers it, which is what semantics say. */
@@ -758,6 +775,7 @@ const selectorSchema = z.discriminatedUnion('kind', [
 ])
 
 const ruleBase = {
+  set: z.string().nullable().optional(),
   id: z.string(),
   selector: selectorSchema,
   reason: z.string().nullable(),
@@ -1007,4 +1025,124 @@ export function conditionsKey(conditions: ConditionStates): string {
     const state = conditions[condition]
     return state ? [`${condition}=${state.requirement}`] : []
   }).join(',')
+}
+
+/** New path rules share declared language directories unless none have been declared. */
+export const defaultScope = (languages: LanguageConfig): SelectorScope =>
+  languages.prefixes.length > 0 ? 'shared' : 'literal'
+
+export type InheritedSource =
+  { source: 'default' } | { source: 'rule'; key: string; selector: AuditSelector }
+
+export interface InheritedStatement {
+  value: AuditParticipation | RecordedIntent | Requirement | null
+  from: InheritedSource
+}
+
+/**
+ * What each selector inherits when the edited rule says nothing. Resolution, including language
+ * scopes, is delegated to the same compiler as the worker. Shared selectors use a declared
+ * language directory (or the unprefixed path when enabled) as their representative address.
+ */
+export function inheritedStatements(input: {
+  selectors: readonly AuditSelector[]
+  ids: readonly string[]
+  set?: string | null
+  rules: readonly AuditRule[]
+  host: string
+  languages: LanguageConfig
+}): { selector: AuditSelector; statements: Record<AuditDimension, InheritedStatement> }[] {
+  const resolver = compileAuditRules(
+    input.rules.filter(
+      (rule) => !input.ids.includes(rule.id) && (!input.set || rule.set !== input.set),
+    ),
+    input.host,
+    { languages: input.languages },
+  )
+  const inherited = (
+    value: InheritedStatement['value'],
+    rule: AuditRule | null,
+  ): InheritedStatement => ({
+    value,
+    from: rule
+      ? { source: 'rule', key: rule.set ?? selectorKey(rule.selector), selector: rule.selector }
+      : { source: 'default' },
+  })
+  return input.selectors.map((selector) => {
+    let url: string
+    if (selector.kind === 'url') url = selector.url
+    else {
+      const language =
+        selector.scope === 'shared' && !input.languages.unprefixed
+          ? (canonicalLanguages(input.languages).prefixes[0] ?? '')
+          : ''
+      const query = selector.query.mode === 'exact' ? selector.query.value : ''
+      url = `https://${input.host}${language}${selector.path}${query ? `?${query}` : ''}`
+    }
+    const result = resolver.resolve(url)
+    return {
+      selector,
+      statements: {
+        audit: inherited(result.audit.value, result.audit.rule),
+        intent: inherited(result.intent.value, result.intent.rule),
+        ...Object.fromEntries(
+          AUDIT_CONDITIONS.map((condition) => [
+            condition,
+            inherited(result.conditions[condition].requirement, result.conditions[condition].rule),
+          ]),
+        ),
+      } as Record<AuditDimension, InheritedStatement>,
+    }
+  })
+}
+
+/**
+ * The rows of `audit_rules` as the settings page shows them: one rule per set (or legacy selector), with the
+ * statements it makes. A statement is a row of its own on each selector; grouping does not affect resolution.
+ */
+export interface RuleGroup<R extends AuditRule = AuditRule> {
+  /** What identifies the selector. */
+  key: string
+  selector: AuditSelector
+  selectors: AuditSelector[]
+  /** The row that acts for each statement the rule makes: the enabled one, or the first. */
+  statements: Partial<Record<AuditDimension, R>>
+  /** Every row of the rule, to turn them on, off or away together. */
+  ids: string[]
+  /** Every row that acts is enabled. A rule with some rows off (from before rules were edited as one) is off. */
+  enabled: boolean
+  reason: string | null
+}
+
+export function groupRules<R extends AuditRule>(rules: readonly R[]): RuleGroup<R>[] {
+  const groups = new Map<string, RuleGroup<R>>()
+  for (const rule of rules) {
+    const key = rule.set ?? selectorKey(rule.selector)
+    let group = groups.get(key)
+    if (!group) {
+      group = {
+        key,
+        selector: rule.selector,
+        selectors: [],
+        statements: {},
+        ids: [],
+        enabled: true,
+        reason: null,
+      }
+      groups.set(key, group)
+    }
+    if (!group.selectors.some((s) => selectorKey(s) === selectorKey(rule.selector)))
+      group.selectors.push(rule.selector)
+    group.ids.push(rule.id)
+    const statement = rule.dimension as AuditDimension
+    const current = group.statements[statement]
+    // A disabled duplicate never takes the place of the row that acts.
+    if (!current || (!current.enabled && rule.enabled)) group.statements[statement] = rule
+  }
+  for (const group of groups.values()) {
+    const acting = Object.values(group.statements)
+    group.enabled = acting.length > 0 && acting.every((rule) => rule.enabled)
+    group.reason = acting.find((rule) => rule.reason !== null)?.reason ?? null
+  }
+  return [...groups.values()]
 }

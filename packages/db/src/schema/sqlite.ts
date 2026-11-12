@@ -496,11 +496,21 @@ export const auditRules = sqliteTable(
   'audit_rules',
   {
     id: text('id').primaryKey(),
+    ruleSet: text('rule_set'),
     domainId: text('domain_id')
       .notNull()
       .references(() => domains.id, { onDelete: 'cascade' }),
     dimension: text('dimension', {
-      enum: ['audit', 'intent', 'noindex', 'nofollow', 'robots', 'sitemap'],
+      enum: [
+        'audit',
+        'intent',
+        'noindex',
+        'nofollow',
+        'robots',
+        'sitemap',
+        'canonical',
+        'unlinked',
+      ],
     }).notNull(),
     /**
      * `exclude` or `include` for `audit`; `indexable` or `not-indexable` for `intent` (`none` and

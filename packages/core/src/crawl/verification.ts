@@ -71,6 +71,9 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'nofollow-required-missing': U,
   'robots-block-required-missing': U,
   'sitemap-required-missing': S,
+  'canonical-required-missing': U,
+  'canonical-forbidden-present': U,
+  'unlinked-required-missing': S,
   'sitemap-forbidden-present': S,
   // directives
   'directive-outside-head': U,

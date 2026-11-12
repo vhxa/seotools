@@ -1539,6 +1539,18 @@
     "cls-poor": {
       "name": "CLS deficiente",
       "description": "El percentil 75 de CLS de los usuarios móviles supera el umbral deficiente de Google."
+    },
+    "canonical-required-missing": {
+      "name": "Falta el canonical obligatorio a otra URL",
+      "description": "La regla exige un canonical a otra URL, pero la página se ha leído completa y se declara canónica o no declara ningún canonical."
+    },
+    "canonical-forbidden-present": {
+      "name": "Canonical a otra URL no permitido",
+      "description": "La página declara un canonical a otra URL aunque su regla lo prohíbe."
+    },
+    "unlinked-required-missing": {
+      "name": "La regla no permite enlaces internos entrantes",
+      "description": "La regla exige que esta URL no reciba enlaces internos, pero al menos un enlace interno apunta a ella."
     }
   },
   "LinkKinds": {
@@ -2222,7 +2234,9 @@
           "noindex": "Ninguna regla aplica: un noindex genera un hallazgo.",
           "nofollow": "Ninguna regla aplica: un nofollow de la propia página genera un aviso.",
           "robots": "Ninguna regla aplica: un bloqueo de robots.txt genera un hallazgo.",
-          "sitemap": "Ninguna regla aplica: una página indexable que ningún sitemap incluye genera un aviso de baja prioridad."
+          "sitemap": "Ninguna regla aplica: una página indexable que ningún sitemap incluye genera un aviso de baja prioridad.",
+          "canonical": "Un canonical a otra URL es un estado de indexabilidad. Por defecto no genera un hallazgo propio.",
+          "unlinked": "Por defecto, una página incluida en un sitemap sin enlaces internos entrantes genera un hallazgo de página huérfana."
         },
         "byRule": "{requirement} por la regla “{rule}”.",
         "byException": "{requirement} por una excepción de esta URL."
@@ -2235,7 +2249,9 @@
         "noindex": "Noindex",
         "nofollow": "Nofollow",
         "robots": "Bloqueo de robots.txt",
-        "sitemap": "Sitemap"
+        "sitemap": "Sitemap",
+        "canonical": "Canonical a otra URL",
+        "unlinked": "Sin enlaces internos"
       },
       "badge": "{condition}: {requirement}",
       "outcome": {
@@ -2333,7 +2349,8 @@
       "deleteTitle": "¿Eliminar esta regla?",
       "deleteDescription": "Las URLs que decide vuelven a lo que digan las demás reglas. Se analiza de nuevo el último crawl, sin hacer peticiones al sitio.",
       "deleteConfirm": "Eliminar regla",
-      "sharedWithoutLanguages": "No cubre nada hasta que se declaren los directorios de idioma."
+      "sharedWithoutLanguages": "No cubre nada hasta que se declaren los directorios de idioma.",
+      "morePaths": "y {count} más"
     },
     "languages": {
       "title": "Directorios de idioma",
@@ -2770,6 +2787,24 @@
           "allowed": "La URL puede estar en un sitemap o no: no hay hallazgo por su ausencia. Una URL incluida que no puede indexarse se sigue señalando.",
           "forbidden": "Se genera un hallazgo cuando un sitemap incluye la URL."
         }
+      },
+      "canonical": {
+        "label": "Canonical a otra URL",
+        "default": "Un canonical a otra URL es un estado de indexabilidad. Por defecto no genera un hallazgo propio.",
+        "help": {
+          "required": "Se genera un hallazgo si se ha leído la página completa y no declara un canonical a otra URL.",
+          "allowed": "La página puede declarar un canonical a otra URL o no. Si todos sus bloqueos están aceptados, se considera intencionadamente no indexable al evaluar sus referencias. Las referencias rotas o con redirecciones se siguen señalando.",
+          "forbidden": "Se genera un hallazgo si la página declara un canonical a otra URL."
+        }
+      },
+      "unlinked": {
+        "label": "Sin enlaces internos",
+        "default": "Por defecto, una página incluida en un sitemap sin enlaces internos entrantes genera un hallazgo de página huérfana.",
+        "help": {
+          "required": "Se genera un hallazgo si un enlace interno apunta a esta URL. La ausencia de enlaces solo se confirma con un rastreo completo finalizado.",
+          "allowed": "La página puede recibir enlaces internos o no: se acepta el hallazgo de página huérfana. Los enlaces desde páginas con nofollow o noindex se evalúan por separado.",
+          "forbidden": "Se mantiene el hallazgo de página huérfana si un sitemap incluye la página pero ningún enlace interno apunta a ella."
+        }
       }
     },
     "advanced": {
@@ -2830,7 +2865,10 @@
     "sitemap-required-missing": "Incluye esta URL como entrada en un sitemap que el rastreador pueda leer o corrige la regla que lo exige. Ejecuta un rastreo completo para verificar su presencia.",
     "sitemap-forbidden-present": "Elimina la entrada de la URL de los sitemaps afectados o corrige la regla si debe figurar en ellos. Ejecuta un rastreo completo para verificar el cambio.",
     "social": "Añade las etiquetas Open Graph (og:title, og:type, og:image, og:url) y una twitter:card al head de la plantilla. Usa un og:url igual al canonical y una imagen que responda por HTTPS, y vuelve a rastrear.",
-    "performance": "Rendimiento"
+    "performance": "Rendimiento",
+    "canonical-required-missing": "Declara el canonical previsto a otra URL o corrige la regla. Vuelve a comprobar la página.",
+    "canonical-forbidden-present": "Usa un canonical a la propia página o corrige la regla si la otra URL es intencionada. Vuelve a comprobar la página.",
+    "unlinked-required-missing": "Elimina los enlaces internos entrantes si este requisito es correcto o edita la regla. Ejecuta un rastreo completo para verificarlo."
   },
   "Companies": {
     "metaTitle": "Empresas · Administración · seotools",
@@ -3565,6 +3603,28 @@
       "status-class": "Clase de estado HTTP diferente",
       "final-url": "Dirección final diferente",
       "refused": "403, 429 o 503 con una respuesta de referencia 2xx"
+    }
+  },
+  "AuditTemplates": {
+    "private-area": {
+      "name": "Área privada",
+      "description": "Mantén las páginas privadas fuera de la indexación y de los sitemaps."
+    },
+    "search-and-filters": {
+      "name": "Búsqueda y filtros",
+      "description": "Permite noindex o canonical a otra URL en páginas de búsqueda y filtros."
+    },
+    "campaign-landing": {
+      "name": "Página de campaña",
+      "description": "Permite una página de campaña sin enlaces internos ni presencia en sitemaps."
+    },
+    "must-be-indexed": {
+      "name": "Debe indexarse",
+      "description": "Exige que la página sea indexable y figure en un sitemap."
+    },
+    "leave-out": {
+      "name": "Excluir de la auditoría",
+      "description": "Excluye estas URL de los hallazgos de auditoría."
     }
   }
 }

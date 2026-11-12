@@ -21,7 +21,8 @@ Raspberry Pi to a VPS.
   Each finding says why it matters and shows the evidence: which images, links, declarations or
   pages. The detail of each URL previews its search result and its share card.
 - **Your own rules**: say which URLs are expected out of the index, which must carry a noindex or be
-  in a sitemap, which are left out of the audit; findings a rule expects are shown as accepted, not
+  in a sitemap, allow or forbid a canonical to another URL or the absence of internal links, and
+  leave URLs out of the audit; findings a rule expects are shown as accepted, not
   hidden. Thresholds that are conventions (title length, thin content…) can be set per domain.
 - **Issues and changes**: filter findings, spot template-wide problems, inspect current site files and crawl differences, and see who references broken or redirected targets.
 - **Where every link is**: its text, element and part of the page, how the crawler found each URL,

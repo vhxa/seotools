@@ -12,6 +12,7 @@ const row = (
   const enabled = over.enabled ?? true
   return {
     id: `row-${++counter}`,
+    ruleSet: null,
     domainId: 'd1',
     dimension: 'intent',
     value: 'indexable',

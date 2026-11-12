@@ -54,6 +54,8 @@ export interface RuleInput {
   nofollow?: unknown
   robots?: unknown
   sitemap?: unknown
+  canonical?: unknown
+  unlinked?: unknown
   reason: unknown
   enabled: boolean
 }
@@ -143,6 +145,8 @@ export function parseRuleForm(
       nofollow: form.get('nofollow'),
       robots: form.get('robots'),
       sitemap: form.get('sitemap'),
+      canonical: form.get('canonical'),
+      unlinked: form.get('unlinked'),
       reason: form.get('reason'),
       // A switch that is off sends nothing.
       enabled: form.get('enabled') === 'on',

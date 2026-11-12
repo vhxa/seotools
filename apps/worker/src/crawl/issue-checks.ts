@@ -398,6 +398,12 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'nofollow-required-missing': requiredMissing('nofollow'),
   'robots-block-required-missing': requiredMissing('robots'),
   'sitemap-required-missing': requiredMissing('sitemap'),
+  'canonical-required-missing': requiredMissing('canonical'),
+  'unlinked-required-missing': requiredMissing('unlinked'),
+  'canonical-forbidden-present': (url, site) =>
+    url.conditions.canonical.requirement === 'forbidden' &&
+    judgeable(url, site) &&
+    presenceOf('canonical', url, site) === 'present',
   'sitemap-forbidden-present': (url, site) =>
     url.conditions.sitemap.requirement === 'forbidden' &&
     judgeable(url, site) &&
@@ -804,6 +810,8 @@ const INDEXING_FINDING_OF = {
  * stating the condition for the URL says nothing about them.
  */
 const GENERIC_OF: Record<AuditCondition, readonly PageIssueId[]> = {
+  canonical: [],
+  unlinked: ['orphan-in-sitemap'],
   noindex: ['noindex'],
   nofollow: ['nofollow'],
   robots: ['robots-blocked'],

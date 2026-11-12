@@ -96,6 +96,8 @@ describe('the exceptions a URL has', () => {
       nofollow: null,
       robots: null,
       sitemap: null,
+      canonical: null,
+      unlinked: null,
     })
     expect(current.conditions.noindex).toEqual({
       requirement: 'forbidden',
@@ -138,6 +140,8 @@ const picks = (
     nofollow: 'rules',
     robots: 'rules',
     sitemap: 'rules',
+    canonical: 'rules',
+    unlinked: 'rules',
     ...overrides.conditions,
   },
 })
@@ -214,6 +218,8 @@ describe('what a URL will be after saving', () => {
           nofollow: 'forbidden',
           robots: 'allowed',
           sitemap: 'rules',
+          canonical: 'rules',
+          unlinked: 'rules',
         },
       }),
     )

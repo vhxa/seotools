@@ -1,4 +1,5 @@
 import type { BotAnswer, BotVerdict } from '@seotools/core/bot-access'
+import type { RuleEditing, RuleSelectors } from './audit'
 import type { VitalMetrics } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
@@ -10,7 +11,6 @@ import type {
   UserRole,
   AuditCondition,
   AuditRule,
-  AuditSelector,
   CompareView,
   CrawlChange,
   UrlSnapshot,
@@ -18,6 +18,7 @@ import type {
   AuditValue,
   IndexabilityState,
   IndexIntent,
+  IntentRuleValue,
   LanguageConfig,
   NewAuditRule,
   PagesAudit,
@@ -995,6 +996,7 @@ export type AuditMutation =
        * rules. `not-found`: no such rule in the domain.
        */
       error: 'conflict' | 'not-found' | 'limit'
+      key?: string
     }
 
 /** What to do with the audit of a URL: leave it to the rules, or set it. */
@@ -1011,7 +1013,7 @@ export interface RuleStatements {
   /** Whether the URLs it covers take part in the audit. */
   audit?: AuditValue
   /** The expectation of indexing as a whole, an advanced concept apart from the conditions. */
-  intent?: IndexIntent
+  intent?: IntentRuleValue
   conditions?: Partial<Record<AuditCondition, Requirement>>
 }
 
@@ -1050,18 +1052,19 @@ export interface AuditRepository {
     reason?: string | null
   }): Promise<AuditMutation>
   /**
-   * Saves a rule as the rule editor shows it: a selector and the statements made about it, each one
-   * a row of its own, in one change. With `editing`, the rows that have that selector are the rule
-   * being edited and the statements replace them (see `planSaveRuleSet`); without it, a new rule.
+   * Saves one rule across its selectors, with one row per statement and selector. `editing` is a
+   * set id or the selector of a legacy group; without it, creates a new rule. Kept selectors retain
+   * row ids and removed selectors disappear (see `planSaveRuleSet`).
    */
-  saveRuleSet(input: {
-    domainId: string
-    selector: AuditSelector
-    statements: RuleStatements
-    reason: string | null
-    enabled: boolean
-    editing?: AuditSelector
-  }): Promise<AuditMutation>
+  saveRuleSet(
+    input: {
+      domainId: string
+      statements: RuleStatements
+      reason: string | null
+      enabled: boolean
+      editing?: RuleEditing
+    } & RuleSelectors,
+  ): Promise<AuditMutation>
   /** Turns the rows of one rule on or off together: all or none. */
   setRulesEnabled(input: {
     domainId: string

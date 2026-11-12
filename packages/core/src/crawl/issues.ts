@@ -76,6 +76,9 @@ const ISSUE_CATALOG = {
     'nofollow-required-missing': ['issue', 'high'],
     'robots-block-required-missing': ['issue', 'high'],
     'sitemap-required-missing': ['issue', 'high'],
+    'canonical-required-missing': ['issue', 'high'],
+    'canonical-forbidden-present': ['issue', 'high'],
+    'unlinked-required-missing': ['issue', 'high'],
     'sitemap-forbidden-present': ['issue', 'high'],
   },
   directives: {
