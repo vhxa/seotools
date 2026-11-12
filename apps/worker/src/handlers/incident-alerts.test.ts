@@ -124,3 +124,28 @@ it('keeps the original observation time when an alert is delivered after recover
   expect(sent[0]?.text).toContain(observedAt)
   expect(sent[0]?.text).not.toContain(later.toISOString())
 })
+
+it('uses the current account language before the subscription language, including on retry', async () => {
+  const job = await incidentJob()
+  await db.userPreferences.setLocale(userId, 'en')
+  const handler = createIncidentAlertsHandler({ db, publicUrl: 'https://seo.example.com' })
+  fail = true
+  await expect(handler(job, ctx)).rejects.toThrow('offline')
+  await db.userPreferences.setLocale(userId, 'es')
+  fail = false
+  await handler(job, ctx)
+  expect(sent[0]?.text).toContain('aproximadamente una vez al día')
+  const recoveryAt = new Date()
+  await db.crawlFiles.finishCheck({
+    domainId,
+    outcome: 'ok',
+    checkedAt: recoveryAt,
+    nextCheckAt: recoveryAt,
+  })
+  await db.userPreferences.setLocale(userId, 'en')
+  const recovery = (await db.jobs.list()).find(
+    (j) => j.type === 'incident.alerts' && (j.payload as { stage: string }).stage === 'resolved',
+  )!
+  await handler(recovery, ctx)
+  expect(sent[1]?.text).toContain('These checks run about once a day')
+})

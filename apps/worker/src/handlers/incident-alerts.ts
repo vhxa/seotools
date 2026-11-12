@@ -27,7 +27,8 @@ async function recipient(db: Database, domain: Domain, userId: string, kind: Ale
     !domainRoleOf({ role: user.role, grants: await db.users.grantsOf(userId) }, current)
   )
     return null
-  return { email: user.email, locale: alertLocaleOf(sub.locale) }
+  const saved = await db.userPreferences.locale(userId)
+  return { email: user.email, locale: alertLocaleOf(saved ?? sub.locale) }
 }
 export function createIncidentAlertsHandler(deps: {
   db: Database
