@@ -22,12 +22,30 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Upgrade notes
 
-- Migration 0027 adds ignored-parameter settings and per-crawl snapshots without rebuilding link rows.
-  The default empty list changes no crawl behavior. Going back requires restoring the pre-update backup.
+- Two migrations: 0026 adds the Core Web Vitals tables and 0027 the ignored query parameters
+  (settings and a per-crawl snapshot; link rows are not rebuilt). Take the backup in
+  `docs/updating.md` first: an older image refuses to start on the updated database, so going back
+  needs that backup together with the previous image.
+- On the first start, earlier crawls are analysed again under the new checks. Checks that read
+  something older crawls did not keep (Open Graph and Twitter tags, the document language,
+  viewport and charset) show as not verifiable on them, never as fixed or new.
+- Core Web Vitals sends nothing until an administrator saves a Google API key in
+  Administration → Integrations. From then on, after each full crawl of a domain with collection
+  on (the default), its origin and page addresses are sent to Google's Chrome UX Report and
+  PageSpeed Insights APIs; the key's Google Cloud project must have both enabled and allowed.
+- With Docker Desktop (macOS, Windows), `/data` must be a named Docker volume, as in the supplied
+  Compose file, not a bind-mounted host directory: SQLite shared by the web app and the worker can
+  crash there (SIGBUS). This also affects earlier versions.
 
 ### Added
 
 - Issues filters, per-issue crawl changes and template badges; current site-file findings; dashboard differences and comparison links; distinct referring-URL counts in Errors and Redirects and CSV exports.
+- Core Web Vitals: field data from the Chrome UX Report (origin trend on the dashboard and per
+  URL) and PageSpeed Insights lab measurements for priority URLs, CSV columns, and warnings for
+  poor mobile field LCP, INP and CLS (Google's thresholds). Administration → Integrations stores an
+  encrypted Google API key with a test; each domain can turn collection off in its Crawling
+  settings. No request is made without a key, while automation is paused, or for archived domains.
+  Vitals do not trigger alerts yet.
 - Per-domain ignored query parameters (exact names or trailing `*` prefixes), applied to internal
   URL identity from the next crawl, with comparison caveats when the setting changes. Parameters
   suggests volatile or canonical-redundant names and separately highlights tracking parameters,
@@ -52,7 +70,7 @@ which moves the entries of `[Unreleased]` into the new version.
   the no-access page).
 - A Structure page per domain (sidebar): the directories of the latest full crawl with their pages,
   errors and pages with issues, warnings and opportunities, each figure leading to the URLs table
-  narrowed to that directory, plus a breakdown by the language directories declared in the audit
+  searched by that directory's address, plus a breakdown by the language directories declared in the audit
   configuration. A directory opens through the address (`?path=/blog/`).
 
 ### Changed
