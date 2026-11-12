@@ -113,9 +113,13 @@ export default async function IssuesPage({
   const dismissedCounts =
     latest && checked ? await db.crawls.acceptedCounts(latest.id, 'dismissal') : []
   const decisions = await getTranslations('FindingStates')
+  // Only issues a person labelled: every other count is 0 without asking the database.
+  const labelled = new Set(
+    config.findingStates.filter((row) => row.state === 'in-progress').map((row) => row.issue),
+  )
   const progress = new Map<string, number>()
   if (latest && checked)
-    for (const row of counts)
+    for (const row of counts.filter((r) => labelled.has(r.issue)))
       progress.set(
         row.issue,
         await db.crawls.countListed({
@@ -347,6 +351,7 @@ export default async function IssuesPage({
           <FindingStatesList
             host={host}
             rows={config.findingStates.filter((row) => matches(row.issue))}
+            limit={50}
           />
           {accepted.length > 0 && (
             <section aria-labelledby="accepted">

@@ -748,8 +748,7 @@
       "lcp": "LCP (field, phone)",
       "inp": "INP (field, phone)",
       "cls": "CLS (field, phone)",
-      "state": "Finding state",
-      "note": "Note (optional)"
+      "note": "Decision note"
     },
     "values": {
       "internal": "This site",
@@ -761,7 +760,8 @@
       "yes": "Yes",
       "no": "No",
       "secondary": "Secondary (page not indexable)",
-      "dismissed": "Dismissed"
+      "dismissed": "Dismissed",
+      "inProgress": "In progress"
     },
     "filters": {
       "view": "View: {value}"
@@ -3723,10 +3723,12 @@
     "saved": "Saved. Results may be recalculating.",
     "invalid": "Choose a valid finding and state, with a note of at most 1,000 characters.",
     "limit": "A domain can save at most 2,000 finding states. Select fewer URLs or restore existing states.",
-    "by": "Set by {name}, {date}: {note}",
+    "by": "Set by {name}, {date}",
     "dismissedByPerson": "Dismissed by a person; the crawl still sees this finding.",
     "deletedUser": "Deleted user",
-    "counts": "{pending} pending · {progress} in progress · {dismissed} dismissed",
-    "dismissedBy": "Dismissed by {name}, {date}: {note}"
+    "counts": "{pending} pending ({progress} in progress) · {dismissed} dismissed",
+    "dismissedBy": "Dismissed by {name}, {date}",
+    "more": "{count, plural, one {# more decision} other {# more decisions}} in Settings → Audit → Dismissed.",
+    "noteLabel": "Note: {note}"
   }
 }

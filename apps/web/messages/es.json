@@ -748,8 +748,7 @@
       "lcp": "LCP (usuarios reales, móvil)",
       "inp": "INP (usuarios reales, móvil)",
       "cls": "CLS (usuarios reales, móvil)",
-      "state": "Estado del hallazgo",
-      "note": "Nota (opcional)"
+      "note": "Nota de la decisión"
     },
     "values": {
       "internal": "Este sitio",
@@ -761,7 +760,8 @@
       "yes": "Sí",
       "no": "No",
       "secondary": "Secundario (página no indexable)",
-      "dismissed": "Descartado"
+      "dismissed": "Descartado",
+      "inProgress": "En curso"
     },
     "filters": {
       "view": "Vista: {value}"
@@ -3723,10 +3723,12 @@
     "saved": "Guardado. Los resultados pueden estar recalculándose.",
     "invalid": "Elige un hallazgo y un estado válidos, con una nota de hasta 1000 caracteres.",
     "limit": "Cada dominio admite hasta 2000 estados. Selecciona menos URL o restaura estados existentes.",
-    "by": "Decisión de {name}, {date}: {note}",
+    "by": "Decisión de {name}, {date}",
     "dismissedByPerson": "Descartado por una persona; el rastreo sigue detectándolo.",
     "deletedUser": "Usuario eliminado",
-    "counts": "{pending} pendientes · {progress} en curso · {dismissed} descartados",
-    "dismissedBy": "Descartado por {name}, {date}: {note}"
+    "counts": "{pending} pendientes ({progress} en curso) · {dismissed} descartados",
+    "dismissedBy": "Descartado por {name}, {date}",
+    "more": "{count, plural, one {# decisión más} other {# decisiones más}} en Ajustes → Auditoría → Descartados.",
+    "noteLabel": "Nota: {note}"
   }
 }

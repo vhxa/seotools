@@ -7,13 +7,18 @@ import { FindingStateActions } from './finding-state-actions'
 /** Human decisions stay separate from rule acceptances, including the decision maker and note. */
 export async function FindingStatesList({
   host,
-  rows,
+  rows: all,
   compact = false,
+  limit,
 }: {
   host: string
   rows: FindingStateRecord[]
   compact?: boolean
+  /** Shows the newest ones only; the rest are in Settings → Audit → Dismissed. */
+  limit?: number
 }) {
+  const sorted = [...all].sort((a, b) => b.setAt.getTime() - a.setAt.getTime())
+  const rows = limit === undefined ? sorted : sorted.slice(0, limit)
   const t = await getTranslations('FindingStates')
   const format = await getFormatter()
   const db = await getDb()
@@ -56,9 +61,14 @@ export async function FindingStatesList({
               {t(row.state === 'dismissed' ? 'dismissedBy' : 'by', {
                 name: row.setBy ? (people.get(row.setBy) ?? t('deletedUser')) : t('deletedUser'),
                 date: format.dateTime(row.setAt, { dateStyle: 'medium', timeStyle: 'short' }),
-                note: row.note,
               })}
             </p>
+            {/* A member wrote it: rendered as text, never HTML. */}
+            {row.note && (
+              <p className="break-words whitespace-pre-wrap text-muted-foreground">
+                {t('noteLabel', { note: row.note })}
+              </p>
+            )}
             {!compact && (
               <FindingStateActions
                 host={host}
@@ -70,6 +80,13 @@ export async function FindingStatesList({
           </li>
         ))}
       </ul>
+      {sorted.length > rows.length && (
+        <p className="text-sm text-muted-foreground">
+          <a className="underline" href={`/domains/${host}/settings/audit?tab=dismissed`}>
+            {t('more', { count: sorted.length - rows.length })}
+          </a>
+        </p>
+      )}
     </section>
   )
 }

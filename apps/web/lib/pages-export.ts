@@ -300,15 +300,6 @@ export const PAGES_COLUMNS: readonly UrlColumn[] = [
   })),
   urlOf,
   {
-    header: 'state',
-    cell: (row) =>
-      row.accepted?.some((r) => r.acceptance.kind === 'dismissal')
-        ? 'dismissed'
-        : row.findingStates?.some((r) => r.state === 'in-progress')
-          ? 'in-progress'
-          : 'pending',
-  },
-  {
     header: 'site',
     cell: ({ url }, c) =>
       tr(c, url.scope === 'internal' ? 'Export.values.internal' : 'Export.values.external'),
@@ -404,6 +395,10 @@ function evidenceState(finding: Finding): 'none' | 'stored' | 'not-stored' {
   return finding.issue.evidence?.kind === expected ? 'stored' : 'not-stored'
 }
 
+/** The in-progress label a person put on this finding of the URL (the URL's own row wins). */
+const inProgress = (row: ExportUrl, issue: string) =>
+  row.findingStates?.find((r) => r.issue === issue && r.state === 'in-progress')
+
 export const FINDINGS_COLUMNS: readonly FindingColumn[] = [
   ...ORIGIN_COLUMNS.map(({ header, value }) => ({
     header,
@@ -411,21 +406,14 @@ export const FINDINGS_COLUMNS: readonly FindingColumn[] = [
   })),
   { header: 'url', cell: ({ row }) => row.url.url },
   {
-    header: 'state',
-    cell: ({ acceptance, issue, row }) =>
-      acceptance?.kind === 'dismissal'
-        ? 'dismissed'
-        : row.findingStates?.some((r) => r.issue === issue.issue && r.state === 'in-progress')
-          ? 'in-progress'
-          : acceptance
-            ? 'accepted'
-            : 'pending',
-  },
-  {
     header: 'note',
     cell: ({ acceptance, issue, row }) =>
-      row.findingStates?.find((r) =>
-        acceptance?.kind === 'dismissal' ? r.id === acceptance.id : r.issue === issue.issue,
+      // A member wrote it: text, through `csvCell` like every cell.
+      (acceptance?.kind === 'dismissal'
+        ? row.findingStates?.find((r) => r.id === acceptance.id)
+        : acceptance
+          ? undefined
+          : inProgress(row, issue.issue)
       )?.note ?? '',
   },
   {
@@ -441,7 +429,9 @@ export const FINDINGS_COLUMNS: readonly FindingColumn[] = [
             : isPageIssueId(issue.issue) &&
                 isSecondaryFinding(issue.issue, row.audit?.indexability ?? null)
               ? 'secondary'
-              : 'pending'
+              : inProgress(row, issue.issue)
+                ? 'inProgress'
+                : 'pending'
         }`,
       ),
   },

@@ -1271,7 +1271,38 @@ it('exports dismissed state and neutralises a member note as a CSV cell', () => 
     c,
   ).join('')
   expect(asObjects('findings', text, c)[0]).toMatchObject({
-    'Finding state': 'dismissed',
-    'Note (optional)': '\'=HYPERLINK("untrusted")',
+    State: 'Dismissed',
+    'Decision note': '\'=HYPERLINK("untrusted")',
+  })
+})
+
+it('labels a pending finding a person marked in progress, with its note', () => {
+  const url = crawlUrl('/a')
+  const c = context()
+  const text = exportRecords(
+    'findings',
+    {
+      url,
+      issues: [issue(url, 'title-missing')],
+      audit: audit(url),
+      findingStates: [
+        {
+          id: 'p',
+          domainId: 'domain',
+          issue: 'title-missing',
+          urlHash: null,
+          targetKey: '*',
+          state: 'in-progress',
+          note: 'Template fix next sprint',
+          setBy: null,
+          setAt: new Date(),
+        },
+      ],
+    },
+    c,
+  ).join('')
+  expect(asObjects('findings', text, c)[0]).toMatchObject({
+    State: 'In progress',
+    'Decision note': 'Template fix next sprint',
   })
 })
