@@ -111,6 +111,7 @@ export async function loadUrlDetail(input: {
     linksOut,
     priorities,
     verified,
+    finishedPreview,
     activeRecheck,
     owner,
   ] = await Promise.all([
@@ -123,6 +124,7 @@ export async function loadUrlDetail(input: {
     loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'out' }),
     db.priorityUrls.list(domainId),
     db.verifications.latestFor(domainId, [urlHash]),
+    db.verifications.latestFinishedFor(domainId, urlHash),
     db.verifications.active(domainId),
     db.domains.get(domainId),
   ])
@@ -163,7 +165,16 @@ export async function loadUrlDetail(input: {
     recheck: {
       available: canRecheck(url),
       view,
-      preview: previewSourceOf({ view, historical }),
+      preview: previewSourceOf({
+        view: viewRecheck({
+          verified: finishedPreview,
+          crawl,
+          crawledAt: crawl.finishedAt ?? url.fetchedAt,
+          crawlIssues: [],
+          configVersion: config.version,
+        }),
+        historical,
+      }),
       waiting,
       busy: activeRecheck !== null,
       archived: owner?.archivedAt != null,

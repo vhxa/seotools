@@ -121,23 +121,35 @@ export async function UrlSharePreview({
         <TabsTrigger value="recheck">{t('tabRecheck')}</TabsTrigger>
         <TabsTrigger value="crawl">{t('tabCrawl')}</TabsTrigger>
       </TabsList>
-      <TabsContent value="recheck" className="grid gap-3">
-        {recheck.kind === 'page' ? (
-          <>
-            <p className={label}>{t('fromRecheck', { when: recheckWhen })}</p>
-            <SharePreviewView preview={recheckSharePreview(url, recheck.preview)} />
-            <p className={label}>{t('recheckImageNote')}</p>
-          </>
-        ) : (
-          <p className="rounded-lg border border-dashed p-3 text-sm">
-            {notPageText(t, recheckWhen, recheck.answer)}
-          </p>
-        )}
-      </TabsContent>
-      <TabsContent value="crawl" className="grid gap-3">
-        <p className={label}>{t('fromCrawl', { when: when(crawledAt) })}</p>
-        <SharePreviewView preview={crawlPreview} />
-      </TabsContent>
+      <div className="grid">
+        <TabsContent
+          keepMounted
+          value="recheck"
+          className="col-start-1 row-start-1 grid content-start gap-3 data-[hidden]:invisible"
+          style={{ display: 'grid' }}
+        >
+          {recheck.kind === 'page' ? (
+            <>
+              <p className={label}>{t('fromRecheck', { when: recheckWhen })}</p>
+              <SharePreviewView preview={recheckSharePreview(url, recheck.preview)} />
+              <p className={label}>{t('recheckImageNote')}</p>
+            </>
+          ) : (
+            <p className="rounded-lg border border-dashed p-3 text-sm">
+              {notPageText(t, recheckWhen, recheck.answer)}
+            </p>
+          )}
+        </TabsContent>
+        <TabsContent
+          keepMounted
+          value="crawl"
+          className="col-start-1 row-start-1 grid content-start gap-3 data-[hidden]:invisible"
+          style={{ display: 'grid' }}
+        >
+          <p className={label}>{t('fromCrawl', { when: when(crawledAt) })}</p>
+          <SharePreviewView preview={crawlPreview} />
+        </TabsContent>
+      </div>
     </Tabs>
   )
 }

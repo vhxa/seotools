@@ -1181,6 +1181,8 @@ export interface VerificationRepository {
    * domain's rechecks are never looked at, whatever the hashes.
    */
   latestFor(domainId: string, urlHashes: string[]): Promise<VerifiedUrl[]>
+  /** Newest result of one URL from an ended recheck of this domain; reads at most one row. */
+  latestFinishedFor(domainId: string, urlHash: string): Promise<VerifiedUrl | null>
   /** Removes the oldest ended rechecks of a domain beyond the newest `keep`, with their URLs. */
   prune(input: { domainId: string; keep: number }): Promise<number>
 }

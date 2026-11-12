@@ -5465,6 +5465,15 @@ export function describeDatabaseContract(
         })
         await record(foreign!.id, a, ['noindex'], 9)
 
+        expect(await db.verifications.latestFinishedFor(domainId, a.urlHash)).toMatchObject({
+          verificationId: first.id,
+        })
+        expect(await db.verifications.latestFinishedFor(otherId, a.urlHash)).toBeNull()
+        expect(await db.verifications.latestFinishedFor(domainId, 'nope')).toBeNull()
+        await db.verifications.finish(second.id, { status: 'completed' })
+        expect(await db.verifications.latestFinishedFor(domainId, a.urlHash)).toMatchObject({
+          verificationId: second.id,
+        })
         const latest = await db.verifications.latestFor(domainId, [a.urlHash, b.urlHash, 'nope'])
         // `b` was never answered, so it has no result to show; `a` has the one of the second recheck.
         expect(latest).toHaveLength(1)
