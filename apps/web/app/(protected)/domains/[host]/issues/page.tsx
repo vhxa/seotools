@@ -268,13 +268,24 @@ export default async function IssuesPage({
                   <IssueRows
                     extra={(issue, pages) => (
                       <>
-                        <span className="text-xs">
-                          {decisions('counts', {
-                            pending: pages,
-                            progress: progress.get(issue) ?? 0,
-                            dismissed: dismissedCounts.find((r) => r.issue === issue)?.pages ?? 0,
-                          })}
-                        </span>
+                        {(() => {
+                          const inProgress = progress.get(issue) ?? 0
+                          const dismissed =
+                            dismissedCounts.find((r) => r.issue === issue)?.pages ?? 0
+                          const shown = [
+                            ...(inProgress > 0
+                              ? [decisions('inProgressCount', { count: inProgress })]
+                              : []),
+                            ...(dismissed > 0
+                              ? [decisions('dismissedCount', { count: dismissed })]
+                              : []),
+                          ]
+                          return shown.length > 0 ? (
+                            <span className="text-xs text-muted-foreground">
+                              {shown.join(' · ')}
+                            </span>
+                          ) : null
+                        })()}
                         <FindingStateActions host={host} issue={issue} />
                         {(latest.pagesAudit?.audited ?? 0) >= 20 &&
                           pages >= (latest.pagesAudit?.audited ?? 0) * 0.9 && (
