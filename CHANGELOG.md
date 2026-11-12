@@ -23,7 +23,7 @@ which moves the entries of `[Unreleased]` into the new version.
 ### Upgrade notes
 
 - This update adds bot-test storage migrations. Going back to an older image requires restoring the pre-update backup.
-- Migration 0029 adds optional rule grouping without changing existing rows. Going back requires
+- Migration 0030 adds optional rule grouping without changing existing rows. Going back requires
   the backup and previous image, as described in `docs/updating.md`.
 - On first start, retained crawls are analysed again because the issue catalog changed, using each
   crawl's own configuration. Existing configurations keep the same findings and accepted rows.

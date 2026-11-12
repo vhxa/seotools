@@ -211,6 +211,13 @@
       "when": 1794472687919,
       "tag": "0029_bot_access",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1794483094392,
+      "tag": "0030_audit_rule_sets",
+      "breakpoints": true
     }
   ]
 }
