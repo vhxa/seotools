@@ -35,6 +35,7 @@ Raspberry Pi to a VPS.
 - **Custom extraction** of any value with a CSS selector.
 - **Portfolio and structure**: a home with every domain by company (last crawl, figures and trend), and
   a per-domain view of the site by directory with pages, errors and findings.
+- **Favourite domain** per user: open it automatically and reach all domains from the switcher.
 - **Teams**: companies and domains, administrators, and editors or viewers per company or domain.
 - **English and Spanish**, SQLite or PostgreSQL, `linux/amd64` and `linux/arm64` images on GHCR.
 

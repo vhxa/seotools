@@ -29,6 +29,8 @@ describe('tablesInCopyOrder', () => {
     }
     const before = (a: string, b: string) => expect(names.indexOf(a)).toBeLessThan(names.indexOf(b))
     before('user', 'session')
+    before('user', 'user_preferences')
+    before('domains', 'user_preferences')
     before('companies', 'domains')
     before('domains', 'crawls')
     before('crawls', 'crawl_urls')
@@ -72,6 +74,14 @@ async function seed() {
   })
   const created = await createCompany(source, { name: 'Acme', domain: 'acme.com' })
   if (!created.ok) throw new Error('setup failed')
+  const user = (await source.users.findByEmail('admin@acme.com'))!
+  await source.userPreferences.setFavouriteDomain(user.id, created.domain.id)
+  const other = await source.users.create({
+    name: 'No favourite',
+    email: 'other@acme.com',
+    role: 'member',
+  })
+  await source.userPreferences.setFavouriteDomain(other.id, null)
   await source.jobs.enqueue({ type: 'example.echo', payload: { message: 'héllo 🌍\n"quoted"' } })
   await source.settings.set('mail', JSON.stringify({ host: 'smtp.acme.com', port: 587 }), false)
   const crawl = await source.crawls.start({
@@ -149,7 +159,8 @@ describe.skipIf(!baseUrl)('copySqliteToPostgres', () => {
         expect(seen).toEqual(tablesInCopyOrder().map((t) => t.name))
         expect(summary.every((t) => t.source === t.target)).toBe(true)
         const count = (name: string) => summary.find((t) => t.table === name)?.target
-        expect(count('user')).toBe(1)
+        expect(count('user')).toBe(2)
+        expect(count('user_preferences')).toBe(2)
         expect(count('jobs')).toBeGreaterThanOrEqual(2)
         expect(count('crawl_urls')).toBe(2)
         expect(count('crawl_url_links')).toBe(1)

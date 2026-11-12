@@ -1,3 +1,4 @@
+import { FavouriteDomainButton } from '@/components/favourite-domain-button'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
@@ -9,10 +10,12 @@ import type { DomainSummary } from '@/lib/portfolio'
 /** One domain of the portfolio: where it stands after its last full crawl, and how it has moved. */
 export async function DomainRow({
   host,
+  favourite,
   faviconVersion,
   summary,
   compact = false,
 }: {
+  favourite: boolean
   host: string
   faviconVersion: string | null
   summary: DomainSummary
@@ -34,14 +37,17 @@ export async function DomainRow({
   return (
     <li className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,14rem)_1fr_auto] md:items-center md:gap-6">
       <div className="grid min-w-0 gap-1">
-        <Link
-          href={`/domains/${host}`}
-          aria-label={t('open', { host })}
-          className="flex min-w-0 items-center gap-2 rounded-md font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-        >
-          <DomainIcon host={host} version={faviconVersion} size="sm" />
-          <span className="truncate">{host}</span>
-        </Link>
+        <div className="flex items-center gap-1">
+          <FavouriteDomainButton host={host} favourite={favourite} />
+          <Link
+            href={`/domains/${host}`}
+            aria-label={t('open', { host })}
+            className="flex min-w-0 items-center gap-2 rounded-md font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <DomainIcon host={host} version={faviconVersion} size="sm" />
+            <span className="truncate">{host}</span>
+          </Link>
+        </div>
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           {running && <Badge variant="secondary">{t('running')}</Badge>}
           {last ? (

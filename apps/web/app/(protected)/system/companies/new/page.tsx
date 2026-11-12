@@ -22,7 +22,11 @@ export default async function NewCompanyPage() {
           <CardDescription>{t('description')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <CompanyForm submitLabel={t('submit')} pendingLabel={t('submitting')} cancelHref="/" />
+          <CompanyForm
+            submitLabel={t('submit')}
+            pendingLabel={t('submitting')}
+            cancelHref="/domains"
+          />
         </CardContent>
       </Card>
     </main>

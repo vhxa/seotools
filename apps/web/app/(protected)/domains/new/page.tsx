@@ -35,7 +35,7 @@ export default async function NewDomainPage({
             <AddDomainForm
               companies={companies.map(({ id, name }) => ({ id, name }))}
               defaultCompanyId={defaultCompany.id}
-              cancelHref="/"
+              cancelHref="/domains"
             />
           )}
         </CardContent>

@@ -7,6 +7,7 @@ import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
+import { FavouriteDomainButton } from '@/components/favourite-domain-button'
 import { InfoHelp } from '@/components/help'
 import { DomainVitals } from '@/components/pages/domain-vitals'
 import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
@@ -17,6 +18,7 @@ import { dashboardDifference, trendFigures, trendPoints } from '@/lib/dashboard'
 import { getDb } from '@/lib/db'
 import { homePriorities } from '@/lib/domain-home'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
+import { requireViewer } from '@/lib/session'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
@@ -40,6 +42,8 @@ export default async function DomainDashboardPage({
   const { domain, canEdit } = await requireDomain(host)
   const [t, format] = await Promise.all([getTranslations('Dashboard'), getFormatter()])
   const db = await getDb()
+  const viewer = await requireViewer()
+  const favouriteDomainId = await db.userPreferences.favouriteDomainId(viewer.session.user.id)
   const [active, latest, crawls, config] = await Promise.all([
     db.crawls.active(domain.id),
     db.crawls.latestWithResults(domain.id, 'full'),
@@ -87,7 +91,10 @@ export default async function DomainDashboardPage({
     <main className="grid gap-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="grid min-w-0 gap-1">
-          <h1 className="text-2xl font-semibold break-words">{domain.host}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold break-words">{domain.host}</h1>
+            <FavouriteDomainButton host={domain.host} favourite={domain.id === favouriteDomainId} />
+          </div>
           <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {latest ? (
               <>
