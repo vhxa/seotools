@@ -43,7 +43,7 @@ const READ_ONLY_DOMAIN_ACTIONS = new Set(['loadLinksAction', 'searchUrlsAction']
 const OWN_ACCOUNT_ACTIONS = new Set([
   'changePasswordAction',
   'saveAlertsAction',
-  'toggleFavouriteAction',
+  'setFavouriteAction',
 ])
 
 describe('server actions', () => {

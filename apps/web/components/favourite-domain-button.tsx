@@ -3,7 +3,7 @@
 import { useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { StarIcon } from 'lucide-react'
-import { toggleFavouriteAction } from '@/app/(protected)/favourite-actions'
+import { setFavouriteAction } from '@/app/(protected)/favourite-actions'
 import { Button } from '@/components/ui/button'
 
 export function FavouriteDomainButton({ host, favourite }: { host: string; favourite: boolean }) {
@@ -18,7 +18,7 @@ export function FavouriteDomainButton({ host, favourite }: { host: string; favou
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
-          await toggleFavouriteAction(host)
+          await setFavouriteAction(host, !favourite)
         })
       }
     >

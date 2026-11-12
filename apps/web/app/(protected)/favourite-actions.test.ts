@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { toggleFavouriteAction } from './favourite-actions'
+import { setFavouriteAction } from './favourite-actions'
 
 const mocks = vi.hoisted(() => ({
   viewer: { session: { user: { id: 'member' } }, role: 'member' },
@@ -33,20 +33,30 @@ describe('personal favourite action', () => {
   })
   it('allows a member to choose a visible domain, replacing any previous favourite', async () => {
     mocks.favourite.mockResolvedValue('previous')
-    await toggleFavouriteAction('example.com')
+    await setFavouriteAction('example.com', true)
     expect(mocks.companies).toHaveBeenCalledWith(mocks.viewer)
     expect(mocks.set).toHaveBeenCalledWith('member', 'visible')
     expect(mocks.revalidate).toHaveBeenCalledWith('/', 'layout')
   })
   it('clears the current favourite', async () => {
     mocks.favourite.mockResolvedValue('visible')
-    await toggleFavouriteAction('example.com')
+    await setFavouriteAction('example.com', false)
     expect(mocks.set).toHaveBeenCalledWith('member', null)
+  })
+  it('keeps a favourite chosen elsewhere when a stale star is cleared', async () => {
+    mocks.favourite.mockResolvedValue('other')
+    await setFavouriteAction('example.com', false)
+    expect(mocks.set).not.toHaveBeenCalled()
+  })
+  it('sets the favourite again without flipping it off', async () => {
+    mocks.favourite.mockResolvedValue('visible')
+    await setFavouriteAction('example.com', true)
+    expect(mocks.set).toHaveBeenCalledWith('member', 'visible')
   })
   it.each(['hidden.com', '', 'x'.repeat(254)])(
     'refuses invalid or invisible host %s',
     async (host) => {
-      await expect(toggleFavouriteAction(host)).rejects.toThrow('not-found')
+      await expect(setFavouriteAction(host, true)).rejects.toThrow('not-found')
       expect(mocks.set).not.toHaveBeenCalled()
     },
   )
