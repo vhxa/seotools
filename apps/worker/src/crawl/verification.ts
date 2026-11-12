@@ -5,6 +5,7 @@ import {
   crawlFileKindOf,
   defaultCrawlerUserAgent,
   isInternalUrl,
+  recheckPreviewOf,
   type Logger,
   type VerificationOutcome,
   type VerificationStatus,
@@ -247,13 +248,22 @@ export async function runVerification(
         linksIn: linksIn.get(item.urlHash) ?? 0,
         anchors: { internal: anchors.internal, nofollow: anchors.nofollow },
       }
-      const { data: _data, ...stored } = answer
+      const { data, ...stored } = answer
+      const outcome = evaluateRecheck(recheck, context)
+      // Only a page (HTML, 2xx) has a share preview; anything else says nothing about it, and only
+      // what the preview reads is kept, never the page data.
+      const isPage =
+        answer.kind === 'page' &&
+        answer.statusCode !== null &&
+        answer.statusCode >= 200 &&
+        answer.statusCode < 300
+      const preview = isPage ? recheckPreviewOf(answer.title, data) : null
       const saved = await db.verifications.recordResult({
         verificationId,
         urlHash: item.urlHash,
         answer: stored,
         auditVersion: config.version,
-        outcome: evaluateRecheck(recheck, context),
+        outcome: preview ? { ...outcome, preview } : outcome,
       })
       // Cancelled while this was in flight: the result is dropped and the rest is not requested.
       if (!saved) markCancelled()

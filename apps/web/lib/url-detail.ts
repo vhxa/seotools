@@ -11,7 +11,13 @@ import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
 import { automaticFileChecks } from './automatic-checks'
 import { getDb } from './db'
 import { crawlUrlsInEvidence } from './issue-evidence'
-import { canRecheck, viewRecheck, type RecheckView } from './recheck'
+import {
+  canRecheck,
+  previewSourceOf,
+  viewRecheck,
+  type RecheckPreviewSource,
+  type RecheckView,
+} from './recheck'
 import { loadUrlLinks, type UrlLinksPage } from './url-links'
 
 /** At most this many findings of other URLs are named in the detail of the URL that accepts them. */
@@ -60,6 +66,11 @@ export interface UrlDetailData {
     available: boolean
     /** The latest recheck that finished, read next to the crawl. `null`: none, or the crawl is newer. */
     view: RecheckView | null
+    /**
+     * What the newest recheck, if later than this crawl, says of the share preview. `null` for an
+     * older crawl, no such recheck, or one that says nothing of it.
+     */
+    preview: RecheckPreviewSource | null
     /** It is waiting in a recheck that has not ended. */
     waiting: boolean
     /** The domain has a recheck under way (a domain runs one at a time). */
@@ -127,6 +138,13 @@ export async function loadUrlDetail(input: {
     undefined,
     { ...crawl, host: host },
   )
+  const view = viewRecheck({
+    verified: verified[0] ?? null,
+    crawl,
+    crawledAt: url.fetchedAt,
+    crawlIssues: issues.map(({ issue }) => issue),
+    configVersion: config.version,
+  })
   return {
     automaticCheck: (await automaticFileChecks(db.crawls, crawl.id, [url])).has(urlHash),
     crawl,
@@ -144,13 +162,8 @@ export async function loadUrlDetail(input: {
       : auditResultsState(crawl, config),
     recheck: {
       available: canRecheck(url),
-      view: viewRecheck({
-        verified: verified[0] ?? null,
-        crawl,
-        crawledAt: url.fetchedAt,
-        crawlIssues: issues.map(({ issue }) => issue),
-        configVersion: config.version,
-      }),
+      view,
+      preview: previewSourceOf({ view, historical }),
       waiting,
       busy: activeRecheck !== null,
       archived: owner?.archivedAt != null,

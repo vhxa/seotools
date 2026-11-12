@@ -26,7 +26,7 @@ import { PriorityToggle, UrlLink } from '@/components/crawl/url-cells'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
-import { SharePreviewView } from '@/components/pages/share-preview'
+import { UrlSharePreview } from '@/components/pages/share-preview'
 import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -274,7 +274,12 @@ export async function UrlDetail({
 
       {isPage && (
         <Section title={t('sections.preview')}>
-          <SharePreviewView preview={sharePreview(url)} />
+          <UrlSharePreview
+            crawlPreview={sharePreview(url)}
+            crawledAt={crawl.finishedAt ?? crawl.createdAt}
+            recheck={data.recheck.preview}
+            url={url.url}
+          />
         </Section>
       )}
 

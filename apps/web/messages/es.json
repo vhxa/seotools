@@ -870,7 +870,17 @@
       "notRecorded": "Este rastreo no lo registró: lanza un rastreo nuevo para verlo.",
       "untagged": "La página no tiene etiquetas Open Graph: las redes sociales eligen qué mostrar.",
       "imageInsecure": "Imagen no mostrada: no se sirve por HTTPS",
-      "noImage": "Sin imagen"
+      "noImage": "Sin imagen",
+      "tabRecheck": "Verificación",
+      "tabCrawl": "Rastreo",
+      "fromRecheck": "De la verificación del {when}",
+      "fromCrawl": "Del rastreo del {when}",
+      "recheckImageNote": "La imagen es la dirección que declara la página; una verificación no la solicita.",
+      "notPageRedirect": "En la verificación del {when} esta URL redirigía ({status}) a {target}. La vista previa del rastreo está en la otra pestaña.",
+      "notPageRedirectNowhere": "En la verificación del {when} esta URL redirigía ({status}) sin indicar adónde. La vista previa del rastreo está en la otra pestaña.",
+      "notPageStatus": "En la verificación del {when} esta URL respondió {status}, no una página. La vista previa del rastreo está en la otra pestaña.",
+      "notPageNotHtml": "En la verificación del {when} esta URL respondió {status} con algo que no es una página web. La vista previa del rastreo está en la otra pestaña.",
+      "notPageNoAnswer": "En la verificación del {when} esta URL no respondió. La vista previa del rastreo está en la otra pestaña."
     }
   },
   "UrlLinks": {

@@ -1,4 +1,4 @@
-import type { CrawlPageData } from '@seotools/core'
+import type { CrawlPageData, PreviewSocial, RecheckPreview } from '@seotools/core'
 
 /** Where search engines tend to cut what they show of a title and a description. */
 export const GOOGLE_TITLE_MAX = 60
@@ -70,19 +70,26 @@ export interface SharePreview {
 }
 
 /**
- * What the crawl stored of a page, as it would be in a search result and when it is shared. Only
- * what the page says: nothing is made up where it says nothing, and a crawl from before the tags
- * were kept has no social side at all.
+ * What a preview is built from, whichever stored it: the title and description of the page and the
+ * Open Graph and Twitter Card fields it read. `social` is `null` where the source did not look for
+ * the tags, which is not the same as the page having none.
  */
-export function sharePreview(page: {
+export interface PreviewInput {
   url: string
   title: string | null
-  data: Pick<CrawlPageData, 'description' | 'facts'> | null
-}): SharePreview {
-  const { host, segments } = breadcrumbsOf(page.url)
-  const title = page.title?.trim() || null
-  const description = page.data?.description?.trim() || null
-  const social = page.data?.facts?.social
+  description: string | null
+  social: PreviewSocial | null | undefined
+}
+
+/**
+ * How a page would be in a search result and when it is shared. Only what the page says: nothing is
+ * made up where it says nothing.
+ */
+export function previewOf(input: PreviewInput): SharePreview {
+  const { host, segments } = breadcrumbsOf(input.url)
+  const title = input.title?.trim() || null
+  const description = input.description?.trim() || null
+  const { social } = input
   return {
     google: {
       host,
@@ -102,4 +109,23 @@ export function sharePreview(page: {
         }
       : null,
   }
+}
+
+/** What the crawl stored of a page; a crawl from before the tags were kept has no social side. */
+export function sharePreview(page: {
+  url: string
+  title: string | null
+  data: Pick<CrawlPageData, 'description' | 'facts'> | null
+}): SharePreview {
+  return previewOf({
+    url: page.url,
+    title: page.title,
+    description: page.data?.description ?? null,
+    social: page.data?.facts?.social,
+  })
+}
+
+/** What a recheck read of the page (`VerificationOutcome.preview`). */
+export function recheckSharePreview(url: string, preview: RecheckPreview): SharePreview {
+  return previewOf({ url, ...preview })
 }
