@@ -958,6 +958,19 @@ export function createPgDatabase(options: {
             set: { favouriteDomainId: domainId },
           })
       },
+      async locale(userId) {
+        const [row] = await db
+          .select()
+          .from(schema.userPreferences)
+          .where(eq(schema.userPreferences.userId, userId))
+        return row?.locale ?? null
+      },
+      async setLocale(userId, locale) {
+        await db
+          .insert(schema.userPreferences)
+          .values({ userId, locale })
+          .onConflictDoUpdate({ target: schema.userPreferences.userId, set: { locale } })
+      },
     },
     settings: {
       async get(key) {

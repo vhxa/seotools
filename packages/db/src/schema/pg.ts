@@ -907,6 +907,8 @@ export const userPreferences = pgTable('user_preferences', {
   favouriteDomainId: text('favourite_domain_id').references(() => domains.id, {
     onDelete: 'set null',
   }),
+  /** The interface language chosen on the account; null follows the browser. */
+  locale: text('locale'),
 })
 
 export const botTestRuns = pgTable('bot_test_runs', {

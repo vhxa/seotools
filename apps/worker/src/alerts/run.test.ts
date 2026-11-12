@@ -279,6 +279,15 @@ describe('the change summary', () => {
     expect(text).toContain(`from=${first}&to=${second}`)
   })
 
+  it('writes in the language chosen on the account, over the one saved with the subscription', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'], 'en')
+    await db.userPreferences.setLocale(ana, 'es')
+    await crawl(site())
+    await run(await crawl(site()))
+    expect(sent[0]!.subject).toBe('example.com: cambios desde el rastreo anterior')
+  })
+
   it('says it cannot compare when no earlier crawl completed with its results', async () => {
     const ana = await member()
     await subscribe(ana, ['change-summary'])

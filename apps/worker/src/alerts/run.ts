@@ -200,7 +200,14 @@ async function recipientFor(
   if (!user || user.disabledAt) return null
   const grants = await db.users.grantsOf(user.id)
   if (domainRoleOf({ role: user.role, grants }, domain) === null) return null
-  return { userId: user.id, email: user.email, locale: alertLocaleOf(subscription.locale), kinds }
+  // A language chosen on the account wins over the one saved with the subscription.
+  const saved = await db.userPreferences.locale(user.id)
+  return {
+    userId: user.id,
+    email: user.email,
+    locale: alertLocaleOf(saved ?? subscription.locale),
+    kinds,
+  }
 }
 
 /** The comparison as the sections of an email, in the person's language. */

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from './support/test'
-import { ADMIN_STATE, HOST } from './support/env'
+import { ADMIN, ADMIN_STATE, HOST } from './support/env'
+import { signIn } from './support/helpers'
 
 const domain = `/domains/${HOST}`
 
@@ -393,4 +394,45 @@ test('the robots page starts an explicit bot access test with its limitations vi
   await page.getByRole('button', { name: 'Test bot access', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Testing bot access…' })).toBeDisabled()
   await expect(page.getByText(/· Queued/)).toBeVisible()
+})
+
+test('the language chosen on the account is kept across sign-ins, and the name can be edited', async ({
+  page,
+  browser,
+}) => {
+  await page.goto('/account')
+  await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible()
+  await page.getByLabel('Your name').fill('   ')
+  await page.getByRole('button', { name: 'Save name' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: '1 to 100 characters' })).toBeVisible()
+  await page.getByLabel('Your name').fill(`${ADMIN.name} II`)
+  await page.getByRole('button', { name: 'Save name' }).click()
+  await expect(page.getByText('Your name is saved.')).toBeVisible()
+  await page.getByLabel('Your name').fill(ADMIN.name)
+  await page.getByRole('button', { name: 'Save name' }).click()
+  await expect(page.getByText('Your name is saved.')).toBeVisible()
+
+  await page.getByRole('radio', { name: 'Español' }).click()
+  await page.getByRole('button', { name: 'Save language' }).click()
+  try {
+    await expect(page.getByRole('heading', { name: 'Cuenta', level: 1 })).toBeVisible()
+    // A fresh browser with no cookie: the saved language comes back when signing in.
+    const fresh = await browser.newContext({
+      locale: 'en-US',
+      storageState: { cookies: [], origins: [] },
+    })
+    try {
+      const other = await fresh.newPage()
+      await signIn(other, ADMIN)
+      await other.goto('/account')
+      await expect(other.getByRole('heading', { name: 'Cuenta', level: 1 })).toBeVisible()
+    } finally {
+      await fresh.close()
+    }
+  } finally {
+    await page.goto('/account')
+    await page.getByRole('radio', { name: 'Según el navegador' }).click()
+    await page.getByRole('button', { name: 'Guardar idioma' }).click()
+    await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible()
+  }
 })

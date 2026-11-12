@@ -25,3 +25,31 @@ export function resolveLocale(acceptLanguage: string | null | undefined): Locale
   }
   return DEFAULT_LOCALE
 }
+
+/** The cookie that carries the language chosen on the account, so no request reads the database. */
+export const LOCALE_COOKIE = 'seotools-locale'
+export const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+/** The saved language from a cookie value; anything we do not ship is ignored. */
+export function parseLocale(value: string | null | undefined): Locale | null {
+  return LOCALES.find((locale) => locale === value) ?? null
+}
+
+/** The saved language first, then the browser's `Accept-Language`. */
+export function resolveRequestLocale(
+  cookie: string | null | undefined,
+  acceptLanguage: string | null | undefined,
+): Locale {
+  return parseLocale(cookie) ?? resolveLocale(acceptLanguage)
+}
+
+/** Attributes of the locale cookie; `secure` follows how the app is served. */
+export function localeCookieOptions(secure: boolean) {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure,
+    path: '/',
+    maxAge: LOCALE_COOKIE_MAX_AGE,
+  }
+}

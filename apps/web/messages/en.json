@@ -3053,12 +3053,16 @@
     "changed": "Your password has changed.",
     "errors": {
       "length": "Use between {min, number} and {max, number} characters.",
-      "wrongPassword": "The current password is not correct."
+      "wrongPassword": "The current password is not correct.",
+      "nameInvalid": "Enter a name of 1 to {max, number} characters.",
+      "nameFailed": "The name could not be saved.",
+      "languageInvalid": "Choose one of the listed languages.",
+      "languageFailed": "The language could not be saved."
     },
     "alerts": {
       "title": "Alerts",
       "description": "Choose what you want to be emailed about each domain. Nothing is sent until you choose it, and only for domains you can see.",
-      "language": "Emails are written in the language you are using when you save.",
+      "language": "Alert emails use the language chosen on your account, or the one you are using when you save if you follow the browser.",
       "empty": "You cannot see any domain yet.",
       "archived": "Archived: no alerts are sent.",
       "kinds": {
@@ -3081,6 +3085,23 @@
       "errors": {
         "failed": "The alerts could not be saved."
       }
+    },
+    "name": {
+      "label": "Your name",
+      "save": "Save name",
+      "saving": "Saving…",
+      "saved": "Your name is saved."
+    },
+    "language": {
+      "title": "Language",
+      "label": "Interface language",
+      "browser": "Follow the browser",
+      "en": "English",
+      "es": "Español",
+      "hint": "Also the language of the emails sent to you. By default the browser decides.",
+      "save": "Save language",
+      "saving": "Saving…",
+      "saved": "Your language is saved."
     }
   },
   "PasswordRecovery": {

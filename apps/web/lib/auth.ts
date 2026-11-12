@@ -2,11 +2,13 @@ import type { WebEnv } from '@seotools/core'
 import type { Database } from '@seotools/db'
 import { betterAuth, type BetterAuthPlugin } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { APIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { nextCookies } from 'better-auth/next-js'
+import { LOCALE_COOKIE, localeCookieOptions, parseLocale } from '../i18n/locale'
 import { getDb } from './db'
 import { getEnv } from './env'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from './password'
+import { servedOverHttps } from './security-headers'
 
 /**
  * Email/password auth. The first user registers on the first-run /setup page (see
@@ -44,6 +46,19 @@ export function createAuth(db: Database, env: WebEnv, plugins: BetterAuthPlugin[
           },
         },
       },
+    },
+    hooks: {
+      // The saved language follows the person to another browser: it is put in the locale cookie
+      // when they sign in, and "follow the browser" (nothing saved) clears it.
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/sign-in/email') return
+        const userId = ctx.context.newSession?.user.id
+        if (!userId) return
+        const options = localeCookieOptions(servedOverHttps(env.BETTER_AUTH_URL))
+        const saved = parseLocale(await db.userPreferences.locale(userId))
+        if (saved) ctx.setCookie(LOCALE_COOKIE, saved, options)
+        else ctx.setCookie(LOCALE_COOKIE, '', { ...options, maxAge: 0 })
+      }),
     },
     plugins,
   })
