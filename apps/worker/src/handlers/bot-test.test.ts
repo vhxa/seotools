@@ -96,3 +96,70 @@ it('hands back interrupted work and ignores archived domains', async () => {
   await make(fetch)(job(), ctx())
   expect(fetch).not.toHaveBeenCalled()
 })
+
+it('uses domain settings and changes only the user agent while following redirects', async () => {
+  const settings = await db.crawls.settings(domainId)
+  await db.crawls.saveSettings(domainId, {
+    ...settings,
+    userAgent: 'Custom baseline',
+    timeoutMs: 12345,
+  })
+  const agents: string[] = []
+  const urls: string[] = []
+  const handler = createBotTestHandler({
+    db,
+    allowPrivateNetworks: false,
+    createFetcher: (config) => {
+      agents.push(config.userAgent)
+      expect(config.timeoutMs).toBe(12345)
+      expect(config.concurrency).toBe(settings.concurrency)
+      return {
+        close() {},
+        fetch: async (url) => {
+          urls.push(url)
+          return url.endsWith('/home')
+            ? response()
+            : { ...response(301), headers: { location: '/home' } }
+        },
+      }
+    },
+  })
+  await handler(job(), ctx())
+  expect(agents).toEqual(['Custom baseline', ...BOT_USER_AGENTS.map((bot) => bot.userAgent)])
+  expect(new Set(urls)).toEqual(new Set(['https://example.com/', 'https://example.com/home']))
+  expect(
+    (await db.botTests.results(runId)).every((row) => row.finalUrl === 'https://example.com/home'),
+  ).toBe(true)
+})
+it('pauses automation without spending requests', async () => {
+  const fetch = vi.fn(async () => response())
+  const handler = createBotTestHandler({
+    db,
+    paused: true,
+    allowPrivateNetworks: false,
+    createFetcher: () => ({ fetch, close() {} }),
+  })
+  await expect(handler(job(), ctx())).rejects.toBeInstanceOf(JobDeferredError)
+  expect(fetch).not.toHaveBeenCalled()
+})
+it('keeps an interrupted request unsaved for resume', async () => {
+  const stop = new AbortController()
+  const handler = make(async () => {
+    stop.abort()
+    throw new FetchError('ABORT_ERR', 'stopped')
+  })
+  await expect(handler(job(), { ...ctx(), signal: stop.signal })).rejects.toBeInstanceOf(
+    JobInterruptedError,
+  )
+  expect(await db.botTests.results(runId)).toEqual([])
+  expect((await db.botTests.get(runId))?.status).toBe('running')
+})
+it('steps aside if a crawl starts after the baseline', async () => {
+  let n = 0
+  const fetch = vi.fn(async () => {
+    if (n++ === 0) await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    return response()
+  })
+  await expect(make(fetch)(job(), ctx())).rejects.toBeInstanceOf(JobDeferredError)
+  expect(fetch).toHaveBeenCalledTimes(1)
+})

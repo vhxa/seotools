@@ -1,4 +1,5 @@
 /** Published HTTP identities only. These requests do not verify a bot's source IP. */
+// Google and Amazon publish Chrome/W.X.Y.Z templates; 131.0.0.0 instantiates that field.
 export const BOT_USER_AGENTS = [
   // https://developers.google.com/search/docs/crawling-indexing/overview-google-crawlers
   {

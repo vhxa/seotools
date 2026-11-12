@@ -852,6 +852,13 @@ export function createPgDatabase(options: {
         const notInUse = and(
           notInArray(
             jobs.id,
+            db
+              .select({ id: botTestRuns.jobId })
+              .from(botTestRuns)
+              .where(isNotNull(botTestRuns.activeKey)),
+          ),
+          notInArray(
+            jobs.id,
             db.select({ id: crawls.jobId }).from(crawls).where(isNotNull(crawls.activeKey)),
           ),
           notInArray(
@@ -2948,7 +2955,7 @@ export function createPgDatabase(options: {
             await assertNotArchived(tx, domainId)
             await tx.insert(jobs).values({
               id: jobId,
-              type: 'bot.test',
+              type: JOB_TYPES.botTest,
               payload: JSON.stringify({ runId: id }),
               runAt: now,
               createdAt: now,
@@ -3033,9 +3040,15 @@ export function createPgDatabase(options: {
           const ended = await tx
             .select({ id: botTestRuns.id })
             .from(botTestRuns)
-            .where(and(eq(botTestRuns.domainId, current.domainId), isNull(botTestRuns.activeKey)))
+            .where(
+              and(
+                eq(botTestRuns.domainId, current.domainId),
+                isNull(botTestRuns.activeKey),
+                ne(botTestRuns.id, id),
+              ),
+            )
             .orderBy(desc(botTestRuns.finishedAt), desc(botTestRuns.id))
-          const old = ended.slice(1).map((row) => row.id)
+          const old = ended.map((row) => row.id)
           if (old.length) {
             const removed = await tx
               .select({ jobId: botTestRuns.jobId })

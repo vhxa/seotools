@@ -55,6 +55,12 @@ test.describe('a member with a viewer grant on one domain', () => {
     await expect(page.getByRole('button', { name: 'Crawl a URL list' })).toHaveCount(0)
   })
 
+  test('can read bot access results without being offered a request button', async ({ page }) => {
+    await page.goto(`${domain}/crawl-files/robots`)
+    await expect(page.getByText('Bot access test', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Test(ing)? bot access/ })).toHaveCount(0)
+  })
+
   test('does not find a domain without a grant, nor the administration', async ({ page }) => {
     const missing = await page.goto(`/domains/${OTHER_HOST}`)
     expect(missing?.status()).toBe(404)

@@ -382,3 +382,15 @@ test('ignored parameter settings persist and explain next-crawl behavior', async
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByRole('status')).toBeVisible()
 })
+
+test('the robots page starts an explicit bot access test with its limitations visible', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/crawl-files/robots`)
+  await expect(page.getByText('Bot access test', { exact: true })).toBeVisible()
+  await expect(page.getByText(/not whether a real bot is blocked/)).toBeVisible()
+  await expect(page.getByText('robots.txt token only, nothing to test')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Test bot access', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Testing bot access…' })).toBeDisabled()
+  await expect(page.getByText(/· Queued/)).toBeVisible()
+})
