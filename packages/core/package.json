@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "css-what": "^7.0.0",
-    "nodemailer": "^10.3.1",
+    "nodemailer": "^10.4.0",
     "pino": "^10.4.0",
     "resend": "^6.37.0",
     "zod": "^4.6.7"
