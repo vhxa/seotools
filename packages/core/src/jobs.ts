@@ -35,6 +35,7 @@ export const JOB_TYPES = {
   auditRecompute: 'audit.recompute',
   /** Requests some URLs of a domain again and checks what each one answers on its own. */
   urlVerify: 'url.verify',
+  botTest: 'bot.test',
   /** Sends someone a link to set their password. The link is made when sending, never stored. */
   accessEmail: 'access.email',
   /** Tells the people who asked for it that a full crawl ended, if there is something to act on. */
@@ -87,3 +88,5 @@ export type CrawlAlertsPayload = z.infer<typeof crawlAlertsPayload>
 export const cwvCollectPayload = z.object({ crawlId: z.string().min(1) })
 
 export type CwvCollectPayload = z.infer<typeof cwvCollectPayload>
+
+export const botTestPayload = z.object({ runId: z.string().min(1) })

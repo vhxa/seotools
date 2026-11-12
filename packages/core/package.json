@@ -24,7 +24,8 @@
     "./crawl/compare": "./src/crawl/compare.ts",
     "./crawl/verification": "./src/crawl/verification.ts",
     "./version": "./src/version.ts",
-    "./vitals-state": "./src/vitals-state.ts"
+    "./vitals-state": "./src/vitals-state.ts",
+    "./bot-access": "./src/bot-access.ts"
   },
   "scripts": {
     "lint": "eslint .",

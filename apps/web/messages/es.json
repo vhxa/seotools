@@ -3521,5 +3521,40 @@
   "FavouriteDomain": {
     "set": "Marcar {host} como favorito",
     "clear": "Quitar {host} de favoritos"
+  },
+  "BotTest": {
+    "title": "Prueba de acceso de bots",
+    "caveat": "Esta prueba manual solicita la página de inicio con distintos User-Agent. Indica si el sitio responde de forma diferente a un User-Agent, no si bloquea al bot real. Las CDN pueden verificar Googlebot y Bingbot por su IP: pueden rechazar una solicitud simulada y permitir al bot real, o al revés.",
+    "start": "Probar acceso de bots",
+    "pending": "Probando acceso de bots…",
+    "startFailed": "No se ha podido iniciar la prueba de acceso.",
+    "run": "{date} · {state}",
+    "baseline": "Referencia: {status} · {address}",
+    "bot": "Bot",
+    "company": "Empresa",
+    "robots": "robots.txt",
+    "status": "Estado HTTP / error",
+    "address": "Dirección final diferente",
+    "verdict": "Resultado",
+    "unknown": "Desconocido",
+    "tokenOnly": "Solo es un token de robots.txt; no hay nada que probar",
+    "unpublished": "Sin identidad de solicitud publicada verificable; no probado",
+    "states": {
+      "queued": "En cola",
+      "running": "En curso",
+      "done": "Terminada",
+      "failed": "Fallida",
+      "cancelled": "Cancelada"
+    },
+    "verdicts": {
+      "same": "Misma respuesta",
+      "different": "El sitio ha respondido de forma diferente a este User-Agent",
+      "unknown": "Desconocido"
+    },
+    "reasons": {
+      "status-class": "Clase de estado HTTP diferente",
+      "final-url": "Dirección final diferente",
+      "refused": "403, 429 o 503 con una respuesta de referencia 2xx"
+    }
   }
 }

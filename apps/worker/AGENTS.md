@@ -25,6 +25,8 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 - Crawl files (robots.txt, sitemaps, llms.txt and the optional ones) live in `crawl_files`, one row per URL with what the last request answered, written by both full crawls and the daily refresher (`createCrawlFileRefresher`). Add a new kind in `crawlFileRequests` (`@seotools/core`), so both request it; an optional one also goes in `OPTIONAL_CRAWL_FILES`, which gives it a settings switch, a sidebar entry and a page under `crawl-files/[kind]`.
 - What these files contain is untrusted: parse it without backtracking regexes, and link a URL taken from one only after `normalizeCrawlUrl`, which refuses `javascript:` and the like.
 
+- On-demand bot access tests request only the tracked homepage and its redirect chain through `createRequester` and `createHttpFetcher`, with the domain’s crawl settings and credentials; only the User-Agent changes.
+
 ## Jobs
 
 - Jobs that may outlast `JOB_LOCK_TIMEOUT_MS` are safe: the runner renews the locks of what it is running. Handlers must still be resumable, since a job can be retried after a crash; throw `JobInterruptedError` to hand one back on shutdown without spending an attempt.

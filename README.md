@@ -30,6 +30,7 @@ Raspberry Pi to a VPS.
   and manage currently ignored names on the Parameters page ([details](docs/ignored-parameters.md)).
 - **History and comparison** of crawls, a URL's history, rechecks of single URLs, alerts by email,
   and CSV exports of pages, findings, links and redirects.
+- **Bot access test**: compare homepage responses to published bot User-Agent strings on demand from the robots.txt page; simulated requests do not prove whether real bots can access the site.
 - **Crawl files**: `robots.txt` with the access of each AI bot, sitemaps, `llms.txt`, and on request
   `ads.txt`, `security.txt`, feeds, OpenSearch and IndexNow.
 - **Custom extraction** of any value with a CSS selector.

@@ -1,3 +1,4 @@
+import type { BotAnswer, BotVerdict } from '@seotools/core/bot-access'
 import type { VitalMetrics } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
@@ -1368,6 +1369,7 @@ export interface Database {
   readonly domains: DomainRepository
   readonly crawls: CrawlRepository
   readonly audit: AuditRepository
+  readonly botTests: BotTestRepository
   readonly verifications: VerificationRepository
   readonly priorityUrls: PriorityUrlRepository
   readonly crawlSchedules: CrawlScheduleRepository
@@ -1389,4 +1391,32 @@ export interface Database {
   /** Applies pending migrations from `migrationsDir` (default: the bundled ones). */
   migrate(migrationsDir?: string): Promise<void>
   close(): Promise<void>
+}
+
+export interface BotTestRun {
+  id: string
+  domainId: string
+  jobId: string
+  requestedBy: string
+  activeKey: string | null
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+  createdAt: Date
+  startedAt: Date | null
+  finishedAt: Date | null
+}
+export interface BotTestResult extends BotAnswer, BotVerdict {
+  runId: string
+  botToken: string
+  responseTimeMs: number | null
+  bytes: number | null
+}
+export interface BotTestRepository {
+  start(input: { domainId: string; requestedBy: string }): Promise<BotTestRun | null>
+  get(id: string): Promise<BotTestRun | null>
+  active(domainId: string): Promise<BotTestRun | null>
+  list(domainId: string): Promise<BotTestRun[]>
+  markRunning(id: string): Promise<void>
+  results(id: string): Promise<BotTestResult[]>
+  record(input: BotTestResult): Promise<void>
+  finish(id: string, status: 'done' | 'failed' | 'cancelled'): Promise<void>
 }

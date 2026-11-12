@@ -6,3 +6,5 @@ import { exampleEcho } from './example-echo'
 export const handlers: Record<string, JobHandler> = {
   [JOB_TYPES.exampleEcho]: exampleEcho,
 }
+
+export { createBotTestHandler } from './bot-test'

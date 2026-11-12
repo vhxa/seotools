@@ -3521,5 +3521,40 @@
   "FavouriteDomain": {
     "set": "Set {host} as favourite",
     "clear": "Clear {host} as favourite"
+  },
+  "BotTest": {
+    "title": "Bot access test",
+    "caveat": "This on-demand test requests the home page with different User-Agent strings. It reports when the site answers a User-Agent differently, not whether a real bot is blocked. CDNs may verify Googlebot and Bingbot by IP: an impersonated request can be refused while the real bot is allowed, or the reverse.",
+    "start": "Test bot access",
+    "pending": "Testing bot access…",
+    "startFailed": "Could not start the bot access test.",
+    "run": "{date} · {state}",
+    "baseline": "Baseline: {status} · {address}",
+    "bot": "Bot",
+    "company": "Company",
+    "robots": "robots.txt",
+    "status": "HTTP status / error",
+    "address": "Different final address",
+    "verdict": "Result",
+    "unknown": "Unknown",
+    "tokenOnly": "robots.txt token only, nothing to test",
+    "unpublished": "No verified published request identity; not tested",
+    "states": {
+      "queued": "Queued",
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "verdicts": {
+      "same": "Same response",
+      "different": "The site answered this User-Agent differently",
+      "unknown": "Unknown"
+    },
+    "reasons": {
+      "status-class": "Different HTTP status class",
+      "final-url": "Different final address",
+      "refused": "403, 429 or 503 while the baseline answered 2xx"
+    }
   }
 }

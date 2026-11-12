@@ -79,6 +79,18 @@ export function describeLifecycle(
     async function populated(host: string, companyName = `${host} Inc`) {
       const { domain, company: owner } = await company(companyName, host)
       const domainId = domain.id
+      const botRun = await db.botTests.start({ domainId, requestedBy: 'editor' })
+      await db.botTests.record({
+        runId: botRun!.id,
+        botToken: 'baseline',
+        statusCode: 200,
+        finalUrl: `https://${host}/`,
+        responseTimeMs: 1,
+        bytes: 2,
+        errorCode: null,
+        verdict: 'unknown',
+        reasons: [],
+      })
       const url = `https://${host}/`
       const other = `https://${host}/about`
       await db.crawls.saveSettings(domainId, { ...DEFAULT_CRAWL_SETTINGS, concurrency: 3 })

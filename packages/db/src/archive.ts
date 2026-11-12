@@ -52,6 +52,7 @@ export function withArchiveGuard(db: Database): Database {
   return {
     ...db,
     crawls: guard(db, db.crawls, ['saveSettings', 'saveIgnoredParameters', 'saveRequestSecrets']),
+    botTests: guard(db, db.botTests, ['start']),
     crawlSchedules: guard(db, db.crawlSchedules, ['save']),
     priorityUrls: guard(db, db.priorityUrls, ['add', 'remove']),
     crawlFiles: guard(db, db.crawlFiles, ['requestCheck']),
