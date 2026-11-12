@@ -20,6 +20,15 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Changed
+
+- Custom extraction uses newer CSS selector libraries: `:enabled` now matches only form elements
+  (inputs, buttons, selects, text areas and the like), as browsers do.
+
+### Security
+
+- Next.js 16.4.5 and other dependency updates with upstream security fixes.
+
 ## [0.4.0] - 2026-11-12
 
 ### Added
