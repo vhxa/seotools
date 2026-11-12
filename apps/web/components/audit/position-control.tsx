@@ -44,6 +44,7 @@ export function PositionControl<V extends string>({
   resetLabel,
   disabled,
   allowed,
+  wide,
 }: {
   labelledBy: string
   describedBy?: string
@@ -58,6 +59,8 @@ export function PositionControl<V extends string>({
   resetLabel: string
   disabled?: boolean
   allowed?: AllowedBox
+  /** Room for longer names: there is no checkbox beside it. */
+  wide?: boolean
 }) {
   const group = useRef<HTMLDivElement>(null)
   const name = useId()
@@ -82,13 +85,16 @@ export function PositionControl<V extends string>({
   const isStated = stated !== null || dimmed
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2">
       <div
         ref={group}
         role="radiogroup"
         aria-labelledby={labelledBy}
         {...(describedBy ? { 'aria-describedby': describedBy } : {})}
-        className="inline-flex w-48 shrink-0 rounded-lg border bg-muted/40 p-0.5"
+        className={cn(
+          'inline-flex shrink-0 rounded-lg border bg-muted/40 p-0.5',
+          wide ? 'w-64' : 'w-48',
+        )}
       >
         {positions.map((position, index) => {
           const chosen = stated === position.value

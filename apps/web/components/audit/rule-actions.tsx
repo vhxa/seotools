@@ -117,7 +117,7 @@ export function RuleRowActions({ host, rule }: { host: string; rule: RuleGroup }
       )}
 
       <Dialog open={editing} onOpenChange={setEditing}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>{t('form.editTitle')}</DialogTitle>
             <DialogDescription>{t('form.description')}</DialogDescription>

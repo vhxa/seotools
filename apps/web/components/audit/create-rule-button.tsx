@@ -27,7 +27,7 @@ export function CreateRuleButton({ variant = 'default' }: { variant?: 'default' 
         {t('create')}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>{t('form.addTitle')}</DialogTitle>
             <DialogDescription>{t('form.description')}</DialogDescription>

@@ -179,6 +179,7 @@ function Statement<V extends string>({
         onReset={() => onPick(resetPick(mode))}
         resetLabel={mode === 'bulk' ? t('resetBulk') : t('reset')}
         disabled={disabled}
+        wide={!allowed}
         {...(allowed && view
           ? {
               allowed: {
@@ -263,7 +264,7 @@ export function AuditStatements({
         </div>
         {/* Two columns when the dialog is wide enough for them, whatever the screen. */}
         <div className="@container">
-          <div className="grid gap-x-8 gap-y-4 @xl:grid-cols-2">
+          <div className="grid gap-x-8 gap-y-4 @xl:grid-cols-[repeat(2,minmax(0,1fr))]">
             {AUDIT_CONDITIONS.map((condition) => {
               const pick = picks.conditions[condition]
               return (
@@ -318,7 +319,7 @@ export function AuditStatements({
         </CollapsibleTrigger>
         <CollapsibleContent className="grid gap-5">
           <div className="@container">
-            <div className="grid gap-x-8 gap-y-4 @xl:grid-cols-2">
+            <div className="grid gap-x-8 gap-y-4 @xl:grid-cols-[repeat(2,minmax(0,1fr))]">
               <Statement<IndexIntent>
                 label={t('intent.label')}
                 help={
