@@ -435,7 +435,11 @@ export async function runCrawl(
         now: () => new Date(),
         retryBaseMs,
       })
-      observedFiles.splice(0, observedFiles.length, ...fresh.files)
+      observedFiles.splice(
+        0,
+        observedFiles.length,
+        ...fresh.files.map((file) => ({ ...file, via: 'crawl' as const })),
+      )
       filesCapped = fresh.capped
     }
   } finally {

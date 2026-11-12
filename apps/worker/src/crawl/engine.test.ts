@@ -1306,6 +1306,7 @@ it('re-acquires file observations when resuming after all crawl URLs were persis
     'Disallow: /',
   )
   expect((await db.incidents.list(domainId)).map((i) => i.kind)).toContain('robots-blocks-site')
+  expect((await db.crawlFiles.list(domainId)).find((f) => f.url === robotsUrl)?.via).toBe('crawl')
   expect((await db.crawlFiles.getCheck(domainId))?.outcome).toBe('ok')
 })
 
