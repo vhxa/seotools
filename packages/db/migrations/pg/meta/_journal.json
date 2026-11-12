@@ -225,6 +225,13 @@
       "when": 1794483635941,
       "tag": "0031_user_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794483967644,
+      "tag": "0032_site_incidents",
+      "breakpoints": true
     }
   ]
 }
