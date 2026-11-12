@@ -20,28 +20,12 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
-### Upgrade notes
-
-- Three migrations (0026–0028): 0026 adds the Core Web Vitals tables, 0027 the ignored query
-  parameters (settings and a per-crawl snapshot; link rows are not rebuilt), and 0028 personal
-  favourite domain preferences. Take the backup in
-  `docs/updating.md` first: an older image refuses to start on the updated database, so going back
-  needs that backup together with the previous image.
-- On the first start, earlier crawls are analysed again under the new checks. Checks that read
-  something older crawls did not keep (Open Graph and Twitter tags, the document language,
-  viewport and charset) show as not verifiable on them, never as fixed or new.
-- Core Web Vitals sends nothing until an administrator saves a Google API key in
-  Administration → Integrations. From then on, after each full crawl of a domain with collection
-  on (the default), its origin and page addresses are sent to Google's Chrome UX Report and
-  PageSpeed Insights APIs; the key's Google Cloud project must have both enabled and allowed.
-- With Docker Desktop (macOS, Windows), `/data` must be a named Docker volume, as in the supplied
-  Compose file, not a bind-mounted host directory: SQLite shared by the web app and the worker can
-  crash there (SIGBUS). This also affects earlier versions.
+## [0.4.0] - 2026-11-12
 
 ### Added
 
-- Each user can star one favourite domain to open automatically; the header logo opens the current
-  domain overview, and the domain switcher always offers the all-domains list at `/domains`.
+- Each user can star one favourite domain, which `/` then opens. Inside a domain the header logo
+  leads to its overview, and the domain switcher has an "All domains" entry (`/domains`).
 - Issues filters, per-issue crawl changes and template badges; current site-file findings; dashboard differences and comparison links; distinct referring-URL counts in Errors and Redirects and CSV exports.
 - Core Web Vitals: field data from the Chrome UX Report (origin trend on the dashboard and per
   URL) and PageSpeed Insights lab measurements for priority URLs, CSV columns, and warnings for
@@ -66,8 +50,8 @@ which moves the entries of `[Unreleased]` into the new version.
 - The URL detail previews how a page appears in search results and when it is shared (Open Graph
   image, title and description), and the pages CSV has `og:title`, `og:description`, `og:image`,
   `twitter:card` and HTML lang columns.
-- A portfolio home: anyone who can see two or more domains lands on `/` with every domain grouped by
-  company (last full crawl, pages crawled, indexable pages, issues, warnings, opportunities, a small
+- A portfolio of every domain at `/domains`, which is also the home (`/`) for anyone who can see two
+  or more domains and has no favourite: every domain grouped by company (last full crawl, pages crawled, indexable pages, issues, warnings, opportunities, a small
   trend of the last full crawls and whether a crawl is running); archived domains are in a collapsed
   list. With one domain or none, `/` still goes straight to it (or to the companies, onboarding or
   the no-access page).
@@ -106,6 +90,24 @@ which moves the entries of `[Unreleased]` into the new version.
   `BETTER_AUTH_URL` is an `https://` address.
 - Search engines are told not to index the app: every response says `noindex`, and `/robots.txt`
   disallows everything. A sign-in page of a public installation no longer ends up in search results.
+
+### Upgrade notes
+
+- Three migrations (0026–0028): 0026 adds the Core Web Vitals tables, 0027 the ignored query
+  parameters (settings and a per-crawl snapshot; link rows are not rebuilt), and 0028 personal
+  favourite domain preferences. Take the backup in `docs/updating.md` first: an older image refuses
+  to start on the updated database, so going back needs that backup together with the previous
+  image.
+- On the first start, earlier crawls are analysed again under the new checks. Checks that read
+  something older crawls did not keep (Open Graph and Twitter tags, the document language,
+  viewport and charset) show as not verifiable on them, never as fixed or new.
+- Core Web Vitals sends nothing until an administrator saves a Google API key in
+  Administration → Integrations. From then on, after each full crawl of a domain with collection
+  on (the default), its origin and page addresses are sent to Google's Chrome UX Report and
+  PageSpeed Insights APIs; the key's Google Cloud project must have both enabled and allowed.
+- With Docker Desktop (macOS, Windows), `/data` must be a named Docker volume, as in the supplied
+  Compose file, not a bind-mounted host directory: SQLite shared by the web app and the worker can
+  crash there (SIGBUS). This also affects earlier versions.
 
 ## [0.3.0] - 2026-11-08
 
