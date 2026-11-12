@@ -1,3 +1,4 @@
+import { createIncidentAlertsHandler, createVitalsAlertsHandler } from './handlers/incident-alerts'
 import { randomBytes } from 'node:crypto'
 import { hostname } from 'node:os'
 import {
@@ -79,6 +80,11 @@ async function main() {
       ...handlers,
       [JOB_TYPES.auditRecompute]: createAuditRecomputeHandler({ db }),
       [JOB_TYPES.accessEmail]: createAccessEmailHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
+      [JOB_TYPES.incidentAlerts]: createIncidentAlertsHandler({
+        db,
+        publicUrl: env.BETTER_AUTH_URL,
+      }),
+      [JOB_TYPES.vitalsAlerts]: createVitalsAlertsHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
       [JOB_TYPES.crawlAlerts]: createCrawlAlertsHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
       [JOB_TYPES.mailSend]: createMailSendHandler({ db }),
     },
@@ -130,11 +136,14 @@ async function main() {
     )
   // The record of sent email is capped by count and age, so it cannot grow forever.
   const pruneDeliveries = () =>
-    db.mail
-      .prune({
-        before: new Date(Date.now() - MAIL_DELIVERIES_MAX_AGE_MS),
-        keep: MAIL_DELIVERIES_KEEP,
-      })
+    db.incidents
+      .prune(new Date(Date.now() - 90 * 86400000))
+      .then(() =>
+        db.mail.prune({
+          before: new Date(Date.now() - MAIL_DELIVERIES_MAX_AGE_MS),
+          keep: MAIL_DELIVERIES_KEEP,
+        }),
+      )
       .then(() =>
         // The compact history of old crawls goes after its domain's days, crawl or no crawl.
         db.crawls.expireHistory({

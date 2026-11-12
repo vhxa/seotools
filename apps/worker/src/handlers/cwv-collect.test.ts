@@ -356,3 +356,40 @@ it('gives up on a crawl whose analysis never arrives', async () => {
   ).resolves.toBeUndefined()
   expect(fetcher).not.toHaveBeenCalled()
 })
+
+it('queues vitals alerts after reanalysis only for a regression against collected origin data', async () => {
+  await settings().setJson(GOOGLE_VITALS_KEY, 'key', { encrypted: true })
+  await db.vitals.saveOrigin({
+    ...emptyVitals(),
+    crawlId,
+    formFactor: 'PHONE',
+    lcp: 2000,
+    status: 'collected',
+    error: null,
+    collectedAt: new Date(),
+  })
+  const next = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+  if (!next) throw new Error('setup')
+  await runCrawl(next.id, {
+    db,
+    log,
+    signal: signal(),
+    createFetcher: fakeSite({ [SITE + '/']: page('/') }, 0).createFetcher,
+    retryBaseMs: 1,
+  })
+  crawlId = next.id
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async () => new Response(JSON.stringify(body))),
+  )
+  vi.useFakeTimers()
+  const handler = createCwvCollectHandler({ db, settings: settings(), paused: false })
+  const pending = handler(await job(), { log, signal: signal(), getMailer: async () => null })
+  await vi.runAllTimersAsync()
+  await pending
+  expect((await db.jobs.list()).filter((j) => j.type === JOB_TYPES.vitalsAlerts)).toHaveLength(1)
+  const retried = handler(await job(), { log, signal: signal(), getMailer: async () => null })
+  await vi.runAllTimersAsync()
+  await retried
+  expect((await db.jobs.list()).filter((j) => j.type === JOB_TYPES.vitalsAlerts)).toHaveLength(1)
+})

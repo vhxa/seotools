@@ -474,6 +474,9 @@ interface AlertRow {
   crawlProblem: boolean
   importantFindings: boolean
   changeSummary: boolean
+  siteFiles?: boolean
+  siteAvailability?: boolean
+  vitalsRegression?: boolean
   locale: string
   updatedAt: Date
 }
@@ -484,6 +487,9 @@ export const toAlertSubscription = (row: AlertRow): AlertSubscription => ({
   kinds: sortedAlertKinds([
     ...(row.crawlProblem ? (['crawl-problem'] as const) : []),
     ...(row.importantFindings ? (['important-findings'] as const) : []),
+    ...(row.siteFiles ? (['site-files'] as const) : []),
+    ...(row.siteAvailability ? (['site-availability'] as const) : []),
+    ...(row.vitalsRegression ? (['vitals-regression'] as const) : []),
     ...(row.changeSummary ? (['change-summary'] as const) : []),
   ]),
   locale: alertLocaleOf(row.locale),
@@ -494,6 +500,9 @@ export const toAlertSubscription = (row: AlertRow): AlertSubscription => ({
 export const alertColumns = (kinds: readonly AlertKind[], locale: AlertLocale) => ({
   crawlProblem: kinds.includes('crawl-problem'),
   importantFindings: kinds.includes('important-findings'),
+  siteFiles: kinds.includes('site-files'),
+  siteAvailability: kinds.includes('site-availability'),
+  vitalsRegression: kinds.includes('vitals-regression'),
   changeSummary: kinds.includes('change-summary'),
   locale,
   updatedAt: new Date(),
@@ -1735,3 +1744,7 @@ export const vitalsJobId = (crawlId: string) => `cwv:${crawlId}`
 export function vitalsJobValues(crawlId: string, now: Date) {
   return { ...alertJobValues(crawlId, now), id: vitalsJobId(crawlId), type: JOB_TYPES.cwvCollect }
 }
+
+export const incidentAlertJobId = (id: string, stage: string) =>
+  alertJobId(`incident:${id}:${stage}`)
+export const vitalsAlertJobId = (crawlId: string) => alertJobId(`vitals:${crawlId}`)

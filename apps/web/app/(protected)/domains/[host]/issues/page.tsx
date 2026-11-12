@@ -1,3 +1,4 @@
+import { Incidents } from '@/components/incidents'
 import { issuePairReasons } from '@seotools/core/crawl/compare'
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
@@ -50,6 +51,10 @@ export default async function IssuesPage({
     getTranslations('IssueCatalog'),
   ])
   const db = await getDb()
+  const incidents = await db.incidents.list(
+    domain.id,
+    new Date(new Date().getTime() - 30 * 86400000),
+  )
   const [latest, config] = await Promise.all([
     db.crawls.latestWithResults(domain.id, 'full'),
     db.audit.config(domain.id),
@@ -109,6 +114,10 @@ export default async function IssuesPage({
         <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 
+      <Incidents
+        open={incidents.filter((i) => !i.resolvedAt)}
+        history={incidents.filter((i) => i.resolvedAt !== null)}
+      />
       <section className="grid gap-2" aria-labelledby="site-findings">
         <h2 id="site-findings" className="text-lg font-medium">
           {t('site.title')}

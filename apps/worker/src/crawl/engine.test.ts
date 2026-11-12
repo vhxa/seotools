@@ -7,7 +7,7 @@ import {
 } from '@seotools/core'
 import { createCompany, deleteDomain } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JobInterruptedError } from '../types'
 import { analyseCrawl } from './analysis'
 import { reanalyseOutdatedCrawls } from './reanalysis'
@@ -1256,4 +1256,88 @@ it('coalesces ignored parameter links before hashing and keeps the first written
   expect(links.map((l) => l.url)).toEqual(['https://example.com/a'])
   expect(links.map((l) => l.context?.snippet).join(' ')).toContain('updatedAt=1')
   expect(links.map((l) => l.context?.snippet).join(' ')).not.toContain('updatedAt=2')
+})
+
+it('re-acquires file observations when resuming after all crawl URLs were persisted', async () => {
+  const robotsUrl = 'https://example.com/robots.txt'
+  const original = {
+    url: robotsUrl,
+    kind: 'robots' as const,
+    statusCode: 200,
+    contentType: 'text/plain',
+    redirectTo: null,
+    bytes: 10,
+    truncated: false,
+    body: 'User-agent: *',
+    error: null,
+    data: null,
+    via: 'refresh' as const,
+    fetchedAt: new Date('2026-01-01'),
+  }
+  await db.crawlFiles.save(domainId, [original])
+  const site = fakeSite({
+    'https://example.com/': html('<title>Home</title>'),
+    [robotsUrl]: {
+      statusCode: 200,
+      headers: { 'content-type': 'text/plain' },
+      body: Buffer.from('User-agent: *\nDisallow: /'),
+    },
+  })
+  const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+  const options = {
+    db,
+    log,
+    signal: new AbortController().signal,
+    createFetcher: site.createFetcher,
+    retryBaseMs: 1,
+  }
+  vi.spyOn(db.crawls, 'finish').mockImplementationOnce(async () => {
+    throw new JobInterruptedError()
+  })
+  await expect(runCrawl(crawl!.id, options)).rejects.toBeInstanceOf(JobInterruptedError)
+  expect((await db.crawls.countUrls(crawl!.id)).urlsDoneCount).toBeGreaterThan(0)
+  expect(await db.crawls.nextQueued(crawl!.id, 100)).toEqual([])
+  expect((await db.crawlFiles.list(domainId)).find((f) => f.url === robotsUrl)?.body).toBe(
+    original.body,
+  )
+  await runCrawl(crawl!.id, options)
+  expect(site.requests.filter((url) => url === robotsUrl)).toHaveLength(2)
+  expect((await db.crawlFiles.list(domainId)).find((f) => f.url === robotsUrl)?.body).toContain(
+    'Disallow: /',
+  )
+  expect((await db.incidents.list(domainId)).map((i) => i.kind)).toContain('robots-blocks-site')
+  expect((await db.crawlFiles.list(domainId)).find((f) => f.url === robotsUrl)?.via).toBe('crawl')
+  expect((await db.crawlFiles.getCheck(domainId))?.outcome).toBe('ok')
+})
+
+it('preserves file baselines after an unreachable full crawl and retries the check in an hour', async () => {
+  const original = {
+    url: 'https://example.com/robots.txt',
+    kind: 'robots' as const,
+    statusCode: 200,
+    contentType: 'text/plain',
+    redirectTo: null,
+    bytes: 10,
+    truncated: false,
+    body: 'User-agent: *',
+    error: null,
+    data: null,
+    via: 'refresh' as const,
+    fetchedAt: new Date('2026-01-01'),
+  }
+  await db.crawlFiles.save(domainId, [original])
+  await db.crawls.saveSettings(domainId, { ...(await db.crawls.settings(domainId)), maxRetries: 0 })
+  const { summary } = await crawlWith(fakeSite({}), 'full', {
+    createFetcher: () => ({
+      close() {},
+      async fetch() {
+        throw new FetchError('ECONNREFUSED', 'refused')
+      },
+    }),
+  })
+  expect(summary?.status).toBe('completed')
+  expect(await db.crawlFiles.list(domainId)).toMatchObject([original])
+  const check = await db.crawlFiles.getCheck(domainId)
+  expect(check?.outcome).toBe('unreachable')
+  expect(check!.nextCheckAt.getTime() - check!.checkedAt!.getTime()).toBe(60 * 60_000)
 })

@@ -29,6 +29,9 @@ which moves the entries of `[Unreleased]` into the new version.
   crawl's own configuration. Existing configurations keep the same findings and accepted rows.
 - Migration 0031 adds an optional saved interface language per person. Going back requires the
   backup and previous image.
+- One migration adds incidents, notice claims and opt-in subscription fields. Going back requires
+  restoring the backup. The first observation of each file after updating is a baseline and does not
+  report an existing problem; certificate and availability thresholds still apply.
 
 ### Added
 
@@ -39,6 +42,11 @@ which moves the entries of `[Unreleased]` into the new version.
 - The account can edit its own name and choose the interface language (follow the browser, English
   or Español). The chosen language also applies to the alert and access emails sent to that person.
   The email address stays read-only.
+- Opt-in alerts between crawls for robots.txt changes and problems, broken sitemaps, repeated
+  availability failures, recovery and expiring certificates. Open incidents appear on the domain
+  dashboard, with a 30-day history in Issues. Checks run about once a day, not as an uptime monitor.
+- Opt-in Core Web Vitals regression alerts when origin field metrics become poor between full
+  crawls; vitals now participate in alerts, unlike 0.4.0.
 
 ### Changed
 

@@ -1,5 +1,7 @@
 import type { BotAnswer, BotVerdict } from '@seotools/core/bot-access'
 import type { RuleEditing, RuleSelectors } from './audit'
+import type { CrawlFileObservation, CrawlFileRecord } from '@seotools/core/crawl/files'
+import type { IncidentKind, IncidentStage } from '@seotools/core/incidents'
 import type { VitalMetrics } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
@@ -24,7 +26,6 @@ import type {
   PagesAudit,
   Requirement,
   UrlAuditState,
-  CrawlFileData,
   CrawlFileKind,
   ExtraCrawlFileKind,
   CrawlFrequency,
@@ -1268,31 +1269,10 @@ export interface FaviconRepository {
   defer(input: { domainId: string; nextCheckAt: Date }): Promise<void>
 }
 
-/** What a request for a crawl file answered. */
-export interface NewCrawlFile {
-  url: string
-  kind: CrawlFileKind
-  /** `null` when it never answered: see `error`. */
-  statusCode: number | null
-  contentType: string | null
-  redirectTo: string | null
-  bytes: number | null
-  /** The file is larger than what was read or kept of it. */
-  truncated: boolean
-  body: string | null
-  error: string | null
-  data: CrawlFileData | null
-  /** What requested it. */
-  via: 'crawl' | 'refresh'
-  fetchedAt: Date
-}
+export type NewCrawlFile = CrawlFileObservation
+export type CrawlFile = CrawlFileRecord
 
-export interface CrawlFile extends NewCrawlFile {
-  domainId: string
-  urlHash: string
-}
-
-export type CrawlFileCheckOutcome = 'ok' | 'unreachable'
+export type CrawlFileCheckOutcome = 'ok' | 'unreachable' | 'tls-error'
 
 export interface CrawlFileCheck {
   domainId: string
@@ -1330,6 +1310,7 @@ export interface CrawlFileRepository {
     outcome: CrawlFileCheckOutcome
     checkedAt: Date
     nextCheckAt: Date
+    files?: NewCrawlFile[]
   }): Promise<void>
   /** A check that did not happen (a crawl is taking care of it), so nobody waits for it. */
   deferCheck(input: { domainId: string; nextCheckAt: Date }): Promise<void>
@@ -1347,8 +1328,9 @@ export interface UrlVitalsRecord extends VitalsRecord {
   source: string
 }
 export interface VitalsRepository {
+  queueAlerts(crawlId: string): Promise<void>
   /** Latest finished full crawl with origin rows, including retained origin-only history. */
-  latestCrawl(domainId: string): Promise<Crawl | null>
+  latestCrawl(domainId: string, before?: Date): Promise<Crawl | null>
   origins(crawlId: string): Promise<VitalsRecord[]>
   urls(crawlId: string): Promise<UrlVitalsRecord[]>
   saveOrigin(row: VitalsRecord): Promise<void>
@@ -1362,7 +1344,27 @@ export interface UserPreferencesRepository {
   setLocale(userId: string, locale: string | null): Promise<void>
 }
 
+export interface SiteIncident {
+  id: string
+  domainId: string
+  kind: IncidentKind
+  subject: string
+  stage: IncidentStage
+  activeKey: string | null
+  openedAt: Date
+  lastSeenAt: Date
+  resolvedAt: Date | null
+  details: string
+}
+export interface IncidentRepository {
+  list(domainId: string, since?: Date): Promise<SiteIncident[]>
+  get(id: string): Promise<SiteIncident | null>
+  claim(incidentId: string, userId: string, stage: IncidentStage): Promise<boolean>
+  release(incidentId: string, userId: string, stage: IncidentStage): Promise<void>
+  prune(before: Date): Promise<void>
+}
 export interface Database {
+  readonly incidents: IncidentRepository
   readonly userPreferences: UserPreferencesRepository
   readonly vitals: VitalsRepository
   readonly dialect: Dialect

@@ -3077,6 +3077,18 @@
         "change-summary": {
           "label": "Resumen de cambios",
           "hint": "Un correo por cada rastreo terminado, con lo que ha cambiado."
+        },
+        "site-files": {
+          "label": "Archivos del sitio",
+          "hint": "Cambios o problemas en robots.txt y los sitemaps."
+        },
+        "site-availability": {
+          "label": "Disponibilidad y certificado",
+          "hint": "Comprobaciones fallidas consecutivas, recuperación y caducidad del certificado."
+        },
+        "vitals-regression": {
+          "label": "Empeoramiento de Core Web Vitals",
+          "hint": "Métricas de campo del origen que pasan a deficientes tras un rastreo completo."
         }
       },
       "save": "Guardar alertas",
@@ -3646,6 +3658,38 @@
     "leave-out": {
       "name": "Excluir de la auditoría",
       "description": "Excluye estas URL de los hallazgos de auditoría."
+    }
+  },
+  "Incidents": {
+    "title": "Incidencias abiertas",
+    "history": "Últimos 30 días",
+    "daily": "Se comprueba aproximadamente una vez al día. No es un monitor de disponibilidad.",
+    "since": "Abierta el {when}",
+    "resolved": "Resuelta el {when}",
+    "none": "No hay incidencias.",
+    "kinds": {
+      "robots-unreachable": "No se pudo leer robots.txt",
+      "robots-blocks-site": "robots.txt bloquea todo el sitio",
+      "robots-changed": "robots.txt ha cambiado",
+      "sitemap-broken": "Sitemap inaccesible o vacío",
+      "site-down": "El sitio no respondió a dos comprobaciones separadas por una hora",
+      "certificate": "Certificado"
+    },
+    "stages": {
+      "open": "Abierta",
+      "changed": "Cambio",
+      "warn-14": "Caduca en 14 días o menos",
+      "warn-3": "Caduca en 3 días o menos",
+      "expired": "Caducado",
+      "resolved": "Resuelta"
+    },
+    "summary": {
+      "status": "Estado HTTP",
+      "sitemapsAdded": "Sitemaps añadidos",
+      "sitemapsRemoved": "Sitemaps eliminados",
+      "groupsAdded": "Grupos de agentes añadidos",
+      "groupsRemoved": "Grupos de agentes eliminados",
+      "groupsChanged": "Grupos de agentes modificados"
     }
   }
 }
