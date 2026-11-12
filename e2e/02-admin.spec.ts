@@ -453,8 +453,10 @@ test('an editor dismisses a finding and sees its saved state while recompute wai
     'aria-selected',
     'true',
   )
-  await expect(page.getByText(/Ada Admin.*Known obsolete route/)).toBeVisible()
+  await expect(page.getByText(/Dismissed by Ada Admin/)).toBeVisible()
+  await expect(page.getByText('Note: Known obsolete route', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Restore to pending' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Restore to pending' }).click()
-  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Saved')
+  await expect(page.getByText('No saved finding states.')).toBeVisible()
+  await expect(page.getByText('Known obsolete route')).toHaveCount(0)
 })

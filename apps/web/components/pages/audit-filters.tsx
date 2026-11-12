@@ -1,5 +1,6 @@
 'use client'
 
+import { FINDING_STATE_FILTERS } from '@seotools/core/crawl/listing'
 import { INDEX_INTENTS } from '@seotools/core/crawl/audit'
 import { INDEXABILITY_STATES } from '@seotools/core/crawl/indexability'
 import Link from 'next/link'
@@ -54,7 +55,7 @@ export function AuditFilters({
         label={decisions('state')}
         anyLabel={decisions('all')}
         value={query.state}
-        options={(['pending', 'in-progress', 'dismissed'] as const).map((value) => ({
+        options={FINDING_STATE_FILTERS.map((value) => ({
           value,
           label: decisions(value),
         }))}

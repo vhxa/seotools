@@ -5,6 +5,8 @@ import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import {
   CRAWL_URL_VIEWS,
+  FINDING_STATE_FILTERS,
+  type FindingStateFilter,
   STATUS_FILTERS,
   URL_TYPES,
   URL_VIEWS,
@@ -49,7 +51,7 @@ const URL_HASH = /^[0-9a-f]{32}$/
 export const isUrlHash = (value: string) => URL_HASH.test(value)
 
 export interface DetailQuery {
-  state: 'pending' | 'in-progress' | 'dismissed' | null
+  state: FindingStateFilter | null
   /**
    * The crawl being browsed: one of the domain's retained full crawls. `null`: the latest one, which
    * is also what an address without it means. Only its shape is checked here (`isCrawlId`); the page
@@ -112,9 +114,7 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
       ? accepted
       : null
   return {
-    state:
-      (['pending', 'in-progress', 'dismissed'] as const).find((s) => s === first(params.state)) ??
-      null,
+    state: FINDING_STATE_FILTERS.find((s) => s === first(params.state)) ?? null,
     crawl: crawl && isCrawlId(crawl) ? crawl : null,
     // An issue picks its own URLs, in whichever view they are: that is every URL of the crawl.
     view:
