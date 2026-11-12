@@ -1,5 +1,6 @@
+'use client'
+
 import { FindingStateActions } from '@/components/audit/finding-state-actions'
-;('use client')
 
 import {
   isSecondaryFinding,

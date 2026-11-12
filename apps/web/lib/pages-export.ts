@@ -182,6 +182,7 @@ export function describeListing(
 
 /** What the file is about, the same on every row. */
 export interface ExportContext {
+  onlyState?: 'pending' | 'in-progress' | 'dismissed' | null
   findingStates?: FindingStateRecord[]
   ignoredParameters?: string[]
   vitals?: ReadonlyMap<string, VitalMetrics>
@@ -610,6 +611,9 @@ export function exportRecords(kind: ExportKind, row: ExportUrl, context: ExportC
   }
   const { onlyIssue, onlyAccepted } = context
   return findingsOf(row, Boolean(onlyAccepted))
+    .filter(
+      ({ acceptance }) => context.onlyState !== 'dismissed' || acceptance?.kind === 'dismissal',
+    )
     .filter(({ issue }) => !onlyIssue || issue.issue === onlyIssue)
     .filter(
       ({ issue }) => !onlyAccepted || onlyAccepted === ANY_ACCEPTED || issue.issue === onlyAccepted,

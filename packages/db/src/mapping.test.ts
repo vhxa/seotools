@@ -2,6 +2,9 @@ import type { IssueEvidence } from '@seotools/core'
 import { describe, expect, it } from 'vitest'
 import {
   crawlIssueRows,
+  crawlHistoryRow,
+  historyTrace,
+  groupAcceptedIssues,
   foldIssueCounts,
   foldViewCounts,
   parseIssueDetails,
@@ -118,5 +121,50 @@ describe('issue counts', () => {
       // Accessibility counts wherever it is.
       { issue: 'img-no-alt', pages: 4, secondary: 0 },
     ])
+  })
+})
+
+it('keeps human dismissal kinds in compact history without confusing rule acceptances', () => {
+  const rows = groupAcceptedIssues([
+    {
+      urlHash: 'h',
+      issue: 'title-missing',
+      details: JSON.stringify({
+        acceptance: { kind: 'dismissal', state: 'dismissed', scope: 'url', id: 'd' },
+      }),
+    },
+    {
+      urlHash: 'h',
+      issue: 'noindex',
+      details: JSON.stringify({ acceptance: { kind: 'expectation', rule: null } }),
+    },
+  ])
+  const row = crawlHistoryRow(
+    'c',
+    {
+      urlHash: 'h',
+      url: 'https://example.com/',
+      state: 'done',
+      kind: 'page',
+      statusCode: 200,
+      redirectTo: null,
+      title: null,
+      canonical: null,
+      metaRobots: null,
+      xRobotsTag: null,
+      error: null,
+      depth: 0,
+    },
+    [],
+    rows.get('h')!,
+    null,
+  )
+  expect(historyTrace(row)).toMatchObject({
+    accepted: ['title-missing', 'noindex'],
+    dismissed: ['title-missing'],
+  })
+  expect(historyTrace({ ...row, accepted: '["noindex"]' })).toMatchObject({
+    accepted: ['noindex'],
+    dismissed: [],
   })
 })

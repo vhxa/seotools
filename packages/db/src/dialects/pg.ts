@@ -146,6 +146,7 @@ import {
   verificationJobValues,
   verificationOutcomeColumn,
   crawlHistoryRow,
+  groupAcceptedIssues,
   groupIssues,
   historyExpired,
   historyTrace,
@@ -678,9 +679,13 @@ export function createPgDatabase(options: {
           .from(crawlUrlIssues)
           .where(and(eq(crawlUrlIssues.crawlId, crawlId), inArray(crawlUrlIssues.urlHash, hashes))),
       )
-      const accepted = groupIssues(
+      const accepted = groupAcceptedIssues(
         await tx
-          .select({ urlHash: crawlUrlAcceptedIssues.urlHash, issue: crawlUrlAcceptedIssues.issue })
+          .select({
+            urlHash: crawlUrlAcceptedIssues.urlHash,
+            issue: crawlUrlAcceptedIssues.issue,
+            details: crawlUrlAcceptedIssues.details,
+          })
           .from(crawlUrlAcceptedIssues)
           .where(
             and(

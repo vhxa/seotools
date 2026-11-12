@@ -74,6 +74,7 @@ export async function GET(
       ignoredParameters: crawl.ignoredParameters ?? [],
       crawlDate: moment,
       filters: describeListing(query, unapplied, translate),
+      onlyState: query.state,
       onlyIssue: query.state === 'dismissed' ? null : query.issue,
       onlyAccepted: query.state === 'dismissed' ? (query.issue ?? 'all') : query.accepted,
       analysed: crawl.pagesByWorstIssue !== null,

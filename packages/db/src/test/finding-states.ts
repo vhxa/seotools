@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { crawlUrlHash } from '@seotools/core'
+import { auditSnapshotOf, crawlUrlHash } from '@seotools/core'
 import { createCompany } from '../workspace'
 import type { Database, SetFindingStates } from '../types'
 
@@ -71,6 +71,72 @@ export function describeFindingStates(get: () => Database) {
       expect(await jobs()).toHaveLength(1)
       await db.domains.archive(input.domainId)
       await expect(db.audit.setFindingStates(input)).rejects.toThrow()
+    })
+
+    it('filters stored dismissals separately from rule acceptances and progress labels', async () => {
+      const { db, input } = await fixture()
+      const crawl = await db.crawls.start({
+        domainId: input.domainId,
+        type: 'full',
+        trigger: 'manual',
+      })
+      if (!crawl) throw new Error('crawl fixture')
+      const urls = ['a', 'b', 'c'].map((path, index) => ({
+        url: 'https://states.example/' + path,
+        urlHash: crawlUrlHash(path),
+        scope: 'internal' as const,
+        source: 'link' as const,
+        depth: 1,
+        seq: index + 1,
+      }))
+      await db.crawls.addUrls(crawl.id, urls)
+      await db.crawls.finish(crawl.id, { status: 'completed' })
+      await db.audit.setFindingStates({
+        ...input,
+        urlHashes: [urls[0]!.urlHash],
+        state: 'in-progress',
+      })
+      await db.crawls.saveAnalysis({
+        crawlId: crawl.id,
+        issues: [{ urlHash: urls[0]!.urlHash, issue: input.issue }],
+        accepted: [
+          {
+            urlHash: urls[1]!.urlHash,
+            issue: input.issue,
+            acceptedBy: urls[1]!.urlHash,
+            acceptance: { kind: 'dismissal', state: 'dismissed', scope: 'url', id: 'd' },
+          },
+          {
+            urlHash: urls[2]!.urlHash,
+            issue: 'noindex',
+            acceptedBy: urls[2]!.urlHash,
+            acceptance: { kind: 'expectation', rule: null },
+          },
+        ],
+        pages: { issue: 0, warning: 0, opportunity: 0 },
+        withType: { issue: 0, warning: 0, opportunity: 0 },
+        catalog: 'test',
+        audit: {
+          snapshot: auditSnapshotOf(0, []),
+          urls: [],
+          pages: { audited: 0, excluded: 0, indexable: 0, notIndexable: 0, unknownIndexability: 0 },
+        },
+      })
+      const listing = { crawlId: crawl.id, view: 'all' as const, issue: input.issue }
+      expect(await db.crawls.countListed({ ...listing, state: 'in-progress' })).toBe(1)
+      expect(await db.crawls.countListed({ ...listing, state: 'pending' })).toBe(0)
+      expect(await db.crawls.countListed({ ...listing, state: 'dismissed' })).toBe(1)
+      expect(await db.crawls.acceptedCounts(crawl.id, 'dismissal')).toEqual([
+        { issue: input.issue, pages: 1 },
+      ])
+      expect(await db.crawls.acceptedCounts(crawl.id, 'rule')).toEqual([
+        { issue: 'noindex', pages: 1 },
+      ])
+      // A URL-level pending override of a domain progress label is no longer in progress.
+      await db.audit.setFindingStates({ ...input, state: 'in-progress' })
+      await db.audit.setFindingStates({ ...input, state: 'pending', urlHashes: [urls[0]!.urlHash] })
+      expect(await db.crawls.countListed({ ...listing, state: 'in-progress' })).toBe(0)
+      expect(await db.crawls.countListed({ ...listing, state: 'pending' })).toBe(1)
     })
     it('caps rows atomically and refuses expected findings', async () => {
       const { db, input } = await fixture()

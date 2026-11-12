@@ -769,21 +769,7 @@ export function evidenceOf(
     const trace = traces.get(`${crawl.id}:${urlHash}`)
     return {
       crawl: crawlFactsOf(crawl),
-      url: trace
-        ? {
-            ...urlEvidenceOf(trace),
-            dismissed: new Set([
-              ...(trace.dismissed ?? []),
-              ...(trace.accepted ?? []).filter((issue) => {
-                const rows = crawl.auditSnapshot?.dismissals ?? []
-                const row =
-                  rows.find((r) => r.issue === issue && r.urlHash === urlHash) ??
-                  rows.find((r) => r.issue === issue && r.urlHash === null)
-                return row?.state === 'dismissed'
-              }),
-            ]),
-          }
-        : null,
+      url: trace ? urlEvidenceOf(trace) : null,
     }
   })
 }

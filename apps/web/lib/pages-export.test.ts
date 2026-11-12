@@ -1099,7 +1099,7 @@ describe('what a rule accepts', () => {
 
   it('counts on the pages file apart from what is pending', () => {
     const [record] = asObjects('pages', exportRecords('pages', row, context()).join(''))
-    expect(record!['Accepted by a rule']).toBe('1')
+    expect(record!['Accepted or dismissed']).toBe('1')
     expect(record!['Number of issues']).toBe('1')
   })
 })
@@ -1236,4 +1236,42 @@ describe('the links and redirects files', () => {
       expect(x).toContain('Export.values.yes')
     },
   )
+})
+
+it('exports dismissed state and neutralises a member note as a CSV cell', () => {
+  const url = crawlUrl('/a')
+  const c = context({ onlyAccepted: 'all', onlyState: 'dismissed' })
+  const text = exportRecords(
+    'findings',
+    {
+      url,
+      issues: [],
+      audit: audit(url),
+      accepted: [
+        {
+          ...issue(url, 'title-missing'),
+          acceptedBy: url.urlHash,
+          acceptance: { kind: 'dismissal', state: 'dismissed', scope: 'url', id: 'd' },
+        },
+      ],
+      findingStates: [
+        {
+          id: 'd',
+          domainId: 'domain',
+          issue: 'title-missing',
+          urlHash: url.urlHash,
+          targetKey: url.urlHash,
+          state: 'dismissed',
+          note: '=HYPERLINK("untrusted")',
+          setBy: null,
+          setAt: new Date(),
+        },
+      ],
+    },
+    c,
+  ).join('')
+  expect(asObjects('findings', text, c)[0]).toMatchObject({
+    'Finding state': 'dismissed',
+    'Note (optional)': '\'=HYPERLINK("untrusted")',
+  })
 })

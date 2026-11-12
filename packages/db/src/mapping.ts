@@ -937,7 +937,7 @@ export function crawlHistoryRow(
   crawlId: string,
   url: SnapshotRow & { urlHash: string; url: string },
   issues: readonly string[],
-  accepted: readonly string[],
+  accepted: readonly (string | { issue: string; kind: 'dismissal' })[],
   audit: Omit<ReturnType<typeof crawlAuditRows>[number], 'crawlId'> | null,
 ) {
   return {
@@ -1033,7 +1033,10 @@ export function historyTrace(row: {
     url: row.url,
     snapshot,
     issues: list(row.issues).map((issue) => ({ urlHash: row.urlHash, issue })),
-    accepted: list(row.accepted),
+    accepted: storedAccepted(row.accepted).map((r) => (typeof r === 'string' ? r : r.issue)),
+    dismissed: storedAccepted(row.accepted).flatMap((r) =>
+      typeof r === 'string' ? [] : [r.issue],
+    ),
     audit:
       audit && typeof audit === 'object'
         ? toCrawlUrlAudit({
@@ -1762,3 +1765,33 @@ export function vitalsJobValues(crawlId: string, now: Date) {
 export const incidentAlertJobId = (id: string, stage: string) =>
   alertJobId(`incident:${id}:${stage}`)
 export const vitalsAlertJobId = (crawlId: string) => alertJobId(`vitals:${crawlId}`)
+
+/** Compact history preserves the acceptance kind, so rules and human decisions never become alike. */
+function storedAccepted(raw: string | null): (string | { issue: string; kind: 'dismissal' })[] {
+  const parsed: unknown = raw === null ? [] : parseJson(raw)
+  if (!Array.isArray(parsed)) return []
+  return parsed.flatMap((item): (string | { issue: string; kind: 'dismissal' })[] => {
+    if (typeof item === 'string') return [item]
+    if (
+      item &&
+      typeof item === 'object' &&
+      item.kind === 'dismissal' &&
+      typeof item.issue === 'string'
+    )
+      return [{ issue: item.issue, kind: 'dismissal' }]
+    return []
+  })
+}
+
+export function groupAcceptedIssues(rows: { urlHash: string; issue: string; details: string }[]) {
+  const grouped = new Map<string, (string | { issue: string; kind: 'dismissal' })[]>()
+  for (const row of rows) {
+    const finding = parseJson(row.details) as { acceptance?: unknown } | null
+    const value =
+      parseFindingAcceptance(finding?.acceptance)?.kind === 'dismissal'
+        ? { issue: row.issue, kind: 'dismissal' as const }
+        : row.issue
+    grouped.set(row.urlHash, [...(grouped.get(row.urlHash) ?? []), value])
+  }
+  return grouped
+}

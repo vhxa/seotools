@@ -149,6 +149,7 @@ import {
   verificationJobValues,
   verificationOutcomeColumn,
   crawlHistoryRow,
+  groupAcceptedIssues,
   groupIssues,
   historyExpired,
   historyTrace,
@@ -693,9 +694,13 @@ export function createSqliteDatabase(options: {
           .where(and(eq(crawlUrlIssues.crawlId, crawlId), inArray(crawlUrlIssues.urlHash, hashes)))
           .all(),
       )
-      const accepted = groupIssues(
+      const accepted = groupAcceptedIssues(
         tx
-          .select({ urlHash: crawlUrlAcceptedIssues.urlHash, issue: crawlUrlAcceptedIssues.issue })
+          .select({
+            urlHash: crawlUrlAcceptedIssues.urlHash,
+            issue: crawlUrlAcceptedIssues.issue,
+            details: crawlUrlAcceptedIssues.details,
+          })
           .from(crawlUrlAcceptedIssues)
           .where(
             and(
