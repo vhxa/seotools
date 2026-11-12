@@ -834,7 +834,6 @@
     "excludedFindings": "Excluded from the audit: it has no findings of its own.",
     "httpUnknown": "No HTTP response recorded",
     "findingsSummary": "{count, plural, one {# finding} other {# findings}} · {high, number} high importance — view findings",
-    "crawlContext": "Full crawl: {when} · Audit configuration: {version}",
     "findingGroups": {
       "high": "High importance ({count, number})",
       "medium": "Medium importance ({count, number})",
@@ -2229,34 +2228,6 @@
       "reason": "Reason: {reason}",
       "noReason": "No reason given"
     },
-    "effective": {
-      "audit": {
-        "default": "Audited: no rule applies.",
-        "excludedByRule": "Excluded by the rule “{rule}”.",
-        "excludedByException": "Excluded by an exception for this URL.",
-        "includedByRule": "Included by the rule “{rule}”.",
-        "includedByException": "Included through an exception for this URL."
-      },
-      "intent": {
-        "default": "Expected indexable by default.",
-        "indexableByRule": "Expected indexable by the rule “{rule}”.",
-        "indexableByException": "Expected indexable by an exception for this URL.",
-        "notIndexableByRule": "Expected not indexable by the rule “{rule}”.",
-        "notIndexableByException": "Expected not indexable by an exception for this URL."
-      },
-      "condition": {
-        "default": {
-          "noindex": "No rule applies: a noindex gets a finding.",
-          "nofollow": "No rule applies: a nofollow of the page itself gets a warning.",
-          "robots": "No rule applies: a robots.txt block gets a finding.",
-          "sitemap": "No rule applies: an indexable page that no sitemap lists gets a low-priority warning.",
-          "canonical": "A canonical to another URL is a state of indexability. By default it has no finding of its own.",
-          "unlinked": "By default, a page listed in a sitemap with no internal anchor links gets an orphan finding."
-        },
-        "byRule": "{requirement} by the rule “{rule}”.",
-        "byException": "{requirement} by an exception for this URL."
-      }
-    },
     "technicalNote": "This is what the crawl saw, not whether a search engine has indexed the URL, which a crawl cannot know.",
     "empty": "—",
     "conditions": {
@@ -2307,27 +2278,22 @@
       "prefix": "This path and what is below it by segments: /account covers /account, /account/ and /account/orders, but not /accounts. The longest prefix wins."
     },
     "scope": {
-      "label": "Where the path is read",
-      "literal": "Literal path",
-      "shared": "Shared between languages",
-      "literalHelp": "The path is compared with the path of the URL as it is.",
-      "sharedHelp": "The same path inside each declared language directory and, if enabled, without one: /cart covers /cart, /es/cart, /en/cart… It does not translate slugs: /es/carrito and /en/cart need different rules.",
-      "noLanguages": "Declare the language directories first, in the “Language directories” tab. Until then a shared rule covers nothing."
+      "shared": "Shared between languages"
     },
     "query": {
-      "label": "Query string",
-      "any": "Ignore the query",
-      "exact": "Only this query",
+      "label": "URL parameters",
+      "any": "Any (default)",
+      "exact": "Only exactly these",
       "valueLabel": "Query",
       "valuePlaceholder": "page=2",
-      "valueHelp": "Compared as written, in this order: a=1&b=2 and b=2&a=1 are different. Leave it empty for URLs without a query. A rule for a query beats one that ignores it.",
       "ignored": "any query",
       "only": "query ?{query}",
-      "none": "no query"
+      "none": "no query",
+      "help": "Which query strings (what follows the ? of a URL) each path above covers. Parameters are compared as written, in this order. An empty field means URLs with no parameters.",
+      "example": "Example: “Any” makes /products cover /products and /products?sort=price. “Only exactly these” with sort=price covers /products?sort=price and not /products."
     },
     "form": {
       "kind": "Applies to",
-      "selector": "Address",
       "urlPlaceholder": "https://{host}/cart",
       "pathPlaceholder": "/cart",
       "reason": "Reason",
@@ -2344,14 +2310,27 @@
       "preview": "Preview matches",
       "previewing": "Looking…",
       "appliesTo": "This rule applies to",
-      "says": "And it says",
-      "advancedSelector": "Advanced: query string and languages"
+      "pathKinds": {
+        "prefix": "Path and below",
+        "path": "Exact path"
+      },
+      "path": "Path {number}",
+      "removePath": "Remove path {number}",
+      "addPath": "Add path",
+      "pathCount": "{count} of {max} paths",
+      "byLanguage": "Also in each language",
+      "byLanguageOn": "Covers the same path inside {languages}.",
+      "byLanguageOff": "Only the path as written.",
+      "template": "Start from a template (optional)",
+      "templateHelp": "Pick one to fill in the conditions. Nothing is saved until you save the rule.",
+      "noTemplate": "No template",
+      "appliesHelp": "It applies to this domain, its www variant, over HTTP and HTTPS. Upper and lower case are different."
     },
     "list": {
       "empty": "No rules yet.",
       "columns": {
-        "selector": "URLs",
-        "says": "Says",
+        "selector": "Applies to",
+        "says": "Summary",
         "enabled": "Enabled",
         "reason": "Reason"
       },
@@ -2366,7 +2345,8 @@
       "deleteDescription": "The URLs it decides go back to what the other rules say. The last crawl is analysed again, without requesting anything from the site.",
       "deleteConfirm": "Delete rule",
       "sharedWithoutLanguages": "It covers nothing until the language directories are declared.",
-      "morePaths": "and {count} more"
+      "morePaths": "and {count} more",
+      "details": "Details"
     },
     "languages": {
       "title": "Language directories",
@@ -2399,7 +2379,8 @@
       "note": "This only shows the URLs the last full crawl knows (finished {when}). The rule also applies to URLs found in later crawls.",
       "noteUnknown": "This only shows the URLs the last full crawl knows. The rule also applies to URLs found in later crawls.",
       "scanned": "{count, plural, one {# URL} other {# URLs}} looked at.",
-      "inactive": "This rule is switched off, so it decides nothing yet. The matches show what it would cover once it is on."
+      "inactive": "This rule is switched off, so it decides nothing yet. The matches show what it would cover once it is on.",
+      "perPath": "{count, plural, one {# URL} other {# URLs}}"
     },
     "status": {
       "pending": {
@@ -2485,24 +2466,62 @@
           "unit": "Milliseconds"
         }
       }
+    },
+    "summary": {
+      "audit": {
+        "exclude": "left out of the audit",
+        "include": "audited"
+      },
+      "intent": {
+        "indexable": "indexable",
+        "not-indexable": "not indexable"
+      },
+      "conditions": {
+        "noindex": {
+          "required": "noindex required",
+          "allowed": "noindex indifferent",
+          "forbidden": "noindex forbidden"
+        },
+        "nofollow": {
+          "required": "nofollow required",
+          "allowed": "nofollow indifferent",
+          "forbidden": "nofollow forbidden"
+        },
+        "robots": {
+          "required": "blocked by robots.txt",
+          "allowed": "robots.txt indifferent",
+          "forbidden": "not blocked by robots.txt"
+        },
+        "sitemap": {
+          "required": "in a sitemap",
+          "allowed": "sitemap indifferent",
+          "forbidden": "not in a sitemap"
+        },
+        "canonical": {
+          "required": "canonical to another URL",
+          "allowed": "canonical indifferent",
+          "forbidden": "no canonical to another URL"
+        },
+        "unlinked": {
+          "required": "no internal links",
+          "allowed": "internal links indifferent",
+          "forbidden": "has internal links"
+        }
+      }
     }
   },
   "AuditDialog": {
     "title": "Configure audit",
     "description": "{count, plural, one {# URL selected.} other {# URLs selected.}} It is saved as an exception for each URL, and the last full crawl is analysed again in the background, with no requests to the site.",
     "descriptionOne": "It is saved as an exception for this URL, and the last full crawl is analysed again in the background, with no requests to the site.",
-    "multipleHint": "Nothing is changed unless you choose it. “No change” leaves each URL as it is; “According to the rules” removes the exception of the URLs, so they take what the rules say.",
+    "multipleHint": "Nothing is changed unless you choose it. “No change” leaves each URL as it is; “Follow the rules” removes the exceptions of these URLs, so they take what the rules say.",
     "reason": "Reason (optional)",
     "reasonPlaceholder": "Why? It is shown wherever this decides.",
     "reasonKept": "Left empty, each exception keeps its own reason.",
     "apply": "Apply",
     "applying": "Applying…",
     "cancel": "Cancel",
-    "nothing": "Choose what to change.",
-    "state": {
-      "now": "Now: {state}",
-      "afterSave": "After saving: {state}"
-    }
+    "nothing": "Choose what to change."
   },
   "CrawlHistory": {
     "stamp": {
@@ -2510,11 +2529,11 @@
       "retained": "Results retained",
       "pruned": "Results pruned",
       "prunedHint": "Only the totals of this crawl remain: its results per URL were removed by the retention setting.",
-      "config": "Audit configuration v{version}",
-      "configNone": "No audit rules",
       "notAnalysed": "Not analysed",
       "catalogOlder": "Earlier issue catalog",
-      "catalogOlderHint": "Its findings were worked out with an earlier version of the issue catalog than the one in use now."
+      "catalogOlderHint": "Its findings were worked out with an earlier version of the issue catalog than the one in use now.",
+      "rulesCurrent": "Analysed with the current rules",
+      "rulesChanged": "Analysed with rules that have changed since"
     },
     "picker": {
       "label": "Crawl",
@@ -2525,9 +2544,9 @@
     "banner": {
       "viewing": "You are viewing the crawl of {when}, not the latest one.",
       "backToLatest": "Back to the latest crawl",
-      "configBehind": "Analysed under: {config}. In force now: {current}. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated.",
       "details": "Analysis details",
-      "incomplete": "Partial coverage: this crawl did not complete. Findings may be missing."
+      "incomplete": "Partial coverage: this crawl did not complete. Findings may be missing.",
+      "rulesBehind": "This crawl was analysed with rules that have changed since. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated."
     },
     "details": {
       "detailsDescription": "Every URL of the chosen full crawl, as that crawl saw it. Select some to act on them together.",
@@ -2742,7 +2761,11 @@
         "description": "Added and not seen URLs may reflect changed ignored parameters. Per-issue change summaries are unverified because URL identity changed."
       }
     },
-    "rowsShown": "{shown, number} of {matching, number} URLs shown"
+    "rowsShown": "{shown, number} of {matching, number} URLs shown",
+    "rules": {
+      "same": "Both crawls were analysed with the same rules.",
+      "different": "The crawls were analysed with different rules, so some differences may come from the rules and not from the site."
+    }
   },
   "HttpStatus": {
     "automaticCheck": "Automatic check",
@@ -2750,13 +2773,11 @@
   },
   "AuditStatements": {
     "keep": "No change",
-    "rules": "According to the rules",
-    "notSet": "Not set by this rule",
     "audit": {
       "label": "Audit participation",
       "help": "Whether these URLs take part in the audit. Excluded URLs are still crawled and keep their data, but get no findings of their own.",
-      "include": "Include in audit",
-      "exclude": "Exclude from audit"
+      "include": "Audited",
+      "exclude": "Left out"
     },
     "requirement": {
       "required": "Required",
@@ -2765,10 +2786,6 @@
     },
     "conditions": {
       "title": "Conditions",
-      "add": "Add condition",
-      "remove": "Remove {condition}",
-      "noneUrl": "No condition is set. Add one to require, allow or forbid a noindex, a nofollow, a robots.txt block or a sitemap listing.",
-      "noneRule": "This rule sets no condition. Add one to require, allow or forbid a noindex, a nofollow, a robots.txt block or a sitemap listing.",
       "unknown": "If the crawl could not tell (a page it could not read whole, a robots.txt or a sitemap that did not answer), no finding is raised and the condition is not counted as met.",
       "statement": "{condition}: {requirement}",
       "noindex": {
@@ -2824,23 +2841,41 @@
           "allowed": "The page may have internal links or none: its orphan finding is accepted. Links from nofollow or noindex pages are judged separately.",
           "forbidden": "An orphan finding is kept when a sitemap lists the page but no internal anchor links to it."
         }
-      }
+      },
+      "hint": "Each condition is Required or Forbidden, or “Don’t warn either way”, which raises no finding whichever way the page is. When it is not stated, the dashed option is what applies now.",
+      "hintBulk": "Nothing changes unless you touch it. Every control starts at “No change”."
     },
     "advanced": {
-      "title": "Advanced: expected indexing",
+      "title": "Advanced",
       "help": "The expectation is about the URL as a whole: a noindex, a canonical to another URL, a redirect, an error or a robots.txt block can each keep it from being indexed. The conditions above are about one directive or file each, and never about whether the URL is in a search engine’s index."
     },
     "intent": {
       "label": "Expected indexing",
-      "indexable": "Expected indexable",
-      "not-indexable": "Expected not indexable",
+      "indexable": "Indexable",
+      "not-indexable": "Not indexable",
       "help": {
         "default": "Unless a rule says otherwise, every page is expected to be indexable.",
         "indexable": "The crawl is checked for what stands in the way of indexing the URL.",
         "not-indexable": "A noindex is fine; being indexable is not. It is not the same as requiring a noindex. Pages that point at it are not told about its noindex or a canonical elsewhere; a robots.txt block is still reported."
       }
     },
-    "relationsNote": "This also accepts findings of the URLs that point here (canonical, hreflang). Accepted findings are not fixed: they stay visible as accepted by a rule."
+    "relationsNote": "This also accepts findings of the URLs that point here (canonical, hreflang). Accepted findings are not fixed: they stay visible as accepted by a rule.",
+    "control": {
+      "default": "By default",
+      "fromRule": "From rule {rule}",
+      "fromRules": "From rules {rules}",
+      "varies": "Varies by path",
+      "variesHelp": "Each path of this rule would inherit something different:",
+      "stateOf": "{position} · {origin}",
+      "reset": "Back to inherited",
+      "resetBulk": "Back to no change",
+      "without": "Without the exception: {state}",
+      "noChange": "No change",
+      "removed": "Their exceptions go: these URLs follow the rules.",
+      "setBulk": "Set on all the URLs selected.",
+      "followRules": "Follow the rules",
+      "dontWarn": "Don’t warn either way"
+    }
   },
   "Help": {
     "about": "About {subject}",
@@ -3436,13 +3471,13 @@
   },
   "Crawls": {
     "metaTitle": "Crawls · {host} · seotools",
-    "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the audit configuration it was analysed with, and its results per URL until the retention setting removes them.",
+    "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the rules it was analysed with, and its results per URL until the retention setting removes them.",
     "columns": {
       "crawl": "Crawl",
       "results": "Results",
       "found": "Found",
-      "config": "Audit configuration",
-      "findings": "Pages with findings"
+      "findings": "Pages with findings",
+      "rules": "Rules"
     },
     "trigger": {
       "manual": "Manual",
@@ -3450,7 +3485,6 @@
     },
     "latest": "Latest",
     "found": "{pages} pages · {urls} URLs · {external} external",
-    "configDiffers": "Now: {current}",
     "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
     "view": "View",
     "compareWithPrevious": "Compare with previous",

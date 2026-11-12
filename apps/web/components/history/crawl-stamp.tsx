@@ -1,6 +1,7 @@
 import { ISSUE_CATALOG_VERSION } from '@seotools/core/crawl/issues'
 import type { Crawl } from '@seotools/db'
 import { useFormatter, useTranslations } from 'next-intl'
+import { rulesStateOf, type RulesState } from '@/lib/rules-state'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { Badge } from '@/components/ui/badge'
 
@@ -8,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 export const crawlMoment = (crawl: Pick<Crawl, 'finishedAt' | 'createdAt'>) =>
   crawl.finishedAt ?? crawl.createdAt
 
-/** The audit configuration a crawl was analysed with: its version, or `null` if it was not analysed. */
+/** The configuration number a crawl was analysed with (internal), or `null` if it was not analysed. */
 export const crawlConfigVersion = (crawl: Pick<Crawl, 'pagesByWorstIssue' | 'auditVersion'>) =>
   crawl.pagesByWorstIssue === null ? null : (crawl.auditVersion ?? 0)
 
@@ -19,22 +20,26 @@ export function useCrawlMoment() {
     format.dateTime(crawlMoment(crawl), { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-/** The audit configuration of a crawl in words: `v3`, or that it had no rules, or was not analysed. */
-export function useConfigLabel() {
+/** Which rules a crawl was analysed with, in words: the current ones, ones that changed, or none yet. */
+export function useRulesLabel() {
   const t = useTranslations('CrawlHistory.stamp')
-  return (version: number | null) =>
-    version === null ? t('notAnalysed') : version === 0 ? t('configNone') : t('config', { version })
+  return (state: RulesState) =>
+    state === 'notAnalysed'
+      ? t('notAnalysed')
+      : state === 'current'
+        ? t('rulesCurrent')
+        : t('rulesChanged')
 }
 
 /**
  * What identifies a crawl wherever it is shown: its date, how it ended, whether its results are
- * still stored (`retained`) or only its totals remain (`pruned`), and the audit configuration and
- * issue catalog its findings come from. A crawl is never shown without these.
+ * still stored (`retained`) or only its totals remain (`pruned`), and the rules it was analysed
+ * with and the issue catalog its findings come from. A crawl is never shown without these.
  */
-export function CrawlStamp({ crawl }: { crawl: Crawl }) {
+export function CrawlStamp({ crawl, currentVersion }: { crawl: Crawl; currentVersion: number }) {
   const t = useTranslations('CrawlHistory.stamp')
   const when = useCrawlMoment()
-  const configLabel = useConfigLabel()
+  const rulesLabel = useRulesLabel()
   // Pruned crawls have no findings to be out of date.
   const olderCatalog =
     !crawl.pruned && crawl.issueCatalog !== null && crawl.issueCatalog !== ISSUE_CATALOG_VERSION
@@ -49,7 +54,9 @@ export function CrawlStamp({ crawl }: { crawl: Crawl }) {
       ) : (
         <span className="text-muted-foreground">{t('retained')}</span>
       )}
-      <span className="text-muted-foreground">{configLabel(crawlConfigVersion(crawl))}</span>
+      <span className="text-muted-foreground">
+        {rulesLabel(rulesStateOf(crawlConfigVersion(crawl), currentVersion))}
+      </span>
       {olderCatalog && (
         <Badge variant="secondary" title={t('catalogOlderHint')}>
           {t('catalogOlder')}

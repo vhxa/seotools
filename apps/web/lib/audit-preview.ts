@@ -50,6 +50,8 @@ export type AuditPreview =
        * longer does.
        */
       changes: number
+      /** URLs each path covers, when the rule has several (they can overlap, `matches` is the union). */
+      paths: { selector: AuditSelector; matches: number }[]
       /** URLs it covers where a more specific rule decides every statement it makes. */
       overriddenCount: number
       /** Examples of the URLs it covers. */
@@ -114,7 +116,7 @@ const decidersOf = (resolution: AuditResolution): Partial<Record<AuditDimension,
  *
  * A rule makes several statements, each decided on its own: it decides a URL where it wins at least
  * one of them, and is overridden where another rule is more specific for all of them. It tells apart
- * the URLs the selector covers, the ones whose effective result would change, and the ones it covers
+ * the URLs the paths cover, the ones whose effective result would change, and the ones it covers
  * where a more specific rule prevails. A change is any URL that is different between the rules as they
  * are and as they would be: when a rule is edited, that includes what the old selector covered and
  * the new one does not, and a rule that is switched off changes what it was deciding before. The URLs
@@ -129,7 +131,8 @@ export async function previewRule(input: {
   /** The selector of the rule being edited, whose rows the candidate replaces. */
   editing: AuditSelector | string | null
   candidate: {
-    selector: AuditSelector
+    /** Every path the rule would cover. */
+    selectors: AuditSelector[]
     statements: RuleStatements
     reason: string | null
     enabled: boolean
@@ -145,18 +148,7 @@ export async function previewRule(input: {
       : editing !== null && !rule.set && selectorKey(rule.selector) === selectorKey(editing)
   const replaced = input.rules.filter(isEdited)
   const others = input.rules.filter((rule) => !isEdited(rule))
-  // The current editor changes the first path; other paths of an existing set stay in the rule.
-  const first = replaced[0]?.selector
-  const selectors = [
-    ...new Map(
-      [
-        candidate.selector,
-        ...(typeof editing === 'string' && first
-          ? replaced.map((r) => r.selector).filter((s) => selectorKey(s) !== selectorKey(first))
-          : []),
-      ].map((s) => [selectorKey(s), s]),
-    ).values(),
-  ]
+  const selectors = [...new Map(candidate.selectors.map((s) => [selectorKey(s), s])).values()]
   const rows = selectors.flatMap((selector) =>
     rulesOfSet(selector, candidate.statements, candidate.reason, candidate.enabled),
   )
@@ -193,6 +185,7 @@ export async function previewRule(input: {
   let decides = 0
   let changes = 0
   let overriddenCount = 0
+  const perPath = selectors.map(() => 0)
   const matchSamples: string[] = []
   const changeSamples: string[] = []
   const overridden: { url: string; by: RuleBrief }[] = []
@@ -207,6 +200,9 @@ export async function previewRule(input: {
       if (!covered && !wasCovered) continue
       if (covered) {
         matches++
+        selectors.forEach((selector, index) => {
+          if (selectorMatches(selector, parts)) perPath[index] = (perPath[index] ?? 0) + 1
+        })
         if (matchSamples.length < MAX_SAMPLES) matchSamples.push(url)
         const winners = decidersOf(ifOn.resolve(url))
         const mine = [...stated].filter((dimension) => winners[dimension]?.id === PREVIEW_ID)
@@ -232,6 +228,7 @@ export async function previewRule(input: {
     crawledAt: crawl.finishedAt?.toISOString() ?? null,
     scanned,
     matches,
+    paths: selectors.map((selector, index) => ({ selector, matches: perPath[index] ?? 0 })),
     decides,
     changes,
     overriddenCount,

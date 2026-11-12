@@ -1,6 +1,6 @@
 'use server'
 
-import { selectorKey, type AuditSelector } from '@seotools/core'
+import { type AuditSelector } from '@seotools/core'
 import { AUDIT_THRESHOLDS } from '@seotools/core/crawl/thresholds'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
@@ -46,8 +46,9 @@ function mutationError(t: Errors, error: 'conflict' | 'not-found' | 'limit') {
 
 /**
  * Creates a rule, or edits the one the form names with `id` (any of its rows: the rule being edited
- * is every row that has the same selector). A rule says several things about the URLs it covers, each
- * one decided on its own; the form carries them all, and what it leaves out the rule no longer says.
+ * is every row of its set, or that have the same selector for one from before sets). A rule covers
+ * one or more paths and says several things about the URLs it covers, each one decided on its own; the
+ * form carries all of them, and what it leaves out the rule no longer says or covers.
  */
 export async function saveAuditRuleAction(
   host: string,
@@ -63,26 +64,17 @@ export async function saveAuditRuleAction(
 
   const db = await getDb()
   let editing: string | AuditSelector | undefined
-  let selectors = [parsed.selector]
   if (parsed.id !== null) {
     // Looked up in this domain only: an id of another domain is not a rule here.
     const config = await db.audit.config(domain.id)
     const found = config.rules.find((rule) => rule.id === parsed.id)
     if (!found) return { error: t('notFound') }
     editing = found.set ?? found.selector
-    if (found.set) {
-      const rows = config.rules.filter((rule) => rule.set === found.set)
-      const others = rows
-        .map((rule) => rule.selector)
-        .filter((s) => selectorKey(s) !== selectorKey(found.selector))
-      selectors = [
-        ...new Map([parsed.selector, ...others].map((s) => [selectorKey(s), s])).values(),
-      ]
-    }
   }
+  // The form carries every path of the rule: what it leaves out the rule no longer covers.
   const saved = await db.audit.saveRuleSet({
     domainId: domain.id,
-    selectors,
+    selectors: parsed.selectors,
     statements: parsed.statements,
     reason: parsed.reason,
     enabled: parsed.enabled,
@@ -160,7 +152,7 @@ export async function previewAuditRuleAction(
     languages: config.languages,
     editing,
     candidate: {
-      selector: parsed.selector,
+      selectors: parsed.selectors,
       statements: parsed.statements,
       reason: parsed.reason,
       enabled: parsed.enabled,

@@ -79,15 +79,7 @@ export function RuleToggle({
 }
 
 /** The buttons to edit and delete a rule, each in a dialog of its own. */
-export function RuleRowActions({
-  host,
-  rule,
-  languagesDeclared,
-}: {
-  host: string
-  rule: RuleGroup
-  languagesDeclared: boolean
-}) {
+export function RuleRowActions({ host, rule }: { host: string; rule: RuleGroup }) {
   const t = useTranslations('AuditRules')
   const canEdit = useCanEdit()
   const text = useSelectorText()
@@ -125,14 +117,12 @@ export function RuleRowActions({
       )}
 
       <Dialog open={editing} onOpenChange={setEditing}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{t('form.editTitle')}</DialogTitle>
             <DialogDescription>{t('form.description')}</DialogDescription>
           </DialogHeader>
           <RuleForm
-            host={host}
-            languagesDeclared={languagesDeclared}
             rule={rule}
             onSaved={() => setEditing(false)}
             onCancel={() => setEditing(false)}

@@ -8,7 +8,8 @@ import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { CrawlsHeader } from '@/components/crawl/crawls-header'
 import { CompareTable } from '@/components/history/compare-table'
-import { crawlMoment, CrawlStamp } from '@/components/history/crawl-stamp'
+import { sameRulesOf } from '@/lib/rules-state'
+import { crawlConfigVersion, crawlMoment, CrawlStamp } from '@/components/history/crawl-stamp'
 import { PairNotes } from '@/components/history/pair-notes'
 import { PairPicker } from '@/components/history/pair-picker'
 import { IssueLabel } from '@/components/pages/issue-mark'
@@ -64,6 +65,7 @@ export default async function ComparePage({
     getFormatter(),
   ])
   const db = await getDb()
+  const config = await db.audit.config(domain.id)
 
   // Both crawls must be the domain's: anything else is the same as a crawl that does not exist.
   const selection = await selectPair(db.crawls, domain.id, query.from, query.to)
@@ -118,6 +120,7 @@ export default async function ComparePage({
   }
 
   const { base, target } = selection
+  const sameRules = sameRulesOf(crawlConfigVersion(base), crawlConfigVersion(target))
   const data = await loadComparison({
     crawls: db.crawls,
     domainId: domain.id,
@@ -193,11 +196,17 @@ export default async function ComparePage({
               <CardDescription>{t(`roles.${role}`)}</CardDescription>
             </CardHeader>
             <CardContent>
-              <CrawlStamp crawl={crawl} />
+              <CrawlStamp crawl={crawl} currentVersion={config.version} />
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {sameRules !== null && (
+        <p className="text-sm text-muted-foreground">
+          {sameRules ? t('rules.same') : t('rules.different')}
+        </p>
+      )}
 
       <PairNotes assessment={assessment} />
 

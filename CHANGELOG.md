@@ -41,8 +41,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - The robots.txt page offers an on-demand Bot access test comparing homepage responses to published bot User-Agent strings, with explicit limits on what simulated requests can prove.
 - Audit rules can require, allow or forbid a canonical to another URL and the absence of internal
-  links. Rules can cover up to 20 paths together; the current editor keeps grouped rules together
-  when saving, switching or deleting them. Editor templates are prepared for the next editor update.
+  links. One rule can cover up to 20 paths, and new rules can start from one of five templates
+  (private area, search and filters, campaign landing, must be indexed, leave out of the audit).
 - The account can edit its own name and choose the interface language (follow the browser, English
   or Español). The chosen language also applies to the alert and access emails sent to that person.
   The email address stays read-only.
@@ -54,6 +54,19 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Changed
 
+- The audit rules editor shows every condition at once, in compact rows with two buttons
+  (Required, Forbidden) and a "Don't warn either way" checkbox for what was called Indifferent. A
+  condition the rule does not state shows, muted, what applies to its URLs and where that comes
+  from (by default, from another rule, or "varies by path"), and can go back to it after being
+  stated; the long explanations are in help buttons. The form asks where the rule applies first (one
+  or more paths, "also in each language" on by default when the domain declared language
+  directories, and "URL parameters" under Advanced), then the conditions. The list of rules shows
+  one row per rule with its paths and a summary in plain words, and the preview counts the URLs of
+  each path. The exceptions of one or several URLs use the same controls, where "No change" stays
+  apart from "Follow the rules".
+- Crawls say whether they were analysed "with the current rules" or "with rules that have changed
+  since", and a comparison says whether both crawls used the same rules, instead of showing
+  configuration numbers.
 - Custom extraction uses newer CSS selector libraries: `:enabled` now matches only form elements
   (inputs, buttons, selects, text areas and the like), as browsers do.
 - A recheck of a URL now refreshes its search and social preview: in the detail of the latest

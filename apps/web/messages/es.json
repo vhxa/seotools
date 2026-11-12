@@ -834,7 +834,6 @@
     "excludedFindings": "Excluida de la auditoría: no tiene hallazgos propios.",
     "httpUnknown": "Sin respuesta HTTP registrada",
     "findingsSummary": "{count, plural, one {# hallazgo} other {# hallazgos}} · {high, number} de importancia alta — ver hallazgos",
-    "crawlContext": "Rastreo completo: {when} · Configuración de auditoría: {version}",
     "findingGroups": {
       "high": "Importancia alta ({count, number})",
       "medium": "Importancia media ({count, number})",
@@ -2229,34 +2228,6 @@
       "reason": "Motivo: {reason}",
       "noReason": "Sin motivo indicado"
     },
-    "effective": {
-      "audit": {
-        "default": "Auditada: no se aplica ninguna regla.",
-        "excludedByRule": "Excluida por la regla “{rule}”.",
-        "excludedByException": "Excluida mediante una excepción para esta URL.",
-        "includedByRule": "Incluida por la regla “{rule}”.",
-        "includedByException": "Incluida mediante una excepción para esta URL."
-      },
-      "intent": {
-        "default": "Se espera indexable por defecto.",
-        "indexableByRule": "Se espera indexable por la regla “{rule}”.",
-        "indexableByException": "Se espera indexable por una excepción para esta URL.",
-        "notIndexableByRule": "Se espera no indexable por la regla “{rule}”.",
-        "notIndexableByException": "Se espera no indexable por una excepción para esta URL."
-      },
-      "condition": {
-        "default": {
-          "noindex": "Ninguna regla aplica: un noindex genera un hallazgo.",
-          "nofollow": "Ninguna regla aplica: un nofollow de la propia página genera un aviso.",
-          "robots": "Ninguna regla aplica: un bloqueo de robots.txt genera un hallazgo.",
-          "sitemap": "Ninguna regla aplica: una página indexable que ningún sitemap incluye genera un aviso de baja prioridad.",
-          "canonical": "Un canonical a otra URL es un estado de indexabilidad. Por defecto no genera un hallazgo propio.",
-          "unlinked": "Por defecto, una página incluida en un sitemap sin enlaces internos entrantes genera un hallazgo de página huérfana."
-        },
-        "byRule": "{requirement} por la regla “{rule}”.",
-        "byException": "{requirement} por una excepción de esta URL."
-      }
-    },
     "technicalNote": "Es lo que vio el rastreo, no si un buscador ha indexado la URL, algo que un rastreo no puede saber.",
     "empty": "—",
     "conditions": {
@@ -2307,27 +2278,22 @@
       "prefix": "Esta ruta y lo que cuelga de ella por segmentos: /account cubre /account, /account/ y /account/orders, pero no /accounts. Gana el prefijo más largo."
     },
     "scope": {
-      "label": "Dónde se lee la ruta",
-      "literal": "Ruta literal",
-      "shared": "Compartida entre idiomas",
-      "literalHelp": "La ruta se compara con la de la URL tal como es.",
-      "sharedHelp": "La misma ruta dentro de cada directorio de idioma declarado y, si está habilitado, sin directorio: /cart cubre /cart, /es/cart, /en/cart… No traduce slugs: /es/carrito y /en/cart necesitan reglas diferentes.",
-      "noLanguages": "Declara antes los directorios de idioma, en la pestaña «Directorios de idioma». Hasta entonces una regla compartida no cubre nada."
+      "shared": "Compartida entre idiomas"
     },
     "query": {
-      "label": "Parámetros (query)",
-      "any": "Ignorar los parámetros",
-      "exact": "Solo esta query",
+      "label": "Parámetros de la URL",
+      "any": "Cualquiera (por defecto)",
+      "exact": "Solo exactamente estos",
       "valueLabel": "Query",
       "valuePlaceholder": "page=2",
-      "valueHelp": "Se compara tal como está escrita y en ese orden: a=1&b=2 y b=2&a=1 son distintas. Déjala vacía para las URLs sin query. Una regla para una query prevalece sobre otra que la ignora.",
       "ignored": "cualquier query",
       "only": "query ?{query}",
-      "none": "sin query"
+      "none": "sin query",
+      "help": "Qué query strings (lo que va después de la ? en una URL) cubre cada ruta de arriba. Los parámetros se comparan tal como están escritos y en ese orden. Un campo vacío se refiere a las URLs sin parámetros.",
+      "example": "Ejemplo: con «Cualquiera», /products cubre /products y /products?sort=price. Con «Solo exactamente estos» y sort=price, cubre /products?sort=price y no /products."
     },
     "form": {
       "kind": "Se aplica a",
-      "selector": "Dirección",
       "urlPlaceholder": "https://{host}/cart",
       "pathPlaceholder": "/cart",
       "reason": "Motivo",
@@ -2344,14 +2310,27 @@
       "preview": "Previsualizar coincidencias",
       "previewing": "Mirando…",
       "appliesTo": "Esta regla se aplica a",
-      "says": "Y dice",
-      "advancedSelector": "Avanzado: query y idiomas"
+      "pathKinds": {
+        "prefix": "Ruta y lo de debajo",
+        "path": "Ruta exacta"
+      },
+      "path": "Ruta {number}",
+      "removePath": "Quitar la ruta {number}",
+      "addPath": "Añadir ruta",
+      "pathCount": "{count} de {max} rutas",
+      "byLanguage": "También en cada idioma",
+      "byLanguageOn": "Cubre la misma ruta dentro de {languages}.",
+      "byLanguageOff": "Solo la ruta tal como está escrita.",
+      "template": "Empezar desde una plantilla (opcional)",
+      "templateHelp": "Elige una para rellenar las condiciones. No se guarda nada hasta que guardes la regla.",
+      "noTemplate": "Sin plantilla",
+      "appliesHelp": "Se aplica a este dominio y a su variante www, en HTTP y HTTPS. Las mayúsculas y las minúsculas cuentan como distintas."
     },
     "list": {
       "empty": "Todavía no hay reglas.",
       "columns": {
-        "selector": "URLs",
-        "says": "Dice",
+        "selector": "Se aplica a",
+        "says": "Resumen",
         "enabled": "Activa",
         "reason": "Motivo"
       },
@@ -2366,7 +2345,8 @@
       "deleteDescription": "Las URLs que decide vuelven a lo que digan las demás reglas. Se analiza de nuevo el último crawl, sin hacer peticiones al sitio.",
       "deleteConfirm": "Eliminar regla",
       "sharedWithoutLanguages": "No cubre nada hasta que se declaren los directorios de idioma.",
-      "morePaths": "y {count} más"
+      "morePaths": "y {count} más",
+      "details": "Detalle"
     },
     "languages": {
       "title": "Directorios de idioma",
@@ -2399,7 +2379,8 @@
       "note": "Solo muestra las URLs que conoce el último crawl completo (terminó {when}). La regla también se aplicará a las URLs que aparezcan en crawls posteriores.",
       "noteUnknown": "Solo muestra las URLs que conoce el último crawl completo. La regla también se aplicará a las URLs que aparezcan en crawls posteriores.",
       "scanned": "{count, plural, one {# URL revisada} other {# URLs revisadas}}.",
-      "inactive": "Esta regla está desactivada, así que todavía no decide nada. Las coincidencias muestran lo que cubriría al activarla."
+      "inactive": "Esta regla está desactivada, así que todavía no decide nada. Las coincidencias muestran lo que cubriría al activarla.",
+      "perPath": "{count, plural, one {# URL} other {# URLs}}"
     },
     "status": {
       "pending": {
@@ -2485,24 +2466,62 @@
           "unit": "Milisegundos"
         }
       }
+    },
+    "summary": {
+      "audit": {
+        "exclude": "fuera de la auditoría",
+        "include": "auditada"
+      },
+      "intent": {
+        "indexable": "indexable",
+        "not-indexable": "no indexable"
+      },
+      "conditions": {
+        "noindex": {
+          "required": "noindex obligatorio",
+          "allowed": "noindex indiferente",
+          "forbidden": "noindex prohibido"
+        },
+        "nofollow": {
+          "required": "nofollow obligatorio",
+          "allowed": "nofollow indiferente",
+          "forbidden": "nofollow prohibido"
+        },
+        "robots": {
+          "required": "bloqueada por robots.txt",
+          "allowed": "robots.txt indiferente",
+          "forbidden": "no bloqueada por robots.txt"
+        },
+        "sitemap": {
+          "required": "en un sitemap",
+          "allowed": "sitemap indiferente",
+          "forbidden": "fuera de los sitemaps"
+        },
+        "canonical": {
+          "required": "canonical a otra URL",
+          "allowed": "canonical indiferente",
+          "forbidden": "sin canonical a otra URL"
+        },
+        "unlinked": {
+          "required": "sin enlaces internos",
+          "allowed": "enlaces internos indiferentes",
+          "forbidden": "con enlaces internos"
+        }
+      }
     }
   },
   "AuditDialog": {
     "title": "Configurar auditoría",
     "description": "{count, plural, one {# URL seleccionada.} other {# URLs seleccionadas.}} Se guarda como excepción para cada URL y el último crawl completo se analiza de nuevo en segundo plano, sin peticiones al sitio.",
     "descriptionOne": "Se guarda como excepción para esta URL y el último crawl completo se analiza de nuevo en segundo plano, sin peticiones al sitio.",
-    "multipleHint": "No se cambia nada salvo lo que elijas. «Sin cambios» deja cada URL como está; «Según las reglas» elimina la excepción de las URLs, que pasan a tomar lo que dicen las reglas.",
+    "multipleHint": "No se cambia nada que no elijas. «Sin cambios» deja cada URL como está; «Seguir las reglas» quita las excepciones de estas URLs, que pasan a lo que digan las reglas.",
     "reason": "Motivo (opcional)",
     "reasonPlaceholder": "¿Por qué? Se muestra donde esto es lo que decide.",
     "reasonKept": "Si lo dejas vacío, cada excepción conserva su propio motivo.",
     "apply": "Aplicar",
     "applying": "Aplicando…",
     "cancel": "Cancelar",
-    "nothing": "Elige qué cambiar.",
-    "state": {
-      "now": "Ahora: {state}",
-      "afterSave": "Al guardar: {state}"
-    }
+    "nothing": "Elige qué cambiar."
   },
   "CrawlHistory": {
     "stamp": {
@@ -2510,11 +2529,11 @@
       "retained": "Resultados conservados",
       "pruned": "Resultados podados",
       "prunedHint": "Solo quedan los totales de este rastreo: la configuración de retención eliminó sus resultados por URL.",
-      "config": "Configuración de auditoría v{version}",
-      "configNone": "Sin reglas de auditoría",
       "notAnalysed": "Sin analizar",
       "catalogOlder": "Catálogo de problemas anterior",
-      "catalogOlderHint": "Sus hallazgos se calcularon con una versión del catálogo de problemas anterior a la actual."
+      "catalogOlderHint": "Sus hallazgos se calcularon con una versión del catálogo de problemas anterior a la actual.",
+      "rulesCurrent": "Analizado con las reglas actuales",
+      "rulesChanged": "Analizado con reglas que han cambiado desde entonces"
     },
     "picker": {
       "label": "Rastreo",
@@ -2525,9 +2544,9 @@
     "banner": {
       "viewing": "Estás viendo el rastreo del {when}, no el último.",
       "backToLatest": "Volver al último rastreo",
-      "configBehind": "Analizado con: {config}. Vigente ahora: {current}. Un rastreo anterior conserva las reglas con las que se analizó, así que sus resultados no se recalculan.",
       "details": "Detalles del análisis",
-      "incomplete": "Cobertura parcial: este rastreo no se completó. Pueden faltar hallazgos."
+      "incomplete": "Cobertura parcial: este rastreo no se completó. Pueden faltar hallazgos.",
+      "rulesBehind": "Este crawl se analizó con reglas que han cambiado desde entonces. Un crawl anterior conserva las reglas con las que se analizó, así que sus resultados no se recalculan."
     },
     "details": {
       "detailsDescription": "Todas las URL del rastreo completo elegido, tal como las vio ese rastreo. Selecciona algunas para actuar sobre ellas a la vez.",
@@ -2742,7 +2761,11 @@
         "description": "Las URL añadidas o no vistas pueden reflejar cambios en los parámetros ignorados. Los resúmenes de cambios por problema no se verifican porque cambió la identidad de las URL."
       }
     },
-    "rowsShown": "{shown, number} de {matching, number} URLs mostradas"
+    "rowsShown": "{shown, number} de {matching, number} URLs mostradas",
+    "rules": {
+      "same": "Los dos crawls se analizaron con las mismas reglas.",
+      "different": "Los crawls se analizaron con reglas distintas, así que algunas diferencias pueden venir de las reglas y no del sitio."
+    }
   },
   "HttpStatus": {
     "automaticCheck": "Comprobación automática",
@@ -2750,13 +2773,11 @@
   },
   "AuditStatements": {
     "keep": "Sin cambios",
-    "rules": "Según las reglas",
-    "notSet": "No lo fija esta regla",
     "audit": {
       "label": "Participación en la auditoría",
       "help": "Si estas URLs forman parte de la auditoría. Las URLs excluidas se siguen rastreando y conservan sus datos, pero no generan hallazgos propios.",
-      "include": "Incluir en auditoría",
-      "exclude": "Excluir de auditoría"
+      "include": "Auditada",
+      "exclude": "Excluida"
     },
     "requirement": {
       "required": "Obligatorio",
@@ -2765,10 +2786,6 @@
     },
     "conditions": {
       "title": "Condiciones",
-      "add": "Añadir condición",
-      "remove": "Quitar {condition}",
-      "noneUrl": "No hay ninguna condición. Añade una para exigir, permitir o prohibir un noindex, un nofollow, un bloqueo de robots.txt o aparecer en un sitemap.",
-      "noneRule": "Esta regla no fija ninguna condición. Añade una para exigir, permitir o prohibir un noindex, un nofollow, un bloqueo de robots.txt o aparecer en un sitemap.",
       "unknown": "Si el crawl no pudo saberlo (una página que no pudo leer entera, un robots.txt o un sitemap que no respondió), no se genera ningún hallazgo y la condición no se cuenta como cumplida.",
       "statement": "{condition}: {requirement}",
       "noindex": {
@@ -2824,23 +2841,41 @@
           "allowed": "La página puede recibir enlaces internos o no: se acepta el hallazgo de página huérfana. Los enlaces desde páginas con nofollow o noindex se evalúan por separado.",
           "forbidden": "Se mantiene el hallazgo de página huérfana si un sitemap incluye la página pero ningún enlace interno apunta a ella."
         }
-      }
+      },
+      "hint": "Cada condición es Obligatorio o Prohibido, o «No avisar en ningún caso», que no genera ningún hallazgo sea como sea la página. Si no se indica, la opción con borde discontinuo es lo que se aplica ahora.",
+      "hintBulk": "No cambia nada que no toques. Cada control empieza en «Sin cambios»."
     },
     "advanced": {
-      "title": "Avanzado: indexación esperada",
+      "title": "Avanzado",
       "help": "La expectativa trata de la URL en su conjunto: un noindex, un canonical a otra URL, una redirección, un error o un bloqueo de robots.txt pueden impedir que se indexe. Las condiciones de arriba tratan de una directiva o un archivo cada una, y nunca de si la URL está en el índice de un buscador."
     },
     "intent": {
       "label": "Indexación esperada",
-      "indexable": "Se espera indexable",
-      "not-indexable": "Se espera no indexable",
+      "indexable": "Indexable",
+      "not-indexable": "No indexable",
       "help": {
         "default": "Salvo que una regla diga otra cosa, se espera que toda página sea indexable.",
         "indexable": "Se comprueba en el crawl qué impide indexar la URL.",
         "not-indexable": "Un noindex está bien; ser indexable no. No es lo mismo que exigir un noindex. Las páginas que apuntan a ella no reciben aviso por su noindex ni por un canonical a otra URL; un bloqueo de robots.txt se sigue señalando."
       }
     },
-    "relationsNote": "Esto también acepta hallazgos de las URLs que apuntan aquí (canonical, hreflang). Los hallazgos aceptados no están corregidos: siguen visibles como aceptados por una regla."
+    "relationsNote": "Esto también acepta hallazgos de las URLs que apuntan aquí (canonical, hreflang). Los hallazgos aceptados no están corregidos: siguen visibles como aceptados por una regla.",
+    "control": {
+      "default": "Por defecto",
+      "fromRule": "Según la regla {rule}",
+      "fromRules": "Según las reglas {rules}",
+      "varies": "Varía según la ruta",
+      "variesHelp": "Cada ruta de esta regla heredaría algo distinto:",
+      "stateOf": "{position} · {origin}",
+      "reset": "Volver a lo heredado",
+      "resetBulk": "Volver a «Sin cambios»",
+      "without": "Sin la excepción: {state}",
+      "noChange": "Sin cambios",
+      "removed": "Se quitan sus excepciones: estas URLs siguen las reglas.",
+      "setBulk": "Se aplica a todas las URLs seleccionadas.",
+      "followRules": "Seguir las reglas",
+      "dontWarn": "No avisar en ningún caso"
+    }
   },
   "Help": {
     "about": "Información sobre {subject}",
@@ -3436,13 +3471,13 @@
   },
   "Crawls": {
     "metaTitle": "Rastreos · {host} · seotools",
-    "description": "Todos los rastreos de este dominio, del más reciente al más antiguo. Un dominio ejecuta un solo rastreo a la vez. Un rastreo completo conserva la configuración de auditoría con la que se analizó y sus resultados por URL hasta que la retención los elimina.",
+    "description": "Todos los rastreos de este dominio, del más reciente al más antiguo. Un dominio ejecuta un solo rastreo a la vez. Un rastreo completo conserva las reglas con las que se analizó y sus resultados por URL hasta que la retención los elimina.",
     "columns": {
       "crawl": "Rastreo",
       "results": "Resultados",
       "found": "Encontrado",
-      "config": "Configuración de auditoría",
-      "findings": "Páginas con hallazgos"
+      "findings": "Páginas con hallazgos",
+      "rules": "Reglas"
     },
     "trigger": {
       "manual": "Manual",
@@ -3450,7 +3485,6 @@
     },
     "latest": "Último",
     "found": "{pages} páginas · {urls} URL · {external} externas",
-    "configDiffers": "Ahora: {current}",
     "findings": "{issues} problemas · {warnings} avisos · {opportunities} oportunidades",
     "view": "Ver",
     "compareWithPrevious": "Comparar con el anterior",

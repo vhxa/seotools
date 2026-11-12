@@ -8,6 +8,7 @@ import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { CrawlsHeader } from '@/components/crawl/crawls-header'
 import { ListCrawlDialog } from '@/components/crawl/list-crawl-dialog'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
+import { rulesStateOf } from '@/lib/rules-state'
 import { crawlConfigVersion, crawlMoment } from '@/components/history/crawl-stamp'
 import { RecheckBanner } from '@/components/verification/recheck-banner'
 import { Badge } from '@/components/ui/badge'
@@ -59,12 +60,14 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
 
   const detail = parseDetailQuery({})
   const compare = parseCompareQuery({})
-  const configLabel = (version: number | null) =>
-    version === null
+  const rulesLabel = (version: number | null) => {
+    const state = rulesStateOf(version, config.version)
+    return state === 'notAnalysed'
       ? tStamp('notAnalysed')
-      : version === 0
-        ? tStamp('configNone')
-        : tStamp('config', { version })
+      : state === 'current'
+        ? tStamp('rulesCurrent')
+        : tStamp('rulesChanged')
+  }
   const when = (crawl: Pick<Crawl, 'finishedAt' | 'createdAt'>) =>
     format.dateTime(crawlMoment(crawl), { dateStyle: 'medium', timeStyle: 'short' })
   // The ones the history can browse and compare: full crawls that finished with results.
@@ -128,7 +131,7 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                 <TableHead>{t('columns.crawl')}</TableHead>
                 <TableHead>{t('columns.results')}</TableHead>
                 <TableHead>{t('columns.found')}</TableHead>
-                <TableHead>{t('columns.config')}</TableHead>
+                <TableHead>{t('columns.rules')}</TableHead>
                 <TableHead>{t('columns.findings')}</TableHead>
               </TableRow>
             </TableHeader>
@@ -234,18 +237,7 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                       })}
                     </TableCell>
                     <TableCell className="align-top text-sm">
-                      {crawl.type === 'full' ? (
-                        <div className="grid gap-0.5">
-                          <span>{configLabel(version)}</span>
-                          {version !== null && version !== config.version && (
-                            <span className="text-xs text-muted-foreground">
-                              {t('configDiffers', { current: configLabel(config.version) })}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        '—'
-                      )}
+                      {crawl.type === 'full' ? <span>{rulesLabel(version)}</span> : '—'}
                     </TableCell>
                     <TableCell className="align-top text-sm tabular-nums">
                       {crawl.pagesWithType

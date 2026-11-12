@@ -12,6 +12,7 @@ import {
   parseAuditReason,
   parseAuditSelector,
   parseLanguagePrefixes,
+  selectorKey,
   type AuditCondition,
   type AuditSelector,
   type LanguageConfig,
@@ -31,7 +32,8 @@ export type RuleError = 'statements' | 'value' | 'kind' | 'scope' | 'reason' | S
 
 /** A rule as the editor saves it: where it applies and what it says about those URLs. */
 export interface RuleSet {
-  selector: AuditSelector
+  /** One or more paths (or the one exact URL of an exception), in the order they were written. */
+  selectors: AuditSelector[]
   statements: RuleStatements
   reason: string | null
   enabled: boolean
@@ -39,12 +41,18 @@ export interface RuleSet {
 
 export type RuleResult = ({ ok: true } & RuleSet) | { ok: false; error: RuleError }
 
-export interface RuleInput {
+/** One of the paths of a rule, as typed. */
+export interface PathInput {
   kind: unknown
   selector: unknown
   query: unknown
   queryValue: unknown
-  /** `literal` when left out. Only a path or a prefix has one. */
+}
+
+export interface RuleInput {
+  /** Where the rule applies: between one and `AUDIT_LIMITS.pathsPerRule`. */
+  paths: unknown
+  /** `literal` when left out; shared by every path. Only a path or a prefix has one. */
   scope?: unknown
   /** What the rule says about the audit (`exclude`, `include`) or nothing (`''`). */
   audit?: unknown
@@ -93,29 +101,46 @@ export function parseRuleInput(input: RuleInput, host: string): RuleResult {
   // A rule that says nothing is not a rule.
   if (Object.keys(statements).length === 0) return { ok: false, error: 'statements' }
 
-  const kind = text(input.kind)
-  if (!(SELECTOR_KINDS as readonly string[]).includes(kind)) return { ok: false, error: 'kind' }
-  const query = text(input.query)
+  if (
+    !Array.isArray(input.paths) ||
+    input.paths.length === 0 ||
+    input.paths.length > AUDIT_LIMITS.pathsPerRule
+  ) {
+    return { ok: false, error: 'kind' }
+  }
   const scope = text(input.scope) || 'literal'
   if (!(SELECTOR_SCOPES as readonly string[]).includes(scope)) return { ok: false, error: 'scope' }
-  const parsed = parseAuditSelector(
-    kind === 'url'
-      ? { kind: 'url', value: text(input.selector) }
-      : {
-          kind: kind as 'path' | 'prefix',
-          value: text(input.selector),
-          query: query === 'exact' ? 'exact' : 'any',
-          queryValue: text(input.queryValue),
-          scope: scope as SelectorScope,
-        },
-    host,
-  )
-  if (!parsed.ok) return parsed
+  const selectors = new Map<string, AuditSelector>()
+  for (const path of input.paths as unknown[]) {
+    if (typeof path !== 'object' || path === null) return { ok: false, error: 'kind' }
+    const { kind: rawKind, selector, query: rawQuery, queryValue } = path as PathInput
+    const kind = text(rawKind)
+    if (!(SELECTOR_KINDS as readonly string[]).includes(kind)) return { ok: false, error: 'kind' }
+    const parsed = parseAuditSelector(
+      kind === 'url'
+        ? { kind: 'url', value: text(selector) }
+        : {
+            kind: kind as 'path' | 'prefix',
+            value: text(selector),
+            query: text(rawQuery) === 'exact' ? 'exact' : 'any',
+            queryValue: text(queryValue),
+            scope: scope as SelectorScope,
+          },
+      host,
+    )
+    if (!parsed.ok) return parsed
+    selectors.set(selectorKey(parsed.selector), parsed.selector)
+  }
+  // The same path twice is one path. An exception on one exact URL is never one of several.
+  const unique = [...selectors.values()]
+  if (unique.length > 1 && unique.some((selector) => selector.kind === 'url')) {
+    return { ok: false, error: 'kind' }
+  }
 
   const reason = parseAuditReason(text(input.reason))
   if (reason === undefined) return { ok: false, error: 'reason' }
 
-  return { ok: true, selector: parsed.selector, statements, reason, enabled: input.enabled }
+  return { ok: true, selectors: unique, statements, reason, enabled: input.enabled }
 }
 
 /** The ids of rules are UUIDs: anything else cannot be one, and is not looked up. */
@@ -130,16 +155,27 @@ export function parseRuleIds(value: unknown): string[] | null {
   return [...new Set(value as string[])]
 }
 
+/** The paths of the form: each field is sent once per path, in the same order. */
+function pathsOfForm(form: FormData): PathInput[] {
+  const kinds = form.getAll('kind')
+  const selectors = form.getAll('selector')
+  const queries = form.getAll('query')
+  const values = form.getAll('queryValue')
+  return selectors.map((selector, index) => ({
+    kind: kinds[index],
+    selector,
+    query: queries[index],
+    queryValue: values[index],
+  }))
+}
+
 export function parseRuleForm(
   form: FormData,
   host: string,
 ): (RuleResult & { id: string | null }) | Extract<RuleResult, { ok: false }> {
   const parsed = parseRuleInput(
     {
-      kind: form.get('kind'),
-      selector: form.get('selector'),
-      query: form.get('query'),
-      queryValue: form.get('queryValue'),
+      paths: pathsOfForm(form),
       scope: form.get('scope'),
       audit: form.get('audit'),
       intent: form.get('intent'),

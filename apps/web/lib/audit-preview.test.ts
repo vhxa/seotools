@@ -86,7 +86,9 @@ const statementsOf = (rule: NewAuditRule): RuleStatements => {
 
 const previewSet = async (
   candidate: {
-    selector: NewAuditRule['selector']
+    selector?: NewAuditRule['selector']
+    /** A rule with several paths. */
+    selectors?: NewAuditRule['selector'][]
     statements: RuleStatements
     reason?: string | null
     enabled?: boolean
@@ -110,7 +112,7 @@ const previewSet = async (
     languages: options.languages ?? config.languages,
     editing,
     candidate: {
-      selector: candidate.selector,
+      selectors: candidate.selectors ?? (candidate.selector ? [candidate.selector] : []),
       statements: candidate.statements,
       reason: candidate.reason ?? null,
       enabled: candidate.enabled ?? true,
@@ -524,5 +526,37 @@ describe('previewing a rule that says several things', () => {
         { crawl, replacing: row!.id },
       ),
     ).toMatchObject({ changes: 0 })
+  })
+})
+
+describe('previewing a rule with several paths', () => {
+  const at = (path: string) =>
+    ({ kind: 'prefix', path, query: { mode: 'any' }, scope: 'literal' }) as const
+
+  it('covers the union of the paths and counts each one', async () => {
+    const crawl = await crawlOf([
+      `${SITE}/cart`,
+      `${SITE}/cart/items`,
+      `${SITE}/account`,
+      `${SITE}/blog`,
+    ])
+    const found = await previewSet(
+      {
+        selectors: [at('/cart'), at('/account'), at('/cart/items')],
+        statements: { audit: 'exclude' },
+      },
+      { crawl },
+    )
+    expect(found).toMatchObject({
+      status: 'ok',
+      matches: 3,
+      changes: 3,
+      paths: [
+        { selector: at('/cart'), matches: 2 },
+        { selector: at('/account'), matches: 1 },
+        // Paths can overlap: /cart/items is under /cart too.
+        { selector: at('/cart/items'), matches: 1 },
+      ],
+    })
   })
 })
