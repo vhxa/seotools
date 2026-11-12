@@ -30,14 +30,14 @@
     "@seotools/core": "workspace:*",
     "@seotools/db": "workspace:*",
     "eslint": "^10.14.0",
-    "eslint-config-next": "^16.4.3",
-    "globals": "^17.13.0",
+    "eslint-config-next": "^16.4.5",
+    "globals": "^17.14.0",
     "prettier": "^3.9.10",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tsx": "^4.23.15",
     "turbo": "^2.11.10",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }
