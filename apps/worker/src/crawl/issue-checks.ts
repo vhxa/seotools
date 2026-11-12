@@ -1029,6 +1029,8 @@ export function applyFindingDismissals(
           state: 'dismissed',
           scope: state.urlHash === null ? 'domain' : 'url',
           id: state.id,
+          ...(state.setBy !== undefined ? { setBy: state.setBy } : {}),
+          ...(state.setAt ? { setAt: state.setAt } : {}),
         },
       })
     } else pending.push(finding)

@@ -1,5 +1,5 @@
 import { FindingStateActions } from '@/components/audit/finding-state-actions'
-import { FindingStatesList } from '@/components/audit/finding-states-list'
+import { DismissalAttribution } from '@/components/audit/dismissal-attribution'
 import { rulesOfAcceptance } from '@seotools/core/crawl/acceptance'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import Link from 'next/link'
@@ -54,11 +54,7 @@ export async function AcceptedFindings({
                 <p className="text-muted-foreground">{describeAcceptance(acceptance, translate)}</p>
                 {acceptance.kind === 'dismissal' && (
                   <>
-                    <FindingStatesList
-                      compact
-                      host={host}
-                      rows={(data.findingStates ?? []).filter((row) => row.id === acceptance.id)}
-                    />
+                    <DismissalAttribution acceptance={acceptance} rows={data.findingStates ?? []} />
                     <FindingStateActions
                       host={host}
                       issue={issue}

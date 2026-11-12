@@ -286,7 +286,7 @@ export function createPgDatabase(options: {
         .select({ urlHash: crawlUrlIssues.urlHash })
         .from(crawlUrlIssues)
         .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue))),
-    withAccepted: (issue: string | null, state?: string) =>
+    withAccepted: (issue: string | null, kind?: 'rule' | 'dismissal') =>
       db
         .select({ urlHash: crawlUrlAcceptedIssues.urlHash })
         .from(crawlUrlAcceptedIssues)
@@ -294,9 +294,11 @@ export function createPgDatabase(options: {
           and(
             eq(crawlUrlAcceptedIssues.crawlId, crawlId),
             issue === null ? undefined : eq(crawlUrlAcceptedIssues.issue, issue),
-            state === 'dismissed'
+            kind === 'dismissal'
               ? like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%')
-              : undefined,
+              : kind === 'rule'
+                ? not(like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%'))
+                : undefined,
           ),
         ),
     withState: (state: string, issue?: string) => {

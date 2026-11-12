@@ -60,6 +60,18 @@ export async function GET(
   const expected = await db.crawls.countListed(listing)
   const moment = crawlMoment(crawl)
 
+  const findingStates = (await db.audit.config(domain.id)).findingStates
+  const people = [
+    ...new Set((crawl.auditSnapshot?.dismissals ?? []).flatMap((d) => (d.setBy ? [d.setBy] : []))),
+  ]
+  const decisionNames = new Map(
+    await Promise.all(
+      people.map(
+        async (id) =>
+          [id, (await db.users.get(id))?.name ?? translate('FindingStates.formerMember')] as const,
+      ),
+    ),
+  )
   const pieces = exportCsv({
     kind,
     source: db.crawls,
@@ -68,7 +80,9 @@ export async function GET(
     expected,
     signal: request.signal,
     context: {
-      findingStates: (await db.audit.config(domain.id)).findingStates,
+      findingStates,
+      decisionNames,
+      onlyAcceptedKind: query.acceptanceKind,
       host: domain.host,
       crawlId: crawl.id,
       ignoredParameters: crawl.ignoredParameters ?? [],

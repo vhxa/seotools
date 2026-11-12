@@ -806,7 +806,7 @@ export function planFindingStates(
         state: input.state,
         note: input.note.trim(),
         setBy: input.setBy,
-        setAt: context.now,
+        setAt: new Date(Math.max(context.now.getTime(), (current?.setAt.getTime() ?? -1) + 1)),
       }
       if (current?.state === row.state && current.note === row.note) continue
       next = next.filter((r) => r !== current)

@@ -799,6 +799,9 @@ const ruleSchema = z.discriminatedUnion('dimension', [
  * analysis keeps the one it was made with, so that it can be read, and made again, as it was.
  */
 export interface FindingDismissal {
+  /** Absent only in snapshots written before attribution was recorded. */
+  setBy?: string | null
+  setAt?: string
   id: string
   issue: string
   urlHash: string | null
@@ -848,6 +851,8 @@ const snapshotSchema = z.object({
         issue: z.string(),
         urlHash: z.string().nullable(),
         state: z.enum(['dismissed', 'pending']),
+        setBy: z.string().nullable().optional(),
+        setAt: z.string().datetime().optional(),
       }),
     )
     .optional(),
@@ -859,7 +864,14 @@ export function auditSnapshotOf(
   rules: readonly AuditRule[],
   languages: LanguageConfig = NO_LANGUAGES,
   thresholds?: ThresholdOverrides,
-  states: readonly { id: string; issue: string; urlHash: string | null; state: string }[] = [],
+  states: readonly {
+    id: string
+    issue: string
+    urlHash: string | null
+    state: string
+    setBy?: string | null
+    setAt?: Date
+  }[] = [],
 ): AuditSnapshot {
   const figures = canonicalThresholds(thresholds)
   const dismissals = findingDismissalsOf(states)
@@ -1170,7 +1182,14 @@ export function groupRules<R extends AuditRule>(rules: readonly R[]): RuleGroup<
 
 /** Only decisions that affect pending findings; progress is a label, with a pending URL override. */
 export function findingDismissalsOf(
-  states: readonly { id: string; issue: string; urlHash: string | null; state: string }[],
+  states: readonly {
+    id: string
+    issue: string
+    urlHash: string | null
+    state: string
+    setBy?: string | null
+    setAt?: Date
+  }[],
 ): FindingDismissal[] {
   const domain = new Set(
     states.filter((r) => r.urlHash === null && r.state === 'dismissed').map((r) => r.issue),
@@ -1179,7 +1198,16 @@ export function findingDismissalsOf(
     .flatMap((row): FindingDismissal[] => {
       if (row.issue.startsWith('expected-')) return []
       if (row.state === 'dismissed')
-        return [{ id: row.id, issue: row.issue, urlHash: row.urlHash, state: 'dismissed' }]
+        return [
+          {
+            id: row.id,
+            issue: row.issue,
+            urlHash: row.urlHash,
+            state: 'dismissed',
+            ...(row.setBy !== undefined ? { setBy: row.setBy } : {}),
+            ...(row.setAt ? { setAt: row.setAt.toISOString() } : {}),
+          },
+        ]
       if (row.urlHash !== null && domain.has(row.issue))
         return [{ id: row.id, issue: row.issue, urlHash: row.urlHash, state: 'pending' }]
       return []

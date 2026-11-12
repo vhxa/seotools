@@ -655,6 +655,10 @@
         "pending": "Pending",
         "in-progress": "In progress",
         "dismissed": "Dismissed"
+      },
+      "acceptanceKinds": {
+        "rule": "Accepted by a rule",
+        "dismissal": "Dismissed by a person"
       }
     },
     "advancedFilters": "Advanced filters and issues",
@@ -748,7 +752,9 @@
       "lcp": "LCP (field, phone)",
       "inp": "INP (field, phone)",
       "cls": "CLS (field, phone)",
-      "note": "Decision note"
+      "note": "Decision note",
+      "decisionBy": "Dismissed by",
+      "decisionAt": "Dismissed at"
     },
     "values": {
       "internal": "This site",
@@ -3729,6 +3735,9 @@
     "counts": "{pending} pending ({progress} in progress) · {dismissed} dismissed",
     "dismissedBy": "Dismissed by {name}, {date}",
     "more": "{count, plural, one {# more decision} other {# more decisions}} in Settings → Audit → Dismissed.",
-    "noteLabel": "Note: {note}"
+    "noteLabel": "Note: {note}",
+    "formerMember": "a former member",
+    "decisionChanged": "The decision has changed since this analysis.",
+    "unknownDate": "date not recorded"
   }
 }

@@ -1,3 +1,4 @@
+import type { AcceptanceKind } from '@seotools/core/crawl/acceptance'
 import type { BotAnswer, BotVerdict } from '@seotools/core/bot-access'
 import type { RuleEditing, RuleSelectors } from './audit'
 import type { CrawlFileObservation, CrawlFileRecord } from '@seotools/core/crawl/files'
@@ -492,6 +493,7 @@ export interface CrawlUrlQuery {
    * `view` is ignored.
    */
   accepted?: string
+  acceptanceKind?: AcceptanceKind
   /**
    * Only URLs whose last request got a status of this class, or `none`: no status at all, because
    * the URL was never requested or the request failed. Within the `view`.

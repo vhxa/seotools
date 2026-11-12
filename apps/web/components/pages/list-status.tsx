@@ -73,9 +73,14 @@ export async function ListStatus({
       case 'issue':
         return query.issue && isPageIssueId(query.issue) ? tIssues(`${query.issue}.name`) : ''
       case 'accepted':
-        return query.accepted && isPageIssueId(query.accepted)
-          ? tIssues(`${query.accepted}.name`)
-          : t('activeFilters.anyFinding')
+        return [
+          query.acceptanceKind ? t(`activeFilters.acceptanceKinds.${query.acceptanceKind}`) : '',
+          query.accepted && isPageIssueId(query.accepted)
+            ? tIssues(`${query.accepted}.name`)
+            : t('activeFilters.anyFinding'),
+        ]
+          .filter(Boolean)
+          .join(': ')
       case 'status':
         return tFilters(`status.${query.status!}`)
       case 'type':

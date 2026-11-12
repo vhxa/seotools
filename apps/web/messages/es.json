@@ -655,6 +655,10 @@
         "pending": "Pendiente",
         "in-progress": "En curso",
         "dismissed": "Descartado"
+      },
+      "acceptanceKinds": {
+        "rule": "Aceptado por una regla",
+        "dismissal": "Descartado por una persona"
       }
     },
     "advancedFilters": "Filtros avanzados e incidencias",
@@ -748,7 +752,9 @@
       "lcp": "LCP (usuarios reales, móvil)",
       "inp": "INP (usuarios reales, móvil)",
       "cls": "CLS (usuarios reales, móvil)",
-      "note": "Nota de la decisión"
+      "note": "Nota de la decisión",
+      "decisionBy": "Descartado por",
+      "decisionAt": "Fecha del descarte"
     },
     "values": {
       "internal": "Este sitio",
@@ -3729,6 +3735,9 @@
     "counts": "{pending} pendientes ({progress} en curso) · {dismissed} descartados",
     "dismissedBy": "Descartado por {name}, {date}",
     "more": "{count, plural, one {# decisión más} other {# decisiones más}} en Ajustes → Auditoría → Descartados.",
-    "noteLabel": "Nota: {note}"
+    "noteLabel": "Nota: {note}",
+    "formerMember": "un antiguo miembro",
+    "decisionChanged": "La decisión ha cambiado desde este análisis.",
+    "unknownDate": "fecha no registrada"
   }
 }

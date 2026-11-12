@@ -1,7 +1,11 @@
 import type { CrawlUrlKind } from '@seotools/core'
 import { INDEX_INTENTS, type IndexIntent } from '@seotools/core/crawl/audit'
 import { INDEXABILITY_STATES, type IndexabilityState } from '@seotools/core/crawl/indexability'
-import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
+import {
+  ACCEPTANCE_KINDS,
+  type AcceptanceKind,
+  ANY_ACCEPTED,
+} from '@seotools/core/crawl/acceptance'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import {
   CRAWL_URL_VIEWS,
@@ -75,6 +79,7 @@ export interface DetailQuery {
    * every view at once, like `issue`, and the two exclude each other.
    */
   accepted: string | null
+  acceptanceKind: AcceptanceKind | null
   /** Only URLs whose last request got a status of this class, or none at all. */
   status: StatusFilter | null
   /** Only URLs of the site that turned out to be this. */
@@ -127,6 +132,9 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
     search: (first(params.q) ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     issue: validIssue,
     accepted: validAccepted,
+    acceptanceKind: validAccepted
+      ? (ACCEPTANCE_KINDS.find((k) => k === first(params.acceptanceKind)) ?? null)
+      : null,
     status: STATUS_FILTERS.find((option) => option === status) ?? null,
     type: URL_TYPES.find((option) => option === type) ?? null,
     indexability: INDEXABILITY_STATES.find((option) => option === indexability) ?? null,
@@ -195,7 +203,7 @@ export function filterAvailability(
  * reads as "no such URLs" when the truth is that nothing was asked of them.
  */
 export function unappliedFilters(
-  query: Pick<DetailQuery, 'view' | FilterKey>,
+  query: Pick<DetailQuery, 'view' | FilterKey> & Partial<Pick<DetailQuery, 'acceptanceKind'>>,
   context: { auditData: boolean },
 ): Partial<Record<FilterKey, NotApplied>> {
   const availability = filterAvailability(query.view, context)
@@ -211,7 +219,7 @@ export function unappliedFilters(
 
 /** What a query asks the database for: the view and the filters that apply, nothing else. */
 export function listingOf(
-  query: Pick<DetailQuery, 'view' | FilterKey>,
+  query: Pick<DetailQuery, 'view' | FilterKey> & Partial<Pick<DetailQuery, 'acceptanceKind'>>,
   unapplied: Partial<Record<FilterKey, NotApplied>>,
 ): Omit<CrawlUrlQuery, 'crawlId'> {
   const applies = (key: FilterKey) => !unapplied[key]
@@ -221,6 +229,7 @@ export function listingOf(
     ...(query.search ? { search: query.search } : {}),
     ...(query.issue ? { issue: query.issue } : {}),
     ...(query.accepted ? { accepted: query.accepted } : {}),
+    ...(query.accepted && query.acceptanceKind ? { acceptanceKind: query.acceptanceKind } : {}),
     ...(query.status && applies('status') ? { status: query.status } : {}),
     ...(query.type && applies('type') ? { type: query.type } : {}),
     ...(query.indexability && applies('indexability') ? { indexability: query.indexability } : {}),
@@ -251,7 +260,11 @@ export function withoutFilter(key: FilterKey | 'all'): Partial<DetailQuery> {
     rule: null,
   }
   const changes: Partial<DetailQuery> =
-    key === 'all' ? cleared : ({ [key]: cleared[key] } as Partial<DetailQuery>)
+    key === 'all'
+      ? { ...cleared, acceptanceKind: null }
+      : key === 'accepted'
+        ? { accepted: null, acceptanceKind: null }
+        : ({ [key]: cleared[key] } as Partial<DetailQuery>)
   return { ...changes, page: 1, url: null }
 }
 
@@ -284,6 +297,7 @@ export function detailHref(
   if (next.search) params.set('q', next.search)
   if (next.issue) params.set('issue', next.issue)
   if (next.accepted) params.set('accepted', next.accepted)
+  if (next.accepted && next.acceptanceKind) params.set('acceptanceKind', next.acceptanceKind)
   if (next.status) params.set('status', next.status)
   if (next.type && kept('type')) params.set('type', next.type)
   if (next.indexability && kept('indexability')) params.set('indexability', next.indexability)

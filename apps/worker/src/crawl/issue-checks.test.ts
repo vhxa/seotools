@@ -1785,3 +1785,45 @@ it('never dismisses expected findings, including malformed stored snapshots', ()
     accepted: [],
   })
 })
+
+it('records Alice and her decision time in the snapshot and acceptance before Bob changes it', async () => {
+  const alice = await db.users.create({ name: 'Alice', email: 'alice@example.com', role: 'member' })
+  const bob = await db.users.create({ name: 'Bob', email: 'bob@example.com', role: 'member' })
+  const input = {
+    domainId,
+    issue: 'title-missing',
+    urlHashes: [null],
+    state: 'dismissed' as const,
+    note: 'Alice note',
+    setBy: alice.id,
+  }
+  await db.audit.setFindingStates(input)
+  const decision = (await db.audit.config(domainId)).findingStates[0]!
+  const site = websiteOf({ at: '/x', pages: { '/x': page('/x', { title: '' }) } })
+  const older = await crawl(site)
+  const original = (await db.crawls.acceptedOf(older, [crawlUrlHash(absolute('/x'))])).find(
+    (r) => r.issue === input.issue,
+  )!
+  expect(original.acceptance).toMatchObject({
+    kind: 'dismissal',
+    setBy: alice.id,
+    setAt: decision.setAt.toISOString(),
+  })
+  expect((await db.crawls.get(older))?.auditSnapshot?.dismissals?.[0]).toMatchObject({
+    setBy: alice.id,
+    setAt: decision.setAt.toISOString(),
+  })
+  await db.audit.setFindingStates({
+    ...input,
+    state: 'in-progress',
+    setBy: bob.id,
+    note: 'Bob note',
+  })
+  await crawl(site)
+  await recomputeAudit({ db, domainId, crawlId: older, force: true, finalAttempt: true, log })
+  expect(
+    (await db.crawls.acceptedOf(older, [crawlUrlHash(absolute('/x'))])).find(
+      (r) => r.issue === input.issue,
+    )?.acceptance,
+  ).toEqual(original.acceptance)
+})

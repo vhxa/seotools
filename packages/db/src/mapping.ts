@@ -788,7 +788,7 @@ export function crawlUrlWhere(
   subqueries: {
     withIssue: (issue: string) => SQLWrapper
     /** The hashes of the URLs with an accepted finding: this issue, or any when it is `null`. */
-    withAccepted: (issue: string | null, state?: string) => SQLWrapper
+    withAccepted: (issue: string | null, kind?: CrawlUrlQuery['acceptanceKind']) => SQLWrapper
     withState?: (state: string, issue?: string) => SQLWrapper
     withAudit: (filter: AuditFilter) => SQLWrapper
   },
@@ -813,7 +813,10 @@ export function crawlUrlWhere(
     query.accepted
       ? inArray(
           columns.urlHash,
-          subqueries.withAccepted(query.accepted === ANY_ACCEPTED ? null : query.accepted),
+          subqueries.withAccepted(
+            query.accepted === ANY_ACCEPTED ? null : query.accepted,
+            query.acceptanceKind,
+          ),
         )
       : undefined,
     hasAuditFilter(query) ? inArray(columns.urlHash, subqueries.withAudit(query)) : undefined,

@@ -361,11 +361,16 @@ export default async function IssuesPage({
               </h2>
               <IssueRows
                 rows={accepted}
-                hrefOf={(issue) => detailHref(domain.host, query, { accepted: issue })}
+                hrefOf={(issue) =>
+                  detailHref(domain.host, query, { accepted: issue, acceptanceKind: 'rule' })
+                }
                 countLabel={(pages) => t('urls', { count: pages })}
               />
               <Link
-                href={detailHref(domain.host, query, { accepted: ANY_ACCEPTED })}
+                href={detailHref(domain.host, query, {
+                  accepted: ANY_ACCEPTED,
+                  acceptanceKind: 'rule',
+                })}
                 className="mt-2 inline-block text-sm underline-offset-4 hover:underline"
               >
                 {t('accepted.viewAll')}

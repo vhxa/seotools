@@ -13,7 +13,14 @@ import type { AuditCondition, Requirement } from './audit'
 import type { IndexabilityBlocker } from './indexability'
 
 export type FindingAcceptance =
-  | { kind: 'dismissal'; state: 'dismissed'; scope: 'url' | 'domain'; id: string }
+  | {
+      kind: 'dismissal'
+      state: 'dismissed'
+      scope: 'url' | 'domain'
+      id: string
+      setBy?: string | null
+      setAt?: string
+    }
   /** A rule states this condition of the URL, which replaces its generic finding. */
   | { kind: 'condition'; condition: AuditCondition; requirement: Requirement; rule: string | null }
   /** A rule expects the URL not to be indexable, and the finding is that expectation itself. */
@@ -53,6 +60,8 @@ const acceptanceSchema = z.discriminatedUnion('kind', [
     state: z.literal('dismissed'),
     scope: z.enum(['url', 'domain']),
     id: z.string(),
+    setBy: z.string().nullable().optional(),
+    setAt: z.string().datetime().optional(),
   }),
   z.looseObject({
     kind: z.literal('condition'),
@@ -73,4 +82,15 @@ const acceptanceSchema = z.discriminatedUnion('kind', [
 export function parseFindingAcceptance(stored: unknown): FindingAcceptance | null {
   const parsed = acceptanceSchema.safeParse(stored)
   return parsed.success ? parsed.data : null
+}
+
+/** Optional refinement of the accepted list: a rule or a person's dismissal. */
+export const ACCEPTANCE_KINDS = ['rule', 'dismissal'] as const
+export type AcceptanceKind = (typeof ACCEPTANCE_KINDS)[number]
+
+export function matchesAcceptanceKind(
+  acceptance: FindingAcceptance,
+  kind: AcceptanceKind,
+): boolean {
+  return kind === 'dismissal' ? acceptance.kind === 'dismissal' : acceptance.kind !== 'dismissal'
 }

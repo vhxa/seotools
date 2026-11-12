@@ -108,7 +108,7 @@ export function describeFindingStates(get: () => Database) {
           },
           {
             urlHash: urls[2]!.urlHash,
-            issue: 'noindex',
+            issue: input.issue,
             acceptedBy: urls[2]!.urlHash,
             acceptance: { kind: 'expectation', rule: null },
           },
@@ -130,8 +130,24 @@ export function describeFindingStates(get: () => Database) {
         { issue: input.issue, pages: 1 },
       ])
       expect(await db.crawls.acceptedCounts(crawl.id, 'rule')).toEqual([
-        { issue: 'noindex', pages: 1 },
+        { issue: input.issue, pages: 1 },
       ])
+      for (const acceptanceKind of ['rule', 'dismissal'] as const) {
+        const accepted = {
+          crawlId: crawl.id,
+          view: 'all' as const,
+          accepted: input.issue,
+          acceptanceKind,
+        }
+        expect(await db.crawls.countListed(accepted)).toBe(1)
+        const rows = await db.crawls.listUrls({ ...accepted, limit: 10, offset: 0 })
+        expect(rows.map((row) => row.urlHash)).toEqual([
+          urls[acceptanceKind === 'rule' ? 2 : 1]!.urlHash,
+        ])
+      }
+      expect(
+        await db.crawls.countListed({ crawlId: crawl.id, view: 'all', accepted: input.issue }),
+      ).toBe(2)
       // A URL-level pending override of a domain progress label is no longer in progress.
       await db.audit.setFindingStates({ ...input, state: 'in-progress' })
       await db.audit.setFindingStates({ ...input, state: 'pending', urlHashes: [urls[0]!.urlHash] })

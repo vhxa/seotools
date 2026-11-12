@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  exportHref,
   activeFilters,
   detailHref,
   filterAvailability,
@@ -21,6 +22,7 @@ const base: DetailQuery = {
   search: '',
   issue: null,
   accepted: null,
+  acceptanceKind: null,
   status: null,
   type: null,
   indexability: null,
@@ -64,6 +66,7 @@ describe('parseDetailQuery', () => {
       issue: 'title-missing',
       state: null,
       accepted: null,
+      acceptanceKind: null,
       status: '4xx',
       type: 'redirect',
       indexability: 'unknown',
@@ -192,6 +195,7 @@ describe('detailHref', () => {
       search: '50% off & more',
       issue: 'description-missing',
       accepted: null,
+      acceptanceKind: null,
       status: '5xx',
       type: 'unknown',
       indexability: 'not-indexable',
@@ -409,6 +413,7 @@ describe('the filters that cannot apply', () => {
     expect(parseDetailQuery({ accepted: 'noindex', issue: 'noindex' })).toMatchObject({
       issue: 'noindex',
       accepted: null,
+      acceptanceKind: null,
     })
   })
 })
@@ -447,4 +452,20 @@ describe('the filters that are set', () => {
     )
     expect(activeFilters(base)).toEqual([])
   })
+})
+
+it('round trips acceptance kind in list and export addresses and passes it to the database', () => {
+  const query = parseDetailQuery({ accepted: 'title-missing', acceptanceKind: 'rule' })
+  const href = detailHref('example.com', query)
+  const parsed = parseDetailQuery(
+    Object.fromEntries(new URL(href, 'https://example.com').searchParams),
+  )
+  expect(parsed.acceptanceKind).toBe('rule')
+  expect(exportHref('example.com', query, 'findings')).toContain('acceptanceKind=rule')
+  expect(listingOf(parsed, {})).toMatchObject({ accepted: 'title-missing', acceptanceKind: 'rule' })
+  expect(detailHref('example.com', query, withoutFilter('accepted'))).not.toContain(
+    'acceptanceKind',
+  )
+  expect(parseDetailQuery({ acceptanceKind: 'rule' }).acceptanceKind).toBeNull()
+  expect(parseDetailQuery({ accepted: 'all', acceptanceKind: 'unknown' }).acceptanceKind).toBeNull()
 })

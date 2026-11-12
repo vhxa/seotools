@@ -1,7 +1,12 @@
 import type { FindingStateRecord } from '@seotools/db'
 import type { VitalMetrics } from '@seotools/core'
 import { crawlIdentityHash } from '@seotools/core'
-import { ANY_ACCEPTED, type FindingAcceptance } from '@seotools/core/crawl/acceptance'
+import {
+  ANY_ACCEPTED,
+  matchesAcceptanceKind,
+  type AcceptanceKind,
+  type FindingAcceptance,
+} from '@seotools/core/crawl/acceptance'
 import type { Extractor } from '@seotools/core/crawl/extraction'
 import { evidenceKindOf } from '@seotools/core/crawl/evidence'
 import {
@@ -23,6 +28,7 @@ import type {
   OutLink,
   OutLinkCursor,
 } from '@seotools/db'
+import { currentDismissal } from './dismissal-attribution'
 import { describeAcceptance } from './acceptance-reason'
 import { CSV_BOM, csvRow, type CsvCell } from './csv'
 import { evidenceTarget } from './issue-evidence'
@@ -131,7 +137,7 @@ export const contentDisposition = (fileName: string): string =>
 
 /** The filters of an address in words, as the table's chips say them, for the `Filters` column. */
 export function describeListing(
-  query: Pick<DetailQuery, 'view' | FilterKey>,
+  query: Pick<DetailQuery, 'view' | FilterKey> & Partial<Pick<DetailQuery, 'acceptanceKind'>>,
   unapplied: Partial<Record<FilterKey, NotApplied>>,
   translate: Translate,
 ): string {
@@ -150,10 +156,16 @@ export function describeListing(
         }
       case 'accepted':
         return {
-          value:
+          value: [
+            query.acceptanceKind
+              ? translate(`PagesDetails.activeFilters.acceptanceKinds.${query.acceptanceKind}`)
+              : '',
             query.accepted && isPageIssueId(query.accepted)
               ? translate(`PageIssues.${query.accepted}.name`)
               : translate('PagesDetails.activeFilters.anyFinding'),
+          ]
+            .filter(Boolean)
+            .join(': '),
         }
       case 'status':
         return { value: translate(`PagesDetails.filters.status.${query.status!}`) }
@@ -182,6 +194,8 @@ export function describeListing(
 
 /** What the file is about, the same on every row. */
 export interface ExportContext {
+  onlyAcceptedKind?: AcceptanceKind | null
+  decisionNames?: ReadonlyMap<string, string>
   onlyState?: 'pending' | 'in-progress' | 'dismissed' | null
   findingStates?: FindingStateRecord[]
   ignoredParameters?: string[]
@@ -396,8 +410,12 @@ function evidenceState(finding: Finding): 'none' | 'stored' | 'not-stored' {
 }
 
 /** The in-progress label a person put on this finding of the URL (the URL's own row wins). */
-const inProgress = (row: ExportUrl, issue: string) =>
-  row.findingStates?.find((r) => r.issue === issue && r.state === 'in-progress')
+const inProgress = (row: ExportUrl, issue: string) => {
+  const current =
+    row.findingStates?.find((r) => r.issue === issue && r.urlHash === row.url.urlHash) ??
+    row.findingStates?.find((r) => r.issue === issue && r.urlHash === null)
+  return current?.state === 'in-progress' ? current : undefined
+}
 
 export const FINDINGS_COLUMNS: readonly FindingColumn[] = [
   ...ORIGIN_COLUMNS.map(({ header, value }) => ({
@@ -406,15 +424,26 @@ export const FINDINGS_COLUMNS: readonly FindingColumn[] = [
   })),
   { header: 'url', cell: ({ row }) => row.url.url },
   {
+    header: 'decisionBy',
+    cell: ({ acceptance }, c) =>
+      acceptance?.kind === 'dismissal'
+        ? ((acceptance.setBy ? c.decisionNames?.get(acceptance.setBy) : undefined) ??
+          tr(c, 'FindingStates.formerMember'))
+        : '',
+  },
+  {
+    header: 'decisionAt',
+    cell: ({ acceptance }) => (acceptance?.kind === 'dismissal' ? (acceptance.setAt ?? '') : ''),
+  },
+  {
     header: 'note',
-    cell: ({ acceptance, issue, row }) =>
-      // A member wrote it: text, through `csvCell` like every cell.
-      (acceptance?.kind === 'dismissal'
-        ? row.findingStates?.find((r) => r.id === acceptance.id)
-        : acceptance
-          ? undefined
-          : inProgress(row, issue.issue)
-      )?.note ?? '',
+    cell: ({ acceptance, issue, row }, c) => {
+      if (acceptance?.kind === 'dismissal') {
+        const current = currentDismissal(acceptance, row.findingStates ?? [])
+        return current ? current.note : tr(c, 'FindingStates.decisionChanged')
+      }
+      return acceptance ? '' : (inProgress(row, issue.issue)?.note ?? '')
+    },
   },
   {
     header: 'findingState',
@@ -600,9 +629,19 @@ export function exportRecords(kind: ExportKind, row: ExportUrl, context: ExportC
       : []
   }
   const { onlyIssue, onlyAccepted } = context
-  return findingsOf(row, Boolean(onlyAccepted))
+  return findingsOf(row, Boolean(onlyAccepted) || context.onlyState === 'dismissed')
+    .filter(({ acceptance, issue }) => {
+      if (!context.onlyState) return true
+      if (context.onlyState === 'dismissed') return acceptance?.kind === 'dismissal'
+      return (
+        !acceptance &&
+        Boolean(inProgress(row, issue.issue)) === (context.onlyState === 'in-progress')
+      )
+    })
     .filter(
-      ({ acceptance }) => context.onlyState !== 'dismissed' || acceptance?.kind === 'dismissal',
+      ({ acceptance }) =>
+        !context.onlyAcceptedKind ||
+        (acceptance && matchesAcceptanceKind(acceptance, context.onlyAcceptedKind)),
     )
     .filter(({ issue }) => !onlyIssue || issue.issue === onlyIssue)
     .filter(
@@ -751,14 +790,9 @@ export async function* exportCsv(options: {
       const rowOf = (url: CrawlUrl, links?: OutLink[]): ExportUrl => ({
         url,
         issues: issuesByUrl.get(url.urlHash) ?? [],
-        findingStates: [
-          ...new Map(
-            [
-              ...(context.findingStates ?? []).filter((r) => r.urlHash === null),
-              ...(context.findingStates ?? []).filter((r) => r.urlHash === url.urlHash),
-            ].map((r) => [r.issue, r]),
-          ).values(),
-        ],
+        findingStates: (context.findingStates ?? []).filter(
+          (r) => r.urlHash === null || r.urlHash === url.urlHash,
+        ),
         accepted: acceptedByUrl.get(url.urlHash) ?? [],
         audit: auditByUrl.get(url.urlHash),
         links,
