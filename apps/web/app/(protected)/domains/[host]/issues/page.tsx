@@ -1,4 +1,6 @@
 import { Incidents } from '@/components/incidents'
+import { FindingStateActions } from '@/components/audit/finding-state-actions'
+import { FindingStatesList } from '@/components/audit/finding-states-list'
 import { issuePairReasons } from '@seotools/core/crawl/compare'
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
@@ -95,7 +97,10 @@ export default async function IssuesPage({
   const checked = latest !== null && latest.pagesWithType !== null && !latest.pruned
   const [counts, acceptedCounts] =
     latest && checked
-      ? await Promise.all([db.crawls.issueCounts(latest.id), db.crawls.acceptedCounts(latest.id)])
+      ? await Promise.all([
+          db.crawls.issueCounts(latest.id),
+          db.crawls.acceptedCounts(latest.id, 'rule'),
+        ])
       : [[], []]
   const issues = rankIssueCounts(
     counts.filter(
@@ -105,6 +110,21 @@ export default async function IssuesPage({
     ),
   )
   const accepted = rankIssueCounts(acceptedCounts.filter((row) => matches(row.issue)))
+  const dismissedCounts =
+    latest && checked ? await db.crawls.acceptedCounts(latest.id, 'dismissal') : []
+  const decisions = await getTranslations('FindingStates')
+  const progress = new Map<string, number>()
+  if (latest && checked)
+    for (const row of counts)
+      progress.set(
+        row.issue,
+        await db.crawls.countListed({
+          crawlId: latest.id,
+          view: 'all',
+          issue: row.issue,
+          state: 'in-progress',
+        }),
+      )
   const query = parseDetailQuery({})
 
   return (
@@ -244,6 +264,14 @@ export default async function IssuesPage({
                   <IssueRows
                     extra={(issue, pages) => (
                       <>
+                        <span className="text-xs">
+                          {decisions('counts', {
+                            pending: pages,
+                            progress: progress.get(issue) ?? 0,
+                            dismissed: dismissedCounts.find((r) => r.issue === issue)?.pages ?? 0,
+                          })}
+                        </span>
+                        <FindingStateActions host={host} issue={issue} />
                         {(latest.pagesAudit?.audited ?? 0) >= 20 &&
                           pages >= (latest.pagesAudit?.audited ?? 0) * 0.9 && (
                             <span
@@ -306,6 +334,20 @@ export default async function IssuesPage({
               </section>
             )
           })}
+          {dismissedCounts.some((r) => matches(r.issue)) && (
+            <section className="grid gap-2">
+              <h2 className="text-lg font-medium">{decisions('dismissed')}</h2>
+              <IssueRows
+                rows={rankIssueCounts(dismissedCounts.filter((r) => matches(r.issue)))}
+                hrefOf={(issue) => detailHref(host, query, { issue, state: 'dismissed' })}
+                countLabel={(pages) => t('urls', { count: pages })}
+              />
+            </section>
+          )}
+          <FindingStatesList
+            host={host}
+            rows={config.findingStates.filter((row) => matches(row.issue))}
+          />
           {accepted.length > 0 && (
             <section aria-labelledby="accepted">
               <h2 id="accepted" className="mb-2 flex items-center text-lg font-medium">

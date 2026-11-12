@@ -1,3 +1,4 @@
+import type { FindingStateRecord } from '@seotools/db'
 import type { VitalMetrics } from '@seotools/core'
 import { crawlIdentityHash } from '@seotools/core'
 import { ANY_ACCEPTED, type FindingAcceptance } from '@seotools/core/crawl/acceptance'
@@ -136,6 +137,8 @@ export function describeListing(
 ): string {
   const value = (key: FilterKey): Record<string, string> => {
     switch (key) {
+      case 'state':
+        return { value: query.state ? translate('FindingStates.' + query.state) : '' }
       case 'search':
         return { value: query.search }
       case 'issue':
@@ -179,6 +182,7 @@ export function describeListing(
 
 /** What the file is about, the same on every row. */
 export interface ExportContext {
+  findingStates?: FindingStateRecord[]
   ignoredParameters?: string[]
   vitals?: ReadonlyMap<string, VitalMetrics>
   host: string
@@ -208,6 +212,7 @@ export interface ExportUrl {
   url: CrawlUrl
   issues: CrawlUrlIssue[]
   /** What a rule accepts on the URL: what the crawl saw, and is not pending. */
+  findingStates?: FindingStateRecord[]
   accepted?: CrawlUrlAcceptedIssue[]
   audit: CrawlUrlAudit | undefined
   /** The links leaving it (the links file). */
@@ -293,6 +298,15 @@ export const PAGES_COLUMNS: readonly UrlColumn[] = [
     cell: (_: ExportUrl, c: ExportContext) => value(c),
   })),
   urlOf,
+  {
+    header: 'state',
+    cell: (row) =>
+      row.accepted?.some((r) => r.acceptance.kind === 'dismissal')
+        ? 'dismissed'
+        : row.findingStates?.some((r) => r.state === 'in-progress')
+          ? 'in-progress'
+          : 'pending',
+  },
   {
     header: 'site',
     cell: ({ url }, c) =>
@@ -396,13 +410,33 @@ export const FINDINGS_COLUMNS: readonly FindingColumn[] = [
   })),
   { header: 'url', cell: ({ row }) => row.url.url },
   {
+    header: 'state',
+    cell: ({ acceptance, issue, row }) =>
+      acceptance?.kind === 'dismissal'
+        ? 'dismissed'
+        : row.findingStates?.some((r) => r.issue === issue.issue && r.state === 'in-progress')
+          ? 'in-progress'
+          : acceptance
+            ? 'accepted'
+            : 'pending',
+  },
+  {
+    header: 'note',
+    cell: ({ acceptance, issue, row }) =>
+      row.findingStates?.find((r) =>
+        acceptance?.kind === 'dismissal' ? r.id === acceptance.id : r.issue === issue.issue,
+      )?.note ?? '',
+  },
+  {
     header: 'findingState',
     cell: ({ acceptance, issue, row }, c) =>
       tr(
         c,
         `Export.values.${
           acceptance
-            ? 'accepted'
+            ? acceptance.kind === 'dismissal'
+              ? 'dismissed'
+              : 'accepted'
             : isPageIssueId(issue.issue) &&
                 isSecondaryFinding(issue.issue, row.audit?.indexability ?? null)
               ? 'secondary'
@@ -723,6 +757,14 @@ export async function* exportCsv(options: {
       const rowOf = (url: CrawlUrl, links?: OutLink[]): ExportUrl => ({
         url,
         issues: issuesByUrl.get(url.urlHash) ?? [],
+        findingStates: [
+          ...new Map(
+            [
+              ...(context.findingStates ?? []).filter((r) => r.urlHash === null),
+              ...(context.findingStates ?? []).filter((r) => r.urlHash === url.urlHash),
+            ].map((r) => [r.issue, r]),
+          ).values(),
+        ],
         accepted: acceptedByUrl.get(url.urlHash) ?? [],
         audit: auditByUrl.get(url.urlHash),
         links,

@@ -25,6 +25,8 @@ Raspberry Pi to a VPS.
 - **Your own rules**: say which URLs are expected out of the index, which must carry a noindex or be
   in a sitemap, allow or forbid a canonical to another URL or the absence of internal links, and
   leave URLs out of the audit; findings a rule expects are shown as accepted, not hidden. Thresholds that are conventions (title length, thin content…) can be set per domain.
+- **Finding states**: mark findings in progress or dismiss them for one URL or the whole domain,
+  with a note and the person who decided. Dismissed findings stay separate from fixes and rule acceptances.
 - **Issues and changes**: filter findings, spot template-wide problems, inspect current site files and crawl differences, and see who references broken or redirected targets.
 - **Where every link is**: its text, element and part of the page, how the crawler found each URL,
   and where query parameters enter the site. Ignore selected parameters (exact names or prefixes)

@@ -371,8 +371,8 @@
         "note": "El rastreo del {when} encontró esto en esta URL; la recomprobación no."
       },
       "accepted": {
-        "title": "Vistos y aceptados por una regla ({count})",
-        "note": "La reverificación sigue viéndolos en esta URL, pero una regla los da por esperados, así que no están pendientes. No están corregidos.",
+        "title": "Aceptados o descartados ({count})",
+        "note": "El rastreo sigue detectándolos. Una regla los acepta o una persona los descartó; en ninguno de los casos están corregidos.",
         "wasPending": "El rastreo lo informó como pendiente"
       },
       "notComparable": {
@@ -489,8 +489,8 @@
       "unmark": "Quitar de prioritarias"
     },
     "accepted": {
-      "title": "Aceptado por una regla",
-      "help": "El rastreo los sigue viendo y una regla dice que son lo esperado. No están pendientes, y tampoco corregidos: si quitas la regla, vuelven a contar.",
+      "title": "Aceptados o descartados",
+      "help": "El rastreo sigue detectándolos. Una regla los acepta o una persona los descartó; en ninguno de los casos están corregidos.",
       "viewAll": "Ver todas las URLs con algún hallazgo aceptado"
     }
   },
@@ -647,9 +647,15 @@
         "participation": "Auditoría: {value}",
         "intent": "{value}",
         "rule": "Decididas por una regla",
-        "accepted": "Aceptado por una regla: {value}"
+        "accepted": "Aceptados o descartados: {value}",
+        "state": "Estado: {value}"
       },
-      "anyFinding": "cualquier hallazgo"
+      "anyFinding": "cualquier hallazgo",
+      "states": {
+        "pending": "Pendiente",
+        "in-progress": "En curso",
+        "dismissed": "Descartado"
+      }
     },
     "advancedFilters": "Filtros avanzados e incidencias",
     "filtersMenu": "Filtros",
@@ -726,7 +732,7 @@
       "evidenceSamples": "Ejemplos de evidencia",
       "findingState": "Estado",
       "acceptedBecause": "Motivo de la aceptación",
-      "acceptedFindings": "Aceptados por una regla",
+      "acceptedFindings": "Aceptados o descartados",
       "linkTo": "Enlaza a",
       "linkKind": "Tipo de enlace",
       "linkStatus": "Estado de la URL enlazada",
@@ -741,7 +747,9 @@
       "referencedBy": "Referenciada por",
       "lcp": "LCP (usuarios reales, móvil)",
       "inp": "INP (usuarios reales, móvil)",
-      "cls": "CLS (usuarios reales, móvil)"
+      "cls": "CLS (usuarios reales, móvil)",
+      "state": "Estado del hallazgo",
+      "note": "Nota (opcional)"
     },
     "values": {
       "internal": "Este sitio",
@@ -752,7 +760,8 @@
       "accepted": "Aceptado por una regla",
       "yes": "Sí",
       "no": "No",
-      "secondary": "Secundario (página no indexable)"
+      "secondary": "Secundario (página no indexable)",
+      "dismissed": "Descartado"
     },
     "filters": {
       "view": "Vista: {value}"
@@ -831,7 +840,7 @@
     "recheckAvailable": "Reverificada {when} · ver resultados separados",
     "noPendingIssues": "Nada pendiente en esta URL.",
     "accepted": {
-      "title": "Aceptado por una regla ({count, number})",
+      "title": "Aceptados o descartados ({count})",
       "note": "El rastreo los sigue viendo. Una regla dice que son lo esperado, así que no están pendientes, y tampoco corregidos.",
       "condition": "Una regla indica {condition}: {requirement}.",
       "expectation": "Una regla espera que esta URL no sea indexable.",
@@ -2268,7 +2277,8 @@
       "label": "Configuración de auditoría",
       "rules": "Reglas",
       "languages": "Directorios de idioma",
-      "thresholds": "Umbrales"
+      "thresholds": "Umbrales",
+      "dismissed": "Descartados"
     },
     "create": "Crear regla",
     "sections": {
@@ -2663,7 +2673,9 @@
       "persistent": "Sigue detectado",
       "persistentHint": "Detectado por ambos rastreos.",
       "accepted": "Aceptado por una regla",
-      "acceptedHint": "El rastreo posterior lo sigue viendo y una regla dice que es lo esperado. No se ha corregido."
+      "acceptedHint": "El rastreo posterior lo sigue viendo y una regla dice que es lo esperado. No se ha corregido.",
+      "dismissed": "Descartado",
+      "dismissedHint": "Descartado por una persona; el rastreo sigue detectándolo."
     },
     "reasons": {
       "pruned": "un rastreo fue podado",
@@ -2675,7 +2687,8 @@
       "incomplete": "un rastreo se detuvo en su límite de URL y este hallazgo depende de otras páginas",
       "catalog": "los catálogos de problemas difieren",
       "audit": "la configuración de auditoría o la expectativa de la URL difieren",
-      "unobserved": "un rastreo no registró lo que esta comprobación necesita: compara con rastreos hechos después de la actualización"
+      "unobserved": "un rastreo no registró lo que esta comprobación necesita: compara con rastreos hechos después de la actualización",
+      "dismissed": "Una persona descartó este hallazgo."
     },
     "notes": {
       "pruned": {
@@ -3691,5 +3704,29 @@
       "groupsRemoved": "Grupos de agentes eliminados",
       "groupsChanged": "Grupos de agentes modificados"
     }
+  },
+  "FindingStates": {
+    "title": "Descartados y en curso",
+    "empty": "No hay estados guardados.",
+    "domain": "Todo el dominio",
+    "state": "Estado del hallazgo",
+    "all": "Todos los estados",
+    "pending": "Pendiente",
+    "in-progress": "En curso",
+    "dismissed": "Descartado",
+    "actions": "Acciones del hallazgo",
+    "note": "Nota (opcional)",
+    "restore": "Volver a pendiente",
+    "dismiss": "Descartar",
+    "dismissDomain": "Descartar en todo el dominio",
+    "confirmDomain": "¿Descartar este problema de importancia alta en todo el dominio? Dejará de contar como pendiente.",
+    "saved": "Guardado. Los resultados pueden estar recalculándose.",
+    "invalid": "Elige un hallazgo y un estado válidos, con una nota de hasta 1000 caracteres.",
+    "limit": "Cada dominio admite hasta 2000 estados. Selecciona menos URL o restaura estados existentes.",
+    "by": "Decisión de {name}, {date}: {note}",
+    "dismissedByPerson": "Descartado por una persona; el rastreo sigue detectándolo.",
+    "deletedUser": "Usuario eliminado",
+    "counts": "{pending} pendientes · {progress} en curso · {dismissed} descartados",
+    "dismissedBy": "Descartado por {name}, {date}: {note}"
   }
 }

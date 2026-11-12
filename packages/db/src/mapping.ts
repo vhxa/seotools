@@ -788,7 +788,8 @@ export function crawlUrlWhere(
   subqueries: {
     withIssue: (issue: string) => SQLWrapper
     /** The hashes of the URLs with an accepted finding: this issue, or any when it is `null`. */
-    withAccepted: (issue: string | null) => SQLWrapper
+    withAccepted: (issue: string | null, state?: string) => SQLWrapper
+    withState?: (state: string, issue?: string) => SQLWrapper
     withAudit: (filter: AuditFilter) => SQLWrapper
   },
 ): SQL | undefined {
@@ -803,7 +804,12 @@ export function crawlUrlWhere(
     pattern
       ? sql`(lower(${columns.url}) like ${pattern} escape '!' or lower(${columns.title}) like ${pattern} escape '!')`
       : undefined,
-    query.issue ? inArray(columns.urlHash, subqueries.withIssue(query.issue)) : undefined,
+    query.issue && query.state !== 'dismissed'
+      ? inArray(columns.urlHash, subqueries.withIssue(query.issue))
+      : undefined,
+    query.state && subqueries.withState
+      ? inArray(columns.urlHash, subqueries.withState(query.state, query.issue))
+      : undefined,
     query.accepted
       ? inArray(
           columns.urlHash,
@@ -1617,7 +1623,7 @@ export function foldTraces(
   urls: (SnapshotRow & { crawlId: string; urlHash: string; url: string })[],
   issues: (CrawlUrlIssue & { crawlId: string })[],
   audits: (CrawlUrlAudit & { crawlId: string })[],
-  accepted: { crawlId: string; urlHash: string; issue: string }[] = [],
+  accepted: { crawlId: string; urlHash: string; issue: string; details?: string }[] = [],
 ): CrawlUrlTrace[] {
   const key = (crawlId: string, urlHash: string) => `${crawlId}:${urlHash}`
   const issuesBy = new Map<string, CrawlUrlIssue[]>()
@@ -1628,9 +1634,16 @@ export function foldTraces(
   const auditBy = new Map(
     audits.map(({ crawlId, ...audit }) => [key(crawlId, audit.urlHash), audit]),
   )
+  const dismissedBy = new Map<string, string[]>()
   const acceptedBy = new Map<string, string[]>()
-  for (const { crawlId, urlHash, issue } of accepted) {
+  for (const { crawlId, urlHash, issue, details } of accepted) {
     const k = key(crawlId, urlHash)
+    if (
+      details &&
+      (parseJson(details) as { acceptance?: { kind?: string } } | null)?.acceptance?.kind ===
+        'dismissal'
+    )
+      dismissedBy.set(k, [...(dismissedBy.get(k) ?? []), issue])
     acceptedBy.set(k, [...(acceptedBy.get(k) ?? []), issue])
   }
   return urls.flatMap(({ crawlId, urlHash, url, ...row }) => {
@@ -1645,6 +1658,7 @@ export function foldTraces(
         snapshot,
         issues: issuesBy.get(k) ?? [],
         accepted: acceptedBy.get(k) ?? [],
+        dismissed: dismissedBy.get(k) ?? [],
         audit: auditBy.get(k) ?? null,
       },
     ]

@@ -38,8 +38,8 @@ export interface CrawlAnalysis {
 
 /** The audit configuration of a domain as it is now, in one consistent read. */
 export async function currentAuditConfig(db: Database, domainId: string): Promise<AuditSnapshot> {
-  const { version, rules, languages, thresholds } = await db.audit.config(domainId)
-  return auditSnapshotOf(version, rules, languages, thresholds)
+  const { version, rules, languages, thresholds, findingStates } = await db.audit.config(domainId)
+  return auditSnapshotOf(version, rules, languages, thresholds, findingStates)
 }
 
 /**

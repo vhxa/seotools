@@ -996,5 +996,33 @@ export function detectFindings(
     }
   }
   const { kept, accepted } = auditPolicy(url, found)
-  return { found: kept, accepted: [...accepted, ...acceptedRelations(url, site)] }
+  return applyFindingDismissals(url, site, kept, [...accepted, ...acceptedRelations(url, site)])
+}
+
+export function applyFindingDismissals(
+  url: AuditedUrl,
+  site: Site,
+  kept: Finding[],
+  accepted: AcceptedFinding[],
+): { found: Finding[]; accepted: AcceptedFinding[] } {
+  const pending: Finding[] = []
+  for (const finding of kept) {
+    const rows = site.config.dismissals ?? []
+    const state =
+      rows.find((row) => row.issue === finding.issue && row.urlHash === url.url.urlHash) ??
+      rows.find((row) => row.issue === finding.issue && row.urlHash === null)
+    if (state?.state === 'dismissed' && !finding.issue.startsWith('expected-')) {
+      accepted.push({
+        ...finding,
+        by: url,
+        acceptance: {
+          kind: 'dismissal',
+          state: 'dismissed',
+          scope: state.urlHash === null ? 'domain' : 'url',
+          id: state.id,
+        },
+      })
+    } else pending.push(finding)
+  }
+  return { found: pending, accepted }
 }

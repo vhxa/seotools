@@ -798,7 +798,15 @@ const ruleSchema = z.discriminatedUnion('dimension', [
  * The configuration of a domain at one version: what it takes to resolve every URL as it was. Every
  * analysis keeps the one it was made with, so that it can be read, and made again, as it was.
  */
+export interface FindingDismissal {
+  id: string
+  issue: string
+  urlHash: string | null
+  state: 'dismissed' | 'pending'
+}
+
 export interface AuditSnapshot {
+  dismissals?: FindingDismissal[]
   /** Grows with every change to the rules of the domain. `0`: never configured. */
   version: number
   /** Enabled rules only. */
@@ -833,6 +841,16 @@ const snapshotSchema = z.object({
   languages: z.object({ prefixes: z.array(z.string()), unprefixed: z.boolean() }).optional(),
   thresholds: thresholdOverridesSchema.optional(),
   unobserved: z.array(z.string()).optional(),
+  dismissals: z
+    .array(
+      z.object({
+        id: z.string(),
+        issue: z.string(),
+        urlHash: z.string().nullable(),
+        state: z.enum(['dismissed', 'pending']),
+      }),
+    )
+    .optional(),
 })
 
 /** The configuration in force now: what a new analysis, and a recalculation, use. */
@@ -841,9 +859,12 @@ export function auditSnapshotOf(
   rules: readonly AuditRule[],
   languages: LanguageConfig = NO_LANGUAGES,
   thresholds?: ThresholdOverrides,
+  states: readonly { id: string; issue: string; urlHash: string | null; state: string }[] = [],
 ): AuditSnapshot {
   const figures = canonicalThresholds(thresholds)
+  const dismissals = findingDismissalsOf(states)
   return {
+    ...(dismissals.length ? { dismissals } : {}),
     version,
     semantics: AUDIT_SEMANTICS,
     languages: canonicalLanguages(languages),
@@ -1145,4 +1166,26 @@ export function groupRules<R extends AuditRule>(rules: readonly R[]): RuleGroup<
     group.reason = acting.find((rule) => rule.reason !== null)?.reason ?? null
   }
   return [...groups.values()]
+}
+
+/** Only decisions that affect pending findings; progress is a label, with a pending URL override. */
+export function findingDismissalsOf(
+  states: readonly { id: string; issue: string; urlHash: string | null; state: string }[],
+): FindingDismissal[] {
+  const domain = new Set(
+    states.filter((r) => r.urlHash === null && r.state === 'dismissed').map((r) => r.issue),
+  )
+  return states
+    .flatMap((row): FindingDismissal[] => {
+      if (row.issue.startsWith('expected-')) return []
+      if (row.state === 'dismissed')
+        return [{ id: row.id, issue: row.issue, urlHash: row.urlHash, state: 'dismissed' }]
+      if (row.urlHash !== null && domain.has(row.issue))
+        return [{ id: row.id, issue: row.issue, urlHash: row.urlHash, state: 'pending' }]
+      return []
+    })
+    .sort(
+      (a, b) =>
+        a.issue.localeCompare(b.issue) || (a.urlHash ?? '*').localeCompare(b.urlHash ?? '*'),
+    )
 }

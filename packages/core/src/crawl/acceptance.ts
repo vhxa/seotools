@@ -13,6 +13,7 @@ import type { AuditCondition, Requirement } from './audit'
 import type { IndexabilityBlocker } from './indexability'
 
 export type FindingAcceptance =
+  | { kind: 'dismissal'; state: 'dismissed'; scope: 'url' | 'domain'; id: string }
   /** A rule states this condition of the URL, which replaces its generic finding. */
   | { kind: 'condition'; condition: AuditCondition; requirement: Requirement; rule: string | null }
   /** A rule expects the URL not to be indexable, and the finding is that expectation itself. */
@@ -34,6 +35,7 @@ export const ANY_ACCEPTED = 'all'
 
 /** The rules that accept a finding, for showing which ones they are. */
 export function rulesOfAcceptance(acceptance: FindingAcceptance): string[] {
+  if (acceptance.kind === 'dismissal') return []
   if (acceptance.kind === 'relation') return acceptance.rules
   return acceptance.rule === null ? [] : [acceptance.rule]
 }
@@ -46,6 +48,12 @@ const strings = z.array(z.string())
  * values of `condition` and `requirement` are only checked to be strings, as they always were.
  */
 const acceptanceSchema = z.discriminatedUnion('kind', [
+  z.looseObject({
+    kind: z.literal('dismissal'),
+    state: z.literal('dismissed'),
+    scope: z.enum(['url', 'domain']),
+    id: z.string(),
+  }),
   z.looseObject({
     kind: z.literal('condition'),
     condition: z.custom<AuditCondition>((value) => typeof value === 'string'),

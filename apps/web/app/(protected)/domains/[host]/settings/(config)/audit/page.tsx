@@ -1,3 +1,4 @@
+import { FindingStatesList } from '@/components/audit/finding-states-list'
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { getTranslations } from 'next-intl/server'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
@@ -67,6 +68,9 @@ export default async function AuditSettingsPage({
         )}
         {tab === 'thresholds' && (
           <ThresholdsTab host={domain.host} thresholds={config.thresholds} />
+        )}
+        {tab === 'dismissed' && (
+          <FindingStatesList host={domain.host} rows={config.findingStates} />
         )}
       </AuditTabs>
     </>

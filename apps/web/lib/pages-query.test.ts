@@ -12,6 +12,7 @@ import {
 } from './pages-query'
 
 const base: DetailQuery = {
+  state: null,
   crawl: null,
   view: 'pages',
   page: 1,
@@ -61,6 +62,7 @@ describe('parseDetailQuery', () => {
       direction: 'desc',
       search: 'blog',
       issue: 'title-missing',
+      state: null,
       accepted: null,
       status: '4xx',
       type: 'redirect',
@@ -181,6 +183,7 @@ describe('detailHref', () => {
 
   it('round-trips through parseDetailQuery', () => {
     const query: DetailQuery = {
+      state: null,
       crawl: '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f12',
       view: 'all',
       page: 5,

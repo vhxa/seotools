@@ -436,3 +436,25 @@ test('the language chosen on the account is kept across sign-ins, and the name c
     await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible()
   }
 })
+
+test('an editor dismisses a finding and sees its saved state while recompute waits', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/issues`)
+  const row = page.getByRole('link', { name: /Client error 4xx \(internal\)/ }).locator('..')
+  await row.getByRole('button', { name: 'Finding actions' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('textbox', { name: 'Note (optional)' }).fill('Known obsolete route')
+  page.once('dialog', (confirmation) => confirmation.accept())
+  await dialog.getByRole('button', { name: 'Dismiss across the domain' }).click()
+  await expect(dialog.getByRole('status')).toContainText('Saved')
+  await page.goto(`${domain}/settings/audit?tab=dismissed`)
+  await expect(page.getByRole('tab', { name: 'Dismissed', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByText(/Ada Admin.*Known obsolete route/)).toBeVisible()
+  await page.getByRole('button', { name: 'Restore to pending' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Restore to pending' }).click()
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Saved')
+})

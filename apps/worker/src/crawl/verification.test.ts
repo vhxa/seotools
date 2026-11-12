@@ -837,3 +837,39 @@ it('uses encrypted domain credentials for rechecks too', async () => {
     headers: { cookie: 'staging=yes' },
   })
 })
+
+it('keeps a dismissed finding in the accepted recheck outcome and never calls it fixed', async () => {
+  const site = website()
+  const crawl = await fullCrawl(site)
+  const before = await crawlFindings(crawl.id, '/broken')
+  const user = await db.users.create({
+    name: 'Editor',
+    email: 'recheck@example.com',
+    role: 'member',
+  })
+  await db.audit.setFindingStates({
+    domainId,
+    issue: 'title-missing',
+    urlHashes: [hashOf('/broken')],
+    state: 'dismissed',
+    note: 'Known',
+    setBy: user.id,
+  })
+  const { outcomeOf } = await verify(['/broken'], site)
+  const outcome = outcomeOf('/broken')!
+  expect(outcome.accepted).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        issue: 'title-missing',
+        acceptance: expect.objectContaining({ kind: 'dismissal' }),
+      }),
+    ]),
+  )
+  const comparison = compareWithCrawl({
+    crawl: before,
+    recheck: outcome.findings.map((r) => r.issue),
+    accepted: outcome.accepted?.map((r) => r.issue),
+  })
+  expect(comparison.nowAccepted).toContain('title-missing')
+  expect(comparison.fixed).not.toContain('title-missing')
+})

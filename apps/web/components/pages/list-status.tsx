@@ -64,6 +64,10 @@ export async function ListStatus({
 
   const value = (key: FilterKey): string => {
     switch (key) {
+      case 'state':
+        return query.state
+          ? t(('activeFilters.states.' + query.state) as Parameters<typeof t>[0])
+          : ''
       case 'search':
         return query.search
       case 'issue':

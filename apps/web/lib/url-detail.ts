@@ -1,3 +1,4 @@
+import type { FindingStateRecord } from '@seotools/db'
 import { auditResultsState, type AuditResultsState } from '@seotools/core/crawl/audit'
 import type {
   Crawl,
@@ -24,6 +25,7 @@ import { loadUrlLinks, type UrlLinksPage } from './url-links'
 const MAX_ACCEPTED_ELSEWHERE = 10
 
 export interface UrlDetailData {
+  findingStates?: FindingStateRecord[]
   automaticCheck: boolean
   crawl: Crawl
   url: CrawlUrl
@@ -148,6 +150,7 @@ export async function loadUrlDetail(input: {
     configVersion: config.version,
   })
   return {
+    findingStates: config.findingStates,
     automaticCheck: (await automaticFileChecks(db.crawls, crawl.id, [url])).has(urlHash),
     crawl,
     url,

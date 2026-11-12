@@ -1,4 +1,5 @@
-'use client'
+import { FindingStateActions } from '@/components/audit/finding-state-actions'
+;('use client')
 
 import {
   isSecondaryFinding,
@@ -701,6 +702,13 @@ export function PagesTable({
               >
                 <XIcon />
               </Button>
+              {canEdit && query.issue && selectedInternal.length > 0 && (
+                <FindingStateActions
+                  host={host}
+                  issue={query.issue}
+                  hashes={selectedInternal.map((row) => row.urlHash)}
+                />
+              )}
               {canEdit && (selectedPages.length > 0 || selectedInternal.length > 0) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger

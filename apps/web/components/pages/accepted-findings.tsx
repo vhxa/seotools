@@ -1,3 +1,5 @@
+import { FindingStateActions } from '@/components/audit/finding-state-actions'
+import { FindingStatesList } from '@/components/audit/finding-states-list'
 import { rulesOfAcceptance } from '@seotools/core/crawl/acceptance'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import Link from 'next/link'
@@ -17,8 +19,10 @@ import type { UrlDetailData } from '@/lib/url-detail'
  */
 export async function AcceptedFindings({
   data,
+  host,
   hrefFor,
 }: {
+  host: string
   data: UrlDetailData
   hrefFor: (urlHash: string) => string
 }) {
@@ -37,7 +41,9 @@ export async function AcceptedFindings({
     <>
       {accepted.length > 0 && (
         <Disclosure title={t('title', { count: accepted.length })}>
-          <p className="text-xs text-muted-foreground">{t('note')}</p>
+          {accepted.some((r) => r.acceptance.kind !== 'dismissal') && (
+            <p className="text-xs text-muted-foreground">{t('note')}</p>
+          )}
           <ul className="grid gap-3 text-sm">
             {accepted.map(({ issue, acceptedBy, acceptance, details, evidence }) => (
               <li key={`${issue}:${acceptedBy}`} className="grid gap-1.5">
@@ -46,6 +52,21 @@ export async function AcceptedFindings({
                   <IssueLabel issue={issue} />
                 </span>
                 <p className="text-muted-foreground">{describeAcceptance(acceptance, translate)}</p>
+                {acceptance.kind === 'dismissal' && (
+                  <>
+                    <FindingStatesList
+                      compact
+                      host={host}
+                      rows={(data.findingStates ?? []).filter((row) => row.id === acceptance.id)}
+                    />
+                    <FindingStateActions
+                      host={host}
+                      issue={issue}
+                      hashes={[data.url.urlHash]}
+                      restoreOnly
+                    />
+                  </>
+                )}
                 {rulesOfAcceptance(acceptance).map((rule) => (
                   <RuleOrigin key={rule} rule={refOf(rule)} />
                 ))}

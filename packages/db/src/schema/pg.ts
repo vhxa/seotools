@@ -983,3 +983,22 @@ export const incidentNotices = pgTable(
   },
   (t) => [primaryKey({ columns: [t.incidentId, t.userId, t.stage] })],
 )
+
+// Decisions by people persist independently of crawls.
+export const findingStates = pgTable(
+  'finding_states',
+  {
+    id: text('id').primaryKey(),
+    domainId: text('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    issue: text('issue').notNull(),
+    urlHash: text('url_hash'),
+    targetKey: text('target_key').notNull(),
+    state: text('state').$type<'in-progress' | 'dismissed' | 'pending'>().notNull(),
+    note: text('note').notNull(),
+    setBy: text('set_by').references(() => user.id, { onDelete: 'set null' }),
+    setAt: ts('set_at').notNull(),
+  },
+  (t) => [uniqueIndex('finding_states_target_idx').on(t.domainId, t.issue, t.targetKey)],
+)

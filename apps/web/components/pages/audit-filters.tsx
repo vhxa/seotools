@@ -36,6 +36,7 @@ export function AuditFilters({
   rulesHref?: string
 }) {
   const t = useTranslations('PagesDetails.filters')
+  const decisions = useTranslations('FindingStates')
   const tState = useTranslations('AuditState')
   const router = useRouter()
 
@@ -49,6 +50,17 @@ export function AuditFilters({
       aria-label={t('label')}
       className={stacked ? 'grid w-full gap-4' : 'flex flex-wrap items-center gap-2'}
     >
+      <FilterSelect
+        label={decisions('state')}
+        anyLabel={decisions('all')}
+        value={query.state}
+        options={(['pending', 'in-progress', 'dismissed'] as const).map((value) => ({
+          value,
+          label: decisions(value),
+        }))}
+        onChange={(state) => go({ state })}
+        showLabel={stacked}
+      />
       <FilterSelect
         showLabel={stacked}
         label={t('indexability.label')}

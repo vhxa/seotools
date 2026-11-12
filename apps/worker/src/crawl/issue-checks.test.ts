@@ -16,6 +16,8 @@ import {
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { recomputeAudit } from './audit-recompute'
+import { applyFindingDismissals } from './issue-checks'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import { runCrawl } from './engine'
 import { fakeSite, moved, type Answer } from './fake-site'
@@ -1707,4 +1709,79 @@ describe('field vitals findings', () => {
       expect(CHECKS[issue]({} as AuditedUrl, {} as Site)).toBe(false)
     },
   )
+})
+
+it('applies URL and domain dismissals after rules, preserves pending overrides and historical snapshots', async () => {
+  const id = await crawl(
+    websiteOf({
+      at: '/x',
+      pages: { '/x': page('/x', { title: '' }), '/y': page('/y', { title: '' }) },
+    }),
+  )
+  const older = id
+  const latest = await crawl(
+    websiteOf({
+      at: '/x',
+      pages: { '/x': page('/x', { title: '' }), '/y': page('/y', { title: '' }) },
+    }),
+  )
+  const member = await db.users.create({
+    name: 'Editor',
+    email: 'dismiss@example.com',
+    role: 'member',
+  })
+  const input = {
+    domainId,
+    issue: 'title-missing',
+    urlHashes: [null],
+    state: 'dismissed' as const,
+    note: '',
+    setBy: member.id,
+  }
+  await db.audit.setFindingStates(input)
+  await db.audit.setFindingStates({
+    ...input,
+    urlHashes: [crawlUrlHash(absolute('/x'))],
+    state: 'pending',
+  })
+  await analyseCrawl(db, latest, await currentAuditConfig(db, domainId))
+  expect((await issuesAt(latest, '/x')).some((r) => r.issue === 'title-missing')).toBe(true)
+  expect((await issuesAt(latest, '/y')).some((r) => r.issue === 'title-missing')).toBe(false)
+  expect(await db.crawls.acceptedOf(latest, [crawlUrlHash(absolute('/y'))])).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        issue: 'title-missing',
+        acceptance: expect.objectContaining({ kind: 'dismissal', scope: 'domain' }),
+      }),
+    ]),
+  )
+  await recomputeAudit({ db, domainId, crawlId: older, force: true, finalAttempt: true, log })
+  expect((await issuesAt(older, '/y')).some((r) => r.issue === 'title-missing')).toBe(true)
+  await db.audit.setFindingStates({ ...input, state: 'pending' })
+  await db.audit.setFindingStates({ ...input, urlHashes: [crawlUrlHash(absolute('/y'))] })
+  await analyseCrawl(db, latest, await currentAuditConfig(db, domainId))
+  expect(await db.crawls.acceptedOf(latest, [crawlUrlHash(absolute('/y'))])).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        acceptance: expect.objectContaining({ kind: 'dismissal', scope: 'url' }),
+      }),
+    ]),
+  )
+})
+
+it('never dismisses expected findings, including malformed stored snapshots', () => {
+  const subject = { url: { urlHash: 'h' } } as AuditedUrl
+  const site = {
+    config: {
+      dismissals: [
+        { id: 'd', issue: 'expected-indexable-blocked', urlHash: null, state: 'dismissed' },
+      ],
+    },
+  } as Site
+  expect(
+    applyFindingDismissals(subject, site, [{ issue: 'expected-indexable-blocked' }], []),
+  ).toMatchObject({
+    found: [{ issue: 'expected-indexable-blocked' }],
+    accepted: [],
+  })
 })

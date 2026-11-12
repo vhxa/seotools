@@ -1,3 +1,4 @@
+import type { FindingStateRecord } from '../types'
 import type { BotTestResult } from '../types'
 import { detectIncidents, INCIDENT_STAGES } from '@seotools/core/incidents'
 import { incidentAlertJobId, vitalsAlertJobId } from '../mapping'
@@ -35,6 +36,7 @@ import {
   lt,
   lte,
   ne,
+  not,
   notExists,
   notInArray,
   or,
@@ -68,6 +70,7 @@ import {
   type AuditPlan,
   type AuditRuleRow,
   type PlanContext,
+  planFindingStates,
   planThresholds,
   thresholdColumns,
   thresholdsOf,
@@ -215,6 +218,7 @@ const {
   crawlUrlHistory,
   crawlUrlLinks,
   priorityUrls,
+  findingStates,
   auditRules,
   domainAuditConfig,
   botTestRuns,
@@ -301,7 +305,7 @@ export function createSqliteDatabase(options: {
         .select({ urlHash: crawlUrlIssues.urlHash })
         .from(crawlUrlIssues)
         .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue))),
-    withAccepted: (issue: string | null) =>
+    withAccepted: (issue: string | null, state?: string) =>
       db
         .select({ urlHash: crawlUrlAcceptedIssues.urlHash })
         .from(crawlUrlAcceptedIssues)
@@ -309,8 +313,66 @@ export function createSqliteDatabase(options: {
           and(
             eq(crawlUrlAcceptedIssues.crawlId, crawlId),
             issue === null ? undefined : eq(crawlUrlAcceptedIssues.issue, issue),
+            state === 'dismissed'
+              ? like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%')
+              : undefined,
           ),
         ),
+    withState: (state: string, issue?: string) => {
+      if (state === 'dismissed')
+        return db
+          .select({ urlHash: crawlUrlAcceptedIssues.urlHash })
+          .from(crawlUrlAcceptedIssues)
+          .where(
+            and(
+              eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+              issue ? eq(crawlUrlAcceptedIssues.issue, issue) : undefined,
+              like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%'),
+            ),
+          )
+      const specific = alias(findingStates, 'specific_finding_state')
+      const progress = exists(
+        db
+          .select({ id: findingStates.id })
+          .from(findingStates)
+          .innerJoin(crawls, eq(crawls.domainId, findingStates.domainId))
+          .where(
+            and(
+              eq(crawls.id, crawlId),
+              eq(findingStates.issue, crawlUrlIssues.issue),
+              eq(findingStates.state, 'in-progress'),
+              or(
+                eq(findingStates.urlHash, crawlUrlIssues.urlHash),
+                and(
+                  isNull(findingStates.urlHash),
+                  notExists(
+                    db
+                      .select({ id: specific.id })
+                      .from(specific)
+                      .where(
+                        and(
+                          eq(specific.domainId, findingStates.domainId),
+                          eq(specific.issue, findingStates.issue),
+                          eq(specific.urlHash, crawlUrlIssues.urlHash),
+                        ),
+                      ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      )
+      return db
+        .select({ urlHash: crawlUrlIssues.urlHash })
+        .from(crawlUrlIssues)
+        .where(
+          and(
+            eq(crawlUrlIssues.crawlId, crawlId),
+            issue ? eq(crawlUrlIssues.issue, issue) : undefined,
+            state === 'in-progress' ? progress : not(progress),
+          ),
+        )
+    },
     withAudit: (filter: Parameters<typeof crawlAuditWhere>[2]) =>
       db
         .select({ urlHash: crawlUrlAudit.urlHash })
@@ -457,6 +519,7 @@ export function createSqliteDatabase(options: {
       rows: AuditRuleRow[],
       context: PlanContext,
       config: AuditStateRow | undefined,
+      states: FindingStateRecord[],
     ) => AuditPlan,
   ) =>
     db.transaction(
@@ -478,11 +541,29 @@ export function createSqliteDatabase(options: {
           .where(eq(auditRules.domainId, domainId))
           .orderBy(asc(auditRules.createdAt), asc(auditRules.id))
           .all()
+        const stateRows = tx
+          .select()
+          .from(findingStates)
+          .where(eq(findingStates.domainId, domainId))
+          .all()
         const decided = plan(
           rows,
           { now, newId: randomUUID, languages: languagesOf(config) },
           config,
+          stateRows,
         )
+        if (decided.ok && decided.states) {
+          const kept = new Set(decided.states.map((r) => r.id))
+          for (const row of stateRows)
+            if (!kept.has(row.id))
+              tx.delete(findingStates).where(eq(findingStates.id, row.id)).run()
+          for (const row of decided.states) {
+            const before = stateRows.find((r) => r.id === row.id)
+            if (!before) tx.insert(findingStates).values(row).run()
+            else if (before !== row)
+              tx.update(findingStates).set(row).where(eq(findingStates.id, row.id)).run()
+          }
+        }
         if (decided.ok && planChanges(decided)) {
           for (const change of inApplyOrder(decided.changes)) {
             if (change.op === 'delete')
@@ -2705,14 +2786,23 @@ export function createSqliteDatabase(options: {
         return found
       },
 
-      async acceptedCounts(crawlId) {
+      async acceptedCounts(crawlId, kind) {
         const rows = await db
           .select({
             issue: crawlUrlAcceptedIssues.issue,
             pages: countDistinct(crawlUrlAcceptedIssues.urlHash),
           })
           .from(crawlUrlAcceptedIssues)
-          .where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
+          .where(
+            and(
+              eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+              kind === 'dismissal'
+                ? like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%')
+                : kind === 'rule'
+                  ? not(like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%'))
+                  : undefined,
+            ),
+          )
           .groupBy(crawlUrlAcceptedIssues.issue)
         return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
       },
@@ -3048,6 +3138,7 @@ export function createSqliteDatabase(options: {
                   crawlId: crawlUrlAcceptedIssues.crawlId,
                   urlHash: crawlUrlAcceptedIssues.urlHash,
                   issue: crawlUrlAcceptedIssues.issue,
+                  details: crawlUrlAcceptedIssues.details,
                 })
                 .from(crawlUrlAcceptedIssues)
                 .where(
@@ -3075,8 +3166,15 @@ export function createSqliteDatabase(options: {
     },
 
     audit: {
+      async setFindingStates(input) {
+        return changeRules(input.domainId, (_rules, context, _config, states) =>
+          planFindingStates(states, input, context),
+        )
+      },
       async config(domainId) {
         return readAuditConfig({
+          states: async () =>
+            db.select().from(findingStates).where(eq(findingStates.domainId, domainId)).all(),
           state: async () =>
             db
               .select()

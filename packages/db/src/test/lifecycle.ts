@@ -108,6 +108,14 @@ export function describeLifecycle(
         enabled: true,
         nextRunAt: new Date(Date.now() + DAY),
       })
+      await db.audit.setFindingStates({
+        domainId,
+        issue: 'title-missing',
+        urlHashes: [null],
+        state: 'in-progress',
+        note: '',
+        setBy: member.id,
+      })
       await db.priorityUrls.add({ domainId, url })
       await db.audit.saveRule({
         domainId,
@@ -372,6 +380,16 @@ export function describeLifecycle(
             type: 'priority',
             enabled: true,
             nextRunAt: new Date(),
+          }),
+        )
+        await refused(
+          db.audit.setFindingStates({
+            domainId: site.domainId,
+            issue: 'title-missing',
+            urlHashes: [null],
+            state: 'dismissed',
+            note: '',
+            setBy: '',
           }),
         )
         await refused(db.priorityUrls.add({ domainId: site.domainId, url: `${site.url}new` }))

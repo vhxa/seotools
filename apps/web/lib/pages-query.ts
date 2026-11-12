@@ -49,6 +49,7 @@ const URL_HASH = /^[0-9a-f]{32}$/
 export const isUrlHash = (value: string) => URL_HASH.test(value)
 
 export interface DetailQuery {
+  state: 'pending' | 'in-progress' | 'dismissed' | null
   /**
    * The crawl being browsed: one of the domain's retained full crawls. `null`: the latest one, which
    * is also what an address without it means. Only its shape is checked here (`isCrawlId`); the page
@@ -111,6 +112,9 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
       ? accepted
       : null
   return {
+    state:
+      (['pending', 'in-progress', 'dismissed'] as const).find((s) => s === first(params.state)) ??
+      null,
     crawl: crawl && isCrawlId(crawl) ? crawl : null,
     // An issue picks its own URLs, in whichever view they are: that is every URL of the crawl.
     view:
@@ -135,6 +139,7 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
 
 /** The filters that narrow a list, as opposed to where it starts from and how it is shown. */
 export const FILTER_KEYS = [
+  'state',
   'issue',
   'accepted',
   'search',
@@ -212,6 +217,7 @@ export function listingOf(
   const applies = (key: FilterKey) => !unapplied[key]
   return {
     view: query.view,
+    ...(query.state ? { state: query.state } : {}),
     ...(query.search ? { search: query.search } : {}),
     ...(query.issue ? { issue: query.issue } : {}),
     ...(query.accepted ? { accepted: query.accepted } : {}),
@@ -233,6 +239,7 @@ export const activeFilters = (query: Pick<DetailQuery, FilterKey>): FilterKey[] 
 /** What removes one filter, or all of them: the view stays, and so do the order and the crawl. */
 export function withoutFilter(key: FilterKey | 'all'): Partial<DetailQuery> {
   const cleared: Pick<DetailQuery, FilterKey> = {
+    state: null,
     issue: null,
     accepted: null,
     search: '',
@@ -271,6 +278,7 @@ export function detailHref(
   const view = next.issue || next.accepted ? 'all' : next.view
   const kept = (key: FilterKey) => blockedByView(view, key) === null
   const params = new URLSearchParams()
+  if (next.state) params.set('state', next.state)
   if (next.crawl) params.set('crawl', next.crawl)
   if (!next.issue && !next.accepted && view !== 'pages') params.set('view', view)
   if (next.search) params.set('q', next.search)

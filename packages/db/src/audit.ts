@@ -1,4 +1,5 @@
 import {
+  findingDismissalsOf,
   canonicalThresholds,
   parseThresholdOverrides,
   AUDIT_CONDITIONS,
@@ -26,6 +27,8 @@ import {
   type ThresholdOverrides,
 } from '@seotools/core'
 import type {
+  FindingStateRecord,
+  SetFindingStates,
   AuditConfig,
   AuditMutation,
   AuditRuleRecord,
@@ -126,6 +129,7 @@ export type AuditPlan =
   | { ok: false; error: 'conflict' | 'not-found' | 'limit'; key?: string }
   | {
       ok: true
+      states?: FindingStateRecord[]
       changes: RuleChange[]
       /** The language directories are changing to these. */
       languages?: LanguageConfig
@@ -740,14 +744,17 @@ const MAX_CONFIG_READS = 5
  */
 export async function readAuditConfig(read: {
   state: () => Promise<AuditStateRow | undefined>
+  states?: () => Promise<FindingStateRecord[]>
   rules: () => Promise<AuditRuleRow[]>
 }): Promise<AuditConfig> {
   for (let attempt = 1; ; attempt++) {
     const before = await read.state()
     const rules = await read.rules()
+    const findingStates = (await read.states?.()) ?? []
     const after = await read.state()
     if ((before?.version ?? 0) === (after?.version ?? 0) || attempt >= MAX_CONFIG_READS) {
       return {
+        findingStates,
         version: before?.version ?? 0,
         languages: languagesOf(before),
         thresholds: thresholdsOf(before),
@@ -765,3 +772,49 @@ export async function readAuditConfig(read: {
 export const inApplyOrder = (changes: readonly RuleChange[]) =>
   [...changes].sort((a, b) => ORDER[a.op] - ORDER[b.op])
 const ORDER = { delete: 0, update: 1, insert: 2 } as const
+
+/** Plans human decisions separately from rule resolution; only a changed dismissal queues analysis. */
+export function planFindingStates(
+  rows: FindingStateRecord[],
+  input: SetFindingStates,
+  context: PlanContext,
+): AuditPlan {
+  if (
+    input.urlHashes.length === 0 ||
+    input.urlHashes.length > AUDIT_LIMITS.bulkUrls ||
+    input.note.trim().length > 1000 ||
+    (input.state === 'dismissed' && input.issue.startsWith('expected-'))
+  ) {
+    return { ok: false, error: 'limit' }
+  }
+  let next = [...rows]
+  for (const urlHash of new Set(input.urlHashes)) {
+    const current = next.find((r) => r.issue === input.issue && r.urlHash === urlHash)
+    const domain = next.find((r) => r.issue === input.issue && r.urlHash === null)
+    if (input.state === 'pending' && (urlHash === null || !domain)) {
+      next = next.filter(
+        (r) =>
+          r !== current && !(urlHash === null && r.issue === input.issue && r.state === 'pending'),
+      )
+    } else {
+      const row: FindingStateRecord = {
+        id: current?.id ?? context.newId(),
+        domainId: input.domainId,
+        issue: input.issue,
+        urlHash,
+        targetKey: urlHash ?? '*',
+        state: input.state,
+        note: input.note.trim(),
+        setBy: input.setBy,
+        setAt: context.now,
+      }
+      if (current?.state === row.state && current.note === row.note) continue
+      next = next.filter((r) => r !== current)
+      next.push(row)
+    }
+  }
+  if (next.length > 2000) return { ok: false, error: 'limit' }
+  const key = (values: FindingStateRecord[]) =>
+    JSON.stringify(findingDismissalsOf(values).map((r) => [r.issue, r.urlHash, r.state]))
+  return { ok: true, changes: [], states: next, bump: key(rows) !== key(next) }
+}

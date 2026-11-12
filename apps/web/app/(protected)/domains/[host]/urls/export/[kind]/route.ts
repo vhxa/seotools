@@ -68,13 +68,14 @@ export async function GET(
     expected,
     signal: request.signal,
     context: {
+      findingStates: (await db.audit.config(domain.id)).findingStates,
       host: domain.host,
       crawlId: crawl.id,
       ignoredParameters: crawl.ignoredParameters ?? [],
       crawlDate: moment,
       filters: describeListing(query, unapplied, translate),
-      onlyIssue: query.issue,
-      onlyAccepted: query.accepted,
+      onlyIssue: query.state === 'dismissed' ? null : query.issue,
+      onlyAccepted: query.state === 'dismissed' ? (query.issue ?? 'all') : query.accepted,
       analysed: crawl.pagesByWorstIssue !== null,
       translate,
       vitals: new Map(
