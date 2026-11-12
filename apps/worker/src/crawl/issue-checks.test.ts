@@ -88,7 +88,7 @@ const expecting = (path: string, value: 'indexable' | 'not-indexable'): NewAudit
 /** A rule asking something of a condition of a path. */
 const asking = (
   path: string,
-  dimension: 'noindex' | 'nofollow' | 'robots' | 'sitemap',
+  dimension: 'noindex' | 'nofollow' | 'robots' | 'sitemap' | 'canonical' | 'unlinked',
   value: 'required' | 'allowed' | 'forbidden',
 ): NewAuditRule => ({
   dimension,
@@ -117,6 +117,21 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     pages: { '/x': page('/x', { head: '<meta name="robots" content="noindex">' }) },
     rules: [expecting('/x', 'indexable')],
     details: ['noindex'],
+  },
+  'canonical-required-missing': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    rules: [asking('/x', 'canonical', 'required')],
+  },
+  'canonical-forbidden-present': {
+    at: '/x',
+    pages: { '/x': page('/x', { canonical: `${SITE}/about` }) },
+    rules: [asking('/x', 'canonical', 'forbidden')],
+  },
+  'unlinked-required-missing': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    rules: [asking('/x', 'unlinked', 'required')],
   },
   'noindex-required-missing': {
     at: '/x',

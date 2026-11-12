@@ -203,6 +203,8 @@ export interface Site {
    * not answer; presence in a sitemap is still proven by what was read.
    */
   sitemapCoverage: SitemapCoverage
+  /** A completed crawl was not cut at its URL limit. */
+  linksComplete: boolean
   /**
    * The indexable pages that share each value, in URL order, which is what makes one a duplicate:
    * only values that several pages share are here. Pages left out of the audit are not in them: they
@@ -524,6 +526,7 @@ export async function loadSite(
     get: (url) => byHash.get(crawlUrlHash(identity(url))),
     answered: urls.some((url) => url.contentPage),
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
+    linksComplete: crawl.status === 'completed',
     titles: sharedValues(indexable, (url) => comparable(url.url.title)),
     descriptions: sharedValues(indexable, (url) => comparable(url.url.data?.description)),
     h1s: sharedValues(indexable, (url) => comparable(url.url.data?.h1?.[0])),

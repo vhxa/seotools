@@ -25,7 +25,8 @@
     "./crawl/verification": "./src/crawl/verification.ts",
     "./version": "./src/version.ts",
     "./vitals-state": "./src/vitals-state.ts",
-    "./bot-access": "./src/bot-access.ts"
+    "./bot-access": "./src/bot-access.ts",
+    "./crawl/audit-templates": "./src/crawl/audit-templates.ts"
   },
   "scripts": {
     "lint": "eslint .",

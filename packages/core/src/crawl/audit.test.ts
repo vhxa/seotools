@@ -388,6 +388,8 @@ describe('resolving a URL', () => {
         nofollow: { requirement: null, rule: null },
         robots: { requirement: null, rule: null },
         sitemap: { requirement: null, rule: null },
+        canonical: { requirement: null, rule: null },
+        unlinked: { requirement: null, rule: null },
       },
     })
   })

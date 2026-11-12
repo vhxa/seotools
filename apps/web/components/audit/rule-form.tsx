@@ -186,6 +186,8 @@ function RuleFormFields({
     nofollow: valueOf(picks.conditions.nofollow),
     robots: valueOf(picks.conditions.robots),
     sitemap: valueOf(picks.conditions.sitemap),
+    canonical: valueOf(picks.conditions.canonical),
+    unlinked: valueOf(picks.conditions.unlinked),
     enabled,
     reason,
   }

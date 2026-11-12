@@ -10,6 +10,7 @@ import {
   canonicalLanguages,
   crawlUrlHash,
   reachesRelations,
+  groupRules,
   sameLanguages,
   selectorKey,
   type AuditCondition,
@@ -43,6 +44,7 @@ import type {
 
 export interface AuditRuleRow {
   id: string
+  ruleSet: string | null
   domainId: string
   dimension: AuditDimension
   value: string
@@ -74,6 +76,7 @@ export function toAuditRule(row: AuditRuleRow): AuditRuleRecord {
         }
   return {
     id: row.id,
+    set: row.ruleSet,
     domainId: row.domainId,
     dimension: row.dimension,
     value: row.value as AuditValue & IntentRuleValue & Requirement,
@@ -94,6 +97,7 @@ function ruleColumns(rule: NewAuditRule) {
   const { selector } = rule
   const hash = selectorHashOf(selector)
   return {
+    ruleSet: selector.kind === 'url' ? null : (rule.set ?? null),
     dimension: rule.dimension,
     value: rule.value,
     selectorKind: selector.kind,
@@ -119,7 +123,7 @@ export type RuleChange =
   | { op: 'delete'; id: string }
 
 export type AuditPlan =
-  | { ok: false; error: 'conflict' | 'not-found' | 'limit' }
+  | { ok: false; error: 'conflict' | 'not-found' | 'limit'; key?: string }
   | {
       ok: true
       changes: RuleChange[]
@@ -202,6 +206,8 @@ export function planSetEnabled(
 ): AuditPlan {
   const current = rows.find((row) => row.id === input.id)
   if (!current) return { ok: false, error: 'not-found' }
+  if (current.ruleSet !== null)
+    return planSetEnabledMany(rows, { ids: [input.id], enabled: input.enabled }, context)
   if (current.enabled === input.enabled) return { ok: true, changes: [], result: current.id }
   const activeKey = input.enabled ? current.selectorHash : null
   if (input.enabled && conflictFor(rows, { ...current, activeKey }, current.id)) {
@@ -222,7 +228,7 @@ export function planSetEnabled(
 
 export function planDeleteRule(rows: readonly AuditRuleRow[], input: { id: string }): AuditPlan {
   if (!rows.some((row) => row.id === input.id)) return { ok: false, error: 'not-found' }
-  return { ok: true, changes: [{ op: 'delete', id: input.id }] }
+  return planDeleteMany(rows, { ids: [input.id] })
 }
 
 /** Every statement a rule can make, by its dimension. */
@@ -348,49 +354,100 @@ export function planUrlConfig(
   return { ok: true, changes: writer.changes }
 }
 
-/**
- * Saves a rule as the editor shows it: one selector and the statements made about it, each of which
- * is a row of its own. With `editing`, the rows that have that selector are the rule being edited:
- * the statements given replace them (a statement left out is removed, one given is written over its
- * row, so its id stays) and the selector may move. Without it, a new rule is created, and it clashes
- * with an enabled rule of the same selector that states the same thing.
- */
+/** A set id identifies a multi-path rule; a selector identifies a legacy group. */
+export type RuleEditing = string | AuditSelector
+
+/** Retains the single-selector API for callers of the current editor. */
+export type RuleSelectors =
+  { selectors: AuditSelector[]; selector?: never } | { selector: AuditSelector; selectors?: never }
+
+const belongsTo = (row: AuditRuleRow, editing: RuleEditing) =>
+  typeof editing === 'string'
+    ? row.ruleSet === editing
+    : row.ruleSet === null && row.selectorHash === selectorHashOf(editing)
+
+/** One rule, saved atomically across all its selectors, keeping the ids of surviving rows. */
 export function planSaveRuleSet(
   rows: readonly AuditRuleRow[],
   input: {
     domainId: string
-    selector: AuditSelector
     statements: RuleStatements
     reason: string | null
     enabled: boolean
-    editing?: AuditSelector
-  },
+    editing?: RuleEditing
+  } & RuleSelectors,
   context: PlanContext,
 ): AuditPlan {
-  const writer = ruleWriter(rows, input, context)
-  const sourceHash = input.editing ? selectorHashOf(input.editing) : null
-  if (input.editing && !rows.some((row) => row.selectorHash === sourceHash)) {
-    return { ok: false, error: 'not-found' }
+  const selectors = input.selectors ?? [input.selector]
+  if (
+    selectors.length < 1 ||
+    selectors.length > AUDIT_LIMITS.pathsPerRule ||
+    (selectors.length > 1 && selectors.some((s) => s.kind === 'url'))
+  ) {
+    return { ok: false, error: 'limit' }
   }
-  const targetHash = selectorHashOf(input.selector)
-  for (const dimension of STATEMENT_DIMENSIONS) {
-    const value = statementOf(input.statements, dimension)
-    const source =
-      sourceHash === null
-        ? []
-        : rows.filter((row) => row.dimension === dimension && row.selectorHash === sourceHash)
-    if (value === undefined) {
-      for (const row of source) writer.remove(row)
-      continue
-    }
-    // Only an enabled rule has a place of its own: the unique index is on the active key.
-    const clash = rows.some(
-      (row) => row.dimension === dimension && row.activeKey === targetHash && !source.includes(row),
+  const hashes = selectors.map(selectorHashOf)
+  if (new Set(hashes).size !== hashes.length) return { ok: false, error: 'conflict' }
+  const editing = input.editing
+  const source = editing === undefined ? [] : rows.filter((row) => belongsTo(row, editing))
+  if (input.editing !== undefined && source.length === 0) return { ok: false, error: 'not-found' }
+
+  // An untouched legacy editor must be lossless, including disabled duplicates, mixed enabled
+  // states, per-row reasons and retired acceptNofollow/intent values. Only an actual edit rewrites it.
+  const sourceHashes = new Set(source.map((row) => row.selectorHash))
+  const group = groupRules(source.map(toAuditRule))[0]
+  const acting = Object.values(group?.statements ?? {})
+  if (
+    source.length > 0 &&
+    sourceHashes.size === hashes.length &&
+    hashes.every((h) => sourceHashes.has(h)) &&
+    input.enabled === acting.every((row) => row.enabled) &&
+    input.reason === (acting.find((row) => row.reason !== null)?.reason ?? null) &&
+    STATEMENT_DIMENSIONS.every(
+      (d) => statementOf(input.statements, d) === acting.find((row) => row.dimension === d)?.value,
     )
-    if (input.enabled && clash) return { ok: false, error: 'conflict' }
-    const acting = source.find((row) => row.enabled) ?? source[0]
-    writer.write(acting, ruleOf(dimension, value, input.selector, input.reason, input.enabled))
-    for (const row of source) if (row !== acting) writer.remove(row)
+  ) {
+    return { ok: true, changes: [] }
+  }
+  const set = selectors.some((s) => s.kind === 'url')
+    ? null
+    : (source.find((row) => row.ruleSet !== null)?.ruleSet ??
+      (selectors.length > 1 ? context.newId() : null))
+  const movingLegacy =
+    typeof input.editing === 'object' && sourceHashes.size === 1 && selectors.length === 1
+  const writer = ruleWriter(rows, input, context)
+  for (const row of source) {
+    if (
+      (!movingLegacy && !hashes.includes(row.selectorHash)) ||
+      statementOf(input.statements, row.dimension) === undefined
+    )
+      writer.remove(row)
+  }
+  for (const selector of selectors) {
+    const targetHash = selectorHashOf(selector)
+    for (const dimension of STATEMENT_DIMENSIONS) {
+      const value = statementOf(input.statements, dimension)
+      if (value === undefined) continue
+      const clash = rows.find(
+        (row) =>
+          row.dimension === dimension && row.activeKey === targetHash && !source.includes(row),
+      )
+      if (input.enabled && clash)
+        return {
+          ok: false,
+          error: 'conflict',
+          key: clash.ruleSet ?? selectorKey(toAuditRule(clash).selector),
+        }
+      const candidates = source.filter(
+        (row) => row.dimension === dimension && (movingLegacy || row.selectorHash === targetHash),
+      )
+      const current = candidates.find((row) => row.enabled) ?? candidates[0]
+      writer.write(current, {
+        ...ruleOf(dimension, value, selector, input.reason, input.enabled),
+        set,
+      })
+      for (const row of candidates) if (row !== current) writer.remove(row)
+    }
   }
   if (writer.net > AUDIT_LIMITS.rulesPerDomain) return { ok: false, error: 'limit' }
   return { ok: true, changes: writer.changes }
@@ -409,7 +466,12 @@ export function planSetEnabledMany(
   input: { ids: readonly string[]; enabled: boolean },
   context: PlanContext,
 ): AuditPlan {
-  const targets = [...new Set(input.ids)].map((id) => rows.find((row) => row.id === id))
+  const requested = [...new Set(input.ids)].map((id) => rows.find((row) => row.id === id))
+  if (requested.some((row) => !row)) return { ok: false, error: 'not-found' }
+  const sets = new Set(requested.flatMap((row) => (row?.ruleSet ? [row.ruleSet] : [])))
+  const targets = rows.filter(
+    (row) => input.ids.includes(row.id) || (row.ruleSet !== null && sets.has(row.ruleSet)),
+  )
   if (targets.length === 0 || targets.some((row) => !row)) return { ok: false, error: 'not-found' }
   // The places that are taken while the change is made, one per dimension and selector.
   const taken = new Set(
@@ -445,7 +507,15 @@ export function planDeleteMany(
   if (ids.length === 0 || ids.some((id) => !rows.some((row) => row.id === id))) {
     return { ok: false, error: 'not-found' }
   }
-  return { ok: true, changes: ids.map((id) => ({ op: 'delete' as const, id })) }
+  const sets = new Set(
+    rows.filter((row) => ids.includes(row.id)).flatMap((row) => (row.ruleSet ? [row.ruleSet] : [])),
+  )
+  return {
+    ok: true,
+    changes: rows
+      .filter((row) => ids.includes(row.id) || (row.ruleSet !== null && sets.has(row.ruleSet)))
+      .map((row) => ({ op: 'delete' as const, id: row.id })),
+  }
 }
 
 /** Changes the language directories of the domain, if they are not these already. */

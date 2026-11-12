@@ -1,4 +1,4 @@
-import { AUDIT_LIMITS } from '@seotools/core'
+import { AUDIT_DIMENSIONS, AUDIT_LIMITS } from '@seotools/core'
 import { describe, expect, it } from 'vitest'
 import {
   isRuleId,
@@ -459,12 +459,26 @@ describe('parseRuleIds', () => {
     expect(parseRuleIds([id, id.replace('0b', '1b')])).toHaveLength(2)
   })
 
-  it('refuses anything else, and more ids than a rule has rows', () => {
+  const ids = (count: number) =>
+    Array.from(
+      { length: count },
+      (_, i) => `00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`,
+    )
+
+  it('accepts the action input for a two-path rule with five statements', () => {
+    const groupIds = ids(2 * 5)
+    expect(parseRuleIds(groupIds)).toEqual(groupIds)
+  })
+
+  it('accepts every row of a full rule set and rejects one beyond its bound', () => {
+    const maxRows = AUDIT_LIMITS.pathsPerRule * AUDIT_DIMENSIONS.length
+    expect(parseRuleIds(ids(maxRows))).toEqual(ids(maxRows))
+    expect(parseRuleIds(ids(maxRows + 1))).toBeNull()
+  })
+
+  it('refuses malformed action input', () => {
     for (const value of [[], 'abc', null, undefined, [1], ["x' or '1'='1"], [id, 'nope']]) {
       expect(parseRuleIds(value)).toBeNull()
     }
-    expect(
-      parseRuleIds(Array.from({ length: 9 }, (_, i) => id.replace('0b3f', `${i}b3f`))),
-    ).toBeNull()
   })
 })

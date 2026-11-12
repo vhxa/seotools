@@ -1,4 +1,5 @@
 import { describeBotAccess } from './bot-access'
+import { describeAuditModel } from './audit-model'
 import { describeVitals } from './vitals'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -76,6 +77,11 @@ export function describeDatabaseContract(
     beforeEach(async () => {
       await reset()
     })
+
+    describeAuditModel(
+      () => db,
+      (id) => legacy.acceptNofollow(id, true),
+    )
 
     it('stores one favourite per user, replaces and clears it, and enforces foreign keys', async () => {
       const user = await db.users.create({
@@ -3400,8 +3406,11 @@ export function describeDatabaseContract(
 
           it('writes nothing when the change would go over the limit', async () => {
             const domainId = await domain()
-            const urls = Array.from({ length: 60 }, (_, i) => `https://acme.com/p${i}`)
-            // 60 URLs x 4 statements is more than a domain can have.
+            const urls = Array.from(
+              { length: Math.floor(AUDIT_LIMITS.rulesPerDomain / 4) + 1 },
+              (_, i) => `https://acme.com/p${i}`,
+            )
+            // Four statements per URL exceed the row limit.
             expect(
               await db.audit.setUrlConfig({
                 host: 'acme.com',
@@ -3489,7 +3498,7 @@ export function describeDatabaseContract(
               await save(domainId, {
                 statements: { audit: 'exclude', conditions: { sitemap: 'forbidden' } },
               }),
-            ).toEqual({ ok: false, error: 'conflict' })
+            ).toMatchObject({ ok: false, error: 'conflict' })
             // The statement that was fine was not written either.
             expect(await at(domainId, '/shop')).toEqual(['sitemap=required'])
             expect((await db.audit.config(domainId)).version).toBe(before)
@@ -3550,7 +3559,7 @@ export function describeDatabaseContract(
                 selector: selector('/blog'),
                 statements: { conditions: { sitemap: 'required' } },
               }),
-            ).toEqual({ ok: false, error: 'conflict' })
+            ).toMatchObject({ ok: false, error: 'conflict' })
             expect(await at(domainId, '/store')).toEqual(['audit=exclude', 'sitemap=required'])
           })
 

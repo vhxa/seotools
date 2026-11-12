@@ -111,6 +111,9 @@ export async function RulesTab({
                     <TableCell className="max-w-xs whitespace-normal">
                       <div className="grid gap-1">
                         <SelectorLabel selector={group.selector} />
+                        {group.selectors.length > 1 && (
+                          <span>{t('list.morePaths', { count: group.selectors.length - 1 })}</span>
+                        )}
                         <div className="flex flex-wrap items-center gap-1">
                           {group.selector.kind === 'url' && (
                             <span className="text-xs text-muted-foreground">

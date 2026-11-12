@@ -1539,6 +1539,18 @@
     "cls-poor": {
       "name": "CLS is poor",
       "description": "The mobile field CLS at the 75th percentile exceeds Google’s poor threshold."
+    },
+    "canonical-required-missing": {
+      "name": "Required canonical to another URL is missing",
+      "description": "The rule requires a canonical to another URL, but the whole page was read and declares itself canonical or declares no canonical."
+    },
+    "canonical-forbidden-present": {
+      "name": "Canonical to another URL is forbidden",
+      "description": "The page declares a canonical to another URL although its rule forbids it."
+    },
+    "unlinked-required-missing": {
+      "name": "Internal links are not allowed by the rule",
+      "description": "The rule requires no internal links to this URL, but at least one internal anchor points at it."
     }
   },
   "LinkKinds": {
@@ -2222,7 +2234,9 @@
           "noindex": "No rule applies: a noindex gets a finding.",
           "nofollow": "No rule applies: a nofollow of the page itself gets a warning.",
           "robots": "No rule applies: a robots.txt block gets a finding.",
-          "sitemap": "No rule applies: an indexable page that no sitemap lists gets a low-priority warning."
+          "sitemap": "No rule applies: an indexable page that no sitemap lists gets a low-priority warning.",
+          "canonical": "A canonical to another URL is a state of indexability. By default it has no finding of its own.",
+          "unlinked": "By default, a page listed in a sitemap with no internal anchor links gets an orphan finding."
         },
         "byRule": "{requirement} by the rule “{rule}”.",
         "byException": "{requirement} by an exception for this URL."
@@ -2235,7 +2249,9 @@
         "noindex": "Noindex",
         "nofollow": "Nofollow",
         "robots": "robots.txt block",
-        "sitemap": "Sitemap"
+        "sitemap": "Sitemap",
+        "canonical": "Canonical to another URL",
+        "unlinked": "No internal links"
       },
       "badge": "{condition}: {requirement}",
       "outcome": {
@@ -2333,7 +2349,8 @@
       "deleteTitle": "Delete this rule?",
       "deleteDescription": "The URLs it decides go back to what the other rules say. The last crawl is analysed again, without requesting anything from the site.",
       "deleteConfirm": "Delete rule",
-      "sharedWithoutLanguages": "It covers nothing until the language directories are declared."
+      "sharedWithoutLanguages": "It covers nothing until the language directories are declared.",
+      "morePaths": "and {count} more"
     },
     "languages": {
       "title": "Language directories",
@@ -2724,7 +2741,7 @@
     },
     "requirement": {
       "required": "Required",
-      "allowed": "Allowed",
+      "allowed": "Indifferent",
       "forbidden": "Forbidden"
     },
     "conditions": {
@@ -2769,6 +2786,24 @@
           "required": "A finding is raised when no sitemap lists the URL (an alternate or an image that an entry only names is not a listing). It needs a complete crawl: a recheck of some URLs cannot tell.",
           "allowed": "The URL may be listed in a sitemap or not: no finding for its absence. A listed URL that cannot be indexed is still reported.",
           "forbidden": "A finding is raised when a sitemap lists the URL."
+        }
+      },
+      "canonical": {
+        "label": "Canonical to another URL",
+        "default": "A canonical to another URL is a state of indexability. By default it has no finding of its own.",
+        "help": {
+          "required": "A finding is raised when the whole page was read and it does not declare a canonical to another URL.",
+          "allowed": "The page may declare a canonical to another URL or not. An origin with only accepted blockers is expected out for relation findings. Broken or redirecting references are still reported.",
+          "forbidden": "A finding is raised when the page declares a canonical to another URL."
+        }
+      },
+      "unlinked": {
+        "label": "No internal links",
+        "default": "By default, a page listed in a sitemap with no internal anchor links gets an orphan finding.",
+        "help": {
+          "required": "A finding is raised when an internal anchor links to this URL. Absence of links is confirmed only by a completed full crawl.",
+          "allowed": "The page may have internal links or none: its orphan finding is accepted. Links from nofollow or noindex pages are judged separately.",
+          "forbidden": "An orphan finding is kept when a sitemap lists the page but no internal anchor links to it."
         }
       }
     },
@@ -2830,7 +2865,10 @@
     "sitemap-required-missing": "Include this URL as an entry in a sitemap that the crawler can read, or correct the rule requiring it. Run a full crawl to verify membership.",
     "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change.",
     "social": "Add the Open Graph tags (og:title, og:type, og:image, og:url) and a twitter:card to the head of the page template. Use an og:url equal to the canonical and an image that answers over HTTPS, then crawl again.",
-    "performance": "Performance"
+    "performance": "Performance",
+    "canonical-required-missing": "Set the intended canonical to another URL, or correct the rule. Recheck the page.",
+    "canonical-forbidden-present": "Use a self canonical or correct the rule if the other URL is intentional. Recheck the page.",
+    "unlinked-required-missing": "Remove incoming internal anchors if this requirement is correct, or edit the rule. Run a full crawl to verify."
   },
   "Companies": {
     "metaTitle": "Companies · Administration · seotools",
@@ -3565,6 +3603,28 @@
       "status-class": "Different HTTP status class",
       "final-url": "Different final address",
       "refused": "403, 429 or 503 while the baseline answered 2xx"
+    }
+  },
+  "AuditTemplates": {
+    "private-area": {
+      "name": "Private area",
+      "description": "Keep private pages out of indexing and sitemaps."
+    },
+    "search-and-filters": {
+      "name": "Search and filters",
+      "description": "Allow noindex or canonicalisation on search and filter pages."
+    },
+    "campaign-landing": {
+      "name": "Campaign landing",
+      "description": "Allow a landing page without internal links or sitemap membership."
+    },
+    "must-be-indexed": {
+      "name": "Must be indexed",
+      "description": "Require indexability and sitemap membership."
+    },
+    "leave-out": {
+      "name": "Leave out of the audit",
+      "description": "Exclude these URLs from audit findings."
     }
   }
 }

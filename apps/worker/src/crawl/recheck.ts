@@ -61,6 +61,7 @@ function siteOfARecheck(input: { now: Date; config: AuditSnapshot; answered: boo
     texts: 'the texts of the other pages',
     nearDuplicates: 'the texts of the other pages',
     sitemapCoverage: 'the sitemaps',
+    linksComplete: 'all internal links',
   }
   for (const [field, what] of Object.entries(unknown)) {
     Object.defineProperty(site, field, { get: refuse(what) })

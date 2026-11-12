@@ -33,6 +33,11 @@ export function presenceOf(
   switch (condition) {
     case 'noindex':
       return url.noindex ? 'present' : url.directivesKnown ? 'absent' : 'unknown'
+    case 'canonical':
+      return url.canonicalised ? 'present' : url.directivesKnown ? 'absent' : 'unknown'
+    case 'unlinked':
+      if (url.anchorsIn > 0) return 'absent'
+      return site.linksComplete ? 'present' : 'unknown'
     case 'nofollow':
       return url.nofollow ? 'present' : url.directivesKnown ? 'absent' : 'unknown'
     case 'robots':

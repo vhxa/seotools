@@ -127,7 +127,7 @@ export async function previewRule(input: {
   rules: readonly AuditRuleRecord[]
   languages: LanguageConfig
   /** The selector of the rule being edited, whose rows the candidate replaces. */
-  editing: AuditSelector | null
+  editing: AuditSelector | string | null
   candidate: {
     selector: AuditSelector
     statements: RuleStatements
@@ -138,23 +138,37 @@ export async function previewRule(input: {
   const { db, host, crawl, candidate, languages } = input
   if (!crawl) return { status: 'no-results' }
 
-  const editingKey = input.editing ? selectorKey(input.editing) : null
-  const replaced = input.rules.filter((rule) => selectorKey(rule.selector) === editingKey)
-  const others = input.rules.filter((rule) => selectorKey(rule.selector) !== editingKey)
-  const key = selectorKey(candidate.selector)
-  const rows = rulesOfSet(
-    candidate.selector,
-    candidate.statements,
-    candidate.reason,
-    candidate.enabled,
+  const editing = input.editing
+  const isEdited = (rule: AuditRule) =>
+    typeof editing === 'string'
+      ? rule.set === editing
+      : editing !== null && !rule.set && selectorKey(rule.selector) === selectorKey(editing)
+  const replaced = input.rules.filter(isEdited)
+  const others = input.rules.filter((rule) => !isEdited(rule))
+  // The current editor changes the first path; other paths of an existing set stay in the rule.
+  const first = replaced[0]?.selector
+  const selectors = [
+    ...new Map(
+      [
+        candidate.selector,
+        ...(typeof editing === 'string' && first
+          ? replaced.map((r) => r.selector).filter((s) => selectorKey(s) !== selectorKey(first))
+          : []),
+      ].map((s) => [selectorKey(s), s]),
+    ).values(),
+  ]
+  const rows = selectors.flatMap((selector) =>
+    rulesOfSet(selector, candidate.statements, candidate.reason, candidate.enabled),
   )
 
-  // A rule that is off cannot clash: only enabled rules are unique, per statement.
   const clash = others.find(
     (rule) =>
       rule.enabled &&
-      selectorKey(rule.selector) === key &&
-      rows.some((row) => row.dimension === rule.dimension),
+      rows.some(
+        (row) =>
+          row.dimension === rule.dimension &&
+          selectorKey(row.selector) === selectorKey(rule.selector),
+      ),
   )
   if (clash && candidate.enabled) return { status: 'conflict', with: briefOf(clash) }
 
@@ -188,7 +202,7 @@ export async function previewRule(input: {
       scanned++
       const parts = urlPartsOf(url, host, languages)
       if (!parts) continue
-      const covered = selectorMatches(candidate.selector, parts)
+      const covered = selectors.some((selector) => selectorMatches(selector, parts))
       const wasCovered = replaced.some((rule) => selectorMatches(rule.selector, parts))
       if (!covered && !wasCovered) continue
       if (covered) {
