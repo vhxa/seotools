@@ -1,16 +1,11 @@
 'use client'
 
-import { AUDIT_CONDITIONS, AUDIT_LIMITS, type AuditCondition } from '@seotools/core/crawl/audit'
+import { AUDIT_CONDITIONS, AUDIT_LIMITS } from '@seotools/core/crawl/audit'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useState, useTransition } from 'react'
 import { setUrlAuditAction } from '@/app/(protected)/domains/[host]/audit-actions'
-import {
-  AuditStatements,
-  picksOf,
-  touchedConditions,
-  type StatementPicks,
-} from '@/components/audit/audit-statements'
+import { AuditStatements } from '@/components/audit/audit-statements'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -22,33 +17,25 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { outcomeAfter, type AuditPicks, type UrlAuditCurrent } from '@/lib/audit-rules'
+import {
+  inheritedOfUrl,
+  picksOf,
+  picksOfUrl,
+  urlRequest,
+  type InheritedPicks,
+  type StatementPicks,
+} from '@/lib/audit-editor'
+import type { UrlAuditCurrent } from '@/lib/audit-rules'
 
-/** What one URL starts from: the exceptions it really has, and "according to the rules" for the rest. */
-function picksFromCurrent(current: UrlAuditCurrent): StatementPicks {
-  return {
-    audit: current.explicit.audit ?? 'inherit',
-    intent: current.explicit.intent ?? 'inherit',
-    conditions: Object.fromEntries(
-      AUDIT_CONDITIONS.map((condition) => [
-        condition,
-        current.explicit.conditions[condition] ?? 'inherit',
-      ]),
-    ) as StatementPicks['conditions'],
-  }
-}
-
-/** The picks of a single URL as the outcome calculation wants them: `rules` for "according to the rules". */
-function asOutcomePicks(picks: StatementPicks): AuditPicks {
-  const rules = <V extends string>(pick: 'keep' | 'inherit' | V) =>
-    pick === 'keep' || pick === 'inherit' ? ('rules' as const) : pick
-  return {
-    audit: rules(picks.audit),
-    intent: rules(picks.intent),
-    conditions: Object.fromEntries(
-      AUDIT_CONDITIONS.map((condition) => [condition, rules(picks.conditions[condition])]),
-    ) as AuditPicks['conditions'],
-  }
+const NOTHING_TO_INHERIT: InheritedPicks = {
+  audit: { position: null, origin: { kind: 'default' } },
+  intent: { position: null, origin: { kind: 'default' } },
+  conditions: Object.fromEntries(
+    AUDIT_CONDITIONS.map((condition) => [
+      condition,
+      { position: null, origin: { kind: 'default' } },
+    ]),
+  ) as InheritedPicks['conditions'],
 }
 
 function AuditForm({
@@ -69,48 +56,16 @@ function AuditForm({
   const multiple = current === undefined
 
   // One URL starts from the exceptions it really has; several start from "no change".
-  const initial = current ? picksFromCurrent(current) : picksOf('keep')
-  const neutral = multiple ? 'keep' : 'inherit'
+  const initial = current ? picksOfUrl(current) : picksOf('keep')
   const [picks, setPicks] = useState<StatementPicks>(initial)
-  const [shown, setShown] = useState<AuditCondition[]>(touchedConditions(initial, neutral))
   const [reason, setReason] = useState(current?.reason ?? '')
   const [reasonTouched, setReasonTouched] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  /** What the URL will be once saved, worked out as saving does. One URL only. */
-  const after = current ? outcomeAfter(current, asOutcomePicks(picks)) : null
-
-  /**
-   * What to send: only what the user chose to change, so nothing else can be reset by saving. "No
-   * change" is a statement left out; "according to the rules" is `inherit`, which removes the
-   * exception. A reason written for one URL with nothing else changed re-saves its exceptions.
-   */
-  function request() {
-    const body: Record<string, unknown> = { urls }
-    const conditions: Record<string, string> = {}
-    let any = false
-    const send = (pick: string, was: string, set: (value: string) => void) => {
-      if (pick === 'keep') return
-      if (pick !== was || (reasonTouched && !multiple && was !== 'inherit')) {
-        set(pick)
-        any = true
-      }
-    }
-    send(picks.audit, initial.audit, (value) => (body.audit = value))
-    send(picks.intent, initial.intent, (value) => (body.intent = value))
-    for (const condition of AUDIT_CONDITIONS) {
-      send(picks.conditions[condition], initial.conditions[condition], (value) => {
-        conditions[condition] = value
-      })
-    }
-    if (Object.keys(conditions).length > 0) body.conditions = conditions
-    // Only a reason that was written is sent; otherwise each exception keeps its own.
-    if (reasonTouched) body.reason = reason
-    return { body, any }
-  }
+  // Several URLs have nothing in common to inherit: their controls say "no change" instead.
+  const inherited: InheritedPicks = current ? inheritedOfUrl(current) : NOTHING_TO_INHERIT
 
   const apply = () => {
-    const { body, any } = request()
+    const { body, any } = urlRequest({ urls, picks, initial, multiple, reason, reasonTouched })
     if (!any) {
       setError(t('nothing'))
       return
@@ -145,10 +100,8 @@ function AuditForm({
           subject="url"
           picks={picks}
           onChange={setPicks}
-          shown={shown}
-          onShown={setShown}
+          inherited={inherited}
           idBase="audit-dialog"
-          {...(current && after ? { current, after } : {})}
         />
 
         <div className="grid gap-2">
@@ -175,10 +128,10 @@ function AuditForm({
       </div>
 
       <DialogFooter>
-        <Button variant="outline" onClick={() => onClose(false)} disabled={pending}>
+        <Button type="button" variant="outline" onClick={() => onClose(false)} disabled={pending}>
           {t('cancel')}
         </Button>
-        <Button onClick={apply} disabled={pending}>
+        <Button type="button" onClick={apply} disabled={pending}>
           {pending ? t('applying') : t('apply')}
         </Button>
       </DialogFooter>
@@ -215,7 +168,7 @@ export function AuditDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
         {/* Mounted only while open, so that the form starts from what the URLs have right now. */}
         {open && (
           <AuditForm

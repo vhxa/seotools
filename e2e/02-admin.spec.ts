@@ -460,3 +460,57 @@ test('an editor dismisses a finding and sees its saved state while recompute wai
   await expect(page.getByText('No saved finding states.')).toBeVisible()
   await expect(page.getByText('Known obsolete route')).toHaveCount(0)
 })
+
+test('a rule starts from a template, is saved with its paths, and shows in the list in plain words', async ({
+  page,
+}) => {
+  // With language directories declared, a new rule covers them by default.
+  await page.goto(`${domain}/settings/audit?tab=languages`)
+  await page.getByRole('textbox', { name: 'Directories', exact: true }).fill('/es\n/en')
+  await page.getByRole('button', { name: 'Save directories' }).click()
+  await expect(page.getByText(/^Saved/).first()).toBeVisible()
+
+  await page.goto(`${domain}/settings/audit`)
+  await page.getByRole('button', { name: 'Create rule' }).click()
+  const dialog = page.getByRole('dialog')
+  const language = dialog.getByRole('switch', { name: 'Also in each language' })
+  await expect(language).toBeChecked()
+  /** A condition is a row of its own: two buttons, "don't warn either way", and the way back. */
+  const row = (name: string) =>
+    dialog.locator('[data-statement]').filter({ has: page.getByRole('radiogroup', { name }) })
+  const dontWarn = (name: string) =>
+    row(name).getByRole('checkbox', { name: 'Don’t warn either way' })
+
+  await dialog.getByRole('combobox', { name: 'Start from a template (optional)' }).click()
+  await page.getByRole('option', { name: /Private area/ }).click()
+  // The template only fills the form, and leaves the languages as they were.
+  await expect(language).toBeChecked()
+  await expect(row('Listed in a sitemap').getByRole('radio', { name: 'Forbidden' })).toBeChecked()
+  await expect(dontWarn('Noindex')).toBeChecked()
+  await expect(row('Noindex').getByRole('radio', { checked: true })).toHaveCount(0)
+
+  // One that is not stated shows what applies, without choosing it.
+  const unlinked = row('No internal links')
+  await expect(unlinked.getByRole('radio', { checked: true })).toHaveCount(0)
+  await expect(dontWarn('No internal links')).not.toBeChecked()
+  await dontWarn('No internal links').click()
+  await expect(dontWarn('No internal links')).toBeChecked()
+  // Choosing a button states that and unchecks "don't warn".
+  await unlinked.getByRole('radio', { name: 'Forbidden' }).click()
+  await expect(unlinked.getByRole('radio', { name: 'Forbidden' })).toBeChecked()
+  await expect(dontWarn('No internal links')).not.toBeChecked()
+  // And the way back returns it to not stated.
+  await unlinked.getByRole('button', { name: 'Back to inherited' }).click()
+  await expect(unlinked.getByRole('radio', { checked: true })).toHaveCount(0)
+
+  await dialog.getByRole('textbox', { name: 'Path 1' }).fill('/private')
+  await dialog.getByRole('button', { name: 'Add path' }).click()
+  await dialog.getByRole('textbox', { name: 'Path 2' }).fill('/account')
+  await dialog.getByRole('button', { name: 'Save rule' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  const listed = page.getByRole('row').filter({ hasText: '/private' })
+  await expect(listed.getByText('and 1 more')).toBeVisible()
+  await expect(listed.getByText(/not indexable · noindex indifferent/)).toBeVisible()
+  await expect(listed.getByText(/not in a sitemap/)).toBeVisible()
+})

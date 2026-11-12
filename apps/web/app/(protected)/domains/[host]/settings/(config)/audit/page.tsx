@@ -37,7 +37,6 @@ export default async function AuditSettingsPage({
     db.crawls.latestWithResults(domain.id, 'full'),
   ])
   const state = auditResultsState(latest, config)
-  const languagesDeclared = config.languages.prefixes.length > 0 || config.languages.unprefixed
 
   // What each rule decided in the last analysis, which knows only the rules it was made with.
   const counts = latest ? await db.crawls.auditRuleCounts(latest.id) : new Map<string, number>()
@@ -60,7 +59,7 @@ export default async function AuditSettingsPage({
             host={domain.host}
             rules={config.rules}
             affected={affected}
-            languagesDeclared={languagesDeclared}
+            languages={config.languages}
           />
         )}
         {tab === 'languages' && (

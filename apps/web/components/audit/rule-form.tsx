@@ -3,34 +3,27 @@
 import {
   AUDIT_CONDITIONS,
   AUDIT_LIMITS,
-  SELECTOR_KINDS,
-  SELECTOR_SCOPES,
-  type AuditCondition,
-  type Requirement,
-  type SelectorKind,
-  type SelectorScope,
+  defaultScope,
+  parseAuditSelector,
+  type AuditSelector,
 } from '@seotools/core/crawl/audit'
-import { ChevronDownIcon } from 'lucide-react'
+import { AUDIT_RULE_TEMPLATES } from '@seotools/core/crawl/audit-templates'
+import { PlusIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import {
   previewAuditRuleAction,
   saveAuditRuleAction,
   type PreviewState,
   type RuleFormState,
 } from '@/app/(protected)/domains/[host]/audit-actions'
-import {
-  AuditStatements,
-  picksOf,
-  touchedConditions,
-  type StatementPicks,
-} from '@/components/audit/audit-statements'
+import { useAuditConfig } from '@/components/audit/audit-config'
+import { AuditStatements } from '@/components/audit/audit-statements'
 import { RulePreview } from '@/components/audit/rule-preview'
+import { InfoHelp } from '@/components/help'
 import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
   SelectContent,
@@ -41,64 +34,51 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useFormActionState } from '@/hooks/use-form-action-state'
+import {
+  applyTemplate,
+  inheritedOfRule,
+  picksOfRule,
+  stated,
+  type StatementPicks,
+} from '@/lib/audit-editor'
 import type { RuleGroup } from '@/lib/audit-rules'
 
+type PathKind = 'path' | 'prefix' | 'url'
 type QueryMode = 'any' | 'exact'
 
-/** The picks the fields start from: what the rule being edited says, and nothing for a new one. */
-function picksOfGroup(group: RuleGroup | undefined): StatementPicks {
-  const picks = picksOf('inherit')
-  if (!group) return picks
-  const audit = group.statements.audit
-  const intent = group.statements.intent
-  if (audit?.dimension === 'audit') picks.audit = audit.value
-  if (
-    intent?.dimension === 'intent' &&
-    (intent.value === 'indexable' || intent.value === 'not-indexable')
-  ) {
-    picks.intent = intent.value
-  }
-  for (const condition of AUDIT_CONDITIONS) {
-    const rule = group.statements[condition]
-    if (rule && rule.dimension === condition) {
-      picks.conditions[condition] = rule.value as Requirement
-    }
-  }
-  return picks
+/** One path of the rule, as it is being written. `key` only tells rows apart while they are edited. */
+interface PathRow {
+  key: number
+  kind: PathKind
+  address: string
+  query: QueryMode
+  queryValue: string
 }
 
-/** The values the fields start from: those of the rule being edited, or blank for a new one. */
-function initialOf(group: RuleGroup | undefined) {
-  const selector = group?.selector
-  return {
-    kind: (selector?.kind ?? 'prefix') as SelectorKind,
-    address: selector ? (selector.kind === 'url' ? selector.url : selector.path) : '',
-    query: (selector && selector.kind !== 'url' ? selector.query.mode : 'any') as QueryMode,
-    queryValue:
-      selector && selector.kind !== 'url' && selector.query.mode === 'exact'
-        ? selector.query.value
-        : '',
-    scope: (selector && selector.kind !== 'url' ? selector.scope : 'literal') as SelectorScope,
-    picks: picksOfGroup(group),
-    reason: group?.reason ?? '',
-    enabled: group?.enabled ?? true,
-  }
-}
+const rowOf = (key: number, selector?: AuditSelector): PathRow =>
+  selector
+    ? {
+        key,
+        kind: selector.kind,
+        address: selector.kind === 'url' ? selector.url : selector.path,
+        query: selector.kind !== 'url' ? selector.query.mode : 'any',
+        queryValue:
+          selector.kind !== 'url' && selector.query.mode === 'exact' ? selector.query.value : '',
+      }
+    : { key, kind: 'prefix', address: '', query: 'any', queryValue: '' }
 
-/** What a pick says in a form: nothing for "not set by this rule", otherwise the value. */
-const valueOf = (pick: string) => (pick === 'inherit' || pick === 'keep' ? '' : pick)
+const NO_TEMPLATE = 'none'
+type TemplateChoice = (typeof AUDIT_RULE_TEMPLATES)[number]['id'] | typeof NO_TEMPLATE
 
 /**
- * Creates a rule, or edits one. The same editor as the exceptions of a URL: the same statements
- * (participation, what is asked of each condition, and the expectation of indexing as a whole under
- * "Advanced"), and the same selectors, written as one sentence: where it applies, and what it says
- * there. The query and the language scope are advanced options. It can preview what the rule would do
- * to the last full crawl before saving.
+ * Creates a rule, or edits one. The same statements as the exceptions of a URL, in the order the
+ * question comes: where it applies (one or more paths, and whether each language directory counts),
+ * what it says about every condition (all of them are there, and what is not stated shows what
+ * applies instead), then the advanced ones, the reason and whether it is on. A new rule can start
+ * from a template, which only fills in the form. It can preview what the rule would do to the last
+ * full crawl before saving.
  */
 export function RuleForm(props: {
-  host: string
-  /** The language directories were declared: a shared scope covers nothing before. */
-  languagesDeclared: boolean
   /** The rule being edited, with every statement it makes. Absent: a new one. */
   rule?: RuleGroup
   onSaved?: () => void
@@ -120,33 +100,35 @@ export function RuleForm(props: {
 }
 
 function RuleFormFields({
-  host,
-  languagesDeclared,
   rule,
   onSaved,
   onCancel,
 }: {
-  host: string
-  languagesDeclared: boolean
   rule?: RuleGroup
   onSaved: () => void
   onCancel?: () => void
 }) {
   const t = useTranslations('AuditRules')
+  const tTemplates = useTranslations('AuditTemplates')
+  const { host, rules, languages } = useAuditConfig()
   const [state, onSubmit, saving] = useFormActionState<RuleFormState>(
     saveAuditRuleAction.bind(null, host),
     {},
   )
-  const start = initialOf(rule)
-  const [kind, setKind] = useState<SelectorKind>(start.kind)
-  const [address, setAddress] = useState(start.address)
-  const [query, setQuery] = useState<QueryMode>(start.query)
-  const [queryValue, setQueryValue] = useState(start.queryValue)
-  const [scope, setScope] = useState<SelectorScope>(start.scope)
-  const [picks, setPicks] = useState<StatementPicks>(start.picks)
-  const [shown, setShown] = useState<AuditCondition[]>(touchedConditions(start.picks, 'inherit'))
-  const [reason, setReason] = useState(start.reason)
-  const [enabled, setEnabled] = useState(start.enabled)
+
+  // One switch for every path: a rule whose paths are all shared starts on.
+  const startsShared = rule
+    ? rule.selectors.every((selector) => selector.kind !== 'url' && selector.scope === 'shared')
+    : defaultScope(languages) === 'shared'
+  const [rows, setRows] = useState<PathRow[]>(
+    rule ? rule.selectors.map((selector, index) => rowOf(index, selector)) : [rowOf(0)],
+  )
+  const [nextKey, setNextKey] = useState(rows.length)
+  const [byLanguage, setByLanguage] = useState(startsShared)
+  const [template, setTemplate] = useState<TemplateChoice>(NO_TEMPLATE)
+  const [picks, setPicks] = useState<StatementPicks>(picksOfRule(rule))
+  const [reason, setReason] = useState(rule?.reason ?? '')
+  const [enabled, setEnabled] = useState(rule?.enabled ?? true)
   // The preview is kept with the form it was worked out for, and only shows while the form is still
   // that one: changing anything that decides what the rule does makes it out of date.
   const [preview, setPreview] = useState<{ form: string; result: PreviewState } | null>(null)
@@ -158,36 +140,73 @@ function RuleFormFields({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state])
 
-  const kinds = SELECTOR_KINDS.map((item) => ({ value: item, label: t(`kinds.${item}`) }))
-  // An exact URL is always literal; a shared scope is only offered once there are directories to
-  // share between (or when the rule being edited already has it).
-  const sharedAvailable = languagesDeclared || start.scope === 'shared'
-  const scopes = SELECTOR_SCOPES.map((item) => ({
-    value: item,
-    label: t(`scope.${item}`),
-    disabled: item === 'shared' && !sharedAvailable,
-  }))
+  // An exact URL is an exception on one URL: it is never one of several paths.
+  const isUrl = rows.some((row) => row.kind === 'url')
+  const editingUrl = rule?.selector.kind === 'url'
+  // Sharing between languages only means something once there are directories to share between
+  // (or when the rule being edited already shares).
+  const languagesOffered = (languages.prefixes.length > 0 || startsShared) && !isUrl
+  const scope = languagesOffered && byLanguage ? 'shared' : 'literal'
+
+  // What each path covers, as the selectors the model works with. A path being written is left out
+  // until it is valid; with none valid yet the rule is compared with the whole site.
+  const selectors = useMemo(() => {
+    const valid = rows.flatMap((row) => {
+      const parsed = parseAuditSelector(
+        row.kind === 'url'
+          ? { kind: 'url', value: row.address }
+          : {
+              kind: row.kind,
+              value: row.address,
+              query: row.query,
+              queryValue: row.queryValue,
+              scope,
+            },
+        host,
+      )
+      return parsed.ok && row.address.trim() !== '' ? [parsed.selector] : []
+    })
+    if (valid.length > 0) return valid
+    const whole = parseAuditSelector(
+      { kind: 'prefix', value: '/', query: 'any', queryValue: '', scope },
+      host,
+    )
+    return whole.ok ? [whole.selector] : []
+  }, [rows, scope, host])
+
+  const set = rule ? (Object.values(rule.statements)[0]?.set ?? null) : null
+  const inherited = useMemo(
+    () => inheritedOfRule({ selectors, ids: rule?.ids ?? [], set, rules, host, languages }),
+    [selectors, rule, set, rules, host, languages],
+  )
+
   const idBase = `rule-${rule?.key ?? 'new'}`
-  const hasScope = kind !== 'url'
-  // What the sentence says apart from its defaults, to open the advanced options when it matters.
-  const advancedUsed = hasScope && (query === 'exact' || scope === 'shared')
+  const pathKinds: { value: PathKind; label: string }[] = [
+    { value: 'prefix', label: t('form.pathKinds.prefix') },
+    { value: 'path', label: t('form.pathKinds.path') },
+    ...(editingUrl ? [{ value: 'url' as const, label: t('kinds.url') }] : []),
+  ]
+  const patch = (key: number, changes: Partial<PathRow>) =>
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, ...changes } : row)))
 
   // Everything that changes what the rule does. The reason does not.
   const previewInput = {
     id: rule?.ids[0],
-    kind,
-    selector: address,
-    query,
-    queryValue,
-    scope: hasScope ? scope : 'literal',
-    audit: valueOf(picks.audit),
-    intent: valueOf(picks.intent),
-    noindex: valueOf(picks.conditions.noindex),
-    nofollow: valueOf(picks.conditions.nofollow),
-    robots: valueOf(picks.conditions.robots),
-    sitemap: valueOf(picks.conditions.sitemap),
-    canonical: valueOf(picks.conditions.canonical),
-    unlinked: valueOf(picks.conditions.unlinked),
+    paths: rows.map((row) => ({
+      kind: row.kind,
+      selector: row.address,
+      query: row.query,
+      queryValue: row.queryValue,
+    })),
+    scope,
+    audit: stated(picks.audit),
+    intent: stated(picks.intent),
+    noindex: stated(picks.conditions.noindex),
+    nofollow: stated(picks.conditions.nofollow),
+    robots: stated(picks.conditions.robots),
+    sitemap: stated(picks.conditions.sitemap),
+    canonical: stated(picks.conditions.canonical),
+    unlinked: stated(picks.conditions.unlinked),
     enabled,
     reason,
   }
@@ -199,152 +218,251 @@ function RuleFormFields({
       setPreview({ form: formKey, result })
     })
 
+  const chooseTemplate = (id: TemplateChoice) => {
+    setTemplate(id)
+    setPicks(applyTemplate(AUDIT_RULE_TEMPLATES.find((item) => item.id === id) ?? null))
+  }
+  const templates: { value: TemplateChoice; label: string }[] = [
+    { value: NO_TEMPLATE, label: t('form.noTemplate') },
+    ...AUDIT_RULE_TEMPLATES.map((item) => ({
+      value: item.id,
+      label: tTemplates(`${item.id}.name`),
+    })),
+  ]
+
+  const queryUsed = rows.some((row) => row.kind !== 'url' && row.query === 'exact')
+  const statementsUsed = picks.intent !== 'inherit' || picks.audit !== 'inherit' || queryUsed
+
   return (
-    <form onSubmit={onSubmit} className="grid gap-5">
+    <form onSubmit={onSubmit} className="grid gap-6">
       {rule && <input type="hidden" name="id" value={rule.ids[0]} />}
-      <input type="hidden" name="kind" value={kind} />
-      <input type="hidden" name="query" value={query} />
-      <input type="hidden" name="scope" value={hasScope ? scope : 'literal'} />
-      <input type="hidden" name="audit" value={valueOf(picks.audit)} />
-      <input type="hidden" name="intent" value={valueOf(picks.intent)} />
+      <input type="hidden" name="scope" value={scope} />
+      <input type="hidden" name="audit" value={stated(picks.audit)} />
+      <input type="hidden" name="intent" value={stated(picks.intent)} />
       {AUDIT_CONDITIONS.map((condition) => (
         <input
           key={condition}
           type="hidden"
           name={condition}
-          value={valueOf(picks.conditions[condition])}
+          value={stated(picks.conditions[condition])}
         />
       ))}
       {enabled && <input type="hidden" name="enabled" value="on" />}
 
-      <div className="grid gap-2">
-        <Label htmlFor={`${idBase}-selector`}>{t('form.appliesTo')}</Label>
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,17rem)_1fr]">
+      {!rule && (
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idBase}-template`}>{t('form.template')}</Label>
           <Select
-            items={kinds}
-            value={kind}
-            onValueChange={(next) => next && setKind(next as SelectorKind)}
+            items={templates}
+            value={template}
+            onValueChange={(next) => next && chooseTemplate(next as TemplateChoice)}
           >
-            <SelectTrigger className="w-full" aria-label={t('form.kind')}>
+            <SelectTrigger id={`${idBase}-template`} className="w-full sm:max-w-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
-              {kinds.map((item) => (
+              {templates.map((item) => (
                 <SelectItem key={item.value} value={item.value}>
-                  {item.label}
+                  {item.value === NO_TEMPLATE ? (
+                    item.label
+                  ) : (
+                    <span className="grid">
+                      <span>{item.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {tTemplates(`${item.value}.description`)}
+                      </span>
+                    </span>
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Input
-            id={`${idBase}-selector`}
-            name="selector"
-            value={address}
-            onChange={(event) => setAddress(event.target.value)}
-            placeholder={
-              kind === 'url' ? t('form.urlPlaceholder', { host }) : t('form.pathPlaceholder')
-            }
-            maxLength={AUDIT_LIMITS.selector}
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            className="font-mono"
-            required
-          />
+          <p className="min-h-8 text-xs text-muted-foreground">
+            {template === NO_TEMPLATE
+              ? t('form.templateHelp')
+              : tTemplates(`${template}.description`)}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground">{t(`kindHelp.${kind}`)}</p>
-      </div>
+      )}
 
-      {hasScope && (
-        <Collapsible defaultOpen={advancedUsed} className="grid gap-3">
-          <CollapsibleTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="justify-start gap-1 px-1 [&[data-panel-open]>svg]:rotate-180"
-              />
-            }
-          >
-            <ChevronDownIcon className="transition-transform" />
-            {t('form.advancedSelector')}
-          </CollapsibleTrigger>
-          <CollapsibleContent className="grid gap-4">
-            <fieldset className="grid gap-2">
-              <legend className="mb-1 text-sm font-medium">{t('query.label')}</legend>
-              <RadioGroup value={query} onValueChange={(next) => setQuery(next as QueryMode)}>
-                <Label className="flex items-center gap-2 font-normal">
-                  <RadioGroupItem value="any" />
-                  {t('query.any')}
-                </Label>
-                <Label className="flex items-center gap-2 font-normal">
-                  <RadioGroupItem value="exact" />
-                  {t('query.exact')}
-                </Label>
-              </RadioGroup>
-              {query === 'exact' && (
-                <div className="grid gap-2">
-                  <Label htmlFor={`${idBase}-query`} className="sr-only">
-                    {t('query.valueLabel')}
-                  </Label>
-                  <Input
-                    id={`${idBase}-query`}
-                    name="queryValue"
-                    value={queryValue}
-                    onChange={(event) => setQueryValue(event.target.value)}
-                    placeholder={t('query.valuePlaceholder')}
-                    maxLength={AUDIT_LIMITS.selector}
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground">{t('query.valueHelp')}</p>
-                </div>
-              )}
-            </fieldset>
-
-            <div className="grid gap-2">
-              <Label>{t('scope.label')}</Label>
+      <fieldset className="grid gap-3">
+        <legend className="mb-2 flex items-center gap-1 text-sm font-medium">
+          {t('form.appliesTo')}
+          <InfoHelp label={t('form.appliesTo')}>
+            <p>{t('kindHelp.prefix')}</p>
+            <p className="mt-2">{t('kindHelp.path')}</p>
+            <p className="mt-2">{t('form.appliesHelp')}</p>
+          </InfoHelp>
+        </legend>
+        {rows.map((row, index) => (
+          <div key={row.key} className="grid grid-cols-[1fr_auto] items-center gap-2">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,12rem)_1fr]">
+              <input type="hidden" name="kind" value={row.kind} />
+              <input type="hidden" name="query" value={row.query} />
+              <input type="hidden" name="queryValue" value={row.queryValue} />
               <Select
-                items={scopes}
-                value={scope}
-                onValueChange={(next) => next && setScope(next as SelectorScope)}
+                items={pathKinds}
+                value={row.kind}
+                onValueChange={(next) => next && patch(row.key, { kind: next as PathKind })}
               >
-                <SelectTrigger className="w-full" aria-label={t('scope.label')}>
+                <SelectTrigger className="w-full" aria-label={t('form.kind')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  {scopes.map((item) => (
-                    <SelectItem key={item.value} value={item.value} disabled={item.disabled}>
+                  {pathKinds.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
                       {item.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">{t(`scope.${scope}Help`)}</p>
-              {!sharedAvailable && (
-                <p className="text-xs text-muted-foreground">{t('scope.noLanguages')}</p>
-              )}
+              <Input
+                id={`${idBase}-path-${index}`}
+                name="selector"
+                value={row.address}
+                onChange={(event) => patch(row.key, { address: event.target.value })}
+                placeholder={
+                  row.kind === 'url'
+                    ? t('form.urlPlaceholder', { host })
+                    : t('form.pathPlaceholder')
+                }
+                aria-label={t('form.path', { number: index + 1 })}
+                maxLength={AUDIT_LIMITS.selector}
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="font-mono"
+                required
+              />
             </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
+            {/* Always there, so that adding the second path does not move the first. */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('form.removePath', { number: index + 1 })}
+              title={t('form.removePath', { number: index + 1 })}
+              className={rows.length === 1 ? 'invisible' : undefined}
+              tabIndex={rows.length === 1 ? -1 : 0}
+              onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}
+            >
+              <XIcon />
+            </Button>
+          </div>
+        ))}
+        <div className="flex min-h-7 items-center gap-3">
+          {!isUrl && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={rows.length >= AUDIT_LIMITS.pathsPerRule}
+              onClick={() => {
+                setRows((current) => [...current, rowOf(nextKey)])
+                setNextKey(nextKey + 1)
+              }}
+            >
+              <PlusIcon />
+              {t('form.addPath')}
+            </Button>
+          )}
+          {rows.length > 1 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {t('form.pathCount', { count: rows.length, max: AUDIT_LIMITS.pathsPerRule })}
+            </span>
+          )}
+        </div>
 
-      <div className="grid gap-2">
-        <p className="text-sm font-medium">{t('form.says')}</p>
-        <AuditStatements
-          mode="single"
-          subject="rule"
-          picks={picks}
-          onChange={setPicks}
-          shown={shown}
-          onShown={setShown}
-          idBase={idBase}
-        />
-      </div>
+        {languagesOffered && (
+          <div className="flex items-start gap-3">
+            <Switch
+              id={`${idBase}-languages`}
+              checked={byLanguage}
+              onCheckedChange={setByLanguage}
+              aria-describedby={`${idBase}-languages-help`}
+            />
+            <div className="grid gap-0.5">
+              <Label htmlFor={`${idBase}-languages`}>{t('form.byLanguage')}</Label>
+              <p id={`${idBase}-languages-help`} className="text-xs text-muted-foreground">
+                {byLanguage
+                  ? t('form.byLanguageOn', {
+                      languages: languages.prefixes.join(', ') || '—',
+                    })
+                  : t('form.byLanguageOff')}
+              </p>
+            </div>
+          </div>
+        )}
+      </fieldset>
+
+      <AuditStatements
+        mode="single"
+        subject="rule"
+        picks={picks}
+        onChange={setPicks}
+        inherited={inherited}
+        idBase={idBase}
+        advancedOpen={statementsUsed}
+        advancedExtra={
+          rows.some((row) => row.kind !== 'url') ? (
+            <fieldset className="grid gap-2">
+              <legend className="mb-1 flex items-center gap-1 text-sm font-medium">
+                {t('query.label')}
+                <InfoHelp label={t('query.label')} compact>
+                  <div className="grid gap-2">
+                    <p>{t('query.help')}</p>
+                    <p>{t('query.example')}</p>
+                  </div>
+                </InfoHelp>
+              </legend>
+              {rows.map((row, index) =>
+                row.kind === 'url' ? null : (
+                  <div
+                    key={row.key}
+                    className="grid items-center gap-2 sm:grid-cols-[minmax(0,12rem)_minmax(0,12rem)_1fr]"
+                  >
+                    <code className="truncate font-mono text-xs" title={row.address}>
+                      {row.address || t('form.path', { number: index + 1 })}
+                    </code>
+                    <Select
+                      items={[
+                        { value: 'any', label: t('query.any') },
+                        { value: 'exact', label: t('query.exact') },
+                      ]}
+                      value={row.query}
+                      onValueChange={(next) => next && patch(row.key, { query: next as QueryMode })}
+                    >
+                      <SelectTrigger
+                        className="w-full"
+                        aria-label={`${t('query.label')}: ${row.address || index + 1}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectItem value="any">{t('query.any')}</SelectItem>
+                        <SelectItem value="exact">{t('query.exact')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      value={row.queryValue}
+                      onChange={(event) => patch(row.key, { queryValue: event.target.value })}
+                      placeholder={t('query.valuePlaceholder')}
+                      aria-label={t('query.valueLabel')}
+                      maxLength={AUDIT_LIMITS.selector}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className={row.query === 'exact' ? 'font-mono' : 'invisible font-mono'}
+                      tabIndex={row.query === 'exact' ? 0 : -1}
+                    />
+                  </div>
+                ),
+              )}
+            </fieldset>
+          ) : null
+        }
+      />
 
       <div className="grid gap-2">
         <Label htmlFor={`${idBase}-reason`}>{t('form.reason')}</Label>

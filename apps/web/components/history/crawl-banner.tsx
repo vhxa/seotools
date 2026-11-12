@@ -2,11 +2,8 @@ import type { Crawl } from '@seotools/db'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
-import {
-  crawlConfigVersion,
-  useConfigLabel,
-  useCrawlMoment,
-} from '@/components/history/crawl-stamp'
+import { crawlConfigVersion, useCrawlMoment } from '@/components/history/crawl-stamp'
+import { rulesStateOf } from '@/lib/rules-state'
 
 /**
  * Identifies the selected crawl and warns when it is historical, incomplete or analysed with an
@@ -31,9 +28,8 @@ export function CrawlBanner({
 }) {
   const t = useTranslations('CrawlHistory.banner')
   const when = useCrawlMoment()
-  const configLabel = useConfigLabel()
   const version = crawlConfigVersion(crawl)
-  const behind = historical && version !== null && version !== currentVersion
+  const behind = historical && rulesStateOf(version, currentVersion) === 'changed'
   if (!picker && !historical && crawl.status === 'completed') return null
   return (
     <div className="grid gap-2 text-sm">
@@ -45,14 +41,7 @@ export function CrawlBanner({
         >
           {historical && <p>{t('viewing', { when: when(crawl) })}</p>}
           {crawl.status !== 'completed' && <p>{t('incomplete')}</p>}
-          {behind && (
-            <p>
-              {t('configBehind', {
-                config: configLabel(version),
-                current: configLabel(currentVersion),
-              })}
-            </p>
-          )}
+          {behind && <p>{t('rulesBehind')}</p>}
           {historical && latestHref && (
             <Link href={latestHref} className="w-fit underline underline-offset-4">
               {t('backToLatest')}
