@@ -31,7 +31,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "css-what": "^7.0.0",
+    "css-what": "^8.0.0",
     "nodemailer": "^10.3.1",
     "pino": "^10.4.0",
     "resend": "^6.37.0",
