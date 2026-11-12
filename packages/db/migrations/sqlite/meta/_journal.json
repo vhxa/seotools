@@ -218,6 +218,13 @@
       "when": 1794483094392,
       "tag": "0030_audit_rule_sets",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1794483635531,
+      "tag": "0031_user_locale",
+      "breakpoints": true
     }
   ]
 }

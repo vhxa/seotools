@@ -27,6 +27,8 @@ which moves the entries of `[Unreleased]` into the new version.
   the backup and previous image, as described in `docs/updating.md`.
 - On first start, retained crawls are analysed again because the issue catalog changed, using each
   crawl's own configuration. Existing configurations keep the same findings and accepted rows.
+- Migration 0031 adds an optional saved interface language per person. Going back requires the
+  backup and previous image.
 
 ### Added
 
@@ -34,6 +36,9 @@ which moves the entries of `[Unreleased]` into the new version.
 - Audit rules can require, allow or forbid a canonical to another URL and the absence of internal
   links. Rules can cover up to 20 paths together; the current editor keeps grouped rules together
   when saving, switching or deleting them. Editor templates are prepared for the next editor update.
+- The account can edit its own name and choose the interface language (follow the browser, English
+  or Español). The chosen language also applies to the alert and access emails sent to that person.
+  The email address stays read-only.
 
 ### Changed
 

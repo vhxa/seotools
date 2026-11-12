@@ -985,6 +985,20 @@ export function createSqliteDatabase(options: {
           })
           .run()
       },
+      async locale(userId) {
+        const [row] = db
+          .select()
+          .from(schema.userPreferences)
+          .where(eq(schema.userPreferences.userId, userId))
+          .all()
+        return row?.locale ?? null
+      },
+      async setLocale(userId, locale) {
+        db.insert(schema.userPreferences)
+          .values({ userId, locale })
+          .onConflictDoUpdate({ target: schema.userPreferences.userId, set: { locale } })
+          .run()
+      },
     },
     settings: {
       async get(key) {

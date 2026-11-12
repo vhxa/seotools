@@ -3053,12 +3053,16 @@
     "changed": "Tu contraseña ha cambiado.",
     "errors": {
       "length": "Usa entre {min, number} y {max, number} caracteres.",
-      "wrongPassword": "La contraseña actual no es correcta."
+      "wrongPassword": "La contraseña actual no es correcta.",
+      "nameInvalid": "Escribe un nombre de 1 a {max, number} caracteres.",
+      "nameFailed": "No se pudo guardar el nombre.",
+      "languageInvalid": "Elige uno de los idiomas de la lista.",
+      "languageFailed": "No se pudo guardar el idioma."
     },
     "alerts": {
       "title": "Alertas",
       "description": "Elige de qué quieres recibir correo en cada dominio. No se envía nada hasta que lo elijas, y solo de los dominios que puedes ver.",
-      "language": "Los correos se escriben en el idioma que estés usando al guardar.",
+      "language": "Los correos de alertas usan el idioma elegido en tu cuenta o, si sigues al navegador, el que estés usando al guardar.",
       "empty": "Todavía no puedes ver ningún dominio.",
       "archived": "Archivado: no se envían alertas.",
       "kinds": {
@@ -3081,6 +3085,23 @@
       "errors": {
         "failed": "No se pudieron guardar las alertas."
       }
+    },
+    "name": {
+      "label": "Tu nombre",
+      "save": "Guardar nombre",
+      "saving": "Guardando…",
+      "saved": "Tu nombre está guardado."
+    },
+    "language": {
+      "title": "Idioma",
+      "label": "Idioma de la interfaz",
+      "browser": "Según el navegador",
+      "en": "English",
+      "es": "Español",
+      "hint": "Es también el idioma de los correos que te enviamos. Por defecto lo decide el navegador.",
+      "save": "Guardar idioma",
+      "saving": "Guardando…",
+      "saved": "Tu idioma está guardado."
     }
   },
   "PasswordRecovery": {

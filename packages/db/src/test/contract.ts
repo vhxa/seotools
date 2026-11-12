@@ -118,6 +118,22 @@ export function describeDatabaseContract(
       expect(await countRows('user_preferences')).toBe(0)
     })
 
+    it('keeps a saved interface language apart from the favourite domain', async () => {
+      const user = await db.users.create({
+        name: 'Locale',
+        email: 'locale@example.com',
+        role: 'member',
+      })
+      expect(await db.userPreferences.locale(user.id)).toBeNull()
+      await db.userPreferences.setLocale(user.id, 'es')
+      expect(await db.userPreferences.locale(user.id)).toBe('es')
+      await db.userPreferences.setFavouriteDomain(user.id, null)
+      expect(await db.userPreferences.locale(user.id)).toBe('es')
+      await db.userPreferences.setLocale(user.id, null)
+      expect(await db.userPreferences.locale(user.id)).toBeNull()
+      await expect(db.userPreferences.setLocale('missing', 'es')).rejects.toThrow()
+    })
+
     it('answers ping', async () => {
       await expect(db.ping()).resolves.toBeUndefined()
     })

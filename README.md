@@ -39,7 +39,7 @@ Raspberry Pi to a VPS.
   a per-domain view of the site by directory with pages, errors and findings.
 - **Favourite domain** per user: open it automatically and reach all domains from the switcher.
 - **Teams**: companies and domains, administrators, and editors or viewers per company or domain.
-- **English and Spanish**, SQLite or PostgreSQL, `linux/amd64` and `linux/arm64` images on GHCR.
+- **English and Spanish**, each person choosing theirs (or the browser's) on their account, SQLite or PostgreSQL, `linux/amd64` and `linux/arm64` images on GHCR.
 
 A look at the demo site: dashboard, findings, URL inventory and share preview.
 

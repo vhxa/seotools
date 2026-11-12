@@ -1357,6 +1357,9 @@ export interface VitalsRepository {
 export interface UserPreferencesRepository {
   favouriteDomainId(userId: string): Promise<string | null>
   setFavouriteDomain(userId: string, domainId: string | null): Promise<void>
+  /** The saved interface language, or null to follow the browser. */
+  locale(userId: string): Promise<string | null>
+  setLocale(userId: string, locale: string | null): Promise<void>
 }
 
 export interface Database {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveLocale } from './locale'
+import { localeCookieOptions, parseLocale, resolveLocale, resolveRequestLocale } from './locale'
 
 describe('resolveLocale', () => {
   it.each([
@@ -21,5 +21,30 @@ describe('resolveLocale', () => {
     ['es;q=nonsense, en;q=0.1', 'en'],
   ])('%j → %s', (header, expected) => {
     expect(resolveLocale(header)).toBe(expected)
+  })
+})
+
+describe('resolveRequestLocale', () => {
+  it('prefers a valid saved language over the browser', () => {
+    expect(resolveRequestLocale('es', 'en-US')).toBe('es')
+    expect(resolveRequestLocale('en', 'es')).toBe('en')
+  })
+  it('ignores a cookie that is not a shipped language', () => {
+    for (const bad of ['fr', 'ES', '', '../es', 'es;en']) {
+      expect(parseLocale(bad)).toBeNull()
+      expect(resolveRequestLocale(bad, 'es')).toBe('es')
+    }
+  })
+  it('falls back to the browser, then English, without a cookie', () => {
+    expect(resolveRequestLocale(undefined, 'es-MX')).toBe('es')
+    expect(resolveRequestLocale(null, null)).toBe('en')
+  })
+  it('sets the cookie secure only when served over https', () => {
+    expect(localeCookieOptions(true)).toMatchObject({
+      secure: true,
+      httpOnly: true,
+      sameSite: 'lax',
+    })
+    expect(localeCookieOptions(false).secure).toBe(false)
   })
 })

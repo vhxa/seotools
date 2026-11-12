@@ -2,7 +2,9 @@ import { getTranslations } from 'next-intl/server'
 import { AccountTabs } from '@/components/account-tabs'
 import { AlertsForm } from '@/components/alerts/alerts-form'
 import { PasswordForm } from '@/components/users/password-form'
+import { LanguageForm, NameForm } from '@/components/users/profile-forms'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { parseLocale } from '@/i18n/locale'
 import { parseAccountTab } from '@/lib/account-tabs'
 import { getDb } from '@/lib/db'
 import { requireViewer } from '@/lib/session'
@@ -31,6 +33,7 @@ export default async function AccountPage({
   ])
   const chosen = new Map(subscriptions.map((s) => [s.domainId, s.kinds]))
   // Nothing is sent for an archived domain, so there is nothing to choose for it.
+  const savedLocale = parseLocale(await db.userPreferences.locale(viewer.session.user.id))
   const alertGroups = visible
     .map((company) => ({
       id: company.id,
@@ -54,31 +57,49 @@ export default async function AccountPage({
       <h1 className="text-2xl font-semibold">{t('title')}</h1>
       <AccountTabs active={tab}>
         {tab === 'profile' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{viewer.session.user.name}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-2 text-sm">
-              <p className="text-muted-foreground">{viewer.session.user.email}</p>
-              <p>{tUsers(`roles.${viewer.role}`)}</p>
-              {viewer.role === 'admin' ? (
-                <p className="text-muted-foreground">{tUsers('access.everything')}</p>
-              ) : viewer.grants.length === 0 ? (
-                <p className="text-muted-foreground">{tUsers('access.nothing')}</p>
-              ) : (
-                <ul className="grid gap-0.5">
-                  {viewer.grants.map((grant) => (
-                    <li key={grant.domainId ?? grant.companyId}>
-                      {tUsers('access.row', {
-                        target: nameOf(grant) ?? '',
-                        role: tUsers(`roles.${grant.role}`),
-                      })}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>{viewer.session.user.name}</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2 text-sm">
+                <p className="text-muted-foreground">{viewer.session.user.email}</p>
+                <p>{tUsers(`roles.${viewer.role}`)}</p>
+                {viewer.role === 'admin' ? (
+                  <p className="text-muted-foreground">{tUsers('access.everything')}</p>
+                ) : viewer.grants.length === 0 ? (
+                  <p className="text-muted-foreground">{tUsers('access.nothing')}</p>
+                ) : (
+                  <ul className="grid gap-0.5">
+                    {viewer.grants.map((grant) => (
+                      <li key={grant.domainId ?? grant.companyId}>
+                        {tUsers('access.row', {
+                          target: nameOf(grant) ?? '',
+                          role: tUsers(`roles.${grant.role}`),
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('name.label')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <NameForm name={viewer.session.user.name} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('language.title')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <LanguageForm value={savedLocale ?? 'browser'} />
+              </CardContent>
+            </Card>
+          </>
         )}
         {tab === 'alerts' && (
           <Card>
