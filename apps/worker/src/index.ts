@@ -21,7 +21,7 @@ import { createHttpFetcher } from './crawl/fetcher'
 import { createCrawlFileRefresher } from './crawl/file-refresher'
 import { reanalyseOutdatedCrawls } from './crawl/reanalysis'
 import { createFaviconRefresher } from './favicon/refresh'
-import { handlers } from './handlers'
+import { handlers, createBotTestHandler } from './handlers'
 import { createAccessEmailHandler } from './handlers/access-email'
 import { createAuditRecomputeHandler } from './handlers/audit-recompute'
 import { createCrawlAlertsHandler } from './handlers/crawl-alerts'
@@ -71,7 +71,7 @@ async function main() {
     lockTimeoutMs: env.JOB_LOCK_TIMEOUT_MS,
   }
   // Both make requests to a site, so both run in the crawl lane.
-  const crawlTypes = [JOB_TYPES.crawlRun, JOB_TYPES.urlVerify]
+  const crawlTypes = [JOB_TYPES.crawlRun, JOB_TYPES.urlVerify, JOB_TYPES.botTest]
   const runner = createRunner({
     ...shared,
     log,
@@ -92,6 +92,13 @@ async function main() {
     handlers: {
       [JOB_TYPES.crawlRun]: createCrawlRunHandler({
         db,
+        allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
+        appVersion: pkg.version,
+        settingsSecret: settingsKeyFrom(env),
+      }),
+      [JOB_TYPES.botTest]: createBotTestHandler({
+        db,
+        paused,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,
         settingsSecret: settingsKeyFrom(env),

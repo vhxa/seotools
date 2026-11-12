@@ -204,6 +204,13 @@
       "when": 1794461968632,
       "tag": "0028_user_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1794472687919,
+      "tag": "0029_bot_access",
+      "breakpoints": true
     }
   ]
 }

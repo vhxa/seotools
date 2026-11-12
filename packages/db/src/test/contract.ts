@@ -1,3 +1,4 @@
+import { describeBotAccess } from './bot-access'
 import { describeVitals } from './vitals'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -356,6 +357,7 @@ export function describeDatabaseContract(
     })
 
     describeVitals(() => db)
+    describeBotAccess(() => db)
     describeLifecycle(
       () => db,
       (table) => countRows(table),

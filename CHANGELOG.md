@@ -20,6 +20,14 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- This update adds bot-test storage migrations. Going back to an older image requires restoring the pre-update backup.
+
+### Added
+
+- The robots.txt page offers an on-demand Bot access test comparing homepage responses to published bot User-Agent strings, with explicit limits on what simulated requests can prove.
+
 ### Changed
 
 - Custom extraction uses newer CSS selector libraries: `:enabled` now matches only form elements

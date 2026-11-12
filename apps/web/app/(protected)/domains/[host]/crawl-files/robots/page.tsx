@@ -1,3 +1,4 @@
+import { BotTest } from '@/components/crawl-files/bot-test'
 import { AI_CRAWLERS, robotsAccess, type RobotsAccess } from '@seotools/core'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { CrawlFilesHeader } from '@/components/crawl-files/page-header'
@@ -122,6 +123,14 @@ export default async function RobotsPage({ params }: { params: Promise<{ host: s
           </CardContent>
         </Card>
       )}
+
+      <BotTest
+        domainId={domain.id}
+        host={domain.host}
+        archived={!!domain.archivedAt}
+        parsed={parsed}
+        robotsUnknown={view.unknown}
+      />
 
       {parsed && parsed.groups.length > 0 && (
         <Card>

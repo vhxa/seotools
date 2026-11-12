@@ -896,3 +896,36 @@ export const userPreferences = sqliteTable('user_preferences', {
     onDelete: 'set null',
   }),
 })
+
+export const botTestRuns = sqliteTable('bot_test_runs', {
+  id: text('id').primaryKey(),
+  domainId: text('domain_id')
+    .notNull()
+    .references(() => domains.id, { onDelete: 'cascade' }),
+  jobId: text('job_id').notNull(),
+  requestedBy: text('requested_by').notNull(),
+  activeKey: text('active_key').unique(),
+  status: text('status', { enum: ['queued', 'running', 'done', 'failed', 'cancelled'] })
+    .notNull()
+    .default('queued'),
+  createdAt: ts('created_at').notNull().$defaultFn(now),
+  startedAt: ts('started_at'),
+  finishedAt: ts('finished_at'),
+})
+export const botTestResults = sqliteTable(
+  'bot_test_results',
+  {
+    runId: text('run_id')
+      .notNull()
+      .references(() => botTestRuns.id, { onDelete: 'cascade' }),
+    botToken: text('bot_token').notNull(),
+    statusCode: integer('status_code'),
+    finalUrl: text('final_url'),
+    responseTimeMs: integer('response_time_ms'),
+    bytes: integer('bytes'),
+    errorCode: text('error_code'),
+    verdict: text('verdict', { enum: ['same', 'different', 'unknown'] }).notNull(),
+    reasons: text('reasons').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.botToken] })],
+)

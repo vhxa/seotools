@@ -1,3 +1,4 @@
+import type { BotTestResult } from '../types'
 import { referenceGroup } from '@seotools/core/crawl/links'
 import { CRAWL_LINK_KINDS } from '@seotools/core'
 import { randomUUID } from 'node:crypto'
@@ -209,6 +210,8 @@ const {
   priorityUrls,
   auditRules,
   domainAuditConfig,
+  botTestRuns,
+  botTestResults,
   urlVerifications,
   urlVerificationUrls,
 } = schema
@@ -653,6 +656,14 @@ export function createPgDatabase(options: {
           .where(inArray(urlVerifications.domainId, domainIds))
       ).map((row) => row.id),
     ]
+    ids.push(
+      ...(
+        await tx
+          .select({ id: botTestRuns.jobId })
+          .from(botTestRuns)
+          .where(inArray(botTestRuns.domainId, domainIds))
+      ).map((row) => row.id),
+    )
     for (const batch of chunk(ids)) await tx.delete(jobs).where(inArray(jobs.id, batch))
   }
 
@@ -839,6 +850,13 @@ export function createPgDatabase(options: {
           and(eq(jobs.status, 'failed'), lt(jobs.updatedAt, failedBefore)),
         )
         const notInUse = and(
+          notInArray(
+            jobs.id,
+            db
+              .select({ id: botTestRuns.jobId })
+              .from(botTestRuns)
+              .where(isNotNull(botTestRuns.activeKey)),
+          ),
           notInArray(
             jobs.id,
             db.select({ id: crawls.jobId }).from(crawls).where(isNotNull(crawls.activeKey)),
@@ -1327,6 +1345,34 @@ export function createPgDatabase(options: {
           if (!found.archivedAt) {
             await tx.update(domains).set({ archivedAt: now }).where(eq(domains.id, id))
           }
+          const activeBotRun = await tx
+            .select({ id: botTestRuns.id })
+            .from(botTestRuns)
+            .where(and(eq(botTestRuns.domainId, id), isNotNull(botTestRuns.activeKey)))
+          if (activeBotRun.length) {
+            const previous = await tx
+              .select({ id: botTestRuns.id, jobId: botTestRuns.jobId })
+              .from(botTestRuns)
+              .where(and(eq(botTestRuns.domainId, id), isNull(botTestRuns.activeKey)))
+            if (previous.length) {
+              await tx.delete(jobs).where(
+                inArray(
+                  jobs.id,
+                  previous.map((row) => row.jobId),
+                ),
+              )
+              await tx.delete(botTestRuns).where(
+                inArray(
+                  botTestRuns.id,
+                  previous.map((row) => row.id),
+                ),
+              )
+            }
+          }
+          await tx
+            .update(botTestRuns)
+            .set({ status: 'cancelled', activeKey: null, finishedAt: now })
+            .where(and(eq(botTestRuns.domainId, id), isNotNull(botTestRuns.activeKey)))
           // The same statements as `crawls.cancel` and `verifications.cancel`: the jobs notice
           // at their next check that the crawl is no longer running, and stop requesting.
           const ended = { status: 'cancelled', activeKey: null, finishedAt: now } as const
@@ -2899,6 +2945,126 @@ export function createPgDatabase(options: {
       },
     },
 
+    botTests: {
+      async start({ domainId, requestedBy }) {
+        const id = randomUUID(),
+          jobId = randomUUID(),
+          now = new Date()
+        try {
+          await db.transaction(async (tx) => {
+            await assertNotArchived(tx, domainId)
+            await tx.insert(jobs).values({
+              id: jobId,
+              type: JOB_TYPES.botTest,
+              payload: JSON.stringify({ runId: id }),
+              runAt: now,
+              createdAt: now,
+              updatedAt: now,
+            })
+            await tx
+              .insert(botTestRuns)
+              .values({ id, jobId, domainId, requestedBy, activeKey: domainId, createdAt: now })
+          })
+        } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
+          if (await this.active(domainId)) return null
+          throw error
+        }
+        return this.get(id)
+      },
+      async get(id) {
+        return (await db.select().from(botTestRuns).where(eq(botTestRuns.id, id)))[0] ?? null
+      },
+      async active(domainId) {
+        return (
+          (await db.select().from(botTestRuns).where(eq(botTestRuns.activeKey, domainId)))[0] ??
+          null
+        )
+      },
+      async list(domainId) {
+        return await db
+          .select()
+          .from(botTestRuns)
+          .where(eq(botTestRuns.domainId, domainId))
+          .orderBy(desc(botTestRuns.createdAt), desc(botTestRuns.id))
+      },
+      async markRunning(id) {
+        await db
+          .update(botTestRuns)
+          .set({ status: 'running', startedAt: new Date() })
+          .where(
+            and(
+              eq(botTestRuns.id, id),
+              isNotNull(botTestRuns.activeKey),
+              isNull(botTestRuns.startedAt),
+            ),
+          )
+      },
+      async results(id) {
+        const found = await db.select().from(botTestResults).where(eq(botTestResults.runId, id))
+        return found.map((row) => ({
+          ...row,
+          reasons: JSON.parse(row.reasons) as BotTestResult['reasons'],
+        }))
+      },
+      async record(input) {
+        await db.transaction(async (tx) => {
+          const active = (
+            await tx
+              .select()
+              .from(botTestRuns)
+              .where(and(eq(botTestRuns.id, input.runId), isNotNull(botTestRuns.activeKey)))
+              .for('update')
+          )[0]
+          if (!active) return
+          await tx
+            .insert(botTestResults)
+            .values({ ...input, reasons: JSON.stringify(input.reasons) })
+            .onConflictDoNothing()
+        })
+      },
+      async finish(id, status) {
+        await db.transaction(async (tx) => {
+          const current = (
+            await tx
+              .select()
+              .from(botTestRuns)
+              .where(and(eq(botTestRuns.id, id), isNotNull(botTestRuns.activeKey)))
+              .for('update')
+          )[0]
+          if (!current) return
+          await tx
+            .update(botTestRuns)
+            .set({ status, activeKey: null, finishedAt: new Date() })
+            .where(eq(botTestRuns.id, id))
+          const ended = await tx
+            .select({ id: botTestRuns.id })
+            .from(botTestRuns)
+            .where(
+              and(
+                eq(botTestRuns.domainId, current.domainId),
+                isNull(botTestRuns.activeKey),
+                ne(botTestRuns.id, id),
+              ),
+            )
+            .orderBy(desc(botTestRuns.finishedAt), desc(botTestRuns.id))
+          const old = ended.map((row) => row.id)
+          if (old.length) {
+            const removed = await tx
+              .select({ jobId: botTestRuns.jobId })
+              .from(botTestRuns)
+              .where(inArray(botTestRuns.id, old))
+            await tx.delete(jobs).where(
+              inArray(
+                jobs.id,
+                removed.map((row) => row.jobId),
+              ),
+            )
+            await tx.delete(botTestRuns).where(inArray(botTestRuns.id, old))
+          }
+        })
+      },
+    },
     verifications: {
       async start({ domainId, baseCrawlId, urls }) {
         assertVerificationUrls(urls)
