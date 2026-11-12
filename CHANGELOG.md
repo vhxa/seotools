@@ -22,23 +22,19 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Upgrade notes
 
-- One migration adds finding-state storage. Nothing is dismissed after updating. Going back requires restoring the pre-update backup.
-
-- This update adds bot-test storage migrations. Going back to an older image requires restoring the pre-update backup.
-- Migration 0030 adds optional rule grouping without changing existing rows. Going back requires
-  the backup and previous image, as described in `docs/updating.md`.
+- Migrations 0029–0033 add bot access tests, optional audit rule grouping, saved user language,
+  site incidents and finding states. Existing audit rules are unchanged. Going back requires
+  restoring the backup taken before updating together with the previous image, as described in
+  `docs/updating.md`.
+- Nothing is dismissed after updating.
 - On first start, retained crawls are analysed again because the issue catalog changed, using each
   crawl's own configuration. Existing configurations keep the same findings and accepted rows.
-- Migration 0031 adds an optional saved interface language per person. Going back requires the
-  backup and previous image.
-- One migration adds incidents, notice claims and opt-in subscription fields. Going back requires
-  restoring the backup. The first observation of each file after updating is a baseline and does not
-  report an existing problem; certificate and availability thresholds still apply.
+- The first observation of each file after updating is a baseline and does not report an existing
+  problem; certificate and availability thresholds still apply.
 
 ### Added
 
 - Findings can be marked in progress or dismissed per URL or across a domain, with notes, attribution, state filters and CSV exports. Dismissed findings no longer count as pending and are never reported as fixed.
-
 - The robots.txt page offers an on-demand Bot access test comparing homepage responses to published bot User-Agent strings, with explicit limits on what simulated requests can prove.
 - Audit rules can require, allow or forbid a canonical to another URL and the absence of internal
   links. One rule can cover up to 20 paths, and new rules can start from one of five templates
