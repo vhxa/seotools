@@ -14,7 +14,7 @@ Raspberry Pi to a VPS.
   `robots.txt` blocks (auditing it is the point), with per-domain scope, depth, rate limits, request
   headers and Basic Auth for staging sites and lists of URLs. The Crawls area brings runs,
   comparison and rechecks together; schedules, in your time zone, live in Settings → Schedules.
-- **131 checks** grouped by what they are: indexation (noindex, robots.txt, canonicals, sitemaps,
+- **137 checks** grouped by what they are: indexation (noindex, robots.txt, canonicals, sitemaps,
   hreflang), broken references (links, canonicals, hreflang or sitemap entries that fail or
   redirect), and quality (titles, descriptions, headings, content, images, structured data against
   Google's rich result requirements, Open Graph and Twitter tags, accessibility, security, HTML).
@@ -22,8 +22,7 @@ Raspberry Pi to a VPS.
   pages. The detail of each URL previews its search result and its share card.
 - **Your own rules**: say which URLs are expected out of the index, which must carry a noindex or be
   in a sitemap, allow or forbid a canonical to another URL or the absence of internal links, and
-  leave URLs out of the audit; findings a rule expects are shown as accepted, not
-  hidden. Thresholds that are conventions (title length, thin content…) can be set per domain.
+  leave URLs out of the audit; findings a rule expects are shown as accepted, not hidden. Thresholds that are conventions (title length, thin content…) can be set per domain.
 - **Issues and changes**: filter findings, spot template-wide problems, inspect current site files and crawl differences, and see who references broken or redirected targets.
 - **Where every link is**: its text, element and part of the page, how the crawler found each URL,
   and where query parameters enter the site. Ignore selected parameters (exact names or prefixes)

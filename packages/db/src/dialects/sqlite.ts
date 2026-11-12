@@ -467,7 +467,12 @@ export function createSqliteDatabase(options: {
           .where(eq(domainAuditConfig.domainId, domainId))
           .get()
         let version = config?.version ?? 0
-        const rows = tx.select().from(auditRules).where(eq(auditRules.domainId, domainId)).all()
+        const rows = tx
+          .select()
+          .from(auditRules)
+          .where(eq(auditRules.domainId, domainId))
+          .orderBy(asc(auditRules.createdAt), asc(auditRules.id))
+          .all()
         const decided = plan(
           rows,
           { now, newId: randomUUID, languages: languagesOf(config) },

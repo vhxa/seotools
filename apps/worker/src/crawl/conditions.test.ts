@@ -1,3 +1,4 @@
+import oldConditionsBaseline from './fixtures/conditions-semantics5.json'
 import {
   RELATIONS_SEMANTICS,
   AUDIT_CONDITIONS,
@@ -959,7 +960,14 @@ describe('unchanged semantics 5 snapshots', () => {
       ),
     )
     const stored = (await db.crawls.get(id))!
-    const snapshot = stored.auditSnapshot!
+    const snapshot = {
+      ...stored.auditSnapshot!,
+      rules: stored.auditSnapshot!.rules.map((r) => ({
+        ...r,
+        id: `old-${r.dimension}`,
+      })),
+    }
+    await analyseCrawl(db, id, snapshot)
     expect(snapshot.semantics).toBe(5)
     expect(
       snapshot.rules.every((r) => r.dimension !== 'canonical' && r.dimension !== 'unlinked'),
@@ -969,6 +977,9 @@ describe('unchanged semantics 5 snapshots', () => {
       findings: await db.crawls.issuesOf(id, hashes),
       accepted: await db.crawls.acceptedOf(id, hashes),
     }
+    // Baseline captured with checks, conditions, relations and catalog from 026c401 (pre-change),
+    // on the synthetic website above. It includes every pending and accepted row for these URLs.
+    expect(before).toEqual(oldConditionsBaseline)
     expect(before.accepted.map((f) => f.issue).sort()).toEqual([
       'nofollow',
       'noindex',
@@ -1003,9 +1014,8 @@ describe('canonical blocker acceptance', () => {
       expect((await findings(id, '/a')).includes('canonical-not-indexable')).toBe(
         requirement === 'forbidden',
       )
-      expect((await findings(id, '/a')).includes('links-to-canonicalised')).toBe(
-        requirement === 'forbidden',
-      )
+      // This is a reference on the linking page, never the destination's condition.
+      expect(await findings(id, '/a')).toContain('links-to-canonicalised')
       const accepted = await db.crawls.acceptedOf(id, [hashOf('/a')])
       const canonical = accepted.find((f) => f.issue === 'canonical-not-indexable')
       if (requirement !== 'forbidden')
@@ -1026,4 +1036,27 @@ describe('canonical blocker acceptance', () => {
     )
     expect(await findings(id, '/a')).toContain('links-to-canonicalised')
   })
+})
+
+it('unlinked never governs links from only nofollow or noindex pages', async () => {
+  await addRules([asking(prefix('/'), 'unlinked', 'allowed')])
+  const id = await crawl(
+    website({
+      '/': page('/', { head: meta('nofollow'), links: '<a href="/a">A</a>' }),
+      '/b': page('/b', { head: meta('noindex'), links: '<a href="/c">C</a>' }),
+    }),
+  )
+  expect(await findings(id, '/a')).toContain('only-nofollow-inlinks')
+  expect(await findings(id, '/c')).toContain('only-noindex-inlinks')
+})
+
+it('does not infer canonical absence from a partially read page or judge resources', () => {
+  const context = contextWith([asking(prefix('/'), 'canonical', 'required')])
+  const { url, site } = recheckSubject(answerOf('/x', { canonical: null }), context)
+  url.directivesKnown = false
+  expect(presenceOf('canonical', url, site)).toBe('unknown')
+  url.canonicalised = true
+  expect(presenceOf('canonical', url, site)).toBe('present')
+  url.contentPage = false
+  expect(presenceOf('canonical', url, site)).toBe('unknown')
 })

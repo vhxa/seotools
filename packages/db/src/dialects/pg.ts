@@ -457,7 +457,11 @@ export function createPgDatabase(options: {
             .for('update')
         )[0]
         let version = config?.version ?? 0
-        const rows = await tx.select().from(auditRules).where(eq(auditRules.domainId, domainId))
+        const rows = await tx
+          .select()
+          .from(auditRules)
+          .where(eq(auditRules.domainId, domainId))
+          .orderBy(asc(auditRules.createdAt), asc(auditRules.id))
         const decided = plan(
           rows,
           { now, newId: randomUUID, languages: languagesOf(config) },

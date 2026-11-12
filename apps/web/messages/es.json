@@ -2741,7 +2741,7 @@
     },
     "requirement": {
       "required": "Obligatorio",
-      "allowed": "Permitido",
+      "allowed": "Indiferente",
       "forbidden": "Prohibido"
     },
     "conditions": {

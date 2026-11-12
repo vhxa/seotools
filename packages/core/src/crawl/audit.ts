@@ -7,8 +7,8 @@
  *   that a search engine indexed (or did not index) anything.
  *
  * - `conditions`: six facts about a URL (a `noindex`, a `nofollow`, a block in robots.txt, being in a
- *   sitemap), each resolved on its own as `required`, `allowed` or `forbidden`. They are about one
- *   directive or file each: never about whether the URL as a whole can be indexed, which is the
+ *   sitemap, declaring another canonical URL or having no internal links), each resolved on its own as `required`, `allowed` or `forbidden`. They are about one
+ *   observed state each: never about whether the URL as a whole can be indexed, which is the
  *   `intent`, and a block in robots.txt is never read as the URL being out of the index.
  *
  * Everything here is pure and has no Node imports: the worker (analysis), the server actions
@@ -29,7 +29,7 @@ import {
 import { isInternalUrl, normalizeCrawlUrl } from './normalize'
 
 /**
- * The facts a rule can ask for or rule out on a URL. Each is one directive or file, kept apart from
+ * The facts a rule can ask for or rule out on a URL. Each is one observed state, kept apart from
  * the indexability of the URL as a whole (`intent`):
  * - `noindex`: the page declares `noindex` (robots meta tag or `X-Robots-Tag`).
  * - `nofollow`: the page declares `nofollow` for itself. Links marked `rel="nofollow"` are other issues.
@@ -147,7 +147,7 @@ export const AUDIT_LIMITS = {
   reason: 500,
   /** Characters of a path or a query typed into a selector. */
   selector: 2048,
-  /** Rules a domain can have, enabled or not: the analysis of a crawl keeps a copy of them. */
+  /** Statement rows a domain can have, enabled or not: every crawl keeps an enabled snapshot. */
   rulesPerDomain: 500,
   /** Selectors one path rule can cover. */
   pathsPerRule: 20,
