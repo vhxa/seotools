@@ -79,6 +79,18 @@ export function describeLifecycle(
     async function populated(host: string, companyName = `${host} Inc`) {
       const { domain, company: owner } = await company(companyName, host)
       const domainId = domain.id
+      const botRun = await db.botTests.start({ domainId, requestedBy: 'editor' })
+      await db.botTests.record({
+        runId: botRun!.id,
+        botToken: 'baseline',
+        statusCode: 200,
+        finalUrl: `https://${host}/`,
+        responseTimeMs: 1,
+        bytes: 2,
+        errorCode: null,
+        verdict: 'unknown',
+        reasons: [],
+      })
       const url = `https://${host}/`
       const other = `https://${host}/about`
       await db.crawls.saveSettings(domainId, { ...DEFAULT_CRAWL_SETTINGS, concurrency: 3 })
@@ -95,6 +107,14 @@ export function describeLifecycle(
         type: 'full',
         enabled: true,
         nextRunAt: new Date(Date.now() + DAY),
+      })
+      await db.audit.setFindingStates({
+        domainId,
+        issue: 'title-missing',
+        urlHashes: [null],
+        state: 'in-progress',
+        note: '',
+        setBy: member.id,
       })
       await db.priorityUrls.add({ domainId, url })
       await db.audit.saveRule({
@@ -133,6 +153,10 @@ export function describeLifecycle(
           fetchedAt: new Date(),
         },
       ])
+      const [robotsFile] = await db.crawlFiles.list(domainId, ['robots'])
+      await db.crawlFiles.save(domainId, [{ ...robotsFile!, body: 'User-agent: *\nDisallow: /' }])
+      const incident = (await db.incidents.list(domainId))[0]!
+      await db.incidents.claim(incident.id, member.id, incident.stage)
       await db.crawlFiles.requestCheck({ domainId, now: new Date() })
 
       // An older crawl, whose results are pruned to the compact history below.
@@ -195,6 +219,7 @@ export function describeLifecycle(
         { pageHash: crawlUrlHash(url), lang: 'es', url: `${url}es` },
       ])
       await db.crawls.finish(crawl.id, { status: 'completed' })
+      await db.vitals.queueAlerts(crawl.id)
       const vital = {
         ...emptyVitals(),
         crawlId: crawl.id,
@@ -355,6 +380,16 @@ export function describeLifecycle(
             type: 'priority',
             enabled: true,
             nextRunAt: new Date(),
+          }),
+        )
+        await refused(
+          db.audit.setFindingStates({
+            domainId: site.domainId,
+            issue: 'title-missing',
+            urlHashes: [null],
+            state: 'dismissed',
+            note: '',
+            setBy: '',
           }),
         )
         await refused(db.priorityUrls.add({ domainId: site.domainId, url: `${site.url}new` }))

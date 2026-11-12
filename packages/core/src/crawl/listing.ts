@@ -76,3 +76,7 @@ export function statusRange(filter: Exclude<StatusFilter, 'none'>): { min: numbe
   const hundred = Number(filter[0]) * 100
   return { min: hundred, max: hundred + 100 }
 }
+
+/** Workflow labels for findings. In progress still counts as pending; dismissed findings do not. */
+export const FINDING_STATE_FILTERS = ['pending', 'in-progress', 'dismissed'] as const
+export type FindingStateFilter = (typeof FINDING_STATE_FILTERS)[number]

@@ -6,6 +6,8 @@ export function describeAcceptance(
   translate: (key: string, values?: Record<string, string | number>) => string,
 ): string {
   switch (acceptance.kind) {
+    case 'dismissal':
+      return translate('FindingStates.dismissedByPerson')
     case 'condition':
       return translate('UrlDetail.accepted.condition', {
         condition: translate(`AuditStatements.conditions.${acceptance.condition}.label`),

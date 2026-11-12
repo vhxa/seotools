@@ -443,6 +443,7 @@ export const isPageLocalIssue = (issue: string) => PAGE_LOCAL.has(issue)
 
 /** Why a crawl cannot say whether a URL has an issue. */
 export type UnknownReason =
+  | 'dismissed'
   | 'pruned'
   | 'unanalysed'
   | 'not-seen'
@@ -466,6 +467,7 @@ export interface UrlEvidence {
   /** Ids of the issues reported for it. */
   issues: ReadonlySet<string>
   /** Ids of the issues the crawl saw and a rule accepts: not reported, and not fixed either. */
+  dismissed?: ReadonlySet<string>
   accepted?: ReadonlySet<string>
 }
 
@@ -502,6 +504,7 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   if (!url.requested) return unknown('not-requested')
   if (url.participation === 'excluded') return unknown('excluded')
   if (url.participation === null) return unknown('participation')
+  if (url.dismissed?.has(issue)) return unknown('dismissed')
   // A crawl that never recorded what the check reads cannot say the URL does not have the issue.
   if (crawl.unobserved?.has(issue)) return unknown('unobserved')
   // An incomplete crawl lacks pages that others link from, copy or point to: it can report what is
@@ -558,6 +561,7 @@ export const FINDING_CHANGES = [
   'reappeared',
   'resolved',
   'accepted',
+  'dismissed',
   'excluded',
   'audited',
   'unverified',
@@ -625,6 +629,7 @@ export function classifyFinding(
     }
     // The later crawl cannot say.
     if (b.presence === 'unknown') {
+      if (b.reason === 'dismissed') return change('dismissed', 'base')
       return b.reason === 'excluded'
         ? change('excluded', 'base')
         : change('unverified', 'base', [b.reason])
@@ -724,6 +729,7 @@ export interface TraceLike {
   urlHash: string
   snapshot: { state: string }
   issues: readonly { issue: string }[]
+  dismissed?: readonly string[] | undefined
   accepted?: readonly string[] | undefined
   audit: {
     participation: AuditParticipation
@@ -741,6 +747,7 @@ export function urlEvidenceOf(trace: TraceLike): UrlEvidence {
     conditions: conditionsKey(trace.audit?.conditions ?? {}),
     issues: new Set(trace.issues.map(({ issue }) => issue)),
     accepted: new Set(trace.accepted ?? []),
+    dismissed: new Set(trace.dismissed ?? []),
   }
 }
 
@@ -760,7 +767,10 @@ export function evidenceOf(
 ): Evidence[] {
   return crawls.map((crawl) => {
     const trace = traces.get(`${crawl.id}:${urlHash}`)
-    return { crawl: crawlFactsOf(crawl), url: trace ? urlEvidenceOf(trace) : null }
+    return {
+      crawl: crawlFactsOf(crawl),
+      url: trace ? urlEvidenceOf(trace) : null,
+    }
   })
 }
 

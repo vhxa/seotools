@@ -1,3 +1,4 @@
+import { createIncidentAlertsHandler, createVitalsAlertsHandler } from './handlers/incident-alerts'
 import { randomBytes } from 'node:crypto'
 import { hostname } from 'node:os'
 import {
@@ -21,7 +22,7 @@ import { createHttpFetcher } from './crawl/fetcher'
 import { createCrawlFileRefresher } from './crawl/file-refresher'
 import { reanalyseOutdatedCrawls } from './crawl/reanalysis'
 import { createFaviconRefresher } from './favicon/refresh'
-import { handlers } from './handlers'
+import { handlers, createBotTestHandler } from './handlers'
 import { createAccessEmailHandler } from './handlers/access-email'
 import { createAuditRecomputeHandler } from './handlers/audit-recompute'
 import { createCrawlAlertsHandler } from './handlers/crawl-alerts'
@@ -71,7 +72,7 @@ async function main() {
     lockTimeoutMs: env.JOB_LOCK_TIMEOUT_MS,
   }
   // Both make requests to a site, so both run in the crawl lane.
-  const crawlTypes = [JOB_TYPES.crawlRun, JOB_TYPES.urlVerify]
+  const crawlTypes = [JOB_TYPES.crawlRun, JOB_TYPES.urlVerify, JOB_TYPES.botTest]
   const runner = createRunner({
     ...shared,
     log,
@@ -79,6 +80,11 @@ async function main() {
       ...handlers,
       [JOB_TYPES.auditRecompute]: createAuditRecomputeHandler({ db }),
       [JOB_TYPES.accessEmail]: createAccessEmailHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
+      [JOB_TYPES.incidentAlerts]: createIncidentAlertsHandler({
+        db,
+        publicUrl: env.BETTER_AUTH_URL,
+      }),
+      [JOB_TYPES.vitalsAlerts]: createVitalsAlertsHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
       [JOB_TYPES.crawlAlerts]: createCrawlAlertsHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
       [JOB_TYPES.mailSend]: createMailSendHandler({ db }),
     },
@@ -92,6 +98,13 @@ async function main() {
     handlers: {
       [JOB_TYPES.crawlRun]: createCrawlRunHandler({
         db,
+        allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
+        appVersion: pkg.version,
+        settingsSecret: settingsKeyFrom(env),
+      }),
+      [JOB_TYPES.botTest]: createBotTestHandler({
+        db,
+        paused,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,
         settingsSecret: settingsKeyFrom(env),
@@ -123,11 +136,14 @@ async function main() {
     )
   // The record of sent email is capped by count and age, so it cannot grow forever.
   const pruneDeliveries = () =>
-    db.mail
-      .prune({
-        before: new Date(Date.now() - MAIL_DELIVERIES_MAX_AGE_MS),
-        keep: MAIL_DELIVERIES_KEEP,
-      })
+    db.incidents
+      .prune(new Date(Date.now() - 90 * 86400000))
+      .then(() =>
+        db.mail.prune({
+          before: new Date(Date.now() - MAIL_DELIVERIES_MAX_AGE_MS),
+          keep: MAIL_DELIVERIES_KEEP,
+        }),
+      )
       .then(() =>
         // The compact history of old crawls goes after its domain's days, crawl or no crawl.
         db.crawls.expireHistory({

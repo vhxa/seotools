@@ -5,6 +5,7 @@ import {
   isInternalUrl,
   normalizeCrawlUrl,
   type CrawlUrlSource,
+  type RecheckPreview,
   type VerificationComparison,
 } from '@seotools/core'
 import type { Verification, VerifiedUrl } from '@seotools/db'
@@ -100,6 +101,61 @@ export function viewRecheck(input: {
       : null,
     notComparable: comparable ? null : analysed ? 'rules-changed' : 'not-analysed',
   }
+}
+
+/**
+ * What the newest recheck of a URL says about its share preview, when it is later than the latest
+ * crawl: what it read of the page, or how the URL answered instead of a page.
+ */
+export type RecheckPreviewSource =
+  | { kind: 'page'; at: Date; preview: RecheckPreview }
+  | {
+      kind: 'not-page'
+      at: Date
+      /** What it answered: a redirect, a status that is not a success, a failure or not HTML. */
+      answer:
+        | { type: 'redirect'; statusCode: number | null; to: string | null }
+        | { type: 'status'; statusCode: number }
+        | { type: 'not-html'; statusCode: number; contentType: string | null }
+        | { type: 'no-answer' }
+    }
+
+/**
+ * Whether the preview of the latest crawl is to be replaced by the one of a recheck. Only for the
+ * latest crawl (`historical` is false): an older crawl is shown as it was. `view` is already `null`
+ * for no recheck, a recheck older than the crawl and one pruned; one that saw a page but kept no
+ * preview (made before it was kept) says nothing, and the crawl's preview stands.
+ */
+export function previewSourceOf(input: {
+  view: RecheckView | null
+  historical: boolean
+}): RecheckPreviewSource | null {
+  const { view } = input
+  if (input.historical || !view) return null
+  const { verified, verifiedAt } = view
+  const preview = verified.outcome?.preview
+  if (preview) return { kind: 'page', at: verifiedAt, preview }
+  const status = verified.statusCode
+  if (status === null) return { kind: 'not-page', at: verifiedAt, answer: { type: 'no-answer' } }
+  if (verified.kind === 'redirect' || (status >= 300 && status < 400)) {
+    return {
+      kind: 'not-page',
+      at: verifiedAt,
+      answer: { type: 'redirect', statusCode: status, to: verified.redirectTo },
+    }
+  }
+  if (status < 200 || status >= 300) {
+    return { kind: 'not-page', at: verifiedAt, answer: { type: 'status', statusCode: status } }
+  }
+  if (verified.kind !== 'page') {
+    return {
+      kind: 'not-page',
+      at: verifiedAt,
+      answer: { type: 'not-html', statusCode: status, contentType: verified.contentType },
+    }
+  }
+  // A page that answered, from a recheck that did not keep its preview: it says nothing.
+  return null
 }
 
 /** How long a finished recheck is announced: a banner that never goes away is not news. */

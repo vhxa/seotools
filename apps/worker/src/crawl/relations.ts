@@ -20,8 +20,8 @@ import type { AuditedUrl, Site } from './site-audit'
  * - `noindex`: accepted by the `noindex` condition when a rule requires or allows it, or, when no
  *   rule states that condition, by an expectation of `not-indexable`. A `forbidden` noindex is not
  *   accepted whatever the expectation says: the condition decides its own state.
- * - `canonical` (its canonical is elsewhere): accepted by an expectation of `not-indexable`, which no
- *   condition covers.
+ * - `canonical` (its canonical is elsewhere): accepted by its canonical condition when required or allowed, or by an
+ *   expectation of `not-indexable` when no canonical condition is stated.
  * - `robots` (blocked by robots.txt): accepted by the `robots` condition when required or allowed.
  *   An expectation of `not-indexable` does not accept it: a block keeps crawlers from reading a
  *   page, not from listing the URL, so it is no proof of being out of the index.
@@ -68,7 +68,7 @@ function rulesAccepting(
         : blocker === 'robots'
           ? url.conditions.robots.rule
           : blocker === 'canonical'
-            ? url.intentRule
+            ? (url.conditions.canonical.rule ?? url.intentRule)
             : null
     if (rule) rules.add(rule.id)
   }
@@ -78,7 +78,7 @@ function rulesAccepting(
 /** The blockers of a URL's indexation that what is declared of it accepts. */
 export function acceptedBlockers(url: Declared): ReadonlySet<IndexabilityBlocker> {
   const accepted = new Set<IndexabilityBlocker>()
-  const { noindex, robots } = url.conditions
+  const { noindex, robots, canonical } = url.conditions
   if (
     noindex.requirement === null
       ? url.intent === 'not-indexable'
@@ -86,7 +86,12 @@ export function acceptedBlockers(url: Declared): ReadonlySet<IndexabilityBlocker
   ) {
     accepted.add('noindex')
   }
-  if (url.intent === 'not-indexable') accepted.add('canonical')
+  if (
+    canonical.requirement === null
+      ? url.intent === 'not-indexable'
+      : canonical.requirement !== 'forbidden'
+  )
+    accepted.add('canonical')
   if (robots.requirement === 'required' || robots.requirement === 'allowed') accepted.add('robots')
   return accepted
 }

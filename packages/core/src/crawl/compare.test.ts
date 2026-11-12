@@ -903,3 +903,17 @@ it('never labels findings new, resolved or reappeared across changed URL identit
     ).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
   }
 })
+
+it('never calls a dismissal fixed or an undismissal new, including compact traces', () => {
+  const base = { crawl: facts(), url: url(['title-missing']) }
+  const target = {
+    crawl: facts(),
+    url: url([], { dismissed: new Set(['title-missing']), accepted: new Set(['title-missing']) }),
+  }
+  expect(observe('title-missing', target)).toEqual({ presence: 'unknown', reason: 'dismissed' })
+  expect(classifyFinding('title-missing', { base, target })).toMatchObject({ kind: 'dismissed' })
+  expect(classifyFinding('title-missing', { base: target, target: base })).toMatchObject({
+    kind: 'unverified',
+    reasons: ['dismissed'],
+  })
+})

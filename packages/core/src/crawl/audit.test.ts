@@ -388,6 +388,8 @@ describe('resolving a URL', () => {
         nofollow: { requirement: null, rule: null },
         robots: { requirement: null, rule: null },
         sitemap: { requirement: null, rule: null },
+        canonical: { requirement: null, rule: null },
+        unlinked: { requirement: null, rule: null },
       },
     })
   })
@@ -1490,4 +1492,15 @@ describe('intentOutcome for the intents that exist', () => {
     const configurable: IndexIntent[] = ['indexable', 'not-indexable']
     expect(configurable).toHaveLength(2)
   })
+})
+
+it('round trips dismissal snapshots, omits progress, and reads legacy snapshots without dismissals', () => {
+  const snapshot = auditSnapshotOf(3, [], undefined, undefined, [
+    { id: 'd', issue: 'title-missing', urlHash: null, state: 'dismissed' },
+    { id: 'p', issue: 'title-missing', urlHash: 'hash', state: 'pending' },
+    { id: 'i', issue: 'description-missing', urlHash: 'hash', state: 'in-progress' },
+  ])
+  expect(parseAuditSnapshot(JSON.stringify(snapshot))?.dismissals).toEqual(snapshot.dismissals)
+  expect(snapshot.dismissals).toHaveLength(2)
+  expect(parseAuditSnapshot('{"version":0,"rules":[]}')?.dismissals).toBeUndefined()
 })

@@ -1,3 +1,4 @@
+import { Incidents } from '@/components/incidents'
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { compareWithPrevious } from '@seotools/db'
 import { TriangleAlertIcon } from 'lucide-react'
@@ -42,6 +43,7 @@ export default async function DomainDashboardPage({
   const { domain, canEdit } = await requireDomain(host)
   const [t, format] = await Promise.all([getTranslations('Dashboard'), getFormatter()])
   const db = await getDb()
+  const incidents = await db.incidents.list(domain.id)
   const viewer = await requireViewer()
   const favouriteDomainId = await db.userPreferences.favouriteDomainId(viewer.session.user.id)
   const [active, latest, crawls, config] = await Promise.all([
@@ -89,6 +91,7 @@ export default async function DomainDashboardPage({
 
   return (
     <main className="grid gap-8">
+      <Incidents open={incidents} />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="grid min-w-0 gap-1">
           <div className="flex items-center gap-2">

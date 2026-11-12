@@ -1,3 +1,6 @@
+import { Incidents } from '@/components/incidents'
+import { FindingStateActions } from '@/components/audit/finding-state-actions'
+import { FindingStatesList } from '@/components/audit/finding-states-list'
 import { issuePairReasons } from '@seotools/core/crawl/compare'
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
@@ -50,6 +53,10 @@ export default async function IssuesPage({
     getTranslations('IssueCatalog'),
   ])
   const db = await getDb()
+  const incidents = await db.incidents.list(
+    domain.id,
+    new Date(new Date().getTime() - 30 * 86400000),
+  )
   const [latest, config] = await Promise.all([
     db.crawls.latestWithResults(domain.id, 'full'),
     db.audit.config(domain.id),
@@ -90,7 +97,10 @@ export default async function IssuesPage({
   const checked = latest !== null && latest.pagesWithType !== null && !latest.pruned
   const [counts, acceptedCounts] =
     latest && checked
-      ? await Promise.all([db.crawls.issueCounts(latest.id), db.crawls.acceptedCounts(latest.id)])
+      ? await Promise.all([
+          db.crawls.issueCounts(latest.id),
+          db.crawls.acceptedCounts(latest.id, 'rule'),
+        ])
       : [[], []]
   const issues = rankIssueCounts(
     counts.filter(
@@ -100,6 +110,25 @@ export default async function IssuesPage({
     ),
   )
   const accepted = rankIssueCounts(acceptedCounts.filter((row) => matches(row.issue)))
+  const dismissedCounts =
+    latest && checked ? await db.crawls.acceptedCounts(latest.id, 'dismissal') : []
+  const decisions = await getTranslations('FindingStates')
+  // Only issues a person labelled: every other count is 0 without asking the database.
+  const labelled = new Set(
+    config.findingStates.filter((row) => row.state === 'in-progress').map((row) => row.issue),
+  )
+  const progress = new Map<string, number>()
+  if (latest && checked)
+    for (const row of counts.filter((r) => labelled.has(r.issue)))
+      progress.set(
+        row.issue,
+        await db.crawls.countListed({
+          crawlId: latest.id,
+          view: 'all',
+          issue: row.issue,
+          state: 'in-progress',
+        }),
+      )
   const query = parseDetailQuery({})
 
   return (
@@ -109,6 +138,10 @@ export default async function IssuesPage({
         <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 
+      <Incidents
+        open={incidents.filter((i) => !i.resolvedAt)}
+        history={incidents.filter((i) => i.resolvedAt !== null)}
+      />
       <section className="grid gap-2" aria-labelledby="site-findings">
         <h2 id="site-findings" className="text-lg font-medium">
           {t('site.title')}
@@ -235,6 +268,25 @@ export default async function IssuesPage({
                   <IssueRows
                     extra={(issue, pages) => (
                       <>
+                        {(() => {
+                          const inProgress = progress.get(issue) ?? 0
+                          const dismissed =
+                            dismissedCounts.find((r) => r.issue === issue)?.pages ?? 0
+                          const shown = [
+                            ...(inProgress > 0
+                              ? [decisions('inProgressCount', { count: inProgress })]
+                              : []),
+                            ...(dismissed > 0
+                              ? [decisions('dismissedCount', { count: dismissed })]
+                              : []),
+                          ]
+                          return shown.length > 0 ? (
+                            <span className="text-xs text-muted-foreground">
+                              {shown.join(' · ')}
+                            </span>
+                          ) : null
+                        })()}
+                        <FindingStateActions host={host} issue={issue} />
                         {(latest.pagesAudit?.audited ?? 0) >= 20 &&
                           pages >= (latest.pagesAudit?.audited ?? 0) * 0.9 && (
                             <span
@@ -297,6 +349,21 @@ export default async function IssuesPage({
               </section>
             )
           })}
+          {dismissedCounts.some((r) => matches(r.issue)) && (
+            <section className="grid gap-2">
+              <h2 className="text-lg font-medium">{decisions('dismissed')}</h2>
+              <IssueRows
+                rows={rankIssueCounts(dismissedCounts.filter((r) => matches(r.issue)))}
+                hrefOf={(issue) => detailHref(host, query, { issue, state: 'dismissed' })}
+                countLabel={(pages) => t('urls', { count: pages })}
+              />
+            </section>
+          )}
+          <FindingStatesList
+            host={host}
+            rows={config.findingStates.filter((row) => matches(row.issue))}
+            limit={50}
+          />
           {accepted.length > 0 && (
             <section aria-labelledby="accepted">
               <h2 id="accepted" className="mb-2 flex items-center text-lg font-medium">
@@ -305,11 +372,16 @@ export default async function IssuesPage({
               </h2>
               <IssueRows
                 rows={accepted}
-                hrefOf={(issue) => detailHref(domain.host, query, { accepted: issue })}
+                hrefOf={(issue) =>
+                  detailHref(domain.host, query, { accepted: issue, acceptanceKind: 'rule' })
+                }
                 countLabel={(pages) => t('urls', { count: pages })}
               />
               <Link
-                href={detailHref(domain.host, query, { accepted: ANY_ACCEPTED })}
+                href={detailHref(domain.host, query, {
+                  accepted: ANY_ACCEPTED,
+                  acceptanceKind: 'rule',
+                })}
                 className="mt-2 inline-block text-sm underline-offset-4 hover:underline"
               >
                 {t('accepted.viewAll')}

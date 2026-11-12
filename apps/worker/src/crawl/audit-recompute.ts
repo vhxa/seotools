@@ -60,6 +60,7 @@ export async function recomputeAudit(options: {
       config.rules,
       config.languages,
       config.thresholds,
+      config.findingStates,
     )
     const latest = await db.crawls.latestWithResults(domainId, 'full')
     const crawl = options.crawlId ? await db.crawls.get(options.crawlId) : latest

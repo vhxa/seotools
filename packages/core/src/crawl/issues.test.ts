@@ -18,7 +18,7 @@ describe('the catalog', () => {
     // An id repeated across categories would be lost in `PAGE_ISSUES`.
     expect(new Set(listed).size).toBe(listed.length)
     expect([...listed].sort()).toEqual([...PAGE_ISSUE_IDS].sort())
-    expect(listed).toHaveLength(134)
+    expect(listed).toHaveLength(137)
   })
 
   it('knows the category of each issue', () => {
@@ -81,6 +81,9 @@ describe('the catalog', () => {
       'nofollow-required-missing',
       'robots-block-required-missing',
       'sitemap-required-missing',
+      'canonical-required-missing',
+      'canonical-forbidden-present',
+      'unlinked-required-missing',
       'sitemap-forbidden-present',
     ])
     for (const id of issuesOfCategory('indexing-intent')) {

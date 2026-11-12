@@ -7,7 +7,16 @@ import type { ReactNode } from 'react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 /** A hoverable help button that also opens on click, touch, Enter or Space. */
-export function InfoHelp({ label, children }: { label: string; children: ReactNode }) {
+export function InfoHelp({
+  label,
+  children,
+  compact,
+}: {
+  label: string
+  children: ReactNode
+  /** A smaller button, for dense forms. */
+  compact?: boolean
+}) {
   const t = useTranslations('Help')
   return (
     <Popover.Root>
@@ -15,9 +24,9 @@ export function InfoHelp({ label, children }: { label: string; children: ReactNo
         openOnHover
         closeDelay={150}
         aria-label={t('about', { subject: label })}
-        className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        className={`inline-flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${compact ? 'size-6' : 'size-8'}`}
       >
-        <InfoIcon aria-hidden className="size-4" />
+        <InfoIcon aria-hidden className={compact ? 'size-3.5' : 'size-4'} />
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner sideOffset={6} className="z-50">

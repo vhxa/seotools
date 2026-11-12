@@ -1,3 +1,8 @@
+import type { FindingStateRecord } from '../types'
+import type { BotTestResult } from '../types'
+import { detectIncidents, INCIDENT_STAGES } from '@seotools/core/incidents'
+import { incidentAlertJobId, vitalsAlertJobId } from '../mapping'
+import type { SiteIncident, NewCrawlFile } from '../types'
 import { referenceGroup } from '@seotools/core/crawl/links'
 import { CRAWL_LINK_KINDS } from '@seotools/core'
 import { randomUUID } from 'node:crypto'
@@ -28,6 +33,7 @@ import {
   lt,
   lte,
   ne,
+  not,
   notExists,
   notInArray,
   or,
@@ -62,6 +68,7 @@ import {
   type AuditPlan,
   type AuditRuleRow,
   type PlanContext,
+  planFindingStates,
   planThresholds,
   thresholdColumns,
   thresholdsOf,
@@ -139,6 +146,7 @@ import {
   verificationJobValues,
   verificationOutcomeColumn,
   crawlHistoryRow,
+  groupAcceptedIssues,
   groupIssues,
   historyExpired,
   historyTrace,
@@ -207,10 +215,15 @@ const {
   crawlUrlHistory,
   crawlUrlLinks,
   priorityUrls,
+  findingStates,
   auditRules,
   domainAuditConfig,
+  botTestRuns,
+  botTestResults,
   urlVerifications,
   urlVerificationUrls,
+  siteIncidents,
+  incidentNotices,
 } = schema
 
 /** `limit` when a list is not capped. */
@@ -273,7 +286,7 @@ export function createPgDatabase(options: {
         .select({ urlHash: crawlUrlIssues.urlHash })
         .from(crawlUrlIssues)
         .where(and(eq(crawlUrlIssues.crawlId, crawlId), eq(crawlUrlIssues.issue, issue))),
-    withAccepted: (issue: string | null) =>
+    withAccepted: (issue: string | null, kind?: 'rule' | 'dismissal') =>
       db
         .select({ urlHash: crawlUrlAcceptedIssues.urlHash })
         .from(crawlUrlAcceptedIssues)
@@ -281,8 +294,68 @@ export function createPgDatabase(options: {
           and(
             eq(crawlUrlAcceptedIssues.crawlId, crawlId),
             issue === null ? undefined : eq(crawlUrlAcceptedIssues.issue, issue),
+            kind === 'dismissal'
+              ? like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%')
+              : kind === 'rule'
+                ? not(like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%'))
+                : undefined,
           ),
         ),
+    withState: (state: string, issue?: string) => {
+      if (state === 'dismissed')
+        return db
+          .select({ urlHash: crawlUrlAcceptedIssues.urlHash })
+          .from(crawlUrlAcceptedIssues)
+          .where(
+            and(
+              eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+              issue ? eq(crawlUrlAcceptedIssues.issue, issue) : undefined,
+              like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%'),
+            ),
+          )
+      const specific = alias(findingStates, 'specific_finding_state')
+      const progress = exists(
+        db
+          .select({ id: findingStates.id })
+          .from(findingStates)
+          .innerJoin(crawls, eq(crawls.domainId, findingStates.domainId))
+          .where(
+            and(
+              eq(crawls.id, crawlId),
+              eq(findingStates.issue, crawlUrlIssues.issue),
+              eq(findingStates.state, 'in-progress'),
+              or(
+                eq(findingStates.urlHash, crawlUrlIssues.urlHash),
+                and(
+                  isNull(findingStates.urlHash),
+                  notExists(
+                    db
+                      .select({ id: specific.id })
+                      .from(specific)
+                      .where(
+                        and(
+                          eq(specific.domainId, findingStates.domainId),
+                          eq(specific.issue, findingStates.issue),
+                          eq(specific.urlHash, crawlUrlIssues.urlHash),
+                        ),
+                      ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      )
+      return db
+        .select({ urlHash: crawlUrlIssues.urlHash })
+        .from(crawlUrlIssues)
+        .where(
+          and(
+            eq(crawlUrlIssues.crawlId, crawlId),
+            issue ? eq(crawlUrlIssues.issue, issue) : undefined,
+            state === 'in-progress' ? progress : not(progress),
+          ),
+        )
+    },
     withAudit: (filter: Parameters<typeof crawlAuditWhere>[2]) =>
       db
         .select({ urlHash: crawlUrlAudit.urlHash })
@@ -441,6 +514,7 @@ export function createPgDatabase(options: {
       rows: AuditRuleRow[],
       context: PlanContext,
       config: AuditStateRow | undefined,
+      states: FindingStateRecord[],
     ) => AuditPlan,
   ) =>
     ensureAuditConfig(domainId).then(() =>
@@ -454,12 +528,33 @@ export function createPgDatabase(options: {
             .for('update')
         )[0]
         let version = config?.version ?? 0
-        const rows = await tx.select().from(auditRules).where(eq(auditRules.domainId, domainId))
+        const rows = await tx
+          .select()
+          .from(auditRules)
+          .where(eq(auditRules.domainId, domainId))
+          .orderBy(asc(auditRules.createdAt), asc(auditRules.id))
+        const stateRows = await tx
+          .select()
+          .from(findingStates)
+          .where(eq(findingStates.domainId, domainId))
         const decided = plan(
           rows,
           { now, newId: randomUUID, languages: languagesOf(config) },
           config,
+          stateRows,
         )
+        if (decided.ok && decided.states) {
+          const kept = new Set(decided.states.map((r) => r.id))
+          for (const row of stateRows)
+            if (!kept.has(row.id))
+              await tx.delete(findingStates).where(eq(findingStates.id, row.id))
+          for (const row of decided.states) {
+            const before = stateRows.find((r) => r.id === row.id)
+            if (!before) await tx.insert(findingStates).values(row)
+            else if (before !== row)
+              await tx.update(findingStates).set(row).where(eq(findingStates.id, row.id))
+          }
+        }
         if (decided.ok && planChanges(decided)) {
           for (const change of inApplyOrder(decided.changes)) {
             if (change.op === 'delete')
@@ -586,9 +681,13 @@ export function createPgDatabase(options: {
           .from(crawlUrlIssues)
           .where(and(eq(crawlUrlIssues.crawlId, crawlId), inArray(crawlUrlIssues.urlHash, hashes))),
       )
-      const accepted = groupIssues(
+      const accepted = groupAcceptedIssues(
         await tx
-          .select({ urlHash: crawlUrlAcceptedIssues.urlHash, issue: crawlUrlAcceptedIssues.issue })
+          .select({
+            urlHash: crawlUrlAcceptedIssues.urlHash,
+            issue: crawlUrlAcceptedIssues.issue,
+            details: crawlUrlAcceptedIssues.details,
+          })
           .from(crawlUrlAcceptedIssues)
           .where(
             and(
@@ -637,6 +736,109 @@ export function createPgDatabase(options: {
    * go by cascade, and a job that finds its crawl gone has nothing left to do; deleting the job
    * too means a running one is not retried, and a queued one never starts.
    */
+  const recordFiles = async (
+    tx: Pick<typeof db, 'select' | 'insert' | 'update'>,
+    domainId: string,
+    files: NewCrawlFile[],
+    check?: { outcome: 'ok' | 'unreachable' | 'tls-error'; checkedAt: Date; nextCheckAt: Date },
+  ) => {
+    const [domain] = await tx.select().from(domains).where(eq(domains.id, domainId)).for('update')
+    if (!domain || domain.archivedAt) return
+    const previous = (await tx.select().from(crawlFiles).where(eq(crawlFiles.domainId, domainId)))
+      .filter((row) => row.incidentObserved)
+      .map(toCrawlFile)
+    const [previousCheck] = await tx
+      .select()
+      .from(crawlFileChecks)
+      .where(eq(crawlFileChecks.domainId, domainId))
+    const active = (await tx
+      .select()
+      .from(siteIncidents)
+      .where(
+        and(eq(siteIncidents.domainId, domainId), isNull(siteIncidents.resolvedAt)),
+      )) as SiteIncident[]
+    const now = check?.checkedAt ?? files[files.length - 1]?.fetchedAt ?? new Date()
+    if (
+      check?.outcome === 'unreachable' &&
+      files.some(
+        (file) => file.error && /CERT_|TLS_|SSL_|SELF_SIGNED|UNABLE_TO_VERIFY/.test(file.error),
+      )
+    )
+      check = { ...check, outcome: 'tls-error' }
+    const changes = detectIncidents({
+      origin: `https://${domain.host}/`,
+      previous,
+      files,
+      previousCheck: previousCheck ? toCrawlFileCheck(previousCheck) : null,
+      ...(check ? { check } : {}),
+      active,
+      now,
+    })
+    for (const file of check && check.outcome !== 'ok' ? [] : files) {
+      await tx
+        .insert(crawlFiles)
+        .values({ ...crawlFileRow(domainId, file), incidentObserved: true })
+        .onConflictDoUpdate({
+          target: [crawlFiles.domainId, crawlFiles.urlHash],
+          set: { ...crawlFileColumns(file), incidentObserved: true },
+        })
+    }
+    if (check) {
+      const values = { ...check, requestedAt: null }
+      await tx
+        .insert(crawlFileChecks)
+        .values({ domainId, ...values })
+        .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
+    }
+    const queue = async (id: string, stage: string, details: string) => {
+      await tx
+        .insert(jobs)
+        .values({
+          id: incidentAlertJobId(id, stage),
+          type: 'incident.alerts',
+          payload: JSON.stringify({
+            incidentId: id,
+            stage,
+            observedAt: now.toISOString(),
+            details,
+          }),
+          runAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+    }
+    for (const incident of changes.open) {
+      const id = randomUUID(),
+        event = incident.stage === 'changed'
+      await tx.insert(siteIncidents).values({
+        ...incident,
+        id,
+        domainId,
+        activeKey: event ? null : `${incident.kind} ${incident.subject}`,
+        openedAt: now,
+        lastSeenAt: now,
+        resolvedAt: event ? now : null,
+      })
+      await queue(id, incident.stage, incident.details)
+    }
+    for (const incident of changes.escalate) {
+      const old = active.find((i) => i.id === incident.id)!
+      await tx
+        .update(siteIncidents)
+        .set({ stage: incident.stage, details: incident.details, lastSeenAt: now })
+        .where(eq(siteIncidents.id, incident.id))
+      if (old.stage !== incident.stage) await queue(incident.id, incident.stage, incident.details)
+    }
+    for (const incident of changes.resolve) {
+      await tx
+        .update(siteIncidents)
+        .set({ activeKey: null, resolvedAt: now, lastSeenAt: now })
+        .where(eq(siteIncidents.id, incident.id))
+      await queue(incident.id, 'resolved', incident.details)
+    }
+  }
+
   const removeJobsOf = async (tx: Pick<typeof db, 'select' | 'delete'>, domainIds: string[]) => {
     if (domainIds.length === 0) return
     const ids = [
@@ -645,7 +847,12 @@ export function createPgDatabase(options: {
           .select({ id: crawls.jobId, crawlId: crawls.id })
           .from(crawls)
           .where(inArray(crawls.domainId, domainIds))
-      ).flatMap((row) => [row.id, alertJobId(row.crawlId), vitalsJobId(row.crawlId)]),
+      ).flatMap((row) => [
+        row.id,
+        alertJobId(row.crawlId),
+        vitalsJobId(row.crawlId),
+        vitalsAlertJobId(row.crawlId),
+      ]),
       ...(
         await tx
           .select({ id: urlVerifications.jobId })
@@ -653,6 +860,23 @@ export function createPgDatabase(options: {
           .where(inArray(urlVerifications.domainId, domainIds))
       ).map((row) => row.id),
     ]
+    ids.push(
+      ...(
+        await tx
+          .select({ id: botTestRuns.jobId })
+          .from(botTestRuns)
+          .where(inArray(botTestRuns.domainId, domainIds))
+      ).map((row) => row.id),
+    )
+    const incidentIds = await tx
+      .select({ id: siteIncidents.id })
+      .from(siteIncidents)
+      .where(inArray(siteIncidents.domainId, domainIds))
+    ids.push(
+      ...incidentIds.flatMap((row) =>
+        INCIDENT_STAGES.map((stage) => incidentAlertJobId(row.id, stage)),
+      ),
+    )
     for (const batch of chunk(ids)) await tx.delete(jobs).where(inArray(jobs.id, batch))
   }
 
@@ -841,6 +1065,13 @@ export function createPgDatabase(options: {
         const notInUse = and(
           notInArray(
             jobs.id,
+            db
+              .select({ id: botTestRuns.jobId })
+              .from(botTestRuns)
+              .where(isNotNull(botTestRuns.activeKey)),
+          ),
+          notInArray(
+            jobs.id,
             db.select({ id: crawls.jobId }).from(crawls).where(isNotNull(crawls.activeKey)),
           ),
           notInArray(
@@ -876,7 +1107,18 @@ export function createPgDatabase(options: {
     },
 
     vitals: {
-      async latestCrawl(domainId) {
+      async queueAlerts(crawlId) {
+        await db
+          .insert(jobs)
+          .values({
+            id: vitalsAlertJobId(crawlId),
+            type: 'vitals.alerts',
+            payload: JSON.stringify({ crawlId }),
+            runAt: new Date(),
+          })
+          .onConflictDoNothing()
+      },
+      async latestCrawl(domainId, before) {
         const [row] = await db
           .select()
           .from(crawls)
@@ -884,8 +1126,19 @@ export function createPgDatabase(options: {
             and(
               eq(crawls.domainId, domainId),
               eq(crawls.type, 'full'),
+              before ? lt(crawls.createdAt, before) : undefined,
               inArray(crawls.status, ['completed', 'incomplete']),
-              exists(db.select().from(crawlVitals).where(eq(crawlVitals.crawlId, crawls.id))),
+              exists(
+                db
+                  .select()
+                  .from(crawlVitals)
+                  .where(
+                    and(
+                      eq(crawlVitals.crawlId, crawls.id),
+                      before ? eq(crawlVitals.status, 'collected') : undefined,
+                    ),
+                  ),
+              ),
             ),
           )
           .orderBy(desc(crawls.createdAt), desc(crawls.id))
@@ -935,6 +1188,19 @@ export function createPgDatabase(options: {
             target: schema.userPreferences.userId,
             set: { favouriteDomainId: domainId },
           })
+      },
+      async locale(userId) {
+        const [row] = await db
+          .select()
+          .from(schema.userPreferences)
+          .where(eq(schema.userPreferences.userId, userId))
+        return row?.locale ?? null
+      },
+      async setLocale(userId, locale) {
+        await db
+          .insert(schema.userPreferences)
+          .values({ userId, locale })
+          .onConflictDoUpdate({ target: schema.userPreferences.userId, set: { locale } })
       },
     },
     settings: {
@@ -1327,6 +1593,34 @@ export function createPgDatabase(options: {
           if (!found.archivedAt) {
             await tx.update(domains).set({ archivedAt: now }).where(eq(domains.id, id))
           }
+          const activeBotRun = await tx
+            .select({ id: botTestRuns.id })
+            .from(botTestRuns)
+            .where(and(eq(botTestRuns.domainId, id), isNotNull(botTestRuns.activeKey)))
+          if (activeBotRun.length) {
+            const previous = await tx
+              .select({ id: botTestRuns.id, jobId: botTestRuns.jobId })
+              .from(botTestRuns)
+              .where(and(eq(botTestRuns.domainId, id), isNull(botTestRuns.activeKey)))
+            if (previous.length) {
+              await tx.delete(jobs).where(
+                inArray(
+                  jobs.id,
+                  previous.map((row) => row.jobId),
+                ),
+              )
+              await tx.delete(botTestRuns).where(
+                inArray(
+                  botTestRuns.id,
+                  previous.map((row) => row.id),
+                ),
+              )
+            }
+          }
+          await tx
+            .update(botTestRuns)
+            .set({ status: 'cancelled', activeKey: null, finishedAt: now })
+            .where(and(eq(botTestRuns.domainId, id), isNotNull(botTestRuns.activeKey)))
           // The same statements as `crawls.cancel` and `verifications.cancel`: the jobs notice
           // at their next check that the crawl is no longer running, and stop requesting.
           const ended = { status: 'cancelled', activeKey: null, finishedAt: now } as const
@@ -2428,14 +2722,23 @@ export function createPgDatabase(options: {
         return found
       },
 
-      async acceptedCounts(crawlId) {
+      async acceptedCounts(crawlId, kind) {
         const rows = await db
           .select({
             issue: crawlUrlAcceptedIssues.issue,
             pages: countDistinct(crawlUrlAcceptedIssues.urlHash),
           })
           .from(crawlUrlAcceptedIssues)
-          .where(eq(crawlUrlAcceptedIssues.crawlId, crawlId))
+          .where(
+            and(
+              eq(crawlUrlAcceptedIssues.crawlId, crawlId),
+              kind === 'dismissal'
+                ? like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%')
+                : kind === 'rule'
+                  ? not(like(crawlUrlAcceptedIssues.details, '%"kind":"dismissal"%'))
+                  : undefined,
+            ),
+          )
           .groupBy(crawlUrlAcceptedIssues.issue)
         return rows.map(({ issue, pages }) => ({ issue, pages: Number(pages) }))
       },
@@ -2770,6 +3073,7 @@ export function createPgDatabase(options: {
                   crawlId: crawlUrlAcceptedIssues.crawlId,
                   urlHash: crawlUrlAcceptedIssues.urlHash,
                   issue: crawlUrlAcceptedIssues.issue,
+                  details: crawlUrlAcceptedIssues.details,
                 })
                 .from(crawlUrlAcceptedIssues)
                 .where(
@@ -2799,8 +3103,15 @@ export function createPgDatabase(options: {
     },
 
     audit: {
+      async setFindingStates(input) {
+        return changeRules(input.domainId, (_rules, context, _config, states) =>
+          planFindingStates(states, input, context),
+        )
+      },
       async config(domainId) {
         return readAuditConfig({
+          states: async () =>
+            db.select().from(findingStates).where(eq(findingStates.domainId, domainId)),
           state: async () =>
             (
               await db
@@ -2899,6 +3210,126 @@ export function createPgDatabase(options: {
       },
     },
 
+    botTests: {
+      async start({ domainId, requestedBy }) {
+        const id = randomUUID(),
+          jobId = randomUUID(),
+          now = new Date()
+        try {
+          await db.transaction(async (tx) => {
+            await assertNotArchived(tx, domainId)
+            await tx.insert(jobs).values({
+              id: jobId,
+              type: JOB_TYPES.botTest,
+              payload: JSON.stringify({ runId: id }),
+              runAt: now,
+              createdAt: now,
+              updatedAt: now,
+            })
+            await tx
+              .insert(botTestRuns)
+              .values({ id, jobId, domainId, requestedBy, activeKey: domainId, createdAt: now })
+          })
+        } catch (error) {
+          if (error instanceof DomainArchivedError) throw error
+          if (await this.active(domainId)) return null
+          throw error
+        }
+        return this.get(id)
+      },
+      async get(id) {
+        return (await db.select().from(botTestRuns).where(eq(botTestRuns.id, id)))[0] ?? null
+      },
+      async active(domainId) {
+        return (
+          (await db.select().from(botTestRuns).where(eq(botTestRuns.activeKey, domainId)))[0] ??
+          null
+        )
+      },
+      async list(domainId) {
+        return await db
+          .select()
+          .from(botTestRuns)
+          .where(eq(botTestRuns.domainId, domainId))
+          .orderBy(desc(botTestRuns.createdAt), desc(botTestRuns.id))
+      },
+      async markRunning(id) {
+        await db
+          .update(botTestRuns)
+          .set({ status: 'running', startedAt: new Date() })
+          .where(
+            and(
+              eq(botTestRuns.id, id),
+              isNotNull(botTestRuns.activeKey),
+              isNull(botTestRuns.startedAt),
+            ),
+          )
+      },
+      async results(id) {
+        const found = await db.select().from(botTestResults).where(eq(botTestResults.runId, id))
+        return found.map((row) => ({
+          ...row,
+          reasons: JSON.parse(row.reasons) as BotTestResult['reasons'],
+        }))
+      },
+      async record(input) {
+        await db.transaction(async (tx) => {
+          const active = (
+            await tx
+              .select()
+              .from(botTestRuns)
+              .where(and(eq(botTestRuns.id, input.runId), isNotNull(botTestRuns.activeKey)))
+              .for('update')
+          )[0]
+          if (!active) return
+          await tx
+            .insert(botTestResults)
+            .values({ ...input, reasons: JSON.stringify(input.reasons) })
+            .onConflictDoNothing()
+        })
+      },
+      async finish(id, status) {
+        await db.transaction(async (tx) => {
+          const current = (
+            await tx
+              .select()
+              .from(botTestRuns)
+              .where(and(eq(botTestRuns.id, id), isNotNull(botTestRuns.activeKey)))
+              .for('update')
+          )[0]
+          if (!current) return
+          await tx
+            .update(botTestRuns)
+            .set({ status, activeKey: null, finishedAt: new Date() })
+            .where(eq(botTestRuns.id, id))
+          const ended = await tx
+            .select({ id: botTestRuns.id })
+            .from(botTestRuns)
+            .where(
+              and(
+                eq(botTestRuns.domainId, current.domainId),
+                isNull(botTestRuns.activeKey),
+                ne(botTestRuns.id, id),
+              ),
+            )
+            .orderBy(desc(botTestRuns.finishedAt), desc(botTestRuns.id))
+          const old = ended.map((row) => row.id)
+          if (old.length) {
+            const removed = await tx
+              .select({ jobId: botTestRuns.jobId })
+              .from(botTestRuns)
+              .where(inArray(botTestRuns.id, old))
+            await tx.delete(jobs).where(
+              inArray(
+                jobs.id,
+                removed.map((row) => row.jobId),
+              ),
+            )
+            await tx.delete(botTestRuns).where(inArray(botTestRuns.id, old))
+          }
+        })
+      },
+    },
     verifications: {
       async start({ domainId, baseCrawlId, urls }) {
         assertVerificationUrls(urls)
@@ -3114,6 +3545,24 @@ export function createPgDatabase(options: {
         return newestVerifiedPerUrl(found)
       },
 
+      async latestFinishedFor(domainId, urlHash) {
+        const rows = await db
+          .select({ row: urlVerificationUrls })
+          .from(urlVerificationUrls)
+          .innerJoin(urlVerifications, eq(urlVerifications.id, urlVerificationUrls.verificationId))
+          .where(
+            and(
+              eq(urlVerifications.domainId, domainId),
+              eq(urlVerificationUrls.urlHash, urlHash),
+              eq(urlVerificationUrls.state, 'done'),
+              isNull(urlVerifications.activeKey),
+            ),
+          )
+          .orderBy(desc(urlVerificationUrls.fetchedAt), desc(urlVerifications.id))
+          .limit(1)
+        return rows[0] ? toVerifiedUrl(rows[0].row) : null
+      },
+
       async prune({ domainId, keep }) {
         const ended = await db
           .select({ id: urlVerifications.id })
@@ -3211,6 +3660,52 @@ export function createPgDatabase(options: {
       },
     },
 
+    incidents: {
+      async list(domainId, since) {
+        return (await db
+          .select()
+          .from(siteIncidents)
+          .where(
+            and(
+              eq(siteIncidents.domainId, domainId),
+              since
+                ? or(
+                    isNull(siteIncidents.resolvedAt),
+                    gte(siteIncidents.openedAt, since),
+                    gte(siteIncidents.resolvedAt, since),
+                  )
+                : isNull(siteIncidents.resolvedAt),
+            ),
+          )
+          .orderBy(desc(siteIncidents.openedAt))) as SiteIncident[]
+      },
+      async get(id) {
+        const [row] = await db.select().from(siteIncidents).where(eq(siteIncidents.id, id))
+        return (row as SiteIncident | undefined) ?? null
+      },
+      async claim(incidentId, userId, stage) {
+        const rows = await db
+          .insert(incidentNotices)
+          .values({ incidentId, userId, stage, createdAt: new Date() })
+          .onConflictDoNothing()
+          .returning()
+        return rows.length > 0
+      },
+      async release(incidentId, userId, stage) {
+        await db
+          .delete(incidentNotices)
+          .where(
+            and(
+              eq(incidentNotices.incidentId, incidentId),
+              eq(incidentNotices.userId, userId),
+              eq(incidentNotices.stage, stage),
+            ),
+          )
+      },
+      async prune(before) {
+        await db.delete(siteIncidents).where(lt(siteIncidents.resolvedAt, before))
+      },
+    },
     crawlFiles: {
       async list(domainId, kinds) {
         const rows = await db
@@ -3225,15 +3720,9 @@ export function createPgDatabase(options: {
         return rows.map(toCrawlFile).sort(byUrl)
       },
       async save(domainId, files) {
-        for (const file of files) {
-          await db
-            .insert(crawlFiles)
-            .values(crawlFileRow(domainId, file))
-            .onConflictDoUpdate({
-              target: [crawlFiles.domainId, crawlFiles.urlHash],
-              set: crawlFileColumns(file),
-            })
-        }
+        await db.transaction(async (tx) => {
+          await recordFiles(tx, domainId, files)
+        })
       },
       async prune({ domainId, before, keepKinds }) {
         const result = await db
@@ -3287,12 +3776,10 @@ export function createPgDatabase(options: {
           .where(and(eq(crawlFileChecks.domainId, domainId), lte(crawlFileChecks.nextCheckAt, now)))
         return result.count > 0
       },
-      async finishCheck({ domainId, outcome, checkedAt, nextCheckAt }) {
-        const values = { outcome, checkedAt, nextCheckAt, requestedAt: null }
-        await db
-          .insert(crawlFileChecks)
-          .values({ domainId, ...values })
-          .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
+      async finishCheck({ domainId, outcome, checkedAt, nextCheckAt, files = [] }) {
+        await db.transaction(async (tx) => {
+          await recordFiles(tx, domainId, files, { outcome, checkedAt, nextCheckAt })
+        })
       },
       async deferCheck({ domainId, nextCheckAt }) {
         await db

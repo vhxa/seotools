@@ -5,6 +5,7 @@ import {
   GOOGLE_TITLE_MAX,
   breadcrumbsOf,
   cutNear,
+  recheckSharePreview,
   shareImageOf,
   sharePreview,
 } from './share-preview'
@@ -126,5 +127,60 @@ describe('sharePreview', () => {
       title: 'Tweet',
       description: null,
     })
+  })
+})
+
+describe('recheckSharePreview', () => {
+  const url = 'https://example.com/blog/post'
+
+  it('builds the same preview as the crawl from what the recheck read', () => {
+    const fromCrawl = sharePreview({
+      url,
+      title: 'The title',
+      data: {
+        description: 'The description',
+        facts: factsWith({
+          openGraphTags: 2,
+          title: 'Shared',
+          image: 'https://cdn.example.net/a.png',
+          twitterCard: 'summary',
+        }),
+      },
+    })
+    const fromRecheck = recheckSharePreview(url, {
+      title: 'The title',
+      description: 'The description',
+      social: {
+        openGraphTags: 2,
+        title: 'Shared',
+        image: 'https://cdn.example.net/a.png',
+        twitterCard: 'summary',
+      },
+    })
+    expect(fromRecheck).toEqual(fromCrawl)
+  })
+
+  it('shows the image address the recheck read, only if it is a web address', () => {
+    const preview = (image: string) =>
+      recheckSharePreview(url, {
+        title: null,
+        description: null,
+        social: { openGraphTags: 1, image },
+      })
+    expect(preview('https://cdn.example.net/new.png').social?.image).toEqual({
+      kind: 'https',
+      url: 'https://cdn.example.net/new.png',
+    })
+    expect(preview('javascript:alert(1)').social?.image).toEqual({ kind: 'none' })
+  })
+
+  it('has a social side even for a page without tags, which the recheck did look for', () => {
+    const { social, google } = recheckSharePreview(url, {
+      title: null,
+      description: null,
+      social: { openGraphTags: 0 },
+    })
+    expect(social).toMatchObject({ untagged: true, title: null })
+    expect(google.title).toBeNull()
   })
 })

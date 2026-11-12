@@ -1,10 +1,16 @@
 import type { CrawlUrlKind } from '@seotools/core'
 import { INDEX_INTENTS, type IndexIntent } from '@seotools/core/crawl/audit'
 import { INDEXABILITY_STATES, type IndexabilityState } from '@seotools/core/crawl/indexability'
-import { ANY_ACCEPTED } from '@seotools/core/crawl/acceptance'
+import {
+  ACCEPTANCE_KINDS,
+  type AcceptanceKind,
+  ANY_ACCEPTED,
+} from '@seotools/core/crawl/acceptance'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import {
   CRAWL_URL_VIEWS,
+  FINDING_STATE_FILTERS,
+  type FindingStateFilter,
   STATUS_FILTERS,
   URL_TYPES,
   URL_VIEWS,
@@ -49,6 +55,7 @@ const URL_HASH = /^[0-9a-f]{32}$/
 export const isUrlHash = (value: string) => URL_HASH.test(value)
 
 export interface DetailQuery {
+  state: FindingStateFilter | null
   /**
    * The crawl being browsed: one of the domain's retained full crawls. `null`: the latest one, which
    * is also what an address without it means. Only its shape is checked here (`isCrawlId`); the page
@@ -72,6 +79,7 @@ export interface DetailQuery {
    * every view at once, like `issue`, and the two exclude each other.
    */
   accepted: string | null
+  acceptanceKind: AcceptanceKind | null
   /** Only URLs whose last request got a status of this class, or none at all. */
   status: StatusFilter | null
   /** Only URLs of the site that turned out to be this. */
@@ -111,6 +119,7 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
       ? accepted
       : null
   return {
+    state: FINDING_STATE_FILTERS.find((s) => s === first(params.state)) ?? null,
     crawl: crawl && isCrawlId(crawl) ? crawl : null,
     // An issue picks its own URLs, in whichever view they are: that is every URL of the crawl.
     view:
@@ -123,6 +132,9 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
     search: (first(params.q) ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     issue: validIssue,
     accepted: validAccepted,
+    acceptanceKind: validAccepted
+      ? (ACCEPTANCE_KINDS.find((k) => k === first(params.acceptanceKind)) ?? null)
+      : null,
     status: STATUS_FILTERS.find((option) => option === status) ?? null,
     type: URL_TYPES.find((option) => option === type) ?? null,
     indexability: INDEXABILITY_STATES.find((option) => option === indexability) ?? null,
@@ -135,6 +147,7 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
 
 /** The filters that narrow a list, as opposed to where it starts from and how it is shown. */
 export const FILTER_KEYS = [
+  'state',
   'issue',
   'accepted',
   'search',
@@ -190,7 +203,7 @@ export function filterAvailability(
  * reads as "no such URLs" when the truth is that nothing was asked of them.
  */
 export function unappliedFilters(
-  query: Pick<DetailQuery, 'view' | FilterKey>,
+  query: Pick<DetailQuery, 'view' | FilterKey> & Partial<Pick<DetailQuery, 'acceptanceKind'>>,
   context: { auditData: boolean },
 ): Partial<Record<FilterKey, NotApplied>> {
   const availability = filterAvailability(query.view, context)
@@ -206,15 +219,17 @@ export function unappliedFilters(
 
 /** What a query asks the database for: the view and the filters that apply, nothing else. */
 export function listingOf(
-  query: Pick<DetailQuery, 'view' | FilterKey>,
+  query: Pick<DetailQuery, 'view' | FilterKey> & Partial<Pick<DetailQuery, 'acceptanceKind'>>,
   unapplied: Partial<Record<FilterKey, NotApplied>>,
 ): Omit<CrawlUrlQuery, 'crawlId'> {
   const applies = (key: FilterKey) => !unapplied[key]
   return {
     view: query.view,
+    ...(query.state ? { state: query.state } : {}),
     ...(query.search ? { search: query.search } : {}),
     ...(query.issue ? { issue: query.issue } : {}),
     ...(query.accepted ? { accepted: query.accepted } : {}),
+    ...(query.accepted && query.acceptanceKind ? { acceptanceKind: query.acceptanceKind } : {}),
     ...(query.status && applies('status') ? { status: query.status } : {}),
     ...(query.type && applies('type') ? { type: query.type } : {}),
     ...(query.indexability && applies('indexability') ? { indexability: query.indexability } : {}),
@@ -233,6 +248,7 @@ export const activeFilters = (query: Pick<DetailQuery, FilterKey>): FilterKey[] 
 /** What removes one filter, or all of them: the view stays, and so do the order and the crawl. */
 export function withoutFilter(key: FilterKey | 'all'): Partial<DetailQuery> {
   const cleared: Pick<DetailQuery, FilterKey> = {
+    state: null,
     issue: null,
     accepted: null,
     search: '',
@@ -244,7 +260,11 @@ export function withoutFilter(key: FilterKey | 'all'): Partial<DetailQuery> {
     rule: null,
   }
   const changes: Partial<DetailQuery> =
-    key === 'all' ? cleared : ({ [key]: cleared[key] } as Partial<DetailQuery>)
+    key === 'all'
+      ? { ...cleared, acceptanceKind: null }
+      : key === 'accepted'
+        ? { accepted: null, acceptanceKind: null }
+        : ({ [key]: cleared[key] } as Partial<DetailQuery>)
   return { ...changes, page: 1, url: null }
 }
 
@@ -271,11 +291,13 @@ export function detailHref(
   const view = next.issue || next.accepted ? 'all' : next.view
   const kept = (key: FilterKey) => blockedByView(view, key) === null
   const params = new URLSearchParams()
+  if (next.state) params.set('state', next.state)
   if (next.crawl) params.set('crawl', next.crawl)
   if (!next.issue && !next.accepted && view !== 'pages') params.set('view', view)
   if (next.search) params.set('q', next.search)
   if (next.issue) params.set('issue', next.issue)
   if (next.accepted) params.set('accepted', next.accepted)
+  if (next.accepted && next.acceptanceKind) params.set('acceptanceKind', next.acceptanceKind)
   if (next.status) params.set('status', next.status)
   if (next.type && kept('type')) params.set('type', next.type)
   if (next.indexability && kept('indexability')) params.set('indexability', next.indexability)

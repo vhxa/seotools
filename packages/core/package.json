@@ -24,15 +24,19 @@
     "./crawl/compare": "./src/crawl/compare.ts",
     "./crawl/verification": "./src/crawl/verification.ts",
     "./version": "./src/version.ts",
-    "./vitals-state": "./src/vitals-state.ts"
+    "./vitals-state": "./src/vitals-state.ts",
+    "./bot-access": "./src/bot-access.ts",
+    "./crawl/audit-templates": "./src/crawl/audit-templates.ts",
+    "./incidents": "./src/incidents.ts",
+    "./crawl-file-views": "./src/crawl-file-views.ts"
   },
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "css-what": "^7.0.0",
-    "nodemailer": "^10.3.1",
+    "css-what": "^8.0.0",
+    "nodemailer": "^10.4.0",
     "pino": "^10.4.0",
     "resend": "^6.37.0",
     "zod": "^4.6.7"

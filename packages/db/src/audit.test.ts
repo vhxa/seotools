@@ -1,6 +1,13 @@
 import type { AuditSelector } from '@seotools/core'
 import { describe, expect, it } from 'vitest'
-import { planUpgradeSemantics, selectorHashOf, type AuditRuleRow, type PlanContext } from './audit'
+import {
+  planFindingStates,
+  planSaveRuleSet,
+  planUpgradeSemantics,
+  selectorHashOf,
+  type AuditRuleRow,
+  type PlanContext,
+} from './audit'
 
 /** The rows a version of the code before conditions left, as the planner sees them. */
 let counter = 0
@@ -12,6 +19,7 @@ const row = (
   const enabled = over.enabled ?? true
   return {
     id: `row-${++counter}`,
+    ruleSet: null,
     domainId: 'd1',
     dimension: 'intent',
     value: 'indexable',
@@ -196,4 +204,64 @@ describe('moving the rules to the meaning that reads relations', () => {
   it('finds nothing to change once it is at the current meaning', () => {
     expect(written([rows('noindex', 'allowed')], 5).plan.bump).toBe(false)
   })
+})
+
+describe('rule path limits', () => {
+  const base = {
+    domainId: 'd1',
+    statements: { audit: 'exclude' as const },
+    reason: null,
+    enabled: true,
+  }
+  it('accepts 20 distinct path selectors and rejects 21, zero, duplicates and grouped URLs', () => {
+    const selectors = Array.from({ length: 20 }, (_, i) => prefix(`/p${i}`))
+    const allowed = planSaveRuleSet([], { ...base, selectors }, context)
+    expect(allowed.ok && allowed.changes).toHaveLength(20)
+    expect(
+      planSaveRuleSet([], { ...base, selectors: [...selectors, prefix('/extra')] }, context),
+    ).toEqual({ ok: false, error: 'limit' })
+    expect(planSaveRuleSet([], { ...base, selectors: [] }, context)).toEqual({
+      ok: false,
+      error: 'limit',
+    })
+    expect(
+      planSaveRuleSet([], { ...base, selectors: [prefix('/a'), prefix('/a')] }, context),
+    ).toEqual({ ok: false, error: 'conflict' })
+    expect(
+      planSaveRuleSet(
+        [],
+        { ...base, selectors: [prefix('/a'), url('https://example.com/b')] },
+        context,
+      ),
+    ).toEqual({ ok: false, error: 'limit' })
+  })
+})
+
+it('advances the decision timestamp on a note edit even within the same millisecond', () => {
+  const now = new Date('2026-11-12T00:00:00Z')
+  const current = {
+    id: 'd',
+    domainId: 'domain',
+    issue: 'title-missing',
+    urlHash: null,
+    targetKey: '*',
+    state: 'dismissed' as const,
+    note: 'Alice note',
+    setBy: 'alice',
+    setAt: now,
+  }
+  const result = planFindingStates(
+    [current],
+    {
+      domainId: 'domain',
+      issue: current.issue,
+      urlHashes: [null],
+      state: 'dismissed',
+      note: 'Bob note',
+      setBy: 'bob',
+    },
+    { now, newId: () => 'unused', languages: { prefixes: [], unprefixed: false } },
+  )
+  expect(result.ok && result.states?.[0]?.setAt.getTime()).toBe(now.getTime() + 1)
+  expect(result.ok && result.bump).toBe(false)
 })

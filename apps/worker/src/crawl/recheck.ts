@@ -14,7 +14,12 @@ import {
 } from '@seotools/core'
 import type { CrawlUrl, CrawlUrlResult } from '@seotools/db'
 import { conditionStatesOf } from './conditions'
-import { CHECKS, applyAuditPolicyKeeping, type Finding } from './issue-checks'
+import {
+  CHECKS,
+  applyFindingDismissals,
+  applyAuditPolicyKeeping,
+  type Finding,
+} from './issue-checks'
 import { SiteContextError } from './site-context'
 import { auditUrl, type AuditedUrl, type RobotsFile, type Site } from './site-audit'
 
@@ -61,6 +66,7 @@ function siteOfARecheck(input: { now: Date; config: AuditSnapshot; answered: boo
     texts: 'the texts of the other pages',
     nearDuplicates: 'the texts of the other pages',
     sitemapCoverage: 'the sitemaps',
+    linksComplete: 'all internal links',
   }
   for (const [field, what] of Object.entries(unknown)) {
     Object.defineProperty(site, field, { get: refuse(what) })
@@ -219,7 +225,8 @@ export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): V
     }
   }
 
-  const { kept, accepted } = applyAuditPolicyKeeping(url, found)
+  const policy = applyAuditPolicyKeeping(url, found)
+  const { found: kept, accepted } = applyFindingDismissals(url, site, policy.kept, policy.accepted)
   return {
     audit: {
       participation: url.participation,

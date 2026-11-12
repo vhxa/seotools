@@ -59,6 +59,12 @@ describe('the email with a link to set a password', () => {
     ).toBe(true)
   })
 
+  it('uses the language saved on the account over the one in the job', async () => {
+    await db.userPreferences.setLocale(userId, 'es')
+    await handler()(job({ userId, kind: 'invite', locale: 'en' }), context())
+    expect(sent[0]).toMatchObject({ subject: 'Te han invitado a seotools' })
+  })
+
   it('records every attempt, with who it went to and what the provider said, and never the link', async () => {
     await handler()(job({ userId, kind: 'invite', locale: 'en' }), context())
     const failing: Mailer = {

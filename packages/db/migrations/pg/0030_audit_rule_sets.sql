@@ -1,0 +1,1 @@
+ALTER TABLE "audit_rules" ADD COLUMN "rule_set" text;

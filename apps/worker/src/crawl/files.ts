@@ -106,7 +106,9 @@ export function captureCrawlFile(input: {
       : null
   let body: string | null = null
   let truncated = outcome.truncated
-  const data: CrawlFileData = {}
+  const data: CrawlFileData = outcome.tls
+    ? { tls: { validTo: outcome.tls.validTo.toISOString() } }
+    : {}
 
   if (kind === 'sitemap') {
     const sitemap = input.sitemap === undefined ? readSitemap(outcome, url) : input.sitemap

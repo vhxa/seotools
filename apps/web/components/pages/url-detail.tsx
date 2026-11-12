@@ -1,3 +1,5 @@
+import { FindingStatesList } from '@/components/audit/finding-states-list'
+import { FindingStateActions } from '@/components/audit/finding-state-actions'
 import { VitalsValues } from './vitals-values'
 import { urlVitals } from '@/lib/vitals'
 import { AUDIT_CONDITIONS, intentOutcome } from '@seotools/core/crawl/audit'
@@ -26,7 +28,7 @@ import { PriorityToggle, UrlLink } from '@/components/crawl/url-cells'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
-import { SharePreviewView } from '@/components/pages/share-preview'
+import { UrlSharePreview } from '@/components/pages/share-preview'
 import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -274,7 +276,12 @@ export async function UrlDetail({
 
       {isPage && (
         <Section title={t('sections.preview')}>
-          <SharePreviewView preview={sharePreview(url)} />
+          <UrlSharePreview
+            crawlPreview={sharePreview(url)}
+            crawledAt={crawl.finishedAt ?? crawl.createdAt}
+            recheck={data.recheck.preview}
+            url={url.url}
+          />
         </Section>
       )}
 
@@ -355,6 +362,28 @@ export async function UrlDetail({
                               hrefFor={hrefFor}
                             />
                             <FindingHelp issue={id} />
+                            {(
+                              (data.findingStates ?? []).find(
+                                (r) => r.issue === id && r.urlHash === url.urlHash,
+                              ) ??
+                              (data.findingStates ?? []).find(
+                                (r) => r.issue === id && r.urlHash === null,
+                              )
+                            )?.state === 'in-progress' && (
+                              <FindingStatesList
+                                host={host}
+                                rows={[
+                                  (data.findingStates ?? []).find(
+                                    (r) => r.issue === id && r.urlHash === url.urlHash,
+                                  ) ??
+                                    (data.findingStates ?? []).find(
+                                      (r) => r.issue === id && r.urlHash === null,
+                                    )!,
+                                ]}
+                                compact
+                              />
+                            )}
+                            <FindingStateActions host={host} issue={id} hashes={[url.urlHash]} />
                           </Disclosure>
                         </li>
                       ))}
@@ -365,7 +394,7 @@ export async function UrlDetail({
             )}
           </Section>
 
-          <AcceptedFindings data={data} hrefFor={hrefFor} />
+          <AcceptedFindings host={host} data={data} hrefFor={hrefFor} />
 
           <UrlRecheck data={data} />
         </TabsContent>

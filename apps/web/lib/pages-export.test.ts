@@ -1,7 +1,7 @@
 import { crawlUrlHash } from '@seotools/core'
 import { PAGE_ISSUES, PAGE_ISSUE_IDS } from '@seotools/core/crawl/issues'
 import { ISSUE_EVIDENCE } from '@seotools/core/crawl/evidence'
-import type { CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
+import type { CrawlUrl, CrawlUrlAudit, CrawlUrlIssue, FindingStateRecord } from '@seotools/db'
 import { createTranslator } from 'next-intl'
 import { describe, expect, it, vi } from 'vitest'
 import en from '../messages/en.json'
@@ -28,6 +28,7 @@ import {
   isoSeconds,
   rawParamsOf,
   type ExportContext,
+  type ExportUrl,
   type ExportSource,
   type Translate,
 } from './pages-export'
@@ -1099,7 +1100,7 @@ describe('what a rule accepts', () => {
 
   it('counts on the pages file apart from what is pending', () => {
     const [record] = asObjects('pages', exportRecords('pages', row, context()).join(''))
-    expect(record!['Accepted by a rule']).toBe('1')
+    expect(record!['Accepted or dismissed']).toBe('1')
     expect(record!['Number of issues']).toBe('1')
   })
 })
@@ -1236,4 +1237,198 @@ describe('the links and redirects files', () => {
       expect(x).toContain('Export.values.yes')
     },
   )
+})
+
+it('exports dismissed state and neutralises a member note as a CSV cell', () => {
+  const url = crawlUrl('/a')
+  const c = context({ onlyAccepted: 'all', onlyState: 'dismissed' })
+  const text = exportRecords(
+    'findings',
+    {
+      url,
+      issues: [],
+      audit: audit(url),
+      accepted: [
+        {
+          ...issue(url, 'title-missing'),
+          acceptedBy: url.urlHash,
+          acceptance: {
+            kind: 'dismissal',
+            state: 'dismissed',
+            scope: 'url',
+            id: 'd',
+            setBy: 'alice',
+            setAt: '2026-11-12T00:00:00.000Z',
+          },
+        },
+      ],
+      findingStates: [
+        {
+          id: 'd',
+          domainId: 'domain',
+          issue: 'title-missing',
+          urlHash: url.urlHash,
+          targetKey: url.urlHash,
+          state: 'dismissed',
+          note: '=HYPERLINK("untrusted")',
+          setBy: null,
+          setAt: new Date('2026-11-12T00:00:00.000Z'),
+        },
+      ],
+    },
+    c,
+  ).join('')
+  expect(asObjects('findings', text, c)[0]).toMatchObject({
+    State: 'Dismissed',
+    'Decision note': '\'=HYPERLINK("untrusted")',
+  })
+})
+
+it('labels a pending finding a person marked in progress, with its note', () => {
+  const url = crawlUrl('/a')
+  const c = context()
+  const text = exportRecords(
+    'findings',
+    {
+      url,
+      issues: [issue(url, 'title-missing')],
+      audit: audit(url),
+      findingStates: [
+        {
+          id: 'p',
+          domainId: 'domain',
+          issue: 'title-missing',
+          urlHash: null,
+          targetKey: '*',
+          state: 'in-progress',
+          note: 'Template fix next sprint',
+          setBy: null,
+          setAt: new Date(),
+        },
+      ],
+    },
+    c,
+  ).join('')
+  expect(asObjects('findings', text, c)[0]).toMatchObject({
+    State: 'In progress',
+    'Decision note': 'Template fix next sprint',
+  })
+})
+
+const decisionRow = (
+  url: CrawlUrl,
+  patch: Partial<FindingStateRecord> = {},
+): FindingStateRecord => ({
+  id: 'd',
+  domainId: 'domain',
+  issue: 'title-missing',
+  urlHash: url.urlHash,
+  targetKey: url.urlHash,
+  state: 'dismissed',
+  note: 'Alice note',
+  setBy: 'alice',
+  setAt: new Date('2026-11-12T00:00:00Z'),
+  ...patch,
+})
+
+it('keeps historical CSV attribution and suppresses a changed or removed decision note', () => {
+  const url = crawlUrl('/a')
+  const acceptance = {
+    kind: 'dismissal' as const,
+    state: 'dismissed' as const,
+    scope: 'url' as const,
+    id: 'd',
+    setBy: 'alice',
+    setAt: '2026-11-12T00:00:00.000Z',
+  }
+  const c = context({
+    onlyAccepted: 'all',
+    decisionNames: new Map([
+      ['alice', 'Alice'],
+      ['bob', 'Bob'],
+    ]),
+  })
+  for (const findingStates of [
+    [decisionRow(url, { state: 'in-progress', setBy: 'bob', note: 'Bob note' })],
+    [decisionRow(url, { setBy: 'bob', note: 'Bob note', setAt: new Date('2026-11-13T00:00:00Z') })],
+    [],
+  ]) {
+    const row = {
+      url,
+      issues: [],
+      audit: audit(url),
+      findingStates,
+      accepted: [{ ...issue(url, 'title-missing'), acceptedBy: url.urlHash, acceptance }],
+    }
+    const text = exportRecords('findings', row, c).join('')
+    expect(asObjects('findings', text, c)[0]).toMatchObject({
+      'Dismissed by': 'Alice',
+      'Dismissed at': acceptance.setAt,
+      'Decision note': 'The decision has changed since this analysis.',
+    })
+    expect(text).not.toContain('Bob note')
+    expect(
+      asObjects(
+        'findings',
+        exportRecords('findings', row, { ...c, decisionNames: new Map() }).join(''),
+        c,
+      )[0]?.['Dismissed by'],
+    ).toBe('a former member')
+  }
+})
+
+it('filters each finding by state and resolves URL progress overrides before domain labels', () => {
+  const url = crawlUrl('/a')
+  const row: ExportUrl = {
+    url,
+    audit: audit(url),
+    issues: [issue(url, 'title-missing'), issue(url, 'description-missing')],
+    findingStates: [decisionRow(url, { state: 'in-progress' })],
+  }
+  const ids = (state: 'pending' | 'in-progress') => {
+    const c = context({ onlyState: state })
+    return asObjects('findings', exportRecords('findings', row, c).join(''), c).map(
+      (r) => r['Finding ID'],
+    )
+  }
+  expect(ids('in-progress')).toEqual(['title-missing'])
+  expect(ids('pending')).toEqual(['description-missing'])
+  row.findingStates = [
+    decisionRow(url, { id: 'domain', urlHash: null, targetKey: '*', state: 'in-progress' }),
+    decisionRow(url, { state: 'pending' }),
+  ]
+  expect(ids('in-progress')).toEqual([])
+  expect(ids('pending')).toEqual(expect.arrayContaining(['title-missing', 'description-missing']))
+  row.findingStates = [
+    decisionRow(url, { urlHash: null, targetKey: '*', state: 'pending' }),
+    decisionRow(url, { state: 'in-progress' }),
+  ]
+  expect(ids('in-progress')).toEqual(['title-missing'])
+})
+
+it('exports rule and dismissal acceptances separately even on the same URL and issue', () => {
+  const url = crawlUrl('/a')
+  const row: ExportUrl = {
+    url,
+    audit: audit(url),
+    issues: [],
+    accepted: [
+      {
+        ...issue(url, 'title-missing'),
+        acceptedBy: url.urlHash,
+        acceptance: { kind: 'expectation', rule: null },
+      },
+      {
+        ...issue(url, 'title-missing'),
+        acceptedBy: 'other',
+        acceptance: { kind: 'dismissal', state: 'dismissed', scope: 'url', id: 'd' },
+      },
+    ],
+  }
+  for (const onlyAcceptedKind of ['rule', 'dismissal'] as const) {
+    const c = context({ onlyAccepted: 'title-missing', onlyAcceptedKind })
+    const rows = asObjects('findings', exportRecords('findings', row, c).join(''), c)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.State).toBe(onlyAcceptedKind === 'rule' ? 'Accepted by a rule' : 'Dismissed')
+  }
 })

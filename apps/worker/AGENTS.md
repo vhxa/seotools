@@ -25,10 +25,12 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 - Crawl files (robots.txt, sitemaps, llms.txt and the optional ones) live in `crawl_files`, one row per URL with what the last request answered, written by both full crawls and the daily refresher (`createCrawlFileRefresher`). Add a new kind in `crawlFileRequests` (`@seotools/core`), so both request it; an optional one also goes in `OPTIONAL_CRAWL_FILES`, which gives it a settings switch, a sidebar entry and a page under `crawl-files/[kind]`.
 - What these files contain is untrusted: parse it without backtracking regexes, and link a URL taken from one only after `normalizeCrawlUrl`, which refuses `javascript:` and the like.
 
+- On-demand bot access tests request only the tracked homepage and its redirect chain through `createRequester` and `createHttpFetcher`, with the domain’s crawl settings and credentials; only the User-Agent changes.
+
 ## Jobs
 
 - Jobs that may outlast `JOB_LOCK_TIMEOUT_MS` are safe: the runner renews the locks of what it is running. Handlers must still be resumable, since a job can be retried after a crash; throw `JobInterruptedError` to hand one back on shutdown without spending an attempt.
-- `cwv.collect` runs in its own lane (concurrency 1) after the full crawl analysis is saved; persist each measurement for resume, honour pause/archive/key removal, and reanalyse the same crawl. Field data alone raises performance findings; collection is not part of alerts.
+- `cwv.collect` runs in its own lane (concurrency 1) after the full crawl analysis is saved; persist each measurement for resume, honour pause/archive/key removal, and reanalyse the same crawl. Field data alone raises performance findings; collection queues `vitals.alerts` after reanalysis when origin field metrics regress to poor.
 - Crawls run in their own lane (`CRAWL_CONCURRENCY`, `crawl.run` jobs), so that they cannot hold up other jobs.
 - `audit.recompute` jobs (default lane) analyse a domain's latest full crawl again from what it stored, with no requests; they are safe to repeat and to run concurrently. Change rules with `db.audit.*`, which queues the job together with the change.
 - A domain has one active crawl at most, enforced by the unique `crawls.active_key`. Start crawls with `db.crawls.start`, which creates the crawl and its job together; never enqueue `crawl.run` directly.
@@ -39,6 +41,7 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 - **Email and alerts:** every email the worker sends goes through `deliver` (`apps/worker/src/mail`), which records the attempt in `mail_deliveries` (kind, recipient, result, bounded error with secrets, links and tokens taken out by `safeMailError`; never a subject, body or link) and rethrows, so a failure is retried and seen in System → Email; the test send of that page records too.
 - Alerts are opt-in per person and domain (`alert_subscriptions`, chosen in `/account`, never implied).
 - Only `db.crawls.finish` of a **full** crawl queues `crawl.alerts` (job id from `alertJobId(crawlId)`, so `removeJobsOf` finds it); rules, `audit.recompute`, catalog reanalysis and priority crawls never do. The job re-resolves recipients when it sends (`domainRoleOf`, `disabledAt`, the subscription, an archived domain sends nothing), claims `alert_notices` (primary key: one per person, crawl and kind; released only when sending throws) and sends one email per person with all their kinds. What changed is named only by `classifyFindings` through `compareWithPrevious`: a change a rule or a new catalog explains is `unverified`, never a regression.
+- Incident detection runs inside the `crawl_files` write transaction, which queues `incident.alerts`; claim `incident_notices` per incident, person and stage before sending, releasing only on throw. `vitals.alerts` uses `alert_notices` with kind `vitals-regression` and the same recipient checks.
 - A new alert kind goes in `ALERT_KINDS`, `alertEmail`, the account form and both message catalogs.
 
 ## Recovery

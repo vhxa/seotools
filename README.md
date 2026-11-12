@@ -8,36 +8,48 @@ Raspberry Pi to a VPS.
 
 ## What it does
 
-- **Core Web Vitals** from Google CrUX (field) and PageSpeed Insights (lab), with trends and URL findings.
-  Paused, archived, disabled or keyless runs record nothing and are not caught up later.
-- **Crawls whole sites** from the home page, the sitemaps and every link, including what
-  `robots.txt` blocks (auditing it is the point), with per-domain scope, depth, rate limits, request
-  headers and Basic Auth for staging sites and lists of URLs. The Crawls area brings runs,
-  comparison and rechecks together; schedules, in your time zone, live in Settings → Schedules.
-- **131 checks** grouped by what they are: indexation (noindex, robots.txt, canonicals, sitemaps,
-  hreflang), broken references (links, canonicals, hreflang or sitemap entries that fail or
-  redirect), and quality (titles, descriptions, headings, content, images, structured data against
-  Google's rich result requirements, Open Graph and Twitter tags, accessibility, security, HTML).
-  Each finding says why it matters and shows the evidence: which images, links, declarations or
-  pages. The detail of each URL previews its search result and its share card.
-- **Your own rules**: say which URLs are expected out of the index, which must carry a noindex or be
-  in a sitemap, which are left out of the audit; findings a rule expects are shown as accepted, not
-  hidden. Thresholds that are conventions (title length, thin content…) can be set per domain.
-- **Issues and changes**: filter findings, spot template-wide problems, inspect current site files and crawl differences, and see who references broken or redirected targets.
-- **Where every link is**: its text, element and part of the page, how the crawler found each URL,
-  and where query parameters enter the site. Ignore selected parameters (exact names or prefixes)
-  from the next crawl; review volatile/canonical suggestions and separately marked tracking names
-  and manage currently ignored names on the Parameters page ([details](docs/ignored-parameters.md)).
-- **History and comparison** of crawls, a URL's history, rechecks of single URLs, alerts by email,
-  and CSV exports of pages, findings, links and redirects.
-- **Crawl files**: `robots.txt` with the access of each AI bot, sitemaps, `llms.txt`, and on request
-  `ads.txt`, `security.txt`, feeds, OpenSearch and IndexNow.
-- **Custom extraction** of any value with a CSS selector.
-- **Portfolio and structure**: a home with every domain by company (last crawl, figures and trend), and
-  a per-domain view of the site by directory with pages, errors and findings.
-- **Favourite domain** per user: open it automatically and reach all domains from the switcher.
-- **Teams**: companies and domains, administrators, and editors or viewers per company or domain.
-- **English and Spanish**, SQLite or PostgreSQL, `linux/amd64` and `linux/arm64` images on GHCR.
+- **Crawls whole sites** from the home page, sitemaps and every link, including what `robots.txt`
+  blocks (auditing it is the point), with per-domain scope, depth, rate limits, request headers and
+  Basic Auth for staging sites and lists of URLs. The Crawls area brings runs, comparison and
+  rechecks together; schedules, in your time zone, live in Settings → Schedules.
+- **137 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
+  references, and page quality (titles, descriptions, headings, content, images, structured data
+  against Google's rich result requirements, Open Graph and Twitter tags, accessibility, security
+  and HTML). Findings explain why they matter and show the evidence. Each URL has a search-result
+  and share-card preview; a later recheck refreshes it while keeping the crawl's preview available.
+- **Your own rules**: declare which URLs should be indexed, require or forbid directives, sitemap
+  membership, a canonical to another URL or the absence of internal links, and leave URLs out of
+  the audit. One rule can cover several paths and start from a template. Compact controls show
+  every condition and what an unstated one inherits; crawl comparisons say whether their rules
+  match. Expected findings appear as accepted. Set conventional thresholds (title length, thin
+  content…) per domain.
+- **Finding states and changes**: mark findings in progress or dismiss them for one URL or a whole
+  domain, with a note and attribution. Dismissals stay separate from fixes and rule acceptances.
+  Filter findings, spot template-wide problems, inspect current site files and crawl differences,
+  and see who references broken or redirected targets.
+- **Links and parameters**: inspect each link's text, element and part of the page, how the crawler
+  found each URL, and where query parameters enter the site. Ignore selected parameter names or
+  prefixes from the next crawl; review volatile/canonical suggestions, separately marked tracking
+  names and currently ignored names on the Parameters page ([details](docs/ignored-parameters.md)).
+- **History and exports**: compare crawls, follow a URL's history, recheck individual URLs and
+  export pages, findings, links and redirects as CSV.
+- **Crawl files and bot access**: inspect `robots.txt` with each AI bot's access, sitemaps, `llms.txt`
+  and optional `ads.txt`, `security.txt`, feeds, OpenSearch and IndexNow. From robots.txt, compare
+  homepage responses to published bot User-Agent strings on demand; simulated requests cannot
+  prove whether real bots can access the site.
+- **Core Web Vitals** from Google CrUX (field) and PageSpeed Insights (lab), with trends and URL
+  findings. Paused, archived, disabled or keyless runs collect nothing and are not caught up later.
+- **Opt-in email alerts** for changes between crawls and Core Web Vitals regressions after full
+  crawls. Daily site-file, availability and certificate checks record incidents, show open ones on
+  the dashboard and keep a 30-day history in Issues; they are not an uptime monitor.
+- **Custom extraction** of values with CSS selectors.
+- **Portfolio and structure**: see every domain by company with its last crawl, figures and trend,
+  and explore a domain by directory with pages, errors and findings. Star a favourite domain to
+  open it automatically, and reach all domains from the switcher.
+- **Teams and personal preferences**: administrators and per-company or per-domain editors and
+  viewers; each person can edit their name and choose English, Spanish or the browser's language
+  on their account. The choice also applies to their alert and access emails.
+- **Self-hosted** with SQLite or PostgreSQL and `linux/amd64` and `linux/arm64` images on GHCR.
 
 A look at the demo site: dashboard, findings, URL inventory and share preview.
 

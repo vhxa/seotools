@@ -1,6 +1,6 @@
 'use server'
 
-import type { AuditSelector } from '@seotools/core'
+import { type AuditSelector } from '@seotools/core'
 import { AUDIT_THRESHOLDS } from '@seotools/core/crawl/thresholds'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
@@ -46,8 +46,9 @@ function mutationError(t: Errors, error: 'conflict' | 'not-found' | 'limit') {
 
 /**
  * Creates a rule, or edits the one the form names with `id` (any of its rows: the rule being edited
- * is every row that has the same selector). A rule says several things about the URLs it covers, each
- * one decided on its own; the form carries them all, and what it leaves out the rule no longer says.
+ * is every row of its set, or that have the same selector for one from before sets). A rule covers
+ * one or more paths and says several things about the URLs it covers, each one decided on its own; the
+ * form carries all of them, and what it leaves out the rule no longer says or covers.
  */
 export async function saveAuditRuleAction(
   host: string,
@@ -62,16 +63,18 @@ export async function saveAuditRuleAction(
   if (parsed.id !== null && !isRuleId(parsed.id)) return { error: t('notFound') }
 
   const db = await getDb()
-  let editing: AuditSelector | undefined
+  let editing: string | AuditSelector | undefined
   if (parsed.id !== null) {
     // Looked up in this domain only: an id of another domain is not a rule here.
-    const found = (await db.audit.config(domain.id)).rules.find((rule) => rule.id === parsed.id)
+    const config = await db.audit.config(domain.id)
+    const found = config.rules.find((rule) => rule.id === parsed.id)
     if (!found) return { error: t('notFound') }
-    editing = found.selector
+    editing = found.set ?? found.selector
   }
+  // The form carries every path of the rule: what it leaves out the rule no longer covers.
   const saved = await db.audit.saveRuleSet({
     domainId: domain.id,
-    selector: parsed.selector,
+    selectors: parsed.selectors,
     statements: parsed.statements,
     reason: parsed.reason,
     enabled: parsed.enabled,
@@ -136,10 +139,11 @@ export async function previewAuditRuleAction(
     db.crawls.latestWithResults(domain.id, 'full'),
     db.audit.config(domain.id),
   ])
-  const editing =
+  const edited =
     typeof input.id === 'string' && isRuleId(input.id)
-      ? (config.rules.find((rule) => rule.id === input.id)?.selector ?? null)
+      ? config.rules.find((rule) => rule.id === input.id)
       : null
+  const editing = edited ? (edited.set ?? edited.selector) : null
   return previewRule({
     db,
     host: domain.host,
@@ -148,7 +152,7 @@ export async function previewAuditRuleAction(
     languages: config.languages,
     editing,
     candidate: {
-      selector: parsed.selector,
+      selectors: parsed.selectors,
       statements: parsed.statements,
       reason: parsed.reason,
       enabled: parsed.enabled,

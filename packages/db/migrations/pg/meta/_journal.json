@@ -204,6 +204,41 @@
       "when": 1794461968947,
       "tag": "0028_user_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794472688866,
+      "tag": "0029_bot_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794483094729,
+      "tag": "0030_audit_rule_sets",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794483635941,
+      "tag": "0031_user_locale",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794483967644,
+      "tag": "0032_site_incidents",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794484518527,
+      "tag": "0033_finding_states",
+      "breakpoints": true
     }
   ]
 }

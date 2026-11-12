@@ -13,3 +13,7 @@ export * from './updates'
 export * from './version'
 
 export * from './vitals'
+
+export * from './incidents'
+export * from './vitals-regression'
+export * from './mail/incident-email'

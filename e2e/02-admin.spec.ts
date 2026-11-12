@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from './support/test'
-import { ADMIN_STATE, HOST } from './support/env'
+import { ADMIN, ADMIN_STATE, HOST } from './support/env'
+import { signIn } from './support/helpers'
 
 const domain = `/domains/${HOST}`
 
@@ -381,4 +382,135 @@ test('ignored parameter settings persist and explain next-crawl behavior', async
   await names.fill('')
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByRole('status')).toBeVisible()
+})
+
+test('the robots page starts an explicit bot access test with its limitations visible', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/crawl-files/robots`)
+  await expect(page.getByText('Bot access test', { exact: true })).toBeVisible()
+  await expect(page.getByText(/not whether a real bot is blocked/)).toBeVisible()
+  await expect(page.getByText('robots.txt token only, nothing to test')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Test bot access', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Testing bot access…' })).toBeDisabled()
+  await expect(page.getByText(/· Queued/)).toBeVisible()
+})
+
+test('the language chosen on the account is kept across sign-ins, and the name can be edited', async ({
+  page,
+  browser,
+}) => {
+  await page.goto('/account')
+  await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible()
+  await page.getByLabel('Your name').fill('   ')
+  await page.getByRole('button', { name: 'Save name' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: '1 to 100 characters' })).toBeVisible()
+  await page.getByLabel('Your name').fill(`${ADMIN.name} II`)
+  await page.getByRole('button', { name: 'Save name' }).click()
+  await expect(page.getByText('Your name is saved.')).toBeVisible()
+  await page.getByLabel('Your name').fill(ADMIN.name)
+  await page.getByRole('button', { name: 'Save name' }).click()
+  await expect(page.getByText('Your name is saved.')).toBeVisible()
+
+  await page.getByRole('radio', { name: 'Español' }).click()
+  await page.getByRole('button', { name: 'Save language' }).click()
+  try {
+    await expect(page.getByRole('heading', { name: 'Cuenta', level: 1 })).toBeVisible()
+    // A fresh browser with no cookie: the saved language comes back when signing in.
+    const fresh = await browser.newContext({
+      locale: 'en-US',
+      storageState: { cookies: [], origins: [] },
+    })
+    try {
+      const other = await fresh.newPage()
+      await signIn(other, ADMIN)
+      await other.goto('/account')
+      await expect(other.getByRole('heading', { name: 'Cuenta', level: 1 })).toBeVisible()
+    } finally {
+      await fresh.close()
+    }
+  } finally {
+    await page.goto('/account')
+    await page.getByRole('radio', { name: 'Según el navegador' }).click()
+    await page.getByRole('button', { name: 'Guardar idioma' }).click()
+    await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible()
+  }
+})
+
+test('an editor dismisses a finding and sees its saved state while recompute waits', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/issues`)
+  const row = page.getByRole('link', { name: /Client error 4xx \(internal\)/ }).locator('..')
+  await row.getByRole('button', { name: 'Finding actions' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('textbox', { name: 'Note (optional)' }).fill('Known obsolete route')
+  page.once('dialog', (confirmation) => confirmation.accept())
+  await dialog.getByRole('button', { name: 'Dismiss across the domain' }).click()
+  await expect(dialog.getByRole('status')).toContainText('Saved')
+  await page.goto(`${domain}/settings/audit?tab=dismissed`)
+  await expect(page.getByRole('tab', { name: 'Dismissed', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByText(/Dismissed by Ada Admin/)).toBeVisible()
+  await expect(page.getByText('Note: Known obsolete route', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Restore to pending' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Restore to pending' }).click()
+  await expect(page.getByText('No saved finding states.')).toBeVisible()
+  await expect(page.getByText('Known obsolete route')).toHaveCount(0)
+})
+
+test('a rule starts from a template, is saved with its paths, and shows in the list in plain words', async ({
+  page,
+}) => {
+  // With language directories declared, a new rule covers them by default.
+  await page.goto(`${domain}/settings/audit?tab=languages`)
+  await page.getByRole('textbox', { name: 'Directories', exact: true }).fill('/es\n/en')
+  await page.getByRole('button', { name: 'Save directories' }).click()
+  await expect(page.getByText(/^Saved/).first()).toBeVisible()
+
+  await page.goto(`${domain}/settings/audit`)
+  await page.getByRole('button', { name: 'Create rule' }).click()
+  const dialog = page.getByRole('dialog')
+  const language = dialog.getByRole('switch', { name: 'Also in each language' })
+  await expect(language).toBeChecked()
+  /** A condition is a row of its own: two buttons, "don't warn either way", and the way back. */
+  const row = (name: string) =>
+    dialog.locator('[data-statement]').filter({ has: page.getByRole('radiogroup', { name }) })
+  const dontWarn = (name: string) =>
+    row(name).getByRole('checkbox', { name: 'Don’t warn either way' })
+
+  await dialog.getByRole('combobox', { name: 'Start from a template (optional)' }).click()
+  await page.getByRole('option', { name: /Private area/ }).click()
+  // The template only fills the form, and leaves the languages as they were.
+  await expect(language).toBeChecked()
+  await expect(row('Listed in a sitemap').getByRole('radio', { name: 'Forbidden' })).toBeChecked()
+  await expect(dontWarn('Noindex')).toBeChecked()
+  await expect(row('Noindex').getByRole('radio', { checked: true })).toHaveCount(0)
+
+  // One that is not stated shows what applies, without choosing it.
+  const unlinked = row('No internal links')
+  await expect(unlinked.getByRole('radio', { checked: true })).toHaveCount(0)
+  await expect(dontWarn('No internal links')).not.toBeChecked()
+  await dontWarn('No internal links').click()
+  await expect(dontWarn('No internal links')).toBeChecked()
+  // Choosing a button states that and unchecks "don't warn".
+  await unlinked.getByRole('radio', { name: 'Forbidden' }).click()
+  await expect(unlinked.getByRole('radio', { name: 'Forbidden' })).toBeChecked()
+  await expect(dontWarn('No internal links')).not.toBeChecked()
+  // And the way back returns it to not stated.
+  await unlinked.getByRole('button', { name: 'Back to inherited' }).click()
+  await expect(unlinked.getByRole('radio', { checked: true })).toHaveCount(0)
+
+  await dialog.getByRole('textbox', { name: 'Path 1' }).fill('/private')
+  await dialog.getByRole('button', { name: 'Add path' }).click()
+  await dialog.getByRole('textbox', { name: 'Path 2' }).fill('/account')
+  await dialog.getByRole('button', { name: 'Save rule' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  const listed = page.getByRole('row').filter({ hasText: '/private' })
+  await expect(listed.getByText('and 1 more')).toBeVisible()
+  await expect(listed.getByText(/not indexable · noindex indifferent/)).toBeVisible()
+  await expect(listed.getByText(/not in a sitemap/)).toBeVisible()
 })

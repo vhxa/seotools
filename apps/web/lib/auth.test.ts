@@ -34,6 +34,25 @@ describe('admin auth (better-auth)', () => {
     expect(res.token).toBeTruthy()
   })
 
+  it.each(['es', 'en', null] as const)(
+    'restores the saved locale %s on sign-in',
+    async (locale) => {
+      const user = await db.users.findByEmail(admin.email)
+      if (!user) throw new Error('Missing admin')
+      await db.userPreferences.setLocale(user.id, locale)
+      const response = await auth.api.signInEmail({
+        body: { email: admin.email, password: admin.password },
+        asResponse: true,
+      })
+      const cookie = response.headers
+        .getSetCookie()
+        .find((value) => value.startsWith('seotools-locale='))
+      expect(cookie).toContain(`seotools-locale=${locale ?? ''};`)
+      expect(cookie).toContain('HttpOnly')
+      expect(cookie).toContain(locale ? 'Max-Age=31536000' : 'Max-Age=0')
+    },
+  )
+
   it('rejects a wrong password and an unknown user', async () => {
     await expect(
       auth.api.signInEmail({ body: { email: admin.email, password: 'wrong-password' } }),

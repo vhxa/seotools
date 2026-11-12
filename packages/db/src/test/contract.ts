@@ -1,3 +1,7 @@
+import { describeFindingStates } from './finding-states'
+import { describeBotAccess } from './bot-access'
+import { describeAuditModel } from './audit-model'
+import { describeIncidents } from './incidents'
 import { describeVitals } from './vitals'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -76,6 +80,13 @@ export function describeDatabaseContract(
       await reset()
     })
 
+    describeFindingStates(() => db)
+    describeAuditModel(
+      () => db,
+      (id) => legacy.acceptNofollow(id, true),
+    )
+    describeIncidents(() => db)
+
     it('stores one favourite per user, replaces and clears it, and enforces foreign keys', async () => {
       const user = await db.users.create({
         name: 'Member',
@@ -109,6 +120,22 @@ export function describeDatabaseContract(
       expect(await countRows('user_preferences')).toBe(1)
       await deleteUser(user.id)
       expect(await countRows('user_preferences')).toBe(0)
+    })
+
+    it('keeps a saved interface language apart from the favourite domain', async () => {
+      const user = await db.users.create({
+        name: 'Locale',
+        email: 'locale@example.com',
+        role: 'member',
+      })
+      expect(await db.userPreferences.locale(user.id)).toBeNull()
+      await db.userPreferences.setLocale(user.id, 'es')
+      expect(await db.userPreferences.locale(user.id)).toBe('es')
+      await db.userPreferences.setFavouriteDomain(user.id, null)
+      expect(await db.userPreferences.locale(user.id)).toBe('es')
+      await db.userPreferences.setLocale(user.id, null)
+      expect(await db.userPreferences.locale(user.id)).toBeNull()
+      await expect(db.userPreferences.setLocale('missing', 'es')).rejects.toThrow()
     })
 
     it('answers ping', async () => {
@@ -356,6 +383,7 @@ export function describeDatabaseContract(
     })
 
     describeVitals(() => db)
+    describeBotAccess(() => db)
     describeLifecycle(
       () => db,
       (table) => countRows(table),
@@ -2517,6 +2545,7 @@ export function describeDatabaseContract(
         it('starts at version 0, with no rules', async () => {
           const domainId = await domain()
           expect(await db.audit.config(domainId)).toEqual({
+            findingStates: [],
             version: 0,
             rules: [],
             languages: { prefixes: [], unprefixed: false },
@@ -3398,8 +3427,11 @@ export function describeDatabaseContract(
 
           it('writes nothing when the change would go over the limit', async () => {
             const domainId = await domain()
-            const urls = Array.from({ length: 60 }, (_, i) => `https://acme.com/p${i}`)
-            // 60 URLs x 4 statements is more than a domain can have.
+            const urls = Array.from(
+              { length: Math.floor(AUDIT_LIMITS.rulesPerDomain / 4) + 1 },
+              (_, i) => `https://acme.com/p${i}`,
+            )
+            // Four statements per URL exceed the row limit.
             expect(
               await db.audit.setUrlConfig({
                 host: 'acme.com',
@@ -3487,7 +3519,7 @@ export function describeDatabaseContract(
               await save(domainId, {
                 statements: { audit: 'exclude', conditions: { sitemap: 'forbidden' } },
               }),
-            ).toEqual({ ok: false, error: 'conflict' })
+            ).toMatchObject({ ok: false, error: 'conflict' })
             // The statement that was fine was not written either.
             expect(await at(domainId, '/shop')).toEqual(['sitemap=required'])
             expect((await db.audit.config(domainId)).version).toBe(before)
@@ -3548,7 +3580,7 @@ export function describeDatabaseContract(
                 selector: selector('/blog'),
                 statements: { conditions: { sitemap: 'required' } },
               }),
-            ).toEqual({ ok: false, error: 'conflict' })
+            ).toMatchObject({ ok: false, error: 'conflict' })
             expect(await at(domainId, '/store')).toEqual(['audit=exclude', 'sitemap=required'])
           })
 
@@ -5463,6 +5495,15 @@ export function describeDatabaseContract(
         })
         await record(foreign!.id, a, ['noindex'], 9)
 
+        expect(await db.verifications.latestFinishedFor(domainId, a.urlHash)).toMatchObject({
+          verificationId: first.id,
+        })
+        expect(await db.verifications.latestFinishedFor(otherId, a.urlHash)).toBeNull()
+        expect(await db.verifications.latestFinishedFor(domainId, 'nope')).toBeNull()
+        await db.verifications.finish(second.id, { status: 'completed' })
+        expect(await db.verifications.latestFinishedFor(domainId, a.urlHash)).toMatchObject({
+          verificationId: second.id,
+        })
         const latest = await db.verifications.latestFor(domainId, [a.urlHash, b.urlHash, 'nope'])
         // `b` was never answered, so it has no result to show; `a` has the one of the second recheck.
         expect(latest).toHaveLength(1)

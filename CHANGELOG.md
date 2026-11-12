@@ -20,6 +20,63 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Migrations 0029–0033 add bot access tests, optional audit rule grouping, saved user language,
+  site incidents and finding states. Existing audit rules are unchanged. Going back requires
+  restoring the backup taken before updating together with the previous image, as described in
+  `docs/updating.md`.
+- Nothing is dismissed after updating.
+- On first start, retained crawls are analysed again because the issue catalog changed, using each
+  crawl's own configuration. Existing configurations keep the same findings and accepted rows.
+- The first observation of each file after updating is a baseline and does not report an existing
+  problem; certificate and availability thresholds still apply.
+
+### Added
+
+- Findings can be marked in progress or dismissed per URL or across a domain, with notes, attribution, state filters and CSV exports. Dismissed findings no longer count as pending and are never reported as fixed.
+- The robots.txt page offers an on-demand Bot access test comparing homepage responses to published bot User-Agent strings, with explicit limits on what simulated requests can prove.
+- Audit rules can require, allow or forbid a canonical to another URL and the absence of internal
+  links. One rule can cover up to 20 paths, and new rules can start from one of five templates
+  (private area, search and filters, campaign landing, must be indexed, leave out of the audit).
+- The account can edit its own name and choose the interface language (follow the browser, English
+  or Español). The chosen language also applies to the alert and access emails sent to that person.
+  The email address stays read-only.
+- Opt-in alerts between crawls for robots.txt changes and problems, broken sitemaps, repeated
+  availability failures, recovery and expiring certificates. Open incidents appear on the domain
+  dashboard, with a 30-day history in Issues. Checks run about once a day, not as an uptime monitor.
+- Opt-in Core Web Vitals regression alerts when origin field metrics become poor between full
+  crawls; vitals now participate in alerts, unlike 0.4.0.
+
+### Changed
+
+- The audit rules editor shows every condition at once, in compact rows with two buttons
+  (Required, Forbidden) and a "Don't warn either way" checkbox for what was called Indifferent. A
+  condition the rule does not state shows, muted, what applies to its URLs and where that comes
+  from (by default, from another rule, or "varies by path"), and can go back to it after being
+  stated; the long explanations are in help buttons. The form asks where the rule applies first (one
+  or more paths, "also in each language" on by default when the domain declared language
+  directories, and "URL parameters" under Advanced), then the conditions. The list of rules shows
+  one row per rule with its paths and a summary in plain words, and the preview counts the URLs of
+  each path. The exceptions of one or several URLs use the same controls, where "No change" stays
+  apart from "Follow the rules".
+- Crawls say whether they were analysed "with the current rules" or "with rules that have changed
+  since", and a comparison says whether both crawls used the same rules, instead of showing
+  configuration numbers.
+- Custom extraction uses newer CSS selector libraries: `:enabled` now matches only form elements
+  (inputs, buttons, selects, text areas and the like), as browsers do.
+- A recheck of a URL now refreshes its search and social preview: in the detail of the latest
+  crawl, when a later recheck read the page, the preview shows what the recheck saw (with the
+  crawl's preview one tab away), and if the URL no longer answers as a page it says how it answered
+  instead. Older crawls and rechecks made before this are shown as they were.
+
+- The orphan URL finding says that the crawl reads the HTML the server sends, so a link that only
+  appears after JavaScript runs (a menu or footer built in the browser) is not seen.
+
+### Security
+
+- Next.js 16.4.5 and other dependency updates with upstream security fixes.
+
 ## [0.4.0] - 2026-11-12
 
 ### Added

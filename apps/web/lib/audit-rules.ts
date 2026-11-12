@@ -3,7 +3,6 @@ import {
   compileAuditRules,
   isAuditCondition,
   isConditionRule,
-  selectorKey,
   type AuditCondition,
   type AuditParticipation,
   type AuditRule,
@@ -196,52 +195,8 @@ export function outcomeAfter(current: UrlAuditCurrent, picks: AuditPicks): Audit
   }
 }
 
-/**
- * The rows of `audit_rules` as the settings page shows them: one rule per selector, with the
- * statements it makes. A statement is a row of its own, so a rule is the rows that share a selector.
- */
-export interface RuleGroup<R extends AuditRule = AuditRule> {
-  /** What identifies the selector. */
-  key: string
-  selector: AuditSelector
-  /** The row that acts for each statement the rule makes: the enabled one, or the first. */
-  statements: Partial<Record<StatementKey, R>>
-  /** Every row of the rule, to turn them on, off or away together. */
-  ids: string[]
-  /** Every row that acts is enabled. A rule with some rows off (from before rules were edited as one) is off. */
-  enabled: boolean
-  reason: string | null
-}
-
-export function groupRules<R extends AuditRule>(rules: readonly R[]): RuleGroup<R>[] {
-  const groups = new Map<string, RuleGroup<R>>()
-  for (const rule of rules) {
-    const key = selectorKey(rule.selector)
-    let group = groups.get(key)
-    if (!group) {
-      group = {
-        key,
-        selector: rule.selector,
-        statements: {},
-        ids: [],
-        enabled: true,
-        reason: null,
-      }
-      groups.set(key, group)
-    }
-    group.ids.push(rule.id)
-    const statement = rule.dimension as StatementKey
-    const current = group.statements[statement]
-    // A disabled duplicate never takes the place of the row that acts.
-    if (!current || (!current.enabled && rule.enabled)) group.statements[statement] = rule
-  }
-  for (const group of groups.values()) {
-    const acting = Object.values(group.statements)
-    group.enabled = acting.length > 0 && acting.every((rule) => rule.enabled)
-    group.reason = acting.find((rule) => rule.reason !== null)?.reason ?? null
-  }
-  return [...groups.values()]
-}
+export { groupRules, type RuleGroup } from '@seotools/core/crawl/audit'
+import type { RuleGroup } from '@seotools/core/crawl/audit'
 
 /** The statements of a rule that are about conditions, in the order the editors show them. */
 export const conditionsOf = (group: RuleGroup): [AuditCondition, Requirement][] =>

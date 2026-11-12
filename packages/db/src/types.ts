@@ -1,3 +1,8 @@
+import type { AcceptanceKind } from '@seotools/core/crawl/acceptance'
+import type { BotAnswer, BotVerdict } from '@seotools/core/bot-access'
+import type { RuleEditing, RuleSelectors } from './audit'
+import type { CrawlFileObservation, CrawlFileRecord } from '@seotools/core/crawl/files'
+import type { IncidentKind, IncidentStage } from '@seotools/core/incidents'
 import type { VitalMetrics } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
@@ -9,7 +14,6 @@ import type {
   UserRole,
   AuditCondition,
   AuditRule,
-  AuditSelector,
   CompareView,
   CrawlChange,
   UrlSnapshot,
@@ -17,12 +21,12 @@ import type {
   AuditValue,
   IndexabilityState,
   IndexIntent,
+  IntentRuleValue,
   LanguageConfig,
   NewAuditRule,
   PagesAudit,
   Requirement,
   UrlAuditState,
-  CrawlFileData,
   CrawlFileKind,
   ExtraCrawlFileKind,
   CrawlFrequency,
@@ -473,6 +477,7 @@ export type CrawlUrlSort =
 
 /** Which URLs of a crawl a list shows. */
 export interface CrawlUrlQuery {
+  state?: 'pending' | 'in-progress' | 'dismissed'
   crawlId: string
   view: CrawlUrlView
   /** Text the URL or the title contains, whatever its case. */
@@ -488,6 +493,7 @@ export interface CrawlUrlQuery {
    * `view` is ignored.
    */
   accepted?: string
+  acceptanceKind?: AcceptanceKind
   /**
    * Only URLs whose last request got a status of this class, or `none`: no status at all, because
    * the URL was never requested or the request failed. Within the `view`.
@@ -850,7 +856,10 @@ export interface CrawlRepository {
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
   /** For each issue a rule accepts in a crawl, how many URLs it accepts it on. */
-  acceptedCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
+  acceptedCounts(
+    crawlId: string,
+    kind?: 'dismissal' | 'rule',
+  ): Promise<{ issue: string; pages: number }[]>
   /** The findings rules accept on these URLs of a crawl. */
   acceptedOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlAcceptedIssue[]>
   /**
@@ -964,6 +973,7 @@ export interface CrawlUrlTrace {
   snapshot: UrlSnapshot
   issues: CrawlUrlIssue[]
   /** Ids of the issues a rule accepts on the URL in this crawl. */
+  dismissed?: string[]
   accepted?: string[]
   /** `null`: the crawl was analysed before the audit state per URL was kept, or not analysed. */
   audit: CrawlUrlAudit | null
@@ -972,7 +982,29 @@ export interface CrawlUrlTrace {
 /** A rule as stored: with the domain it belongs to and when it was made. */
 export type AuditRuleRecord = AuditRule & { domainId: string; createdAt: Date; updatedAt: Date }
 
+export interface FindingStateRecord {
+  id: string
+  domainId: string
+  issue: string
+  urlHash: string | null
+  targetKey: string
+  state: 'in-progress' | 'dismissed' | 'pending'
+  note: string
+  setBy: string | null
+  setAt: Date
+}
+
+export interface SetFindingStates {
+  domainId: string
+  issue: string
+  urlHashes: (string | null)[]
+  state: 'in-progress' | 'dismissed' | 'pending'
+  note: string
+  setBy: string
+}
+
 export interface AuditConfig {
+  findingStates: FindingStateRecord[]
   /** Grows with every change to the rules. `0`: the domain never had any. */
   version: number
   /** Every rule of the domain, enabled or not, oldest first. */
@@ -994,6 +1026,7 @@ export type AuditMutation =
        * rules. `not-found`: no such rule in the domain.
        */
       error: 'conflict' | 'not-found' | 'limit'
+      key?: string
     }
 
 /** What to do with the audit of a URL: leave it to the rules, or set it. */
@@ -1010,11 +1043,12 @@ export interface RuleStatements {
   /** Whether the URLs it covers take part in the audit. */
   audit?: AuditValue
   /** The expectation of indexing as a whole, an advanced concept apart from the conditions. */
-  intent?: IndexIntent
+  intent?: IntentRuleValue
   conditions?: Partial<Record<AuditCondition, Requirement>>
 }
 
 export interface AuditRepository {
+  setFindingStates(input: SetFindingStates): Promise<AuditMutation>
   /**
    * The rules of a domain and the version they are at, read together: the version is read before
    * and after the rules, and the read repeats if it moved, so a version never labels other rules.
@@ -1049,18 +1083,19 @@ export interface AuditRepository {
     reason?: string | null
   }): Promise<AuditMutation>
   /**
-   * Saves a rule as the rule editor shows it: a selector and the statements made about it, each one
-   * a row of its own, in one change. With `editing`, the rows that have that selector are the rule
-   * being edited and the statements replace them (see `planSaveRuleSet`); without it, a new rule.
+   * Saves one rule across its selectors, with one row per statement and selector. `editing` is a
+   * set id or the selector of a legacy group; without it, creates a new rule. Kept selectors retain
+   * row ids and removed selectors disappear (see `planSaveRuleSet`).
    */
-  saveRuleSet(input: {
-    domainId: string
-    selector: AuditSelector
-    statements: RuleStatements
-    reason: string | null
-    enabled: boolean
-    editing?: AuditSelector
-  }): Promise<AuditMutation>
+  saveRuleSet(
+    input: {
+      domainId: string
+      statements: RuleStatements
+      reason: string | null
+      enabled: boolean
+      editing?: RuleEditing
+    } & RuleSelectors,
+  ): Promise<AuditMutation>
   /** Turns the rows of one rule on or off together: all or none. */
   setRulesEnabled(input: {
     domainId: string
@@ -1180,6 +1215,8 @@ export interface VerificationRepository {
    * domain's rechecks are never looked at, whatever the hashes.
    */
   latestFor(domainId: string, urlHashes: string[]): Promise<VerifiedUrl[]>
+  /** Newest result of one URL from an ended recheck of this domain; reads at most one row. */
+  latestFinishedFor(domainId: string, urlHash: string): Promise<VerifiedUrl | null>
   /** Removes the oldest ended rechecks of a domain beyond the newest `keep`, with their URLs. */
   prune(input: { domainId: string; keep: number }): Promise<number>
 }
@@ -1262,31 +1299,10 @@ export interface FaviconRepository {
   defer(input: { domainId: string; nextCheckAt: Date }): Promise<void>
 }
 
-/** What a request for a crawl file answered. */
-export interface NewCrawlFile {
-  url: string
-  kind: CrawlFileKind
-  /** `null` when it never answered: see `error`. */
-  statusCode: number | null
-  contentType: string | null
-  redirectTo: string | null
-  bytes: number | null
-  /** The file is larger than what was read or kept of it. */
-  truncated: boolean
-  body: string | null
-  error: string | null
-  data: CrawlFileData | null
-  /** What requested it. */
-  via: 'crawl' | 'refresh'
-  fetchedAt: Date
-}
+export type NewCrawlFile = CrawlFileObservation
+export type CrawlFile = CrawlFileRecord
 
-export interface CrawlFile extends NewCrawlFile {
-  domainId: string
-  urlHash: string
-}
-
-export type CrawlFileCheckOutcome = 'ok' | 'unreachable'
+export type CrawlFileCheckOutcome = 'ok' | 'unreachable' | 'tls-error'
 
 export interface CrawlFileCheck {
   domainId: string
@@ -1324,6 +1340,7 @@ export interface CrawlFileRepository {
     outcome: CrawlFileCheckOutcome
     checkedAt: Date
     nextCheckAt: Date
+    files?: NewCrawlFile[]
   }): Promise<void>
   /** A check that did not happen (a crawl is taking care of it), so nobody waits for it. */
   deferCheck(input: { domainId: string; nextCheckAt: Date }): Promise<void>
@@ -1341,8 +1358,9 @@ export interface UrlVitalsRecord extends VitalsRecord {
   source: string
 }
 export interface VitalsRepository {
+  queueAlerts(crawlId: string): Promise<void>
   /** Latest finished full crawl with origin rows, including retained origin-only history. */
-  latestCrawl(domainId: string): Promise<Crawl | null>
+  latestCrawl(domainId: string, before?: Date): Promise<Crawl | null>
   origins(crawlId: string): Promise<VitalsRecord[]>
   urls(crawlId: string): Promise<UrlVitalsRecord[]>
   saveOrigin(row: VitalsRecord): Promise<void>
@@ -1351,9 +1369,32 @@ export interface VitalsRepository {
 export interface UserPreferencesRepository {
   favouriteDomainId(userId: string): Promise<string | null>
   setFavouriteDomain(userId: string, domainId: string | null): Promise<void>
+  /** The saved interface language, or null to follow the browser. */
+  locale(userId: string): Promise<string | null>
+  setLocale(userId: string, locale: string | null): Promise<void>
 }
 
+export interface SiteIncident {
+  id: string
+  domainId: string
+  kind: IncidentKind
+  subject: string
+  stage: IncidentStage
+  activeKey: string | null
+  openedAt: Date
+  lastSeenAt: Date
+  resolvedAt: Date | null
+  details: string
+}
+export interface IncidentRepository {
+  list(domainId: string, since?: Date): Promise<SiteIncident[]>
+  get(id: string): Promise<SiteIncident | null>
+  claim(incidentId: string, userId: string, stage: IncidentStage): Promise<boolean>
+  release(incidentId: string, userId: string, stage: IncidentStage): Promise<void>
+  prune(before: Date): Promise<void>
+}
 export interface Database {
+  readonly incidents: IncidentRepository
   readonly userPreferences: UserPreferencesRepository
   readonly vitals: VitalsRepository
   readonly dialect: Dialect
@@ -1368,6 +1409,7 @@ export interface Database {
   readonly domains: DomainRepository
   readonly crawls: CrawlRepository
   readonly audit: AuditRepository
+  readonly botTests: BotTestRepository
   readonly verifications: VerificationRepository
   readonly priorityUrls: PriorityUrlRepository
   readonly crawlSchedules: CrawlScheduleRepository
@@ -1389,4 +1431,32 @@ export interface Database {
   /** Applies pending migrations from `migrationsDir` (default: the bundled ones). */
   migrate(migrationsDir?: string): Promise<void>
   close(): Promise<void>
+}
+
+export interface BotTestRun {
+  id: string
+  domainId: string
+  jobId: string
+  requestedBy: string
+  activeKey: string | null
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+  createdAt: Date
+  startedAt: Date | null
+  finishedAt: Date | null
+}
+export interface BotTestResult extends BotAnswer, BotVerdict {
+  runId: string
+  botToken: string
+  responseTimeMs: number | null
+  bytes: number | null
+}
+export interface BotTestRepository {
+  start(input: { domainId: string; requestedBy: string }): Promise<BotTestRun | null>
+  get(id: string): Promise<BotTestRun | null>
+  active(domainId: string): Promise<BotTestRun | null>
+  list(domainId: string): Promise<BotTestRun[]>
+  markRunning(id: string): Promise<void>
+  results(id: string): Promise<BotTestResult[]>
+  record(input: BotTestResult): Promise<void>
+  finish(id: string, status: 'done' | 'failed' | 'cancelled'): Promise<void>
 }

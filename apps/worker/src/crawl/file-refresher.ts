@@ -82,20 +82,20 @@ export function createCrawlFileRefresher(options: {
 
     // Nothing answered: that says more about the connection than about the files, so keep them.
     const reachable = fetched.files.some((file) => file.statusCode !== null)
+    await db.crawlFiles.finishCheck({
+      domainId: domain.id,
+      files: fetched.files,
+      outcome: reachable ? 'ok' : 'unreachable',
+      checkedAt: now(),
+      nextCheckAt: after(reachable ? CRAWL_FILE_REFRESH_INTERVAL_MS : CRAWL_FILE_RETRY_INTERVAL_MS),
+    })
     if (reachable) {
-      await db.crawlFiles.save(domain.id, fetched.files)
       await db.crawlFiles.prune({
         domainId: domain.id,
         before: startedAt,
         ...(fetched.capped ? { keepKinds: ['sitemap'] as const } : {}),
       })
     }
-    await db.crawlFiles.finishCheck({
-      domainId: domain.id,
-      outcome: reachable ? 'ok' : 'unreachable',
-      checkedAt: now(),
-      nextCheckAt: after(reachable ? CRAWL_FILE_REFRESH_INTERVAL_MS : CRAWL_FILE_RETRY_INTERVAL_MS),
-    })
     log.info(
       { host: domain.host, files: fetched.files.length, reachable, capped: fetched.capped },
       'crawl files checked',

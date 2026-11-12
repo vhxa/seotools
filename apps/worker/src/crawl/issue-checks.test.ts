@@ -16,6 +16,8 @@ import {
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { recomputeAudit } from './audit-recompute'
+import { applyFindingDismissals } from './issue-checks'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import { runCrawl } from './engine'
 import { fakeSite, moved, type Answer } from './fake-site'
@@ -88,7 +90,7 @@ const expecting = (path: string, value: 'indexable' | 'not-indexable'): NewAudit
 /** A rule asking something of a condition of a path. */
 const asking = (
   path: string,
-  dimension: 'noindex' | 'nofollow' | 'robots' | 'sitemap',
+  dimension: 'noindex' | 'nofollow' | 'robots' | 'sitemap' | 'canonical' | 'unlinked',
   value: 'required' | 'allowed' | 'forbidden',
 ): NewAuditRule => ({
   dimension,
@@ -117,6 +119,21 @@ const SCENARIOS: Record<PageIssueId, Scenario> = {
     pages: { '/x': page('/x', { head: '<meta name="robots" content="noindex">' }) },
     rules: [expecting('/x', 'indexable')],
     details: ['noindex'],
+  },
+  'canonical-required-missing': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    rules: [asking('/x', 'canonical', 'required')],
+  },
+  'canonical-forbidden-present': {
+    at: '/x',
+    pages: { '/x': page('/x', { canonical: `${SITE}/about` }) },
+    rules: [asking('/x', 'canonical', 'forbidden')],
+  },
+  'unlinked-required-missing': {
+    at: '/x',
+    pages: { '/x': page('/x') },
+    rules: [asking('/x', 'unlinked', 'required')],
   },
   'noindex-required-missing': {
     at: '/x',
@@ -1692,4 +1709,121 @@ describe('field vitals findings', () => {
       expect(CHECKS[issue]({} as AuditedUrl, {} as Site)).toBe(false)
     },
   )
+})
+
+it('applies URL and domain dismissals after rules, preserves pending overrides and historical snapshots', async () => {
+  const id = await crawl(
+    websiteOf({
+      at: '/x',
+      pages: { '/x': page('/x', { title: '' }), '/y': page('/y', { title: '' }) },
+    }),
+  )
+  const older = id
+  const latest = await crawl(
+    websiteOf({
+      at: '/x',
+      pages: { '/x': page('/x', { title: '' }), '/y': page('/y', { title: '' }) },
+    }),
+  )
+  const member = await db.users.create({
+    name: 'Editor',
+    email: 'dismiss@example.com',
+    role: 'member',
+  })
+  const input = {
+    domainId,
+    issue: 'title-missing',
+    urlHashes: [null],
+    state: 'dismissed' as const,
+    note: '',
+    setBy: member.id,
+  }
+  await db.audit.setFindingStates(input)
+  await db.audit.setFindingStates({
+    ...input,
+    urlHashes: [crawlUrlHash(absolute('/x'))],
+    state: 'pending',
+  })
+  await analyseCrawl(db, latest, await currentAuditConfig(db, domainId))
+  expect((await issuesAt(latest, '/x')).some((r) => r.issue === 'title-missing')).toBe(true)
+  expect((await issuesAt(latest, '/y')).some((r) => r.issue === 'title-missing')).toBe(false)
+  expect(await db.crawls.acceptedOf(latest, [crawlUrlHash(absolute('/y'))])).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        issue: 'title-missing',
+        acceptance: expect.objectContaining({ kind: 'dismissal', scope: 'domain' }),
+      }),
+    ]),
+  )
+  await recomputeAudit({ db, domainId, crawlId: older, force: true, finalAttempt: true, log })
+  expect((await issuesAt(older, '/y')).some((r) => r.issue === 'title-missing')).toBe(true)
+  await db.audit.setFindingStates({ ...input, state: 'pending' })
+  await db.audit.setFindingStates({ ...input, urlHashes: [crawlUrlHash(absolute('/y'))] })
+  await analyseCrawl(db, latest, await currentAuditConfig(db, domainId))
+  expect(await db.crawls.acceptedOf(latest, [crawlUrlHash(absolute('/y'))])).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        acceptance: expect.objectContaining({ kind: 'dismissal', scope: 'url' }),
+      }),
+    ]),
+  )
+})
+
+it('never dismisses expected findings, including malformed stored snapshots', () => {
+  const subject = { url: { urlHash: 'h' } } as AuditedUrl
+  const site = {
+    config: {
+      dismissals: [
+        { id: 'd', issue: 'expected-indexable-blocked', urlHash: null, state: 'dismissed' },
+      ],
+    },
+  } as Site
+  expect(
+    applyFindingDismissals(subject, site, [{ issue: 'expected-indexable-blocked' }], []),
+  ).toMatchObject({
+    found: [{ issue: 'expected-indexable-blocked' }],
+    accepted: [],
+  })
+})
+
+it('records Alice and her decision time in the snapshot and acceptance before Bob changes it', async () => {
+  const alice = await db.users.create({ name: 'Alice', email: 'alice@example.com', role: 'member' })
+  const bob = await db.users.create({ name: 'Bob', email: 'bob@example.com', role: 'member' })
+  const input = {
+    domainId,
+    issue: 'title-missing',
+    urlHashes: [null],
+    state: 'dismissed' as const,
+    note: 'Alice note',
+    setBy: alice.id,
+  }
+  await db.audit.setFindingStates(input)
+  const decision = (await db.audit.config(domainId)).findingStates[0]!
+  const site = websiteOf({ at: '/x', pages: { '/x': page('/x', { title: '' }) } })
+  const older = await crawl(site)
+  const original = (await db.crawls.acceptedOf(older, [crawlUrlHash(absolute('/x'))])).find(
+    (r) => r.issue === input.issue,
+  )!
+  expect(original.acceptance).toMatchObject({
+    kind: 'dismissal',
+    setBy: alice.id,
+    setAt: decision.setAt.toISOString(),
+  })
+  expect((await db.crawls.get(older))?.auditSnapshot?.dismissals?.[0]).toMatchObject({
+    setBy: alice.id,
+    setAt: decision.setAt.toISOString(),
+  })
+  await db.audit.setFindingStates({
+    ...input,
+    state: 'in-progress',
+    setBy: bob.id,
+    note: 'Bob note',
+  })
+  await crawl(site)
+  await recomputeAudit({ db, domainId, crawlId: older, force: true, finalAttempt: true, log })
+  expect(
+    (await db.crawls.acceptedOf(older, [crawlUrlHash(absolute('/x'))])).find(
+      (r) => r.issue === input.issue,
+    )?.acceptance,
+  ).toEqual(original.acceptance)
 })

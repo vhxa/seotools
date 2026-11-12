@@ -1,3 +1,4 @@
+import { FindingStatesList } from '@/components/audit/finding-states-list'
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { getTranslations } from 'next-intl/server'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
@@ -36,7 +37,6 @@ export default async function AuditSettingsPage({
     db.crawls.latestWithResults(domain.id, 'full'),
   ])
   const state = auditResultsState(latest, config)
-  const languagesDeclared = config.languages.prefixes.length > 0 || config.languages.unprefixed
 
   // What each rule decided in the last analysis, which knows only the rules it was made with.
   const counts = latest ? await db.crawls.auditRuleCounts(latest.id) : new Map<string, number>()
@@ -59,7 +59,7 @@ export default async function AuditSettingsPage({
             host={domain.host}
             rules={config.rules}
             affected={affected}
-            languagesDeclared={languagesDeclared}
+            languages={config.languages}
           />
         )}
         {tab === 'languages' && (
@@ -67,6 +67,9 @@ export default async function AuditSettingsPage({
         )}
         {tab === 'thresholds' && (
           <ThresholdsTab host={domain.host} thresholds={config.thresholds} />
+        )}
+        {tab === 'dismissed' && (
+          <FindingStatesList host={domain.host} rows={config.findingStates} />
         )}
       </AuditTabs>
     </>

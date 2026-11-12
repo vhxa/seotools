@@ -371,8 +371,8 @@
         "note": "The crawl of {when} found these at this URL; the recheck does not."
       },
       "accepted": {
-        "title": "Seen, and accepted by a rule ({count})",
-        "note": "The recheck still sees these at this URL, but a rule takes them as expected, so they are not pending. They are not fixed.",
+        "title": "Accepted or dismissed ({count})",
+        "note": "The crawl still sees these findings. A rule accepts them or a person dismissed them; neither means fixed.",
         "wasPending": "The crawl reported it as pending"
       },
       "notComparable": {
@@ -489,8 +489,8 @@
       "unmark": "Remove from priority"
     },
     "accepted": {
-      "title": "Accepted by a rule",
-      "help": "The crawl still sees these, and a rule says they are expected. They are not pending, and they are not fixed: remove the rule and they count again.",
+      "title": "Accepted or dismissed",
+      "help": "The crawl still sees these findings. A rule accepts them or a person dismissed them; neither means fixed.",
       "viewAll": "View every URL with an accepted finding"
     }
   },
@@ -647,9 +647,19 @@
         "participation": "Audit: {value}",
         "intent": "{value}",
         "rule": "Decided by one rule",
-        "accepted": "Accepted by a rule: {value}"
+        "accepted": "Accepted or dismissed: {value}",
+        "state": "State: {value}"
       },
-      "anyFinding": "any finding"
+      "anyFinding": "any finding",
+      "states": {
+        "pending": "Pending",
+        "in-progress": "In progress",
+        "dismissed": "Dismissed"
+      },
+      "acceptanceKinds": {
+        "rule": "Accepted by a rule",
+        "dismissal": "Dismissed by a person"
+      }
     },
     "advancedFilters": "Advanced filters and issues",
     "filtersMenu": "Filters",
@@ -726,7 +736,7 @@
       "evidenceSamples": "Evidence samples",
       "findingState": "State",
       "acceptedBecause": "Accepted because",
-      "acceptedFindings": "Accepted by a rule",
+      "acceptedFindings": "Accepted or dismissed",
       "linkTo": "Links to",
       "linkKind": "Link type",
       "linkStatus": "Linked URL status",
@@ -741,7 +751,10 @@
       "referencedBy": "Referenced by",
       "lcp": "LCP (field, phone)",
       "inp": "INP (field, phone)",
-      "cls": "CLS (field, phone)"
+      "cls": "CLS (field, phone)",
+      "note": "Decision note",
+      "decisionBy": "Dismissed by",
+      "decisionAt": "Dismissed at"
     },
     "values": {
       "internal": "This site",
@@ -752,7 +765,9 @@
       "accepted": "Accepted by a rule",
       "yes": "Yes",
       "no": "No",
-      "secondary": "Secondary (page not indexable)"
+      "secondary": "Secondary (page not indexable)",
+      "dismissed": "Dismissed",
+      "inProgress": "In progress"
     },
     "filters": {
       "view": "View: {value}"
@@ -819,7 +834,6 @@
     "excludedFindings": "Excluded from the audit: it has no findings of its own.",
     "httpUnknown": "No HTTP response recorded",
     "findingsSummary": "{count, plural, one {# finding} other {# findings}} · {high, number} high importance — view findings",
-    "crawlContext": "Full crawl: {when} · Audit configuration: {version}",
     "findingGroups": {
       "high": "High importance ({count, number})",
       "medium": "Medium importance ({count, number})",
@@ -831,7 +845,7 @@
     "recheckAvailable": "Rechecked {when} · view separate results",
     "noPendingIssues": "Nothing pending on this URL.",
     "accepted": {
-      "title": "Accepted by a rule ({count, number})",
+      "title": "Accepted or dismissed ({count})",
       "note": "The crawl still sees these. A rule says they are expected, so they are not pending, and they are not fixed.",
       "condition": "A rule states {condition}: {requirement}.",
       "expectation": "A rule expects this URL not to be indexable.",
@@ -870,7 +884,17 @@
       "notRecorded": "Not recorded by this crawl: run a new crawl to see it.",
       "untagged": "The page has no Open Graph tags: social networks choose what to show.",
       "imageInsecure": "Image not shown: it is not served over HTTPS",
-      "noImage": "No image"
+      "noImage": "No image",
+      "tabRecheck": "Recheck",
+      "tabCrawl": "Crawl",
+      "fromRecheck": "From the recheck of {when}",
+      "fromCrawl": "From the crawl of {when}",
+      "recheckImageNote": "The image is the address the page declared; a recheck does not request it.",
+      "notPageRedirect": "At the recheck of {when} this URL redirected ({status}) to {target}. The preview of the crawl is in the other tab.",
+      "notPageRedirectNowhere": "At the recheck of {when} this URL redirected ({status}) without saying where. The preview of the crawl is in the other tab.",
+      "notPageStatus": "At the recheck of {when} this URL answered {status}, not a page. The preview of the crawl is in the other tab.",
+      "notPageNotHtml": "At the recheck of {when} this URL answered {status} with something that is not a web page. The preview of the crawl is in the other tab.",
+      "notPageNoAnswer": "At the recheck of {when} this URL did not answer. The preview of the crawl is in the other tab."
     }
   },
   "UrlLinks": {
@@ -1308,7 +1332,7 @@
     },
     "orphan-in-sitemap": {
       "name": "Orphan URL (only in the sitemap)",
-      "description": "No internal link to it was found within the scope of the crawl: only the sitemap leads to it."
+      "description": "No internal link to it was found within the scope of the crawl: only the sitemap leads to it. The crawl reads the HTML the server sends: a link that only appears after JavaScript runs (a menu or footer built in the browser) is not seen."
     },
     "no-outgoing-links": {
       "name": "No outgoing internal links",
@@ -1529,6 +1553,18 @@
     "cls-poor": {
       "name": "CLS is poor",
       "description": "The mobile field CLS at the 75th percentile exceeds Google’s poor threshold."
+    },
+    "canonical-required-missing": {
+      "name": "Required canonical to another URL is missing",
+      "description": "The rule requires a canonical to another URL, but the whole page was read and declares itself canonical or declares no canonical."
+    },
+    "canonical-forbidden-present": {
+      "name": "Canonical to another URL is forbidden",
+      "description": "The page declares a canonical to another URL although its rule forbids it."
+    },
+    "unlinked-required-missing": {
+      "name": "Internal links are not allowed by the rule",
+      "description": "The rule requires no internal links to this URL, but at least one internal anchor points at it."
     }
   },
   "LinkKinds": {
@@ -2192,32 +2228,6 @@
       "reason": "Reason: {reason}",
       "noReason": "No reason given"
     },
-    "effective": {
-      "audit": {
-        "default": "Audited: no rule applies.",
-        "excludedByRule": "Excluded by the rule “{rule}”.",
-        "excludedByException": "Excluded by an exception for this URL.",
-        "includedByRule": "Included by the rule “{rule}”.",
-        "includedByException": "Included through an exception for this URL."
-      },
-      "intent": {
-        "default": "Expected indexable by default.",
-        "indexableByRule": "Expected indexable by the rule “{rule}”.",
-        "indexableByException": "Expected indexable by an exception for this URL.",
-        "notIndexableByRule": "Expected not indexable by the rule “{rule}”.",
-        "notIndexableByException": "Expected not indexable by an exception for this URL."
-      },
-      "condition": {
-        "default": {
-          "noindex": "No rule applies: a noindex gets a finding.",
-          "nofollow": "No rule applies: a nofollow of the page itself gets a warning.",
-          "robots": "No rule applies: a robots.txt block gets a finding.",
-          "sitemap": "No rule applies: an indexable page that no sitemap lists gets a low-priority warning."
-        },
-        "byRule": "{requirement} by the rule “{rule}”.",
-        "byException": "{requirement} by an exception for this URL."
-      }
-    },
     "technicalNote": "This is what the crawl saw, not whether a search engine has indexed the URL, which a crawl cannot know.",
     "empty": "—",
     "conditions": {
@@ -2225,7 +2235,9 @@
         "noindex": "Noindex",
         "nofollow": "Nofollow",
         "robots": "robots.txt block",
-        "sitemap": "Sitemap"
+        "sitemap": "Sitemap",
+        "canonical": "Canonical to another URL",
+        "unlinked": "No internal links"
       },
       "badge": "{condition}: {requirement}",
       "outcome": {
@@ -2242,7 +2254,8 @@
       "label": "Audit settings",
       "rules": "Rules",
       "languages": "Language directories",
-      "thresholds": "Thresholds"
+      "thresholds": "Thresholds",
+      "dismissed": "Dismissed"
     },
     "create": "Create rule",
     "sections": {
@@ -2265,27 +2278,22 @@
       "prefix": "This path and what is below it by segments: /account covers /account, /account/ and /account/orders, but not /accounts. The longest prefix wins."
     },
     "scope": {
-      "label": "Where the path is read",
-      "literal": "Literal path",
-      "shared": "Shared between languages",
-      "literalHelp": "The path is compared with the path of the URL as it is.",
-      "sharedHelp": "The same path inside each declared language directory and, if enabled, without one: /cart covers /cart, /es/cart, /en/cart… It does not translate slugs: /es/carrito and /en/cart need different rules.",
-      "noLanguages": "Declare the language directories first, in the “Language directories” tab. Until then a shared rule covers nothing."
+      "shared": "Shared between languages"
     },
     "query": {
-      "label": "Query string",
-      "any": "Ignore the query",
-      "exact": "Only this query",
+      "label": "URL parameters",
+      "any": "Any (default)",
+      "exact": "Only exactly these",
       "valueLabel": "Query",
       "valuePlaceholder": "page=2",
-      "valueHelp": "Compared as written, in this order: a=1&b=2 and b=2&a=1 are different. Leave it empty for URLs without a query. A rule for a query beats one that ignores it.",
       "ignored": "any query",
       "only": "query ?{query}",
-      "none": "no query"
+      "none": "no query",
+      "help": "Which query strings (what follows the ? of a URL) each path above covers. Parameters are compared as written, in this order. An empty field means URLs with no parameters.",
+      "example": "Example: “Any” makes /products cover /products and /products?sort=price. “Only exactly these” with sort=price covers /products?sort=price and not /products."
     },
     "form": {
       "kind": "Applies to",
-      "selector": "Address",
       "urlPlaceholder": "https://{host}/cart",
       "pathPlaceholder": "/cart",
       "reason": "Reason",
@@ -2302,14 +2310,27 @@
       "preview": "Preview matches",
       "previewing": "Looking…",
       "appliesTo": "This rule applies to",
-      "says": "And it says",
-      "advancedSelector": "Advanced: query string and languages"
+      "pathKinds": {
+        "prefix": "Path and below",
+        "path": "Exact path"
+      },
+      "path": "Path {number}",
+      "removePath": "Remove path {number}",
+      "addPath": "Add path",
+      "pathCount": "{count} of {max} paths",
+      "byLanguage": "Also in each language",
+      "byLanguageOn": "Covers the same path inside {languages}.",
+      "byLanguageOff": "Only the path as written.",
+      "template": "Start from a template (optional)",
+      "templateHelp": "Pick one to fill in the conditions. Nothing is saved until you save the rule.",
+      "noTemplate": "No template",
+      "appliesHelp": "It applies to this domain, its www variant, over HTTP and HTTPS. Upper and lower case are different."
     },
     "list": {
       "empty": "No rules yet.",
       "columns": {
-        "selector": "URLs",
-        "says": "Says",
+        "selector": "Applies to",
+        "says": "Summary",
         "enabled": "Enabled",
         "reason": "Reason"
       },
@@ -2323,7 +2344,9 @@
       "deleteTitle": "Delete this rule?",
       "deleteDescription": "The URLs it decides go back to what the other rules say. The last crawl is analysed again, without requesting anything from the site.",
       "deleteConfirm": "Delete rule",
-      "sharedWithoutLanguages": "It covers nothing until the language directories are declared."
+      "sharedWithoutLanguages": "It covers nothing until the language directories are declared.",
+      "morePaths": "and {count} more",
+      "details": "Details"
     },
     "languages": {
       "title": "Language directories",
@@ -2356,7 +2379,8 @@
       "note": "This only shows the URLs the last full crawl knows (finished {when}). The rule also applies to URLs found in later crawls.",
       "noteUnknown": "This only shows the URLs the last full crawl knows. The rule also applies to URLs found in later crawls.",
       "scanned": "{count, plural, one {# URL} other {# URLs}} looked at.",
-      "inactive": "This rule is switched off, so it decides nothing yet. The matches show what it would cover once it is on."
+      "inactive": "This rule is switched off, so it decides nothing yet. The matches show what it would cover once it is on.",
+      "perPath": "{count, plural, one {# URL} other {# URLs}}"
     },
     "status": {
       "pending": {
@@ -2442,24 +2466,62 @@
           "unit": "Milliseconds"
         }
       }
+    },
+    "summary": {
+      "audit": {
+        "exclude": "left out of the audit",
+        "include": "audited"
+      },
+      "intent": {
+        "indexable": "indexable",
+        "not-indexable": "not indexable"
+      },
+      "conditions": {
+        "noindex": {
+          "required": "noindex required",
+          "allowed": "noindex indifferent",
+          "forbidden": "noindex forbidden"
+        },
+        "nofollow": {
+          "required": "nofollow required",
+          "allowed": "nofollow indifferent",
+          "forbidden": "nofollow forbidden"
+        },
+        "robots": {
+          "required": "blocked by robots.txt",
+          "allowed": "robots.txt indifferent",
+          "forbidden": "not blocked by robots.txt"
+        },
+        "sitemap": {
+          "required": "in a sitemap",
+          "allowed": "sitemap indifferent",
+          "forbidden": "not in a sitemap"
+        },
+        "canonical": {
+          "required": "canonical to another URL",
+          "allowed": "canonical indifferent",
+          "forbidden": "no canonical to another URL"
+        },
+        "unlinked": {
+          "required": "no internal links",
+          "allowed": "internal links indifferent",
+          "forbidden": "has internal links"
+        }
+      }
     }
   },
   "AuditDialog": {
     "title": "Configure audit",
     "description": "{count, plural, one {# URL selected.} other {# URLs selected.}} It is saved as an exception for each URL, and the last full crawl is analysed again in the background, with no requests to the site.",
     "descriptionOne": "It is saved as an exception for this URL, and the last full crawl is analysed again in the background, with no requests to the site.",
-    "multipleHint": "Nothing is changed unless you choose it. “No change” leaves each URL as it is; “According to the rules” removes the exception of the URLs, so they take what the rules say.",
+    "multipleHint": "Nothing is changed unless you choose it. “No change” leaves each URL as it is; “Follow the rules” removes the exceptions of these URLs, so they take what the rules say.",
     "reason": "Reason (optional)",
     "reasonPlaceholder": "Why? It is shown wherever this decides.",
     "reasonKept": "Left empty, each exception keeps its own reason.",
     "apply": "Apply",
     "applying": "Applying…",
     "cancel": "Cancel",
-    "nothing": "Choose what to change.",
-    "state": {
-      "now": "Now: {state}",
-      "afterSave": "After saving: {state}"
-    }
+    "nothing": "Choose what to change."
   },
   "CrawlHistory": {
     "stamp": {
@@ -2467,11 +2529,11 @@
       "retained": "Results retained",
       "pruned": "Results pruned",
       "prunedHint": "Only the totals of this crawl remain: its results per URL were removed by the retention setting.",
-      "config": "Audit configuration v{version}",
-      "configNone": "No audit rules",
       "notAnalysed": "Not analysed",
       "catalogOlder": "Earlier issue catalog",
-      "catalogOlderHint": "Its findings were worked out with an earlier version of the issue catalog than the one in use now."
+      "catalogOlderHint": "Its findings were worked out with an earlier version of the issue catalog than the one in use now.",
+      "rulesCurrent": "Analysed with the current rules",
+      "rulesChanged": "Analysed with rules that have changed since"
     },
     "picker": {
       "label": "Crawl",
@@ -2482,9 +2544,9 @@
     "banner": {
       "viewing": "You are viewing the crawl of {when}, not the latest one.",
       "backToLatest": "Back to the latest crawl",
-      "configBehind": "Analysed under: {config}. In force now: {current}. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated.",
       "details": "Analysis details",
-      "incomplete": "Partial coverage: this crawl did not complete. Findings may be missing."
+      "incomplete": "Partial coverage: this crawl did not complete. Findings may be missing.",
+      "rulesBehind": "This crawl was analysed with rules that have changed since. An earlier crawl keeps the rules it was analysed with, so its results are not recalculated."
     },
     "details": {
       "detailsDescription": "Every URL of the chosen full crawl, as that crawl saw it. Select some to act on them together.",
@@ -2636,7 +2698,9 @@
       "persistent": "Still reported",
       "persistentHint": "Reported by both crawls.",
       "accepted": "Accepted by a rule",
-      "acceptedHint": "The later crawl still sees it, and a rule says it is expected. It was not fixed."
+      "acceptedHint": "The later crawl still sees it, and a rule says it is expected. It was not fixed.",
+      "dismissed": "Dismissed",
+      "dismissedHint": "Dismissed by a person; the crawl still sees this finding."
     },
     "reasons": {
       "pruned": "a crawl was pruned",
@@ -2648,7 +2712,8 @@
       "incomplete": "a crawl stopped at its URL limit and this finding depends on other pages",
       "catalog": "the issue catalogs differ",
       "audit": "the audit configuration or the expectation for the URL differs",
-      "unobserved": "a crawl did not record what this check needs: compare with crawls made after the update"
+      "unobserved": "a crawl did not record what this check needs: compare with crawls made after the update",
+      "dismissed": "A person dismissed this finding."
     },
     "notes": {
       "pruned": {
@@ -2696,7 +2761,11 @@
         "description": "Added and not seen URLs may reflect changed ignored parameters. Per-issue change summaries are unverified because URL identity changed."
       }
     },
-    "rowsShown": "{shown, number} of {matching, number} URLs shown"
+    "rowsShown": "{shown, number} of {matching, number} URLs shown",
+    "rules": {
+      "same": "Both crawls were analysed with the same rules.",
+      "different": "The crawls were analysed with different rules, so some differences may come from the rules and not from the site."
+    }
   },
   "HttpStatus": {
     "automaticCheck": "Automatic check",
@@ -2704,25 +2773,19 @@
   },
   "AuditStatements": {
     "keep": "No change",
-    "rules": "According to the rules",
-    "notSet": "Not set by this rule",
     "audit": {
       "label": "Audit participation",
       "help": "Whether these URLs take part in the audit. Excluded URLs are still crawled and keep their data, but get no findings of their own.",
-      "include": "Include in audit",
-      "exclude": "Exclude from audit"
+      "include": "Audited",
+      "exclude": "Left out"
     },
     "requirement": {
       "required": "Required",
-      "allowed": "Allowed",
+      "allowed": "Indifferent",
       "forbidden": "Forbidden"
     },
     "conditions": {
       "title": "Conditions",
-      "add": "Add condition",
-      "remove": "Remove {condition}",
-      "noneUrl": "No condition is set. Add one to require, allow or forbid a noindex, a nofollow, a robots.txt block or a sitemap listing.",
-      "noneRule": "This rule sets no condition. Add one to require, allow or forbid a noindex, a nofollow, a robots.txt block or a sitemap listing.",
       "unknown": "If the crawl could not tell (a page it could not read whole, a robots.txt or a sitemap that did not answer), no finding is raised and the condition is not counted as met.",
       "statement": "{condition}: {requirement}",
       "noindex": {
@@ -2760,23 +2823,59 @@
           "allowed": "The URL may be listed in a sitemap or not: no finding for its absence. A listed URL that cannot be indexed is still reported.",
           "forbidden": "A finding is raised when a sitemap lists the URL."
         }
-      }
+      },
+      "canonical": {
+        "label": "Canonical to another URL",
+        "default": "A canonical to another URL is a state of indexability. By default it has no finding of its own.",
+        "help": {
+          "required": "A finding is raised when the whole page was read and it does not declare a canonical to another URL.",
+          "allowed": "The page may declare a canonical to another URL or not. An origin with only accepted blockers is expected out for relation findings. Broken or redirecting references are still reported.",
+          "forbidden": "A finding is raised when the page declares a canonical to another URL."
+        }
+      },
+      "unlinked": {
+        "label": "No internal links",
+        "default": "By default, a page listed in a sitemap with no internal anchor links gets an orphan finding.",
+        "help": {
+          "required": "A finding is raised when an internal anchor links to this URL. Absence of links is confirmed only by a completed full crawl.",
+          "allowed": "The page may have internal links or none: its orphan finding is accepted. Links from nofollow or noindex pages are judged separately.",
+          "forbidden": "An orphan finding is kept when a sitemap lists the page but no internal anchor links to it."
+        }
+      },
+      "hint": "Each condition is Required or Forbidden, or “Don’t warn either way”, which raises no finding whichever way the page is. When it is not stated, the dashed option is what applies now.",
+      "hintBulk": "Nothing changes unless you touch it. Every control starts at “No change”."
     },
     "advanced": {
-      "title": "Advanced: expected indexing",
+      "title": "Advanced",
       "help": "The expectation is about the URL as a whole: a noindex, a canonical to another URL, a redirect, an error or a robots.txt block can each keep it from being indexed. The conditions above are about one directive or file each, and never about whether the URL is in a search engine’s index."
     },
     "intent": {
       "label": "Expected indexing",
-      "indexable": "Expected indexable",
-      "not-indexable": "Expected not indexable",
+      "indexable": "Indexable",
+      "not-indexable": "Not indexable",
       "help": {
         "default": "Unless a rule says otherwise, every page is expected to be indexable.",
         "indexable": "The crawl is checked for what stands in the way of indexing the URL.",
         "not-indexable": "A noindex is fine; being indexable is not. It is not the same as requiring a noindex. Pages that point at it are not told about its noindex or a canonical elsewhere; a robots.txt block is still reported."
       }
     },
-    "relationsNote": "This also accepts findings of the URLs that point here (canonical, hreflang). Accepted findings are not fixed: they stay visible as accepted by a rule."
+    "relationsNote": "This also accepts findings of the URLs that point here (canonical, hreflang). Accepted findings are not fixed: they stay visible as accepted by a rule.",
+    "control": {
+      "default": "By default",
+      "fromRule": "From rule {rule}",
+      "fromRules": "From rules {rules}",
+      "varies": "Varies by path",
+      "variesHelp": "Each path of this rule would inherit something different:",
+      "stateOf": "{position} · {origin}",
+      "reset": "Back to inherited",
+      "resetBulk": "Back to no change",
+      "without": "Without the exception: {state}",
+      "noChange": "No change",
+      "removed": "Their exceptions go: these URLs follow the rules.",
+      "setBulk": "Set on all the URLs selected.",
+      "followRules": "Follow the rules",
+      "dontWarn": "Don’t warn either way"
+    }
   },
   "Help": {
     "about": "About {subject}",
@@ -2820,7 +2919,10 @@
     "sitemap-required-missing": "Include this URL as an entry in a sitemap that the crawler can read, or correct the rule requiring it. Run a full crawl to verify membership.",
     "sitemap-forbidden-present": "Remove the URL entry from the affected sitemaps, or correct the rule if it should be listed. Run a full crawl to verify the change.",
     "social": "Add the Open Graph tags (og:title, og:type, og:image, og:url) and a twitter:card to the head of the page template. Use an og:url equal to the canonical and an image that answers over HTTPS, then crawl again.",
-    "performance": "Performance"
+    "performance": "Performance",
+    "canonical-required-missing": "Set the intended canonical to another URL, or correct the rule. Recheck the page.",
+    "canonical-forbidden-present": "Use a self canonical or correct the rule if the other URL is intentional. Recheck the page.",
+    "unlinked-required-missing": "Remove incoming internal anchors if this requirement is correct, or edit the rule. Run a full crawl to verify."
   },
   "Companies": {
     "metaTitle": "Companies · Administration · seotools",
@@ -3005,12 +3107,16 @@
     "changed": "Your password has changed.",
     "errors": {
       "length": "Use between {min, number} and {max, number} characters.",
-      "wrongPassword": "The current password is not correct."
+      "wrongPassword": "The current password is not correct.",
+      "nameInvalid": "Enter a name of 1 to {max, number} characters.",
+      "nameFailed": "The name could not be saved.",
+      "languageInvalid": "Choose one of the listed languages.",
+      "languageFailed": "The language could not be saved."
     },
     "alerts": {
       "title": "Alerts",
       "description": "Choose what you want to be emailed about each domain. Nothing is sent until you choose it, and only for domains you can see.",
-      "language": "Emails are written in the language you are using when you save.",
+      "language": "Alert emails use the language chosen on your account, or the one you are using when you save if you follow the browser.",
       "empty": "You cannot see any domain yet.",
       "archived": "Archived: no alerts are sent.",
       "kinds": {
@@ -3025,6 +3131,18 @@
         "change-summary": {
           "label": "Change summary",
           "hint": "One email for each finished crawl, with what changed."
+        },
+        "site-files": {
+          "label": "Site files",
+          "hint": "Changes or problems in robots.txt and sitemaps."
+        },
+        "site-availability": {
+          "label": "Availability and certificate",
+          "hint": "Repeated failed checks, recovery and expiring certificates."
+        },
+        "vitals-regression": {
+          "label": "Core Web Vitals regressions",
+          "hint": "Origin field metrics that become poor after a full crawl."
         }
       },
       "save": "Save alerts",
@@ -3033,6 +3151,23 @@
       "errors": {
         "failed": "The alerts could not be saved."
       }
+    },
+    "name": {
+      "label": "Your name",
+      "save": "Save name",
+      "saving": "Saving…",
+      "saved": "Your name is saved."
+    },
+    "language": {
+      "title": "Language",
+      "label": "Interface language",
+      "browser": "Follow the browser",
+      "en": "English",
+      "es": "Español",
+      "hint": "Also the language of the emails sent to you. By default the browser decides.",
+      "save": "Save language",
+      "saving": "Saving…",
+      "saved": "Your language is saved."
     }
   },
   "PasswordRecovery": {
@@ -3336,13 +3471,13 @@
   },
   "Crawls": {
     "metaTitle": "Crawls · {host} · seotools",
-    "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the audit configuration it was analysed with, and its results per URL until the retention setting removes them.",
+    "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the rules it was analysed with, and its results per URL until the retention setting removes them.",
     "columns": {
       "crawl": "Crawl",
       "results": "Results",
       "found": "Found",
-      "config": "Audit configuration",
-      "findings": "Pages with findings"
+      "findings": "Pages with findings",
+      "rules": "Rules"
     },
     "trigger": {
       "manual": "Manual",
@@ -3350,7 +3485,6 @@
     },
     "latest": "Latest",
     "found": "{pages} pages · {urls} URLs · {external} external",
-    "configDiffers": "Now: {current}",
     "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
     "view": "View",
     "compareWithPrevious": "Compare with previous",
@@ -3521,5 +3655,124 @@
   "FavouriteDomain": {
     "set": "Set {host} as favourite",
     "clear": "Clear {host} as favourite"
+  },
+  "BotTest": {
+    "title": "Bot access test",
+    "caveat": "This on-demand test requests the home page with different User-Agent strings. It reports when the site answers a User-Agent differently, not whether a real bot is blocked. CDNs may verify Googlebot and Bingbot by IP: an impersonated request can be refused while the real bot is allowed, or the reverse.",
+    "start": "Test bot access",
+    "pending": "Testing bot access…",
+    "startFailed": "Could not start the bot access test.",
+    "run": "{date} · {state}",
+    "baseline": "Baseline: {status} · {address}",
+    "bot": "Bot",
+    "company": "Company",
+    "robots": "robots.txt",
+    "status": "HTTP status / error",
+    "address": "Different final address",
+    "verdict": "Result",
+    "unknown": "Unknown",
+    "tokenOnly": "robots.txt token only, nothing to test",
+    "unpublished": "No verified published request identity; not tested",
+    "states": {
+      "queued": "Queued",
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "verdicts": {
+      "same": "Same response",
+      "different": "The site answered this User-Agent differently",
+      "unknown": "Unknown"
+    },
+    "reasons": {
+      "status-class": "Different HTTP status class",
+      "final-url": "Different final address",
+      "refused": "403, 429 or 503 while the baseline answered 2xx"
+    }
+  },
+  "AuditTemplates": {
+    "private-area": {
+      "name": "Private area",
+      "description": "Keep private pages out of indexing and sitemaps."
+    },
+    "search-and-filters": {
+      "name": "Search and filters",
+      "description": "Allow noindex or canonicalisation on search and filter pages."
+    },
+    "campaign-landing": {
+      "name": "Campaign landing",
+      "description": "Allow a landing page without internal links or sitemap membership."
+    },
+    "must-be-indexed": {
+      "name": "Must be indexed",
+      "description": "Require indexability and sitemap membership."
+    },
+    "leave-out": {
+      "name": "Leave out of the audit",
+      "description": "Exclude these URLs from audit findings."
+    }
+  },
+  "Incidents": {
+    "title": "Open incidents",
+    "history": "Last 30 days",
+    "daily": "Checks run about once a day. This is not an uptime monitor.",
+    "since": "Opened {when}",
+    "resolved": "Resolved {when}",
+    "none": "No incidents.",
+    "kinds": {
+      "robots-unreachable": "robots.txt could not be read",
+      "robots-blocks-site": "robots.txt blocks the whole site",
+      "robots-changed": "robots.txt changed",
+      "sitemap-broken": "Sitemap broken or empty",
+      "site-down": "Site did not answer two checks an hour apart",
+      "certificate": "Certificate"
+    },
+    "stages": {
+      "open": "Open",
+      "changed": "Changed",
+      "warn-14": "Expires within 14 days",
+      "warn-3": "Expires within 3 days",
+      "expired": "Expired",
+      "resolved": "Resolved"
+    },
+    "summary": {
+      "status": "HTTP status",
+      "sitemapsAdded": "Sitemaps added",
+      "sitemapsRemoved": "Sitemaps removed",
+      "groupsAdded": "User-agent groups added",
+      "groupsRemoved": "User-agent groups removed",
+      "groupsChanged": "User-agent groups changed"
+    }
+  },
+  "FindingStates": {
+    "title": "Dismissed and in progress",
+    "empty": "No saved finding states.",
+    "domain": "Whole domain",
+    "state": "Finding state",
+    "all": "All states",
+    "pending": "Pending",
+    "in-progress": "In progress",
+    "dismissed": "Dismissed",
+    "actions": "Finding actions",
+    "note": "Note (optional)",
+    "restore": "Restore to pending",
+    "dismiss": "Dismiss",
+    "dismissDomain": "Dismiss across the domain",
+    "confirmDomain": "Dismiss this high-importance issue across the whole domain? It will no longer count as pending.",
+    "saved": "Saved. Results may be recalculating.",
+    "invalid": "Choose a valid finding and state, with a note of at most 1,000 characters.",
+    "limit": "A domain can save at most 2,000 finding states. Select fewer URLs or restore existing states.",
+    "by": "Set by {name}, {date}",
+    "dismissedByPerson": "Dismissed by a person; the crawl still sees this finding.",
+    "deletedUser": "Deleted user",
+    "inProgressCount": "{count} in progress",
+    "dismissedCount": "{count} dismissed",
+    "dismissedBy": "Dismissed by {name}, {date}",
+    "more": "{count, plural, one {# more decision} other {# more decisions}} in Settings → Audit → Dismissed.",
+    "noteLabel": "Note: {note}",
+    "formerMember": "a former member",
+    "decisionChanged": "The decision has changed since this analysis.",
+    "unknownDate": "date not recorded"
   }
 }

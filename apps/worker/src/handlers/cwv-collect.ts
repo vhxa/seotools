@@ -1,3 +1,4 @@
+import { regressionsFor } from './incident-alerts'
 import {
   createVitalsClient,
   cwvCollectPayload,
@@ -172,6 +173,13 @@ export function createCwvCollectHandler(options: {
       if (!(await allowed())) return
       await db.vitals.saveOrigin(state('collected'))
       await reanalyse()
+      if (
+        crawl.type === 'full' &&
+        (await allowed()) &&
+        (await regressionsFor(db, crawlId)).length
+      ) {
+        await db.vitals.queueAlerts(crawlId)
+      }
     } catch (error) {
       if (ctx.signal.aborted || error instanceof JobInterruptedError)
         throw new JobInterruptedError()

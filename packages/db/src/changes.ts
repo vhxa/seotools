@@ -71,6 +71,7 @@ export interface CrawlComparison {
     back: number
     resolved: number
     unverified: number
+    dismissed: number
     accepted: number
     excluded: number
     audited: number
@@ -175,6 +176,7 @@ export async function compareWithPrevious(input: {
     back: 0,
     resolved: 0,
     unverified: 0,
+    dismissed: 0,
     accepted: 0,
     excluded: 0,
     audited: 0,
@@ -221,7 +223,8 @@ export async function compareWithPrevious(input: {
             else if (lost && finding.kind === 'resolved') {
               totals.resolved++
               tallyOf(result.byIssue, finding.issue).resolved++
-            } else if (lost && finding.kind === 'accepted') totals.accepted++
+            } else if (lost && finding.kind === 'dismissed') totals.dismissed++
+            else if (lost && finding.kind === 'accepted') totals.accepted++
             else if (lost && finding.kind === 'excluded') totals.excluded++
             else if ((gained || lost) && finding.kind === 'unverified') {
               totals.unverified++

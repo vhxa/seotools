@@ -35,11 +35,14 @@ export const JOB_TYPES = {
   auditRecompute: 'audit.recompute',
   /** Requests some URLs of a domain again and checks what each one answers on its own. */
   urlVerify: 'url.verify',
+  botTest: 'bot.test',
   /** Sends someone a link to set their password. The link is made when sending, never stored. */
   accessEmail: 'access.email',
   /** Tells the people who asked for it that a full crawl ended, if there is something to act on. */
   crawlAlerts: 'crawl.alerts',
   cwvCollect: 'cwv.collect',
+  incidentAlerts: 'incident.alerts',
+  vitalsAlerts: 'vitals.alerts',
 } as const
 
 export const exampleEchoPayload = z.object({
@@ -87,3 +90,12 @@ export type CrawlAlertsPayload = z.infer<typeof crawlAlertsPayload>
 export const cwvCollectPayload = z.object({ crawlId: z.string().min(1) })
 
 export type CwvCollectPayload = z.infer<typeof cwvCollectPayload>
+
+export const botTestPayload = z.object({ runId: z.string().min(1) })
+export const incidentAlertsPayload = z.object({
+  incidentId: z.string().min(1),
+  observedAt: z.string().datetime(),
+  details: z.string().max(4000),
+  stage: z.enum(['open', 'changed', 'warn-14', 'warn-3', 'expired', 'resolved']),
+})
+export const vitalsAlertsPayload = z.object({ crawlId: z.string().min(1) })

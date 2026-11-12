@@ -1,5 +1,6 @@
 'use client'
 
+import { selectorKey } from '@seotools/core/crawl/audit'
 import { useFormatter, useTranslations } from 'next-intl'
 import type { PreviewState } from '@/app/(protected)/domains/[host]/audit-actions'
 import { SelectorLabel, useSelectorText } from '@/components/audit/selector-label'
@@ -55,6 +56,18 @@ export function RulePreview({ state }: { state: PreviewState }) {
       {/* What changes can be more than what the selector covers: an edit stops covering URLs. */}
       {(state.matches > 0 || state.changes > 0) && (
         <p>{state.changes === 0 ? t('changesNone') : t('changes', { count: state.changes })}</p>
+      )}
+      {state.paths.length > 1 && (
+        <ul className="grid gap-0.5 text-xs">
+          {state.paths.map(({ selector, matches }) => (
+            <li key={selectorKey(selector)} className="flex flex-wrap gap-x-2">
+              <SelectorLabel selector={selector} />
+              <span className="text-muted-foreground tabular-nums">
+                {t('perPath', { count: matches })}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
       {state.overriddenCount > 0 && <p>{t('overridden', { count: state.overriddenCount })}</p>}
       <Urls title={t('matchExamples')} urls={state.matchSamples} />

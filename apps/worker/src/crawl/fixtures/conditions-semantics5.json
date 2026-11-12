@@ -1,0 +1,53 @@
+{
+  "findings": [
+    {
+      "urlHash": "2dce0a4c50441bfccfa9caf4b58c3cba",
+      "issue": "sitemap-not-indexable",
+      "details": ["noindex"]
+    },
+    {
+      "urlHash": "b67d422a613047e3305b0e6ee377a787",
+      "issue": "sitemap-forbidden-present"
+    },
+    {
+      "urlHash": "d7fe568b31ae0fb9ee8a1311409b521a",
+      "issue": "sitemap-not-indexable",
+      "details": ["robots"]
+    }
+  ],
+  "accepted": [
+    {
+      "urlHash": "2dce0a4c50441bfccfa9caf4b58c3cba",
+      "issue": "nofollow",
+      "acceptedBy": "2dce0a4c50441bfccfa9caf4b58c3cba",
+      "acceptance": {
+        "kind": "condition",
+        "condition": "nofollow",
+        "requirement": "allowed",
+        "rule": "old-nofollow"
+      }
+    },
+    {
+      "urlHash": "2dce0a4c50441bfccfa9caf4b58c3cba",
+      "issue": "noindex",
+      "acceptedBy": "2dce0a4c50441bfccfa9caf4b58c3cba",
+      "acceptance": {
+        "kind": "condition",
+        "condition": "noindex",
+        "requirement": "allowed",
+        "rule": "old-noindex"
+      }
+    },
+    {
+      "urlHash": "d7fe568b31ae0fb9ee8a1311409b521a",
+      "issue": "robots-blocked",
+      "acceptedBy": "d7fe568b31ae0fb9ee8a1311409b521a",
+      "acceptance": {
+        "kind": "condition",
+        "condition": "robots",
+        "requirement": "allowed",
+        "rule": "old-robots"
+      }
+    }
+  ]
+}

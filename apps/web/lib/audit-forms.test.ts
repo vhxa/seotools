@@ -1,4 +1,4 @@
-import { AUDIT_LIMITS } from '@seotools/core'
+import { AUDIT_DIMENSIONS, AUDIT_LIMITS } from '@seotools/core'
 import { describe, expect, it } from 'vitest'
 import {
   isRuleId,
@@ -11,16 +11,19 @@ import {
 
 const HOST = 'acme.com'
 
-const input = (overrides: Partial<Parameters<typeof parseRuleInput>[0]> = {}) => ({
-  kind: 'prefix',
-  selector: '/cart',
-  query: 'any',
-  queryValue: '',
-  audit: 'exclude',
-  reason: 'The cart',
-  enabled: true,
-  ...overrides,
-})
+/** One path written in the form, by its fields; `paths` overrides them with several. */
+const input = (
+  overrides: Record<string, unknown> & { kind?: unknown; selector?: unknown } = {},
+): Parameters<typeof parseRuleInput>[0] => {
+  const { kind = 'prefix', selector = '/cart', query = 'any', queryValue = '', ...rest } = overrides
+  return {
+    paths: [{ kind, selector, query, queryValue }],
+    audit: 'exclude',
+    reason: 'The cart',
+    enabled: true,
+    ...rest,
+  }
+}
 
 const form = (fields: Record<string, string>) => {
   const data = new FormData()
@@ -33,7 +36,7 @@ describe('parseRuleInput', () => {
     expect(parseRuleInput(input(), HOST)).toEqual({
       ok: true,
       statements: { audit: 'exclude' },
-      selector: { kind: 'prefix', path: '/cart', query: { mode: 'any' }, scope: 'literal' },
+      selectors: [{ kind: 'prefix', path: '/cart', query: { mode: 'any' }, scope: 'literal' }],
       reason: 'The cart',
       enabled: true,
     })
@@ -107,22 +110,19 @@ describe('parseRuleInput', () => {
       parseRuleInput(input({ kind: 'path', query: 'exact', queryValue: '' }), HOST),
     ).toMatchObject({
       ok: true,
-      selector: {
-        kind: 'path',
-        path: '/cart',
-        query: { mode: 'exact', value: '' },
-        scope: 'literal',
-      },
+      selectors: [
+        { kind: 'path', path: '/cart', query: { mode: 'exact', value: '' }, scope: 'literal' },
+      ],
     })
   })
 
   it('reads where the path is looked for, literal unless asked, and only for paths', () => {
     expect(parseRuleInput(input({ scope: 'shared' }), HOST)).toMatchObject({
       ok: true,
-      selector: { kind: 'prefix', path: '/cart', scope: 'shared' },
+      selectors: [expect.objectContaining({ kind: 'prefix', path: '/cart', scope: 'shared' })],
     })
     expect(parseRuleInput(input({ scope: '' }), HOST)).toMatchObject({
-      selector: { scope: 'literal' },
+      selectors: [{ scope: 'literal' }],
     })
     // An exact URL is always literal, whatever came with it.
     expect(
@@ -130,7 +130,7 @@ describe('parseRuleInput', () => {
     ).toEqual(
       expect.objectContaining({
         ok: true,
-        selector: { kind: 'url', url: 'https://acme.com/cart' },
+        selectors: [{ kind: 'url', url: 'https://acme.com/cart' }],
       }),
     )
     expect(parseRuleInput(input({ scope: 'translated' }), HOST)).toEqual({
@@ -150,10 +150,10 @@ describe('parseRuleInput', () => {
 
   it('refuses a kind of selector that does not exist, and a regular expression', () => {
     expect(parseRuleInput(input({ kind: 'regex' }), HOST)).toEqual({ ok: false, error: 'kind' })
-    expect(parseRuleInput(input({ kind: undefined }), HOST)).toEqual({ ok: false, error: 'kind' })
+    expect(parseRuleInput(input({ kind: null }), HOST)).toEqual({ ok: false, error: 'kind' })
     expect(parseRuleInput(input({ selector: '/cart/.*' }), HOST)).toMatchObject({
       ok: true,
-      selector: { path: '/cart/.*' },
+      selectors: [{ path: '/cart/.*' }],
     })
   })
 
@@ -196,6 +196,46 @@ describe('parseRuleInput', () => {
   })
 })
 
+describe('a rule with several paths', () => {
+  const path = (selector: string, kind = 'prefix') => ({
+    kind,
+    selector,
+    query: 'any',
+    queryValue: '',
+  })
+
+  it('keeps every path, once each', () => {
+    const parsed = parseRuleInput(
+      input({ paths: [path('/a'), path('/b', 'path'), path('/a'), path('/a/')] }),
+      HOST,
+    )
+    expect(parsed).toMatchObject({ ok: true })
+    if (!parsed.ok) return
+    expect(parsed.selectors.map((s) => (s.kind === 'url' ? s.url : s.path))).toEqual(['/a', '/b'])
+  })
+  it('allows up to the limit and no more, and at least one', () => {
+    const many = (count: number) => Array.from({ length: count }, (_, index) => path(`/p${index}`))
+    expect(parseRuleInput(input({ paths: many(AUDIT_LIMITS.pathsPerRule) }), HOST)).toMatchObject({
+      ok: true,
+    })
+    expect(parseRuleInput(input({ paths: many(AUDIT_LIMITS.pathsPerRule + 1) }), HOST)).toEqual({
+      ok: false,
+      error: 'kind',
+    })
+    expect(parseRuleInput(input({ paths: [] }), HOST)).toEqual({ ok: false, error: 'kind' })
+    expect(parseRuleInput(input({ paths: 'x' }), HOST)).toEqual({ ok: false, error: 'kind' })
+  })
+  it('refuses one path that is wrong, and an exact URL among others', () => {
+    expect(parseRuleInput(input({ paths: [path('/a'), path('b')] }), HOST)).toEqual({
+      ok: false,
+      error: 'path',
+    })
+    expect(
+      parseRuleInput(input({ paths: [path('/a'), path('https://acme.com/b', 'url')] }), HOST),
+    ).toEqual({ ok: false, error: 'kind' })
+  })
+})
+
 describe('parseRuleForm', () => {
   it('reads the fields of the form, and a switch that is off as off', () => {
     const parsed = parseRuleForm(
@@ -208,7 +248,7 @@ describe('parseRuleForm', () => {
       statements: { audit: 'include' },
       enabled: false,
       reason: null,
-      selector: { kind: 'url', url: 'https://acme.com/cart' },
+      selectors: [{ kind: 'url', url: 'https://acme.com/cart' }],
     })
     expect(
       parseRuleForm(
@@ -234,7 +274,29 @@ describe('parseRuleForm', () => {
     ).toMatchObject({
       ok: true,
       statements: { intent: 'not-indexable', conditions: { sitemap: 'forbidden' } },
-      selector: { scope: 'shared', path: '/account' },
+      selectors: [{ scope: 'shared', path: '/account' }],
+    })
+  })
+
+  it('reads one set of fields per path, in order', () => {
+    const data = new FormData()
+    for (const [kind, selector, query, queryValue] of [
+      ['prefix', '/account', 'any', ''],
+      ['path', '/cart', 'exact', 'page=2'],
+    ]) {
+      data.append('kind', kind!)
+      data.append('selector', selector!)
+      data.append('query', query!)
+      data.append('queryValue', queryValue!)
+    }
+    data.set('scope', 'shared')
+    data.set('audit', 'exclude')
+    expect(parseRuleForm(data, HOST)).toMatchObject({
+      ok: true,
+      selectors: [
+        { kind: 'prefix', path: '/account', scope: 'shared', query: { mode: 'any' } },
+        { kind: 'path', path: '/cart', scope: 'shared', query: { mode: 'exact', value: 'page=2' } },
+      ],
     })
   })
 
@@ -459,12 +521,26 @@ describe('parseRuleIds', () => {
     expect(parseRuleIds([id, id.replace('0b', '1b')])).toHaveLength(2)
   })
 
-  it('refuses anything else, and more ids than a rule has rows', () => {
+  const ids = (count: number) =>
+    Array.from(
+      { length: count },
+      (_, i) => `00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`,
+    )
+
+  it('accepts the action input for a two-path rule with five statements', () => {
+    const groupIds = ids(2 * 5)
+    expect(parseRuleIds(groupIds)).toEqual(groupIds)
+  })
+
+  it('accepts every row of a full rule set and rejects one beyond its bound', () => {
+    const maxRows = AUDIT_LIMITS.pathsPerRule * AUDIT_DIMENSIONS.length
+    expect(parseRuleIds(ids(maxRows))).toEqual(ids(maxRows))
+    expect(parseRuleIds(ids(maxRows + 1))).toBeNull()
+  })
+
+  it('refuses malformed action input', () => {
     for (const value of [[], 'abc', null, undefined, [1], ["x' or '1'='1"], [id, 'nope']]) {
       expect(parseRuleIds(value)).toBeNull()
     }
-    expect(
-      parseRuleIds(Array.from({ length: 9 }, (_, i) => id.replace('0b3f', `${i}b3f`))),
-    ).toBeNull()
   })
 })

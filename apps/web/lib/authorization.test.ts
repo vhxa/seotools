@@ -43,6 +43,8 @@ const READ_ONLY_DOMAIN_ACTIONS = new Set(['loadLinksAction', 'searchUrlsAction']
 const OWN_ACCOUNT_ACTIONS = new Set([
   'changePasswordAction',
   'saveAlertsAction',
+  'saveLanguageAction',
+  'updateNameAction',
   'setFavouriteAction',
 ])
 
@@ -99,7 +101,7 @@ describe('what a viewer is offered', () => {
   )
   /** Imports a value (not only a type) from the actions of a domain. */
   const usesDomainActions = (source: string) =>
-    /import\s+(?!type\b)[^';]*?from\s+'@\/app\/\(protected\)\/domains\/\[host\]\/(actions|audit-actions|verify-actions|link-actions)'/s.test(
+    /import\s+(?!type\b)[^';]*?from\s+'@\/app\/\(protected\)\/domains\/\[host\]\/(actions|audit-actions|finding-actions|verify-actions|link-actions|bot-actions)'/s.test(
       source,
     )
   /** Reads nothing but values: it does not change the domain, so a viewer may use it. */

@@ -84,6 +84,7 @@ export interface OpenSearchSummary {
 
 /** What had to be worked out when the file was fetched, because its body is not always kept. */
 export interface CrawlFileData {
+  tls?: { validTo: string }
   sitemap?: SitemapSummary
   feed?: FeedSummary
   opensearch?: OpenSearchSummary
@@ -206,4 +207,28 @@ export function crawlFileState(file: {
     default:
       return file.body === null ? 'invalid' : 'ok'
   }
+}
+
+/** What a request for a crawl file answered. */
+export interface CrawlFileObservation {
+  url: string
+  kind: CrawlFileKind
+  /** `null` when it never answered: see `error`. */
+  statusCode: number | null
+  contentType: string | null
+  redirectTo: string | null
+  bytes: number | null
+  /** The file is larger than what was read or kept of it. */
+  truncated: boolean
+  body: string | null
+  error: string | null
+  data: CrawlFileData | null
+  /** What requested it. */
+  via: 'crawl' | 'refresh'
+  fetchedAt: Date
+}
+
+export interface CrawlFileRecord extends CrawlFileObservation {
+  domainId: string
+  urlHash: string
 }

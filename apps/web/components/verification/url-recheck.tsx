@@ -1,3 +1,4 @@
+import { DismissalAttribution } from '@/components/audit/dismissal-attribution'
 import { isSiteScopedIssue, type VerificationComparison } from '@seotools/core/crawl/verification'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import { CheckIcon, ClockIcon } from 'lucide-react'
@@ -210,6 +211,12 @@ export async function UrlRecheck({ data }: { data: UrlDetailData }) {
                         <span className="text-muted-foreground">
                           {describeAcceptance(acceptance, translate)}
                         </span>
+                        {acceptance.kind === 'dismissal' && (
+                          <DismissalAttribution
+                            acceptance={acceptance}
+                            rows={data.findingStates ?? []}
+                          />
+                        )}
                       </li>
                     ))}
                   </ul>
