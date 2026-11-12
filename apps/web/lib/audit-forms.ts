@@ -1,5 +1,6 @@
 import {
   AUDIT_CONDITIONS,
+  AUDIT_DIMENSIONS,
   AUDIT_LIMITS,
   AUDIT_VALUES,
   INDEX_INTENTS,
@@ -123,7 +124,8 @@ export const isRuleId = (value: unknown): value is string =>
 
 /** The rules of a request, as the ids they come in: some, each one an id, no more than a rule can have. */
 export function parseRuleIds(value: unknown): string[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 8) return null
+  const maxRows = AUDIT_LIMITS.pathsPerRule * AUDIT_DIMENSIONS.length
+  if (!Array.isArray(value) || value.length === 0 || value.length > maxRows) return null
   if (!value.every(isRuleId)) return null
   return [...new Set(value as string[])]
 }
