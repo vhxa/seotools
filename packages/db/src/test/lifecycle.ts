@@ -145,6 +145,10 @@ export function describeLifecycle(
           fetchedAt: new Date(),
         },
       ])
+      const [robotsFile] = await db.crawlFiles.list(domainId, ['robots'])
+      await db.crawlFiles.save(domainId, [{ ...robotsFile!, body: 'User-agent: *\nDisallow: /' }])
+      const incident = (await db.incidents.list(domainId))[0]!
+      await db.incidents.claim(incident.id, member.id, incident.stage)
       await db.crawlFiles.requestCheck({ domainId, now: new Date() })
 
       // An older crawl, whose results are pruned to the compact history below.
@@ -207,6 +211,7 @@ export function describeLifecycle(
         { pageHash: crawlUrlHash(url), lang: 'es', url: `${url}es` },
       ])
       await db.crawls.finish(crawl.id, { status: 'completed' })
+      await db.vitals.queueAlerts(crawl.id)
       const vital = {
         ...emptyVitals(),
         crawlId: crawl.id,

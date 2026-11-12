@@ -84,6 +84,7 @@ export interface OpenSearchSummary {
 
 /** What had to be worked out when the file was fetched, because its body is not always kept. */
 export interface CrawlFileData {
+  tls?: { validTo: string }
   sitemap?: SitemapSummary
   feed?: FeedSummary
   opensearch?: OpenSearchSummary

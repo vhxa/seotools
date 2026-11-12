@@ -1,3 +1,4 @@
+import { TLSSocket } from 'node:tls'
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns'
 import http from 'node:http'
 import { isInternalUrl } from '@seotools/core'
@@ -12,6 +13,7 @@ export const MAX_BODY_BYTES = 10 * 1024 * 1024
 export const MAX_SITEMAP_BYTES = 64 * 1024 * 1024
 
 export interface FetchedResponse {
+  tls?: { validTo: Date }
   statusCode: number
   /** Lowercase names. Repeated headers are joined with `, ` by Node. */
   headers: Record<string, string>
@@ -213,11 +215,16 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
               },
             },
             (response) => {
+              const certificate =
+                response.socket instanceof TLSSocket ? response.socket.getPeerCertificate() : null
+              const validTo = certificate?.valid_to ? new Date(certificate.valid_to) : null
+              const tls = validTo && Number.isFinite(validTo.getTime()) ? { validTo } : undefined
               const headers = flatten(response.headers)
               const declared = Number(headers['content-length'])
               const statusCode = response.statusCode ?? 0
               const finish = (body: Buffer | null, truncated: boolean) =>
                 resolve({
+                  ...(tls ? { tls } : {}),
                   statusCode,
                   headers,
                   body,

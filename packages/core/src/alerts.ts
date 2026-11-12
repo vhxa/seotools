@@ -10,7 +10,14 @@
  *   back, against the previous completed one, and that nothing but the site can explain.
  * - `change-summary`: one summary of what changed, for every full crawl that ended with results.
  */
-export const ALERT_KINDS = ['crawl-problem', 'important-findings', 'change-summary'] as const
+export const ALERT_KINDS = [
+  'crawl-problem',
+  'important-findings',
+  'change-summary',
+  'site-files',
+  'site-availability',
+  'vitals-regression',
+] as const
 export type AlertKind = (typeof ALERT_KINDS)[number]
 
 export const isAlertKind = (value: unknown): value is AlertKind =>

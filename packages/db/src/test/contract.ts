@@ -1,5 +1,6 @@
 import { describeBotAccess } from './bot-access'
 import { describeAuditModel } from './audit-model'
+import { describeIncidents } from './incidents'
 import { describeVitals } from './vitals'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -82,6 +83,7 @@ export function describeDatabaseContract(
       () => db,
       (id) => legacy.acceptNofollow(id, true),
     )
+    describeIncidents(() => db)
 
     it('stores one favourite per user, replaces and clears it, and enforces foreign keys', async () => {
       const user = await db.users.create({

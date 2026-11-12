@@ -1,4 +1,7 @@
 import type { BotTestResult } from '../types'
+import { detectIncidents, INCIDENT_STAGES } from '@seotools/core/incidents'
+import { incidentAlertJobId, vitalsAlertJobId } from '../mapping'
+import type { SiteIncident, NewCrawlFile } from '../types'
 import { referenceGroup } from '@seotools/core/crawl/links'
 import { CRAWL_LINK_KINDS } from '@seotools/core'
 import { randomUUID } from 'node:crypto'
@@ -214,6 +217,8 @@ const {
   botTestResults,
   urlVerifications,
   urlVerificationUrls,
+  siteIncidents,
+  incidentNotices,
 } = schema
 
 /** `limit` when a list is not capped. */
@@ -644,6 +649,104 @@ export function createPgDatabase(options: {
    * go by cascade, and a job that finds its crawl gone has nothing left to do; deleting the job
    * too means a running one is not retried, and a queued one never starts.
    */
+  const recordFiles = async (
+    tx: Pick<typeof db, 'select' | 'insert' | 'update'>,
+    domainId: string,
+    files: NewCrawlFile[],
+    check?: { outcome: 'ok' | 'unreachable' | 'tls-error'; checkedAt: Date; nextCheckAt: Date },
+  ) => {
+    const [domain] = await tx.select().from(domains).where(eq(domains.id, domainId)).for('update')
+    if (!domain || domain.archivedAt) return
+    const previous = (await tx.select().from(crawlFiles).where(eq(crawlFiles.domainId, domainId)))
+      .filter((row) => row.incidentObserved)
+      .map(toCrawlFile)
+    const [previousCheck] = await tx
+      .select()
+      .from(crawlFileChecks)
+      .where(eq(crawlFileChecks.domainId, domainId))
+    const active = (await tx
+      .select()
+      .from(siteIncidents)
+      .where(
+        and(eq(siteIncidents.domainId, domainId), isNull(siteIncidents.resolvedAt)),
+      )) as SiteIncident[]
+    const now = check?.checkedAt ?? files[files.length - 1]?.fetchedAt ?? new Date()
+    if (
+      check?.outcome === 'unreachable' &&
+      files.some(
+        (file) => file.error && /CERT_|TLS_|SSL_|SELF_SIGNED|UNABLE_TO_VERIFY/.test(file.error),
+      )
+    )
+      check = { ...check, outcome: 'tls-error' }
+    const changes = detectIncidents({
+      origin: `https://${domain.host}/`,
+      previous,
+      files,
+      previousCheck: previousCheck ? toCrawlFileCheck(previousCheck) : null,
+      ...(check ? { check } : {}),
+      active,
+      now,
+    })
+    for (const file of check && check.outcome !== 'ok' ? [] : files) {
+      await tx
+        .insert(crawlFiles)
+        .values({ ...crawlFileRow(domainId, file), incidentObserved: true })
+        .onConflictDoUpdate({
+          target: [crawlFiles.domainId, crawlFiles.urlHash],
+          set: { ...crawlFileColumns(file), incidentObserved: true },
+        })
+    }
+    if (check) {
+      const values = { ...check, requestedAt: null }
+      await tx
+        .insert(crawlFileChecks)
+        .values({ domainId, ...values })
+        .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
+    }
+    const queue = async (id: string, stage: string) => {
+      await tx
+        .insert(jobs)
+        .values({
+          id: incidentAlertJobId(id, stage),
+          type: 'incident.alerts',
+          payload: JSON.stringify({ incidentId: id, stage }),
+          runAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+    }
+    for (const incident of changes.open) {
+      const id = randomUUID(),
+        event = incident.stage === 'changed'
+      await tx.insert(siteIncidents).values({
+        ...incident,
+        id,
+        domainId,
+        activeKey: event ? null : `${incident.kind} ${incident.subject}`,
+        openedAt: now,
+        lastSeenAt: now,
+        resolvedAt: event ? now : null,
+      })
+      await queue(id, incident.stage)
+    }
+    for (const incident of changes.escalate) {
+      const old = active.find((i) => i.id === incident.id)!
+      await tx
+        .update(siteIncidents)
+        .set({ stage: incident.stage, details: incident.details, lastSeenAt: now })
+        .where(eq(siteIncidents.id, incident.id))
+      if (old.stage !== incident.stage) await queue(incident.id, incident.stage)
+    }
+    for (const incident of changes.resolve) {
+      await tx
+        .update(siteIncidents)
+        .set({ activeKey: null, resolvedAt: now, lastSeenAt: now })
+        .where(eq(siteIncidents.id, incident.id))
+      await queue(incident.id, 'resolved')
+    }
+  }
+
   const removeJobsOf = async (tx: Pick<typeof db, 'select' | 'delete'>, domainIds: string[]) => {
     if (domainIds.length === 0) return
     const ids = [
@@ -652,7 +755,12 @@ export function createPgDatabase(options: {
           .select({ id: crawls.jobId, crawlId: crawls.id })
           .from(crawls)
           .where(inArray(crawls.domainId, domainIds))
-      ).flatMap((row) => [row.id, alertJobId(row.crawlId), vitalsJobId(row.crawlId)]),
+      ).flatMap((row) => [
+        row.id,
+        alertJobId(row.crawlId),
+        vitalsJobId(row.crawlId),
+        vitalsAlertJobId(row.crawlId),
+      ]),
       ...(
         await tx
           .select({ id: urlVerifications.jobId })
@@ -667,6 +775,15 @@ export function createPgDatabase(options: {
           .from(botTestRuns)
           .where(inArray(botTestRuns.domainId, domainIds))
       ).map((row) => row.id),
+    )
+    const incidentIds = await tx
+      .select({ id: siteIncidents.id })
+      .from(siteIncidents)
+      .where(inArray(siteIncidents.domainId, domainIds))
+    ids.push(
+      ...incidentIds.flatMap((row) =>
+        INCIDENT_STAGES.map((stage) => incidentAlertJobId(row.id, stage)),
+      ),
     )
     for (const batch of chunk(ids)) await tx.delete(jobs).where(inArray(jobs.id, batch))
   }
@@ -898,7 +1015,18 @@ export function createPgDatabase(options: {
     },
 
     vitals: {
-      async latestCrawl(domainId) {
+      async queueAlerts(crawlId) {
+        await db
+          .insert(jobs)
+          .values({
+            id: vitalsAlertJobId(crawlId),
+            type: 'vitals.alerts',
+            payload: JSON.stringify({ crawlId }),
+            runAt: new Date(),
+          })
+          .onConflictDoNothing()
+      },
+      async latestCrawl(domainId, before) {
         const [row] = await db
           .select()
           .from(crawls)
@@ -906,8 +1034,19 @@ export function createPgDatabase(options: {
             and(
               eq(crawls.domainId, domainId),
               eq(crawls.type, 'full'),
+              before ? lt(crawls.createdAt, before) : undefined,
               inArray(crawls.status, ['completed', 'incomplete']),
-              exists(db.select().from(crawlVitals).where(eq(crawlVitals.crawlId, crawls.id))),
+              exists(
+                db
+                  .select()
+                  .from(crawlVitals)
+                  .where(
+                    and(
+                      eq(crawlVitals.crawlId, crawls.id),
+                      before ? eq(crawlVitals.status, 'collected') : undefined,
+                    ),
+                  ),
+              ),
             ),
           )
           .orderBy(desc(crawls.createdAt), desc(crawls.id))
@@ -3412,6 +3551,52 @@ export function createPgDatabase(options: {
       },
     },
 
+    incidents: {
+      async list(domainId, since) {
+        return (await db
+          .select()
+          .from(siteIncidents)
+          .where(
+            and(
+              eq(siteIncidents.domainId, domainId),
+              since
+                ? or(
+                    isNull(siteIncidents.resolvedAt),
+                    gte(siteIncidents.openedAt, since),
+                    gte(siteIncidents.resolvedAt, since),
+                  )
+                : isNull(siteIncidents.resolvedAt),
+            ),
+          )
+          .orderBy(desc(siteIncidents.openedAt))) as SiteIncident[]
+      },
+      async get(id) {
+        const [row] = await db.select().from(siteIncidents).where(eq(siteIncidents.id, id))
+        return (row as SiteIncident | undefined) ?? null
+      },
+      async claim(incidentId, userId, stage) {
+        const rows = await db
+          .insert(incidentNotices)
+          .values({ incidentId, userId, stage, createdAt: new Date() })
+          .onConflictDoNothing()
+          .returning()
+        return rows.length > 0
+      },
+      async release(incidentId, userId, stage) {
+        await db
+          .delete(incidentNotices)
+          .where(
+            and(
+              eq(incidentNotices.incidentId, incidentId),
+              eq(incidentNotices.userId, userId),
+              eq(incidentNotices.stage, stage),
+            ),
+          )
+      },
+      async prune(before) {
+        await db.delete(siteIncidents).where(lt(siteIncidents.resolvedAt, before))
+      },
+    },
     crawlFiles: {
       async list(domainId, kinds) {
         const rows = await db
@@ -3426,15 +3611,9 @@ export function createPgDatabase(options: {
         return rows.map(toCrawlFile).sort(byUrl)
       },
       async save(domainId, files) {
-        for (const file of files) {
-          await db
-            .insert(crawlFiles)
-            .values(crawlFileRow(domainId, file))
-            .onConflictDoUpdate({
-              target: [crawlFiles.domainId, crawlFiles.urlHash],
-              set: crawlFileColumns(file),
-            })
-        }
+        await db.transaction(async (tx) => {
+          await recordFiles(tx, domainId, files)
+        })
       },
       async prune({ domainId, before, keepKinds }) {
         const result = await db
@@ -3488,12 +3667,10 @@ export function createPgDatabase(options: {
           .where(and(eq(crawlFileChecks.domainId, domainId), lte(crawlFileChecks.nextCheckAt, now)))
         return result.count > 0
       },
-      async finishCheck({ domainId, outcome, checkedAt, nextCheckAt }) {
-        const values = { outcome, checkedAt, nextCheckAt, requestedAt: null }
-        await db
-          .insert(crawlFileChecks)
-          .values({ domainId, ...values })
-          .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
+      async finishCheck({ domainId, outcome, checkedAt, nextCheckAt, files = [] }) {
+        await db.transaction(async (tx) => {
+          await recordFiles(tx, domainId, files, { outcome, checkedAt, nextCheckAt })
+        })
       },
       async deferCheck({ domainId, nextCheckAt }) {
         await db

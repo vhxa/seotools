@@ -711,6 +711,7 @@ export const urlVerificationUrls = pgTable(
 export const crawlFiles = pgTable(
   'crawl_files',
   {
+    incidentObserved: boolean('incident_observed').notNull().default(false),
     domainId: text('domain_id')
       .notNull()
       .references(() => domains.id, { onDelete: 'cascade' }),
@@ -749,7 +750,7 @@ export const crawlFileChecks = pgTable(
     requestedAt: ts('requested_at'),
     checkedAt: ts('checked_at'),
     /** How the last refresh went. */
-    outcome: text('outcome', { enum: ['ok', 'unreachable'] }),
+    outcome: text('outcome', { enum: ['ok', 'unreachable', 'tls-error'] }),
   },
   (t) => [index('crawl_file_checks_due_idx').on(t.nextCheckAt)],
 )
@@ -828,6 +829,9 @@ export const alertSubscriptions = pgTable(
     crawlProblem: boolean('crawl_problem').notNull().default(false),
     importantFindings: boolean('important_findings').notNull().default(false),
     changeSummary: boolean('change_summary').notNull().default(false),
+    siteFiles: boolean('site_files').notNull().default(false),
+    siteAvailability: boolean('site_availability').notNull().default(false),
+    vitalsRegression: boolean('vitals_regression').notNull().default(false),
     /** The language of the emails: the one the person used when they saved. */
     locale: text('locale').notNull().default('en'),
     updatedAt: ts('updated_at').notNull().$defaultFn(now),
@@ -942,4 +946,40 @@ export const botTestResults = pgTable(
     reasons: text('reasons').notNull(),
   },
   (t) => [primaryKey({ columns: [t.runId, t.botToken] })],
+)
+
+export const siteIncidents = pgTable(
+  'site_incidents',
+  {
+    id: text('id').primaryKey(),
+    domainId: text('domain_id')
+      .notNull()
+      .references(() => domains.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    subject: text('subject').notNull(),
+    stage: text('stage').notNull(),
+    activeKey: text('active_key'),
+    openedAt: ts('opened_at').notNull(),
+    lastSeenAt: ts('last_seen_at').notNull(),
+    resolvedAt: ts('resolved_at'),
+    details: text('details').notNull(),
+  },
+  (t) => [
+    uniqueIndex('site_incidents_active_idx').on(t.domainId, t.activeKey),
+    index('site_incidents_domain_idx').on(t.domainId, t.openedAt),
+  ],
+)
+export const incidentNotices = pgTable(
+  'incident_notices',
+  {
+    incidentId: text('incident_id')
+      .notNull()
+      .references(() => siteIncidents.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    stage: text('stage').notNull(),
+    createdAt: ts('created_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.incidentId, t.userId, t.stage] })],
 )

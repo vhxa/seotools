@@ -8,6 +8,8 @@ Raspberry Pi to a VPS.
 
 ## What it does
 
+- **Between-crawl alerts** for site files, availability and certificates, with incident history;
+  opt-in Core Web Vitals regression emails after full crawls. Checks run about daily.
 - **Core Web Vitals** from Google CrUX (field) and PageSpeed Insights (lab), with trends and URL findings.
   Paused, archived, disabled or keyless runs record nothing and are not caught up later.
 - **Crawls whole sites** from the home page, the sitemaps and every link, including what

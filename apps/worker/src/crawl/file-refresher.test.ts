@@ -343,3 +343,50 @@ describe('createCrawlFileRefresher', () => {
     expect((await fileAt('https://example.com/robots.txt'))?.body).toBe('User-agent: *')
   })
 })
+
+it('opens robots and certificate incidents between crawls, escalates and recovers', async () => {
+  site['https://example.com/robots.txt'] = text('User-agent: *')
+  await refresher().tick()
+  expect(await db.incidents.list(domainId)).toEqual([])
+  clock = new Date(start.getTime() + CRAWL_FILE_REFRESH_INTERVAL_MS)
+  site['https://example.com/robots.txt'] = {
+    ...text('User-agent: *\nDisallow: /'),
+    tls: { validTo: new Date(clock.getTime() + 10 * 86400000) },
+  }
+  await refresher().tick()
+  expect((await db.incidents.list(domainId)).map((i) => i.kind).sort()).toEqual([
+    'certificate',
+    'robots-blocks-site',
+  ])
+  expect((await db.jobs.list()).filter((j) => j.type === 'incident.alerts')).toHaveLength(3)
+  clock = new Date(clock.getTime() + CRAWL_FILE_REFRESH_INTERVAL_MS)
+  site['https://example.com/robots.txt'] = {
+    ...text('User-agent: *'),
+    tls: { validTo: new Date(clock.getTime() + 2 * 86400000) },
+  }
+  await refresher().tick()
+  expect(await db.incidents.list(domainId)).toMatchObject([
+    { kind: 'certificate', stage: 'warn-3' },
+  ])
+  clock = new Date(clock.getTime() + CRAWL_FILE_REFRESH_INTERVAL_MS)
+  site['https://example.com/robots.txt'] = {
+    ...text('User-agent: *'),
+    tls: { validTo: new Date(clock.getTime() + 90 * 86400000) },
+  }
+  await refresher().tick()
+  expect(await db.incidents.list(domainId)).toEqual([])
+})
+it('opens availability only after two failed checks an hour apart and recovers once', async () => {
+  fallback = new FetchError('TIMEOUT', 'No response')
+  await refresher().tick()
+  expect(await db.incidents.list(domainId)).toEqual([])
+  clock = new Date(clock.getTime() + CRAWL_FILE_RETRY_INTERVAL_MS)
+  await refresher().tick()
+  const [incident] = await db.incidents.list(domainId)
+  expect(incident?.kind).toBe('site-down')
+  clock = new Date(clock.getTime() + CRAWL_FILE_RETRY_INTERVAL_MS)
+  fallback = notFound
+  await refresher().tick()
+  expect(await db.incidents.list(domainId)).toEqual([])
+  expect((await db.jobs.list()).filter((j) => j.type === 'incident.alerts')).toHaveLength(2)
+})

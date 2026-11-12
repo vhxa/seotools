@@ -1,4 +1,7 @@
 import type { BotTestResult } from '../types'
+import { detectIncidents, INCIDENT_STAGES } from '@seotools/core/incidents'
+import { incidentAlertJobId, vitalsAlertJobId } from '../mapping'
+import type { SiteIncident, NewCrawlFile } from '../types'
 import { referenceGroup } from '@seotools/core/crawl/links'
 import { CRAWL_LINK_KINDS } from '@seotools/core'
 import { randomUUID } from 'node:crypto'
@@ -218,6 +221,8 @@ const {
   botTestResults,
   urlVerifications,
   urlVerificationUrls,
+  siteIncidents,
+  incidentNotices,
 } = schema
 
 /** `limit` when a list is not capped. */
@@ -658,6 +663,110 @@ export function createSqliteDatabase(options: {
    * go by cascade, and a job that finds its crawl gone has nothing left to do; deleting the job
    * too means a running one is not retried, and a queued one never starts.
    */
+  const recordFiles = (
+    tx: Pick<typeof db, 'select' | 'insert' | 'update'>,
+    domainId: string,
+    files: NewCrawlFile[],
+    check?: { outcome: 'ok' | 'unreachable' | 'tls-error'; checkedAt: Date; nextCheckAt: Date },
+  ) => {
+    const [domain] = tx.select().from(domains).where(eq(domains.id, domainId)).all()
+    if (!domain || domain.archivedAt) return
+    const previous = tx
+      .select()
+      .from(crawlFiles)
+      .where(eq(crawlFiles.domainId, domainId))
+      .all()
+      .filter((row) => row.incidentObserved)
+      .map(toCrawlFile)
+    const [previousCheck] = tx
+      .select()
+      .from(crawlFileChecks)
+      .where(eq(crawlFileChecks.domainId, domainId))
+      .all()
+    const active = tx
+      .select()
+      .from(siteIncidents)
+      .where(and(eq(siteIncidents.domainId, domainId), isNull(siteIncidents.resolvedAt)))
+      .all() as SiteIncident[]
+    const now = check?.checkedAt ?? files[files.length - 1]?.fetchedAt ?? new Date()
+    if (
+      check?.outcome === 'unreachable' &&
+      files.some(
+        (file) => file.error && /CERT_|TLS_|SSL_|SELF_SIGNED|UNABLE_TO_VERIFY/.test(file.error),
+      )
+    )
+      check = { ...check, outcome: 'tls-error' }
+    const changes = detectIncidents({
+      origin: `https://${domain.host}/`,
+      previous,
+      files,
+      previousCheck: previousCheck ? toCrawlFileCheck(previousCheck) : null,
+      ...(check ? { check } : {}),
+      active,
+      now,
+    })
+    for (const file of check && check.outcome !== 'ok' ? [] : files) {
+      tx.insert(crawlFiles)
+        .values({ ...crawlFileRow(domainId, file), incidentObserved: true })
+        .onConflictDoUpdate({
+          target: [crawlFiles.domainId, crawlFiles.urlHash],
+          set: { ...crawlFileColumns(file), incidentObserved: true },
+        })
+        .run()
+    }
+    if (check) {
+      const values = { ...check, requestedAt: null }
+      tx.insert(crawlFileChecks)
+        .values({ domainId, ...values })
+        .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
+        .run()
+    }
+    const queue = (id: string, stage: string) => {
+      tx.insert(jobs)
+        .values({
+          id: incidentAlertJobId(id, stage),
+          type: 'incident.alerts',
+          payload: JSON.stringify({ incidentId: id, stage }),
+          runAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+        .run()
+    }
+    for (const incident of changes.open) {
+      const id = randomUUID(),
+        event = incident.stage === 'changed'
+      tx.insert(siteIncidents)
+        .values({
+          ...incident,
+          id,
+          domainId,
+          activeKey: event ? null : `${incident.kind} ${incident.subject}`,
+          openedAt: now,
+          lastSeenAt: now,
+          resolvedAt: event ? now : null,
+        })
+        .run()
+      queue(id, incident.stage)
+    }
+    for (const incident of changes.escalate) {
+      const old = active.find((i) => i.id === incident.id)!
+      tx.update(siteIncidents)
+        .set({ stage: incident.stage, details: incident.details, lastSeenAt: now })
+        .where(eq(siteIncidents.id, incident.id))
+        .run()
+      if (old.stage !== incident.stage) queue(incident.id, incident.stage)
+    }
+    for (const incident of changes.resolve) {
+      tx.update(siteIncidents)
+        .set({ activeKey: null, resolvedAt: now, lastSeenAt: now })
+        .where(eq(siteIncidents.id, incident.id))
+        .run()
+      queue(incident.id, 'resolved')
+    }
+  }
+
   const removeJobsOf = (tx: Pick<typeof db, 'select' | 'delete'>, domainIds: string[]) => {
     if (domainIds.length === 0) return
     const ids = [
@@ -666,7 +775,12 @@ export function createSqliteDatabase(options: {
         .from(crawls)
         .where(inArray(crawls.domainId, domainIds))
         .all()
-        .flatMap((row) => [row.id, alertJobId(row.crawlId), vitalsJobId(row.crawlId)]),
+        .flatMap((row) => [
+          row.id,
+          alertJobId(row.crawlId),
+          vitalsJobId(row.crawlId),
+          vitalsAlertJobId(row.crawlId),
+        ]),
       ...tx
         .select({ id: urlVerifications.jobId })
         .from(urlVerifications)
@@ -681,6 +795,16 @@ export function createSqliteDatabase(options: {
         .where(inArray(botTestRuns.domainId, domainIds))
         .all()
         .map((row) => row.id),
+    )
+    const incidentIds = tx
+      .select({ id: siteIncidents.id })
+      .from(siteIncidents)
+      .where(inArray(siteIncidents.domainId, domainIds))
+      .all()
+    ids.push(
+      ...incidentIds.flatMap((row) =>
+        INCIDENT_STAGES.map((stage) => incidentAlertJobId(row.id, stage)),
+      ),
     )
     for (const batch of chunk(ids)) tx.delete(jobs).where(inArray(jobs.id, batch)).run()
   }
@@ -923,7 +1047,18 @@ export function createSqliteDatabase(options: {
     },
 
     vitals: {
-      async latestCrawl(domainId) {
+      async queueAlerts(crawlId) {
+        db.insert(jobs)
+          .values({
+            id: vitalsAlertJobId(crawlId),
+            type: 'vitals.alerts',
+            payload: JSON.stringify({ crawlId }),
+            runAt: new Date(),
+          })
+          .onConflictDoNothing()
+          .run()
+      },
+      async latestCrawl(domainId, before) {
         const row = db
           .select()
           .from(crawls)
@@ -931,8 +1066,19 @@ export function createSqliteDatabase(options: {
             and(
               eq(crawls.domainId, domainId),
               eq(crawls.type, 'full'),
+              before ? lt(crawls.createdAt, before) : undefined,
               inArray(crawls.status, ['completed', 'incomplete']),
-              exists(db.select().from(crawlVitals).where(eq(crawlVitals.crawlId, crawls.id))),
+              exists(
+                db
+                  .select()
+                  .from(crawlVitals)
+                  .where(
+                    and(
+                      eq(crawlVitals.crawlId, crawls.id),
+                      before ? eq(crawlVitals.status, 'collected') : undefined,
+                    ),
+                  ),
+              ),
             ),
           )
           .orderBy(desc(crawls.createdAt), desc(crawls.id))
@@ -3492,6 +3638,54 @@ export function createSqliteDatabase(options: {
       },
     },
 
+    incidents: {
+      async list(domainId, since) {
+        return db
+          .select()
+          .from(siteIncidents)
+          .where(
+            and(
+              eq(siteIncidents.domainId, domainId),
+              since
+                ? or(
+                    isNull(siteIncidents.resolvedAt),
+                    gte(siteIncidents.openedAt, since),
+                    gte(siteIncidents.resolvedAt, since),
+                  )
+                : isNull(siteIncidents.resolvedAt),
+            ),
+          )
+          .orderBy(desc(siteIncidents.openedAt))
+          .all() as SiteIncident[]
+      },
+      async get(id) {
+        const [row] = db.select().from(siteIncidents).where(eq(siteIncidents.id, id)).all()
+        return (row as SiteIncident | undefined) ?? null
+      },
+      async claim(incidentId, userId, stage) {
+        const rows = db
+          .insert(incidentNotices)
+          .values({ incidentId, userId, stage, createdAt: new Date() })
+          .onConflictDoNothing()
+          .returning()
+          .all()
+        return rows.length > 0
+      },
+      async release(incidentId, userId, stage) {
+        db.delete(incidentNotices)
+          .where(
+            and(
+              eq(incidentNotices.incidentId, incidentId),
+              eq(incidentNotices.userId, userId),
+              eq(incidentNotices.stage, stage),
+            ),
+          )
+          .run()
+      },
+      async prune(before) {
+        db.delete(siteIncidents).where(lt(siteIncidents.resolvedAt, before)).run()
+      },
+    },
     crawlFiles: {
       async list(domainId, kinds) {
         const rows = db
@@ -3507,15 +3701,9 @@ export function createSqliteDatabase(options: {
         return rows.map(toCrawlFile).sort(byUrl)
       },
       async save(domainId, files) {
-        for (const file of files) {
-          db.insert(crawlFiles)
-            .values(crawlFileRow(domainId, file))
-            .onConflictDoUpdate({
-              target: [crawlFiles.domainId, crawlFiles.urlHash],
-              set: crawlFileColumns(file),
-            })
-            .run()
-        }
+        db.transaction((tx) => {
+          recordFiles(tx, domainId, files)
+        })
       },
       async prune({ domainId, before, keepKinds }) {
         const result = db
@@ -3573,12 +3761,10 @@ export function createSqliteDatabase(options: {
           .run()
         return result.changes > 0
       },
-      async finishCheck({ domainId, outcome, checkedAt, nextCheckAt }) {
-        const values = { outcome, checkedAt, nextCheckAt, requestedAt: null }
-        db.insert(crawlFileChecks)
-          .values({ domainId, ...values })
-          .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
-          .run()
+      async finishCheck({ domainId, outcome, checkedAt, nextCheckAt, files = [] }) {
+        db.transaction((tx) => {
+          recordFiles(tx, domainId, files, { outcome, checkedAt, nextCheckAt })
+        })
       },
       async deferCheck({ domainId, nextCheckAt }) {
         db.update(crawlFileChecks)

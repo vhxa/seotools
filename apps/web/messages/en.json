@@ -3077,6 +3077,18 @@
         "change-summary": {
           "label": "Change summary",
           "hint": "One email for each finished crawl, with what changed."
+        },
+        "site-files": {
+          "label": "Site files",
+          "hint": "Changes or problems in robots.txt and sitemaps."
+        },
+        "site-availability": {
+          "label": "Availability and certificate",
+          "hint": "Repeated failed checks, recovery and expiring certificates."
+        },
+        "vitals-regression": {
+          "label": "Core Web Vitals regressions",
+          "hint": "Origin field metrics that become poor after a full crawl."
         }
       },
       "save": "Save alerts",
@@ -3646,6 +3658,38 @@
     "leave-out": {
       "name": "Leave out of the audit",
       "description": "Exclude these URLs from audit findings."
+    }
+  },
+  "Incidents": {
+    "title": "Open incidents",
+    "history": "Last 30 days",
+    "daily": "Checks run about once a day. This is not an uptime monitor.",
+    "since": "Opened {when}",
+    "resolved": "Resolved {when}",
+    "none": "No incidents.",
+    "kinds": {
+      "robots-unreachable": "robots.txt could not be read",
+      "robots-blocks-site": "robots.txt blocks the whole site",
+      "robots-changed": "robots.txt changed",
+      "sitemap-broken": "Sitemap broken or empty",
+      "site-down": "Site did not answer two checks an hour apart",
+      "certificate": "Certificate"
+    },
+    "stages": {
+      "open": "Open",
+      "changed": "Changed",
+      "warn-14": "Expires within 14 days",
+      "warn-3": "Expires within 3 days",
+      "expired": "Expired",
+      "resolved": "Resolved"
+    },
+    "summary": {
+      "status": "HTTP status",
+      "sitemapsAdded": "Sitemaps added",
+      "sitemapsRemoved": "Sitemaps removed",
+      "groupsAdded": "User-agent groups added",
+      "groupsRemoved": "User-agent groups removed",
+      "groupsChanged": "User-agent groups changed"
     }
   }
 }
