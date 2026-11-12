@@ -51,7 +51,7 @@ export async function Incidents({
       ) : (
         <p className="text-sm text-muted-foreground">{t('none')}</p>
       )}
-      {history && (
+      {history && history.length > 0 && (
         <>
           <h3 className="font-medium">{t('history')}</h3>
           <ul className="grid gap-2">{rows(history)}</ul>

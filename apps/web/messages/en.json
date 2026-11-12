@@ -1332,7 +1332,7 @@
     },
     "orphan-in-sitemap": {
       "name": "Orphan URL (only in the sitemap)",
-      "description": "No internal link to it was found within the scope of the crawl: only the sitemap leads to it."
+      "description": "No internal link to it was found within the scope of the crawl: only the sitemap leads to it. The crawl reads the HTML the server sends: a link that only appears after JavaScript runs (a menu or footer built in the browser) is not seen."
     },
     "no-outgoing-links": {
       "name": "No outgoing internal links",
@@ -3766,7 +3766,8 @@
     "by": "Set by {name}, {date}",
     "dismissedByPerson": "Dismissed by a person; the crawl still sees this finding.",
     "deletedUser": "Deleted user",
-    "counts": "{pending} pending ({progress} in progress) · {dismissed} dismissed",
+    "inProgressCount": "{count} in progress",
+    "dismissedCount": "{count} dismissed",
     "dismissedBy": "Dismissed by {name}, {date}",
     "more": "{count, plural, one {# more decision} other {# more decisions}} in Settings → Audit → Dismissed.",
     "noteLabel": "Note: {note}",

@@ -70,6 +70,9 @@ which moves the entries of `[Unreleased]` into the new version.
   crawl's preview one tab away), and if the URL no longer answers as a page it says how it answered
   instead. Older crawls and rechecks made before this are shown as they were.
 
+- The orphan URL finding says that the crawl reads the HTML the server sends, so a link that only
+  appears after JavaScript runs (a menu or footer built in the browser) is not seen.
+
 ### Security
 
 - Next.js 16.4.5 and other dependency updates with upstream security fixes.

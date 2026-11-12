@@ -1332,7 +1332,7 @@
     },
     "orphan-in-sitemap": {
       "name": "URL huérfana (solo está en el sitemap)",
-      "description": "No se ha encontrado ningún enlace interno a ella dentro del alcance del rastreo: solo se llega a ella por el sitemap."
+      "description": "No se ha encontrado ningún enlace interno a ella dentro del alcance del rastreo: solo se llega a ella por el sitemap. El rastreo lee el HTML que envía el servidor: un enlace que solo aparece al ejecutarse JavaScript (un menú o un pie de página construidos en el navegador) no se ve."
     },
     "no-outgoing-links": {
       "name": "Sin enlaces internos salientes",
@@ -3766,7 +3766,8 @@
     "by": "Decisión de {name}, {date}",
     "dismissedByPerson": "Descartado por una persona; el rastreo sigue detectándolo.",
     "deletedUser": "Usuario eliminado",
-    "counts": "{pending} pendientes ({progress} en curso) · {dismissed} descartados",
+    "inProgressCount": "{count} en curso",
+    "dismissedCount": "{count, plural, one {# descartada} other {# descartadas}}",
     "dismissedBy": "Descartado por {name}, {date}",
     "more": "{count, plural, one {# decisión más} other {# decisiones más}} en Ajustes → Auditoría → Descartados.",
     "noteLabel": "Nota: {note}",
