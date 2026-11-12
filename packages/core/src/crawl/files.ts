@@ -208,3 +208,27 @@ export function crawlFileState(file: {
       return file.body === null ? 'invalid' : 'ok'
   }
 }
+
+/** What a request for a crawl file answered. */
+export interface CrawlFileObservation {
+  url: string
+  kind: CrawlFileKind
+  /** `null` when it never answered: see `error`. */
+  statusCode: number | null
+  contentType: string | null
+  redirectTo: string | null
+  bytes: number | null
+  /** The file is larger than what was read or kept of it. */
+  truncated: boolean
+  body: string | null
+  error: string | null
+  data: CrawlFileData | null
+  /** What requested it. */
+  via: 'crawl' | 'refresh'
+  fetchedAt: Date
+}
+
+export interface CrawlFileRecord extends CrawlFileObservation {
+  domainId: string
+  urlHash: string
+}

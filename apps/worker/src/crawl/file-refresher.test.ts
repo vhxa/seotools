@@ -390,3 +390,19 @@ it('opens availability only after two failed checks an hour apart and recovers o
   expect(await db.incidents.list(domainId)).toEqual([])
   expect((await db.jobs.list()).filter((j) => j.type === 'incident.alerts')).toHaveLength(2)
 })
+
+it('does not count a TLS failure as the first failed availability check', async () => {
+  fallback = new FetchError('CERT_HAS_EXPIRED', 'Expired')
+  await refresher().tick()
+  expect((await db.incidents.list(domainId)).map((i) => i.kind)).toEqual(['certificate'])
+  fallback = new FetchError('TIMEOUT', 'No response')
+  clock = new Date(clock.getTime() + CRAWL_FILE_RETRY_INTERVAL_MS)
+  await refresher().tick()
+  expect((await db.incidents.list(domainId)).map((i) => i.kind)).toEqual(['certificate'])
+  clock = new Date(clock.getTime() + CRAWL_FILE_RETRY_INTERVAL_MS)
+  await refresher().tick()
+  expect((await db.incidents.list(domainId)).map((i) => i.kind).sort()).toEqual([
+    'certificate',
+    'site-down',
+  ])
+})

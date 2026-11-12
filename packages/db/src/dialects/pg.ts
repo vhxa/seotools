@@ -703,13 +703,18 @@ export function createPgDatabase(options: {
         .values({ domainId, ...values })
         .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
     }
-    const queue = async (id: string, stage: string) => {
+    const queue = async (id: string, stage: string, details: string) => {
       await tx
         .insert(jobs)
         .values({
           id: incidentAlertJobId(id, stage),
           type: 'incident.alerts',
-          payload: JSON.stringify({ incidentId: id, stage }),
+          payload: JSON.stringify({
+            incidentId: id,
+            stage,
+            observedAt: now.toISOString(),
+            details,
+          }),
           runAt: now,
           createdAt: now,
           updatedAt: now,
@@ -728,7 +733,7 @@ export function createPgDatabase(options: {
         lastSeenAt: now,
         resolvedAt: event ? now : null,
       })
-      await queue(id, incident.stage)
+      await queue(id, incident.stage, incident.details)
     }
     for (const incident of changes.escalate) {
       const old = active.find((i) => i.id === incident.id)!
@@ -736,14 +741,14 @@ export function createPgDatabase(options: {
         .update(siteIncidents)
         .set({ stage: incident.stage, details: incident.details, lastSeenAt: now })
         .where(eq(siteIncidents.id, incident.id))
-      if (old.stage !== incident.stage) await queue(incident.id, incident.stage)
+      if (old.stage !== incident.stage) await queue(incident.id, incident.stage, incident.details)
     }
     for (const incident of changes.resolve) {
       await tx
         .update(siteIncidents)
         .set({ activeKey: null, resolvedAt: now, lastSeenAt: now })
         .where(eq(siteIncidents.id, incident.id))
-      await queue(incident.id, 'resolved')
+      await queue(incident.id, 'resolved', incident.details)
     }
   }
 

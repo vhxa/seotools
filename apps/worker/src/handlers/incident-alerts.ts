@@ -34,7 +34,7 @@ export function createIncidentAlertsHandler(deps: {
   publicUrl: string | undefined
 }): JobHandler {
   return async (job, ctx) => {
-    const { incidentId, stage } = incidentAlertsPayload.parse(job.payload)
+    const { incidentId, stage, observedAt, details } = incidentAlertsPayload.parse(job.payload)
     const { db } = deps
     const incident = await db.incidents.get(incidentId)
     const domain = incident && (await db.domains.get(incident.domainId))
@@ -61,10 +61,8 @@ export function createIncidentAlertsHandler(deps: {
             ...person,
             ...incident,
             stage,
-            at:
-              stage === 'resolved'
-                ? (incident.resolvedAt ?? incident.lastSeenAt)
-                : incident.openedAt,
+            at: new Date(observedAt),
+            details,
             host: domain.host,
             href: appLink(deps.publicUrl, `/domains/${domain.host}/issues`),
           }),

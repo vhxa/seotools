@@ -5,6 +5,7 @@ const now = new Date('2026-06-15T12:00:00Z')
 const file = (body = 'User-agent: *\nDisallow:') => ({
   url: 'https://example.com/robots.txt',
   kind: 'robots' as const,
+  via: 'refresh' as const,
   statusCode: 200,
   contentType: 'text/plain',
   redirectTo: null,
@@ -144,4 +145,20 @@ it('vitals regress only from known non-poor field data to poor, per form factor'
   expect(vitalsRegressions([row], [{ ...row, lcp: 4100, inp: 501, cls: 0.26 }])).toHaveLength(3)
   expect(vitalsRegressions([{ ...row, lcp: null }], [{ ...row, lcp: 4100 }])).toEqual([])
   expect(vitalsRegressions([row], [{ ...row, formFactor: 'DESKTOP', lcp: 4100 }])).toEqual([])
+})
+
+it('bounds robots summaries by UTF-8 bytes and handles repeated groups for a token', () => {
+  const old = file('User-agent: *\nDisallow: /a\nUser-agent: *\nDisallow: /b')
+  const next = file(
+    'User-agent: *\nDisallow: /changed\nUser-agent: *\nDisallow: /b\n' +
+      Array.from(
+        { length: 100 },
+        (_, i) => `Sitemap: https://example.com/${i}/${'💥'.repeat(100)}`,
+      ).join('\n'),
+  )
+  const event = observe({ previous: [old], files: [next] }).open.find(
+    (i) => i.kind === 'robots-changed',
+  )!
+  expect(new TextEncoder().encode(event.details).length).toBeLessThanOrEqual(4000)
+  expect(JSON.parse(event.details)).toMatchObject({ groupsChanged: ['*'] })
 })

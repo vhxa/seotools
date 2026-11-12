@@ -1,5 +1,6 @@
 import type { BotAnswer, BotVerdict } from '@seotools/core/bot-access'
 import type { RuleEditing, RuleSelectors } from './audit'
+import type { CrawlFileObservation, CrawlFileRecord } from '@seotools/core/crawl/files'
 import type { IncidentKind, IncidentStage } from '@seotools/core/incidents'
 import type { VitalMetrics } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
@@ -25,7 +26,6 @@ import type {
   PagesAudit,
   Requirement,
   UrlAuditState,
-  CrawlFileData,
   CrawlFileKind,
   ExtraCrawlFileKind,
   CrawlFrequency,
@@ -1269,29 +1269,8 @@ export interface FaviconRepository {
   defer(input: { domainId: string; nextCheckAt: Date }): Promise<void>
 }
 
-/** What a request for a crawl file answered. */
-export interface NewCrawlFile {
-  url: string
-  kind: CrawlFileKind
-  /** `null` when it never answered: see `error`. */
-  statusCode: number | null
-  contentType: string | null
-  redirectTo: string | null
-  bytes: number | null
-  /** The file is larger than what was read or kept of it. */
-  truncated: boolean
-  body: string | null
-  error: string | null
-  data: CrawlFileData | null
-  /** What requested it. */
-  via: 'crawl' | 'refresh'
-  fetchedAt: Date
-}
-
-export interface CrawlFile extends NewCrawlFile {
-  domainId: string
-  urlHash: string
-}
+export type NewCrawlFile = CrawlFileObservation
+export type CrawlFile = CrawlFileRecord
 
 export type CrawlFileCheckOutcome = 'ok' | 'unreachable' | 'tls-error'
 

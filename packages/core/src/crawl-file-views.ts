@@ -1,38 +1,19 @@
 import {
   crawlFileState,
   isDefaultSitemapUrl,
-  isInternalUrl,
-  markdownHeadings,
-  normalizeCrawlUrl,
-  parseLlms,
-  parseRobots,
-  parseSecurityTxt,
-  robotsAccess,
   type CrawlFileState,
+  type CrawlFileObservation,
+  type CrawlFileRecord as CrawlFile,
+} from './crawl/files'
+import { isInternalUrl, normalizeCrawlUrl } from './crawl/normalize'
+import { parseRobots, robotsAccess, type ParsedRobots } from './crawl/robots'
+import {
+  markdownHeadings,
+  parseLlms,
+  parseSecurityTxt,
   type ParsedLlms,
-  type ParsedRobots,
   type ParsedSecurityTxt,
-} from './crawl-file-view-imports'
-import type { CrawlFileData, CrawlFileKind } from './crawl/files'
-export interface CrawlFile {
-  domainId: string
-  urlHash: string
-  via: 'crawl' | 'refresh'
-  url: string
-  kind: CrawlFileKind
-  statusCode: number | null
-  contentType: string | null
-  redirectTo: string | null
-  error: string | null
-  bytes: number | null
-  truncated: boolean
-  body: string | null
-  data: CrawlFileData | null
-  fetchedAt: Date
-}
-interface CrawlFileCheck {
-  requestedAt: Date | null
-}
+} from './crawl/text-files'
 
 /** Past this long, a requested refresh is taken for lost: the worker retries it on its own. */
 const CHECK_PENDING_MS = 15 * 60_000
@@ -40,17 +21,17 @@ const CHECK_PENDING_MS = 15 * 60_000
 export const ROBOTS_LIMIT_BYTES = 500 * 1024
 
 /** Whether fresher data is on its way: it was asked for, or the domain was never checked. */
-export function isCheckPending(check: CrawlFileCheck | null, now: Date): boolean {
+export function isCheckPending(check: { requestedAt: Date | null } | null, now: Date): boolean {
   if (!check) return true
   return (
     check.requestedAt !== null && now.getTime() - check.requestedAt.getTime() < CHECK_PENDING_MS
   )
 }
 
-const stateOf = (file: CrawlFile) => crawlFileState(file)
+const stateOf = (file: CrawlFileObservation) => crawlFileState(file)
 
 /** The copy of a file that speaks for the site: the first one that is really there. */
-export function primaryFile(files: CrawlFile[]): CrawlFile | null {
+export function primaryFile<T extends CrawlFileObservation>(files: T[]): T | null {
   return (
     files
       .filter((file) => stateOf(file) === 'ok')
@@ -86,15 +67,15 @@ export type RobotsFinding =
   | 'origins-differ'
   | 'syntax-issues'
 
-export interface RobotsView {
-  file: CrawlFile | null
+export interface RobotsView<T extends CrawlFileObservation = CrawlFile> {
+  file: T | null
   parsed: ParsedRobots | null
   findings: RobotsFinding[]
   /** Nothing can be said about what bots may do, since the file could not be read. */
   unknown: boolean
 }
 
-export function robotsView(files: CrawlFile[]): RobotsView {
+export function robotsView<T extends CrawlFileObservation>(files: T[]): RobotsView<T> {
   const file = primaryFile(files)
   const states = files.map(stateOf)
   if (!file || file.body === null) {
@@ -123,10 +104,10 @@ export function robotsView(files: CrawlFile[]): RobotsView {
 
 export type SitemapOrigin = 'robots' | 'default' | 'other'
 
-export interface SitemapRow {
+export interface SitemapRow<T extends CrawlFileObservation = CrawlFile> {
   url: string
   origin: SitemapOrigin
-  file: CrawlFile | null
+  file: T | null
   /** `null` when it is declared but was not requested. */
   state: CrawlFileState | null
   /** On another site, which is why it was not requested. */
@@ -135,8 +116,8 @@ export interface SitemapRow {
 
 export type SitemapFinding = 'none' | 'not-declared' | 'declared-broken' | 'empty'
 
-export interface SitemapsView {
-  rows: SitemapRow[]
+export interface SitemapsView<T extends CrawlFileObservation = CrawlFile> {
+  rows: SitemapRow<T>[]
   /** Usual locations that were tried, and held nothing. Normal, so they are not rows. */
   triedCount: number
   fileCount: number
@@ -146,7 +127,7 @@ export interface SitemapsView {
 }
 
 /** The URLs the robots.txt files declare as sitemaps, normalized like the rows they refer to. */
-function declaredSitemaps(robots: CrawlFile[]): Set<string> {
+function declaredSitemaps(robots: CrawlFileObservation[]): Set<string> {
   const declared = new Set<string>()
   for (const file of robots) {
     if (stateOf(file) !== 'ok' || file.body === null) continue
@@ -158,13 +139,13 @@ function declaredSitemaps(robots: CrawlFile[]): Set<string> {
   return declared
 }
 
-export function sitemapsView(
-  sitemaps: CrawlFile[],
-  robots: CrawlFile[],
+export function sitemapsView<T extends CrawlFileObservation>(
+  sitemaps: T[],
+  robots: T[],
   host: string,
-): SitemapsView {
+): SitemapsView<T> {
   const declared = declaredSitemaps(robots)
-  const rows: SitemapRow[] = []
+  const rows: SitemapRow<T>[] = []
   let triedCount = 0
   for (const file of sitemaps) {
     const state = stateOf(file)

@@ -114,3 +114,13 @@ it('sends a vitals regression once and skips missing data', async () => {
   await handler(noData, ctx)
   expect(sent).toHaveLength(1)
 })
+
+it('keeps the original observation time when an alert is delivered after recovery', async () => {
+  const job = await incidentJob()
+  const observedAt = (job.payload as { observedAt: string }).observedAt
+  const later = new Date(new Date(observedAt).getTime() + 86400000)
+  await db.crawlFiles.finishCheck({ domainId, outcome: 'ok', checkedAt: later, nextCheckAt: later })
+  await createIncidentAlertsHandler({ db, publicUrl: 'https://seo.example.com' })(job, ctx)
+  expect(sent[0]?.text).toContain(observedAt)
+  expect(sent[0]?.text).not.toContain(later.toISOString())
+})

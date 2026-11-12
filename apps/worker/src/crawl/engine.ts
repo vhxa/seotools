@@ -437,13 +437,18 @@ export async function runCrawl(
   // A cancellation can also arrive after the last URL: `finish` then reports nothing changed.
   const status = truncated ? 'incomplete' : 'completed'
   const finished = !cancelled && (await db.crawls.finish(crawlId, { status }))
+  if (finished && !followLinks) {
+    await db.crawlFiles
+      .save(crawl.domainId, observedFiles)
+      .catch((error) => log.warn({ err: error }, 'could not update crawl files'))
+  }
   if (finished && followLinks) {
     try {
       // The files were just requested: asking again in a moment would only add traffic.
       const checkedAt = new Date()
       await db.crawlFiles.finishCheck({
         domainId: crawl.domainId,
-        outcome: 'ok',
+        outcome: observedFiles.some((file) => file.statusCode !== null) ? 'ok' : 'unreachable',
         files: observedFiles,
         checkedAt,
         nextCheckAt: new Date(checkedAt.getTime() + CRAWL_FILE_REFRESH_INTERVAL_MS),

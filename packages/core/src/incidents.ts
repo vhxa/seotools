@@ -1,8 +1,7 @@
-import { parseRobots, robotsAccess } from './crawl/robots'
+import { robotsView, sitemapsView } from './crawl-file-views'
+import { parseRobots } from './crawl/robots'
 import { isDefaultSitemapUrl } from './crawl/files'
-import type { CrawlFile } from './crawl-file-views'
-
-type IncidentFile = Omit<CrawlFile, 'domainId' | 'urlHash' | 'via'>
+import type { CrawlFileObservation as IncidentFile } from './crawl/files'
 
 export const INCIDENT_KINDS = [
   'robots-unreachable',
@@ -46,18 +45,18 @@ const normalized = (body: string | null) =>
 function robotsSummary(before: IncidentFile, after: IncidentFile): string {
   const a = parseRobots(before.body ?? ''),
     b = parseRobots(after.body ?? '')
-  const groups = (p: typeof a) =>
-    new Map(
-      p.groups.flatMap((g) =>
-        g.userAgents.map(
-          (token) =>
-            [
-              token.toLowerCase(),
-              JSON.stringify({ rules: g.rules, crawlDelay: g.crawlDelay }),
-            ] as const,
-        ),
-      ),
-    )
+  const groups = (parsed: typeof a) => {
+    const byToken = new Map<string, string[]>()
+    for (const group of parsed.groups) {
+      for (const token of group.userAgents) {
+        const key = token.toLowerCase(),
+          rules = byToken.get(key) ?? []
+        rules.push(JSON.stringify({ rules: group.rules, crawlDelay: group.crawlDelay }))
+        byToken.set(key, rules)
+      }
+    }
+    return new Map([...byToken].map(([token, rules]) => [token, JSON.stringify(rules)]))
+  }
   const x = groups(a),
     y = groups(b)
   const cut = (values: string[]) => values.slice(0, 6).map((v) => v.slice(0, 80))
@@ -126,8 +125,7 @@ export function detectIncidents(input: {
       )
     }
     if (answered(robot)) {
-      const blocked = (f: IncidentFile) =>
-        f.body !== null && robotsAccess(parseRobots(f.body), '*').access === 'blocked'
+      const blocked = (f: IncidentFile) => robotsView([f]).findings.includes('site-blocked')
       state('robots-blocks-site', robot.url, blocked(robot), !old || blocked(old))
       if (
         old &&
@@ -150,27 +148,29 @@ export function detectIncidents(input: {
         origin,
         days <= 14,
         false,
-        days < 0 ? 'expired' : days <= 3 ? 'warn-3' : 'warn-14',
+        days <= 0 ? 'expired' : days <= 3 ? 'warn-3' : 'warn-14',
         JSON.stringify({ validTo: expiry ?? null }),
       )
     }
   }
-  const declared = new Set(
-    files
-      .filter((f) => f.kind === 'robots')
-      .flatMap((f) =>
-        parseRobots(f.body ?? '').sitemaps.map((s) => {
-          try {
-            return new URL(s, f.url).href
-          } catch {
-            return ''
-          }
-        }),
-      ),
+  const sitemaps = sitemapsView(
+    files.filter((f) => f.kind === 'sitemap'),
+    files.filter((f) => f.kind === 'robots'),
+    new URL(origin).hostname,
   )
-  for (const f of files.filter(
-    (f) => f.kind === 'sitemap' && (declared.has(f.url) || isDefaultSitemapUrl(f.url)),
+  const missingDefaults = files
+    .filter(
+      (f) =>
+        f.kind === 'sitemap' &&
+        isDefaultSitemapUrl(f.url) &&
+        !sitemaps.rows.some((row) => row.url === f.url),
+    )
+    .map((file) => ({ file, url: file.url, origin: 'default' as const }))
+  for (const row of [...sitemaps.rows, ...missingDefaults].filter(
+    (row) => row.origin === 'robots' || isDefaultSitemapUrl(row.url),
   )) {
+    const f = row.file
+    if (!f) continue
     const old = previous.find((p) => p.url === f.url)
     const lists = (p: IncidentFile) => p.statusCode === 200 && (p.data?.sitemap?.entries ?? 0) > 0
     state('sitemap-broken', f.url, !lists(f), !old || !lists(old))
@@ -182,6 +182,7 @@ export function detectIncidents(input: {
     const previousCheck = input.previousCheck
     if (input.check.outcome === 'ok') state('site-down', origin, false, false)
     else if (
+      input.check.outcome === 'unreachable' &&
       !tlsError &&
       previousCheck?.outcome === 'unreachable' &&
       previousCheck.checkedAt &&
@@ -211,7 +212,10 @@ export function robotsChangeSummary(
     return []
   }
   if (!parsed || typeof parsed !== 'object') return []
-  return ROBOTS_CHANGE_FIELDS.flatMap((key) => {
+  return ROBOTS_CHANGE_FIELDS.flatMap<{
+    key: (typeof ROBOTS_CHANGE_FIELDS)[number]
+    value: string
+  }>((key) => {
     const value: unknown = (parsed as Record<string, unknown>)[key]
     if (!Array.isArray(value) || !value.length) return []
     if (key === 'status')

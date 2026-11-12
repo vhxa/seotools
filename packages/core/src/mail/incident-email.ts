@@ -85,7 +85,9 @@ export function incidentEmail(input: {
       alertLine(input.subject),
       input.at.toISOString(),
       c.stages[input.stage],
-      typeof details.validTo === 'string' ? `${c.expires} ${alertLine(details.validTo)}` : '',
+      input.stage !== 'resolved' && typeof details.validTo === 'string'
+        ? `${c.expires} ${alertLine(details.validTo)}`
+        : '',
       input.kind === 'robots-changed'
         ? robotsChangeSummary(input.details)
             .map((row) => `${c.summary[row.key]}: ${alertLine(row.value, 500)}`)

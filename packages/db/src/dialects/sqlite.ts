@@ -721,12 +721,17 @@ export function createSqliteDatabase(options: {
         .onConflictDoUpdate({ target: crawlFileChecks.domainId, set: values })
         .run()
     }
-    const queue = (id: string, stage: string) => {
+    const queue = (id: string, stage: string, details: string) => {
       tx.insert(jobs)
         .values({
           id: incidentAlertJobId(id, stage),
           type: 'incident.alerts',
-          payload: JSON.stringify({ incidentId: id, stage }),
+          payload: JSON.stringify({
+            incidentId: id,
+            stage,
+            observedAt: now.toISOString(),
+            details,
+          }),
           runAt: now,
           createdAt: now,
           updatedAt: now,
@@ -748,7 +753,7 @@ export function createSqliteDatabase(options: {
           resolvedAt: event ? now : null,
         })
         .run()
-      queue(id, incident.stage)
+      queue(id, incident.stage, incident.details)
     }
     for (const incident of changes.escalate) {
       const old = active.find((i) => i.id === incident.id)!
@@ -756,14 +761,14 @@ export function createSqliteDatabase(options: {
         .set({ stage: incident.stage, details: incident.details, lastSeenAt: now })
         .where(eq(siteIncidents.id, incident.id))
         .run()
-      if (old.stage !== incident.stage) queue(incident.id, incident.stage)
+      if (old.stage !== incident.stage) queue(incident.id, incident.stage, incident.details)
     }
     for (const incident of changes.resolve) {
       tx.update(siteIncidents)
         .set({ activeKey: null, resolvedAt: now, lastSeenAt: now })
         .where(eq(siteIncidents.id, incident.id))
         .run()
-      queue(incident.id, 'resolved')
+      queue(incident.id, 'resolved', incident.details)
     }
   }
 

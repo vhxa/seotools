@@ -94,6 +94,8 @@ export type CwvCollectPayload = z.infer<typeof cwvCollectPayload>
 export const botTestPayload = z.object({ runId: z.string().min(1) })
 export const incidentAlertsPayload = z.object({
   incidentId: z.string().min(1),
+  observedAt: z.string().datetime(),
+  details: z.string().max(4000),
   stage: z.enum(['open', 'changed', 'warn-14', 'warn-3', 'expired', 'resolved']),
 })
 export const vitalsAlertsPayload = z.object({ crawlId: z.string().min(1) })
