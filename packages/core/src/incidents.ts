@@ -124,12 +124,14 @@ export function detectIncidents(input: {
         !old || !answered(old),
       )
     }
-    if (answered(robot)) {
+    const view = robotsView([robot])
+    if (answered(robot) && !view.unknown) {
       const blocked = (f: IncidentFile) => robotsView([f]).findings.includes('site-blocked')
       state('robots-blocks-site', robot.url, blocked(robot), !old || blocked(old))
       if (
         old &&
         answered(old) &&
+        !robotsView([old]).unknown &&
         (old.statusCode !== robot.statusCode || normalized(old.body) !== normalized(robot.body))
       )
         open.push({
@@ -139,6 +141,7 @@ export function detectIncidents(input: {
           details: robotsSummary(old, robot),
         })
     }
+    if (view.unknown) state('robots-blocks-site', robot.url, true, true)
     const expiry = robot.data?.tls?.validTo
     const expiredError = robot.error?.startsWith('CERT_HAS_EXPIRED:') ?? false
     if (expiry || expiredError) {
@@ -172,8 +175,24 @@ export function detectIncidents(input: {
     const f = row.file
     if (!f) continue
     const old = previous.find((p) => p.url === f.url)
-    const lists = (p: IncidentFile) => p.statusCode === 200 && (p.data?.sitemap?.entries ?? 0) > 0
-    state('sitemap-broken', f.url, !lists(f), !old || !lists(old))
+    const lists = (start: IncidentFile, observation: IncidentFile[]): boolean | null => {
+      let current = start
+      const seen = new Set<string>()
+      for (let hops = 0; hops <= 5; hops++) {
+        if (seen.has(current.url)) return null
+        seen.add(current.url)
+        if (current.statusCode === null || current.statusCode < 300 || current.statusCode >= 400) {
+          return current.statusCode === 200 && (current.data?.sitemap?.entries ?? 0) > 0
+        }
+        const target = observation.find((file) => file.url === current.redirectTo)
+        if (!target) return null
+        current = target
+      }
+      return null
+    }
+    const populated = lists(f, files)
+    if (populated === null) state('sitemap-broken', f.url, true, true)
+    else state('sitemap-broken', f.url, !populated, !old || lists(old, previous) !== true)
   }
   if (input.check) {
     const tlsError = files.some(

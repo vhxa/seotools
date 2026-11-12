@@ -162,3 +162,52 @@ it('bounds robots summaries by UTF-8 bytes and handles repeated groups for a tok
   expect(new TextEncoder().encode(event.details).length).toBeLessThanOrEqual(4000)
   expect(JSON.parse(event.details)).toMatchObject({ groupsChanged: ['*'] })
 })
+
+it('keeps blocking incidents open for unreadable robots, while an observed empty file recovers', () => {
+  const blocked = file('User-agent: *\nDisallow: /')
+  const active: ActiveIncident[] = [
+    { id: 'block', kind: 'robots-blocks-site', subject: blocked.url, stage: 'open', details: '{}' },
+  ]
+  const unknown = { ...file(), body: null, contentType: 'text/html' }
+  const result = observe({ previous: [blocked], files: [unknown], active })
+  expect(result.resolve).toEqual([])
+  expect(result.open).toEqual([])
+  expect(result.escalate).toMatchObject([{ id: 'block', stage: 'open' }])
+  const empty = observe({ previous: [unknown], files: [file('')], active })
+  expect(empty.resolve).toEqual(active)
+  expect(empty.open).toEqual([])
+})
+
+it('judges captured sitemap redirect terminals and bounds incomplete or cyclic chains', () => {
+  const sitemap = {
+    ...file(),
+    url: 'https://example.com/sitemap.xml',
+    kind: 'sitemap' as const,
+    data: { sitemap: { format: 'urlset' as const, entries: 10, lastModified: null } },
+  }
+  const redirect = {
+    ...sitemap,
+    statusCode: 301,
+    data: null,
+    redirectTo: 'https://example.com/map.xml',
+  }
+  const target = { ...sitemap, url: redirect.redirectTo }
+  expect(observe({ previous: [sitemap], files: [redirect, target] }).open).toEqual([])
+  const active: ActiveIncident[] = [
+    { id: 'map', kind: 'sitemap-broken', subject: sitemap.url, stage: 'open', details: '{}' },
+  ]
+  expect(observe({ previous: [sitemap], files: [redirect, target], active }).resolve).toEqual(
+    active,
+  )
+  expect(
+    observe({ previous: [sitemap], files: [redirect, { ...target, statusCode: 500, data: null }] })
+      .open,
+  ).toMatchObject([{ kind: 'sitemap-broken', subject: sitemap.url }])
+  expect(observe({ previous: [sitemap], files: [redirect] }).open).toEqual([])
+  expect(
+    observe({
+      previous: [sitemap],
+      files: [redirect, { ...redirect, url: target.url, redirectTo: sitemap.url }],
+    }).open,
+  ).toEqual([])
+})

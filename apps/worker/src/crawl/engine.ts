@@ -1,3 +1,4 @@
+import { CRAWL_FILE_RETRY_INTERVAL_MS } from './file-refresher'
 import type { NewCrawlFile } from '@seotools/db'
 import { siteHeaders } from './credentials'
 import {
@@ -29,7 +30,12 @@ import {
   type Fetcher,
   type FetcherConfig,
 } from './fetcher'
-import { CRAWL_FILE_REFRESH_INTERVAL_MS, captureCrawlFile, crawlFileFetchOptions } from './files'
+import {
+  CRAWL_FILE_REFRESH_INTERVAL_MS,
+  captureCrawlFile,
+  crawlFileFetchOptions,
+  fetchCrawlFiles,
+} from './files'
 import { createRequester } from './requester'
 import { PERMANENT_ERRORS, RETRY_BASE_MS, abortableSleep, isRedirect } from './requests'
 import { MAX_ROBOTS_BYTES, analyseResponse, emptyResult, failureResult } from './response'
@@ -234,6 +240,7 @@ export async function runCrawl(
   }
 
   const observedFiles: NewCrawlFile[] = []
+  let filesCapped = false
   async function processUrl(item: NewCrawlUrl) {
     const outcome = await fetchWithRetries(item)
     let result: CrawlUrlResult
@@ -417,6 +424,20 @@ export async function runCrawl(
     if (followLinks) {
       await drain((limit) => db.crawls.pendingExternalLinks(crawlId, limit), checkExternalLink)
     }
+    // Done URLs survive a shutdown; the in-memory file batch does not. Re-acquire a complete
+    // observation on resumed attempts before publishing or pruning any current file rows.
+    if (counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
+      const fresh = await fetchCrawlFiles({
+        host,
+        settings,
+        fetcher,
+        signal: stopSignal,
+        now: () => new Date(),
+        retryBaseMs,
+      })
+      observedFiles.splice(0, observedFiles.length, ...fresh.files)
+      filesCapped = fresh.capped
+    }
   } finally {
     fetcher.close()
   }
@@ -442,21 +463,29 @@ export async function runCrawl(
       .save(crawl.domainId, observedFiles)
       .catch((error) => log.warn({ err: error }, 'could not update crawl files'))
   }
-  if (finished && followLinks) {
+  if (finished && followLinks && observedFiles.length > 0) {
     try {
       // The files were just requested: asking again in a moment would only add traffic.
       const checkedAt = new Date()
+      const reachable = observedFiles.some((file) => file.statusCode !== null)
       await db.crawlFiles.finishCheck({
         domainId: crawl.domainId,
-        outcome: observedFiles.some((file) => file.statusCode !== null) ? 'ok' : 'unreachable',
+        outcome: reachable ? 'ok' : 'unreachable',
         files: observedFiles,
         checkedAt,
-        nextCheckAt: new Date(checkedAt.getTime() + CRAWL_FILE_REFRESH_INTERVAL_MS),
+        nextCheckAt: new Date(
+          checkedAt.getTime() +
+            (reachable ? CRAWL_FILE_REFRESH_INTERVAL_MS : CRAWL_FILE_RETRY_INTERVAL_MS),
+        ),
       })
 
       // A crawl that stopped at its limit may not have got to every file, so it removes none.
-      if (status === 'completed') {
-        await db.crawlFiles.prune({ domainId: crawl.domainId, before: crawl.createdAt })
+      if (status === 'completed' && reachable) {
+        await db.crawlFiles.prune({
+          domainId: crawl.domainId,
+          before: crawl.createdAt,
+          ...(filesCapped ? { keepKinds: ['sitemap'] as const } : {}),
+        })
       }
     } catch (error) {
       log.warn({ err: error }, 'could not update the crawl files')
