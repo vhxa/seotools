@@ -1,3 +1,4 @@
+import type { AcceptanceKind } from '@seotools/core/crawl/acceptance'
 import type { BotAnswer, BotVerdict } from '@seotools/core/bot-access'
 import type { RuleEditing, RuleSelectors } from './audit'
 import type { CrawlFileObservation, CrawlFileRecord } from '@seotools/core/crawl/files'
@@ -476,6 +477,7 @@ export type CrawlUrlSort =
 
 /** Which URLs of a crawl a list shows. */
 export interface CrawlUrlQuery {
+  state?: 'pending' | 'in-progress' | 'dismissed'
   crawlId: string
   view: CrawlUrlView
   /** Text the URL or the title contains, whatever its case. */
@@ -491,6 +493,7 @@ export interface CrawlUrlQuery {
    * `view` is ignored.
    */
   accepted?: string
+  acceptanceKind?: AcceptanceKind
   /**
    * Only URLs whose last request got a status of this class, or `none`: no status at all, because
    * the URL was never requested or the request failed. Within the `view`.
@@ -853,7 +856,10 @@ export interface CrawlRepository {
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
   /** For each issue a rule accepts in a crawl, how many URLs it accepts it on. */
-  acceptedCounts(crawlId: string): Promise<{ issue: string; pages: number }[]>
+  acceptedCounts(
+    crawlId: string,
+    kind?: 'dismissal' | 'rule',
+  ): Promise<{ issue: string; pages: number }[]>
   /** The findings rules accept on these URLs of a crawl. */
   acceptedOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlAcceptedIssue[]>
   /**
@@ -967,6 +973,7 @@ export interface CrawlUrlTrace {
   snapshot: UrlSnapshot
   issues: CrawlUrlIssue[]
   /** Ids of the issues a rule accepts on the URL in this crawl. */
+  dismissed?: string[]
   accepted?: string[]
   /** `null`: the crawl was analysed before the audit state per URL was kept, or not analysed. */
   audit: CrawlUrlAudit | null
@@ -975,7 +982,29 @@ export interface CrawlUrlTrace {
 /** A rule as stored: with the domain it belongs to and when it was made. */
 export type AuditRuleRecord = AuditRule & { domainId: string; createdAt: Date; updatedAt: Date }
 
+export interface FindingStateRecord {
+  id: string
+  domainId: string
+  issue: string
+  urlHash: string | null
+  targetKey: string
+  state: 'in-progress' | 'dismissed' | 'pending'
+  note: string
+  setBy: string | null
+  setAt: Date
+}
+
+export interface SetFindingStates {
+  domainId: string
+  issue: string
+  urlHashes: (string | null)[]
+  state: 'in-progress' | 'dismissed' | 'pending'
+  note: string
+  setBy: string
+}
+
 export interface AuditConfig {
+  findingStates: FindingStateRecord[]
   /** Grows with every change to the rules. `0`: the domain never had any. */
   version: number
   /** Every rule of the domain, enabled or not, oldest first. */
@@ -1019,6 +1048,7 @@ export interface RuleStatements {
 }
 
 export interface AuditRepository {
+  setFindingStates(input: SetFindingStates): Promise<AuditMutation>
   /**
    * The rules of a domain and the version they are at, read together: the version is read before
    * and after the rules, and the read repeats if it moved, so a version never labels other rules.

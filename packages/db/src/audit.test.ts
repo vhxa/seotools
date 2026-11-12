@@ -1,6 +1,7 @@
 import type { AuditSelector } from '@seotools/core'
 import { describe, expect, it } from 'vitest'
 import {
+  planFindingStates,
   planSaveRuleSet,
   planUpgradeSemantics,
   selectorHashOf,
@@ -234,4 +235,33 @@ describe('rule path limits', () => {
       ),
     ).toEqual({ ok: false, error: 'limit' })
   })
+})
+
+it('advances the decision timestamp on a note edit even within the same millisecond', () => {
+  const now = new Date('2026-11-12T00:00:00Z')
+  const current = {
+    id: 'd',
+    domainId: 'domain',
+    issue: 'title-missing',
+    urlHash: null,
+    targetKey: '*',
+    state: 'dismissed' as const,
+    note: 'Alice note',
+    setBy: 'alice',
+    setAt: now,
+  }
+  const result = planFindingStates(
+    [current],
+    {
+      domainId: 'domain',
+      issue: current.issue,
+      urlHashes: [null],
+      state: 'dismissed',
+      note: 'Bob note',
+      setBy: 'bob',
+    },
+    { now, newId: () => 'unused', languages: { prefixes: [], unprefixed: false } },
+  )
+  expect(result.ok && result.states?.[0]?.setAt.getTime()).toBe(now.getTime() + 1)
+  expect(result.ok && result.bump).toBe(false)
 })

@@ -1,5 +1,6 @@
 'use client'
 
+import { FINDING_STATE_FILTERS } from '@seotools/core/crawl/listing'
 import { INDEX_INTENTS } from '@seotools/core/crawl/audit'
 import { INDEXABILITY_STATES } from '@seotools/core/crawl/indexability'
 import Link from 'next/link'
@@ -36,6 +37,7 @@ export function AuditFilters({
   rulesHref?: string
 }) {
   const t = useTranslations('PagesDetails.filters')
+  const decisions = useTranslations('FindingStates')
   const tState = useTranslations('AuditState')
   const router = useRouter()
 
@@ -49,6 +51,17 @@ export function AuditFilters({
       aria-label={t('label')}
       className={stacked ? 'grid w-full gap-4' : 'flex flex-wrap items-center gap-2'}
     >
+      <FilterSelect
+        label={decisions('state')}
+        anyLabel={decisions('all')}
+        value={query.state}
+        options={FINDING_STATE_FILTERS.map((value) => ({
+          value,
+          label: decisions(value),
+        }))}
+        onChange={(state) => go({ state })}
+        showLabel={stacked}
+      />
       <FilterSelect
         showLabel={stacked}
         label={t('indexability.label')}

@@ -788,7 +788,8 @@ export function crawlUrlWhere(
   subqueries: {
     withIssue: (issue: string) => SQLWrapper
     /** The hashes of the URLs with an accepted finding: this issue, or any when it is `null`. */
-    withAccepted: (issue: string | null) => SQLWrapper
+    withAccepted: (issue: string | null, kind?: CrawlUrlQuery['acceptanceKind']) => SQLWrapper
+    withState?: (state: string, issue?: string) => SQLWrapper
     withAudit: (filter: AuditFilter) => SQLWrapper
   },
 ): SQL | undefined {
@@ -803,11 +804,19 @@ export function crawlUrlWhere(
     pattern
       ? sql`(lower(${columns.url}) like ${pattern} escape '!' or lower(${columns.title}) like ${pattern} escape '!')`
       : undefined,
-    query.issue ? inArray(columns.urlHash, subqueries.withIssue(query.issue)) : undefined,
+    query.issue && query.state !== 'dismissed'
+      ? inArray(columns.urlHash, subqueries.withIssue(query.issue))
+      : undefined,
+    query.state && subqueries.withState
+      ? inArray(columns.urlHash, subqueries.withState(query.state, query.issue))
+      : undefined,
     query.accepted
       ? inArray(
           columns.urlHash,
-          subqueries.withAccepted(query.accepted === ANY_ACCEPTED ? null : query.accepted),
+          subqueries.withAccepted(
+            query.accepted === ANY_ACCEPTED ? null : query.accepted,
+            query.acceptanceKind,
+          ),
         )
       : undefined,
     hasAuditFilter(query) ? inArray(columns.urlHash, subqueries.withAudit(query)) : undefined,
@@ -931,7 +940,7 @@ export function crawlHistoryRow(
   crawlId: string,
   url: SnapshotRow & { urlHash: string; url: string },
   issues: readonly string[],
-  accepted: readonly string[],
+  accepted: readonly (string | { issue: string; kind: 'dismissal' })[],
   audit: Omit<ReturnType<typeof crawlAuditRows>[number], 'crawlId'> | null,
 ) {
   return {
@@ -1027,7 +1036,10 @@ export function historyTrace(row: {
     url: row.url,
     snapshot,
     issues: list(row.issues).map((issue) => ({ urlHash: row.urlHash, issue })),
-    accepted: list(row.accepted),
+    accepted: storedAccepted(row.accepted).map((r) => (typeof r === 'string' ? r : r.issue)),
+    dismissed: storedAccepted(row.accepted).flatMap((r) =>
+      typeof r === 'string' ? [] : [r.issue],
+    ),
     audit:
       audit && typeof audit === 'object'
         ? toCrawlUrlAudit({
@@ -1617,7 +1629,7 @@ export function foldTraces(
   urls: (SnapshotRow & { crawlId: string; urlHash: string; url: string })[],
   issues: (CrawlUrlIssue & { crawlId: string })[],
   audits: (CrawlUrlAudit & { crawlId: string })[],
-  accepted: { crawlId: string; urlHash: string; issue: string }[] = [],
+  accepted: { crawlId: string; urlHash: string; issue: string; details?: string }[] = [],
 ): CrawlUrlTrace[] {
   const key = (crawlId: string, urlHash: string) => `${crawlId}:${urlHash}`
   const issuesBy = new Map<string, CrawlUrlIssue[]>()
@@ -1628,9 +1640,16 @@ export function foldTraces(
   const auditBy = new Map(
     audits.map(({ crawlId, ...audit }) => [key(crawlId, audit.urlHash), audit]),
   )
+  const dismissedBy = new Map<string, string[]>()
   const acceptedBy = new Map<string, string[]>()
-  for (const { crawlId, urlHash, issue } of accepted) {
+  for (const { crawlId, urlHash, issue, details } of accepted) {
     const k = key(crawlId, urlHash)
+    if (
+      details &&
+      (parseJson(details) as { acceptance?: { kind?: string } } | null)?.acceptance?.kind ===
+        'dismissal'
+    )
+      dismissedBy.set(k, [...(dismissedBy.get(k) ?? []), issue])
     acceptedBy.set(k, [...(acceptedBy.get(k) ?? []), issue])
   }
   return urls.flatMap(({ crawlId, urlHash, url, ...row }) => {
@@ -1645,6 +1664,7 @@ export function foldTraces(
         snapshot,
         issues: issuesBy.get(k) ?? [],
         accepted: acceptedBy.get(k) ?? [],
+        dismissed: dismissedBy.get(k) ?? [],
         audit: auditBy.get(k) ?? null,
       },
     ]
@@ -1748,3 +1768,33 @@ export function vitalsJobValues(crawlId: string, now: Date) {
 export const incidentAlertJobId = (id: string, stage: string) =>
   alertJobId(`incident:${id}:${stage}`)
 export const vitalsAlertJobId = (crawlId: string) => alertJobId(`vitals:${crawlId}`)
+
+/** Compact history preserves the acceptance kind, so rules and human decisions never become alike. */
+function storedAccepted(raw: string | null): (string | { issue: string; kind: 'dismissal' })[] {
+  const parsed: unknown = raw === null ? [] : parseJson(raw)
+  if (!Array.isArray(parsed)) return []
+  return parsed.flatMap((item): (string | { issue: string; kind: 'dismissal' })[] => {
+    if (typeof item === 'string') return [item]
+    if (
+      item &&
+      typeof item === 'object' &&
+      item.kind === 'dismissal' &&
+      typeof item.issue === 'string'
+    )
+      return [{ issue: item.issue, kind: 'dismissal' }]
+    return []
+  })
+}
+
+export function groupAcceptedIssues(rows: { urlHash: string; issue: string; details: string }[]) {
+  const grouped = new Map<string, (string | { issue: string; kind: 'dismissal' })[]>()
+  for (const row of rows) {
+    const finding = parseJson(row.details) as { acceptance?: unknown } | null
+    const value =
+      parseFindingAcceptance(finding?.acceptance)?.kind === 'dismissal'
+        ? { issue: row.issue, kind: 'dismissal' as const }
+        : row.issue
+    grouped.set(row.urlHash, [...(grouped.get(row.urlHash) ?? []), value])
+  }
+  return grouped
+}

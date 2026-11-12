@@ -5,6 +5,8 @@ import {
   PAGE_ISSUE_IDS,
   resolveThresholds,
   type AuditThresholds,
+  type AuditSnapshot,
+  type FindingDismissal,
   boundedText,
   boundedUrl,
   parseIssueEvidence,
@@ -996,5 +998,42 @@ export function detectFindings(
     }
   }
   const { kept, accepted } = auditPolicy(url, found)
-  return { found: kept, accepted: [...accepted, ...acceptedRelations(url, site)] }
+  return applyFindingDismissals(url, site, kept, [...accepted, ...acceptedRelations(url, site)])
+}
+
+const dismissalIndexes = new WeakMap<AuditSnapshot, ReadonlyMap<string, FindingDismissal>>()
+
+export function applyFindingDismissals(
+  url: AuditedUrl,
+  site: Site,
+  kept: Finding[],
+  accepted: AcceptedFinding[],
+): { found: Finding[]; accepted: AcceptedFinding[] } {
+  let index = dismissalIndexes.get(site.config)
+  if (!index) {
+    index = new Map(
+      (site.config.dismissals ?? []).map((row) => [row.issue + ':' + (row.urlHash ?? '*'), row]),
+    )
+    dismissalIndexes.set(site.config, index)
+  }
+  const pending: Finding[] = []
+  for (const finding of kept) {
+    const state =
+      index.get(finding.issue + ':' + url.url.urlHash) ?? index.get(finding.issue + ':*')
+    if (state?.state === 'dismissed' && !finding.issue.startsWith('expected-')) {
+      accepted.push({
+        ...finding,
+        by: url,
+        acceptance: {
+          kind: 'dismissal',
+          state: 'dismissed',
+          scope: state.urlHash === null ? 'domain' : 'url',
+          id: state.id,
+          ...(state.setBy !== undefined ? { setBy: state.setBy } : {}),
+          ...(state.setAt ? { setAt: state.setAt } : {}),
+        },
+      })
+    } else pending.push(finding)
+  }
+  return { found: pending, accepted }
 }

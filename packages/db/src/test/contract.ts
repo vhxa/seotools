@@ -1,3 +1,4 @@
+import { describeFindingStates } from './finding-states'
 import { describeBotAccess } from './bot-access'
 import { describeAuditModel } from './audit-model'
 import { describeIncidents } from './incidents'
@@ -79,6 +80,7 @@ export function describeDatabaseContract(
       await reset()
     })
 
+    describeFindingStates(() => db)
     describeAuditModel(
       () => db,
       (id) => legacy.acceptNofollow(id, true),
@@ -2543,6 +2545,7 @@ export function describeDatabaseContract(
         it('starts at version 0, with no rules', async () => {
           const domainId = await domain()
           expect(await db.audit.config(domainId)).toEqual({
+            findingStates: [],
             version: 0,
             rules: [],
             languages: { prefixes: [], unprefixed: false },

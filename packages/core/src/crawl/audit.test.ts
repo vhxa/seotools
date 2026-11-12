@@ -1493,3 +1493,14 @@ describe('intentOutcome for the intents that exist', () => {
     expect(configurable).toHaveLength(2)
   })
 })
+
+it('round trips dismissal snapshots, omits progress, and reads legacy snapshots without dismissals', () => {
+  const snapshot = auditSnapshotOf(3, [], undefined, undefined, [
+    { id: 'd', issue: 'title-missing', urlHash: null, state: 'dismissed' },
+    { id: 'p', issue: 'title-missing', urlHash: 'hash', state: 'pending' },
+    { id: 'i', issue: 'description-missing', urlHash: 'hash', state: 'in-progress' },
+  ])
+  expect(parseAuditSnapshot(JSON.stringify(snapshot))?.dismissals).toEqual(snapshot.dismissals)
+  expect(snapshot.dismissals).toHaveLength(2)
+  expect(parseAuditSnapshot('{"version":0,"rules":[]}')?.dismissals).toBeUndefined()
+})

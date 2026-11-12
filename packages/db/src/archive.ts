@@ -57,6 +57,7 @@ export function withArchiveGuard(db: Database): Database {
     priorityUrls: guard(db, db.priorityUrls, ['add', 'remove']),
     crawlFiles: guard(db, db.crawlFiles, ['requestCheck']),
     audit: guard(db, db.audit, [
+      'setFindingStates',
       'saveRule',
       'setRuleEnabled',
       'deleteRule',

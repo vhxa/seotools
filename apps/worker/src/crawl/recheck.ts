@@ -14,7 +14,12 @@ import {
 } from '@seotools/core'
 import type { CrawlUrl, CrawlUrlResult } from '@seotools/db'
 import { conditionStatesOf } from './conditions'
-import { CHECKS, applyAuditPolicyKeeping, type Finding } from './issue-checks'
+import {
+  CHECKS,
+  applyFindingDismissals,
+  applyAuditPolicyKeeping,
+  type Finding,
+} from './issue-checks'
 import { SiteContextError } from './site-context'
 import { auditUrl, type AuditedUrl, type RobotsFile, type Site } from './site-audit'
 
@@ -220,7 +225,8 @@ export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): V
     }
   }
 
-  const { kept, accepted } = applyAuditPolicyKeeping(url, found)
+  const policy = applyAuditPolicyKeeping(url, found)
+  const { found: kept, accepted } = applyFindingDismissals(url, site, policy.kept, policy.accepted)
   return {
     audit: {
       participation: url.participation,

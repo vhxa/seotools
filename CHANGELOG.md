@@ -22,6 +22,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Upgrade notes
 
+- One migration adds finding-state storage. Nothing is dismissed after updating. Going back requires restoring the pre-update backup.
+
 - This update adds bot-test storage migrations. Going back to an older image requires restoring the pre-update backup.
 - Migration 0030 adds optional rule grouping without changing existing rows. Going back requires
   the backup and previous image, as described in `docs/updating.md`.
@@ -34,6 +36,8 @@ which moves the entries of `[Unreleased]` into the new version.
   report an existing problem; certificate and availability thresholds still apply.
 
 ### Added
+
+- Findings can be marked in progress or dismissed per URL or across a domain, with notes, attribution, state filters and CSV exports. Dismissed findings no longer count as pending and are never reported as fixed.
 
 - The robots.txt page offers an on-demand Bot access test comparing homepage responses to published bot User-Agent strings, with explicit limits on what simulated requests can prove.
 - Audit rules can require, allow or forbid a canonical to another URL and the absence of internal
