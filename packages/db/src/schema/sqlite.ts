@@ -886,3 +886,13 @@ export const crawlUrlVitals = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.crawlId, t.formFactor, t.urlHash, t.source] })],
 )
+
+/** Personal preferences belong to the account, independently of domain ownership. */
+export const userPreferences = sqliteTable('user_preferences', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  favouriteDomainId: text('favourite_domain_id').references(() => domains.id, {
+    onDelete: 'set null',
+  }),
+})

@@ -40,7 +40,11 @@ const PUBLIC_ACTIONS = new Set(['createAdmin', 'requestPasswordEmailAction', 'se
 /** Inside a domain and only reading, so anyone who can see the domain may call them. */
 const READ_ONLY_DOMAIN_ACTIONS = new Set(['loadLinksAction', 'searchUrlsAction'])
 /** About the person's own account. */
-const OWN_ACCOUNT_ACTIONS = new Set(['changePasswordAction', 'saveAlertsAction'])
+const OWN_ACCOUNT_ACTIONS = new Set([
+  'changePasswordAction',
+  'saveAlertsAction',
+  'setFavouriteAction',
+])
 
 describe('server actions', () => {
   const inDomain = (path: string) => path.includes(join('domains', '[host]'))

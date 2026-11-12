@@ -53,6 +53,7 @@ export function describeDatabaseContract(
     db: Database
     reset: () => Promise<void>
     legacy: LegacyWrites
+    deleteUser: (id: string) => Promise<void>
     /** Rows in a table, by its name: for proving that nothing is left behind. */
     countRows: (table: string) => Promise<number>
   }>,
@@ -61,17 +62,53 @@ export function describeDatabaseContract(
   describe.skipIf(options.skip)(`database contract: ${name}`, () => {
     let db: Database
     let reset: () => Promise<void>
+    let deleteUser: (id: string) => Promise<void>
     let legacy: LegacyWrites
     let countRows: (table: string) => Promise<number>
 
     beforeAll(async () => {
-      ;({ db, reset, legacy, countRows } = await setup())
+      ;({ db, reset, legacy, countRows, deleteUser } = await setup())
     })
     afterAll(async () => {
       await db?.close()
     })
     beforeEach(async () => {
       await reset()
+    })
+
+    it('stores one favourite per user, replaces and clears it, and enforces foreign keys', async () => {
+      const user = await db.users.create({
+        name: 'Member',
+        email: 'member@example.com',
+        role: 'member',
+      })
+      const other = await db.users.create({
+        name: 'Other',
+        email: 'other@example.com',
+        role: 'member',
+      })
+      const company = await createCompany(db, { name: 'Example', domain: 'example.com' })
+      if (!company.ok) throw new Error('setup failed')
+      const second = await addDomain(db, { companyId: company.company.id, domain: 'other.com' })
+      if (!second.ok) throw new Error('setup failed')
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBeNull()
+      await db.userPreferences.setFavouriteDomain(user.id, company.domain.id)
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBe(company.domain.id)
+      expect(await db.userPreferences.favouriteDomainId(other.id)).toBeNull()
+      await db.userPreferences.setFavouriteDomain(user.id, second.domain.id)
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBe(second.domain.id)
+      await db.userPreferences.setFavouriteDomain(user.id, null)
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBeNull()
+      await expect(db.userPreferences.setFavouriteDomain(user.id, 'missing')).rejects.toThrow()
+      await expect(
+        db.userPreferences.setFavouriteDomain('missing', company.domain.id),
+      ).rejects.toThrow()
+      await db.userPreferences.setFavouriteDomain(user.id, company.domain.id)
+      await db.domains.delete(company.domain.id)
+      expect(await db.userPreferences.favouriteDomainId(user.id)).toBeNull()
+      expect(await countRows('user_preferences')).toBe(1)
+      await deleteUser(user.id)
+      expect(await countRows('user_preferences')).toBe(0)
     })
 
     it('answers ping', async () => {

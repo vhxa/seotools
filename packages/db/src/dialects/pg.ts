@@ -919,6 +919,24 @@ export function createPgDatabase(options: {
           })
       },
     },
+    userPreferences: {
+      async favouriteDomainId(userId) {
+        const [row] = await db
+          .select()
+          .from(schema.userPreferences)
+          .where(eq(schema.userPreferences.userId, userId))
+        return row?.favouriteDomainId ?? null
+      },
+      async setFavouriteDomain(userId, domainId) {
+        await db
+          .insert(schema.userPreferences)
+          .values({ userId, favouriteDomainId: domainId })
+          .onConflictDoUpdate({
+            target: schema.userPreferences.userId,
+            set: { favouriteDomainId: domainId },
+          })
+      },
+    },
     settings: {
       async get(key) {
         const [row] = await db.select().from(settings).where(eq(settings.key, key))

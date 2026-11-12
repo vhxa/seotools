@@ -91,7 +91,9 @@
     "addDomain": "Añadir dominio",
     "addCompany": "Añadir empresa",
     "archived": "Archivados",
-    "manageCompanies": "Gestionar empresas"
+    "manageCompanies": "Gestionar empresas",
+    "allDomains": "Todos los dominios",
+    "favourite": "Favorito"
   },
   "Header": {
     "home": "Inicio de seotools",
@@ -100,7 +102,8 @@
     "searchOpen": "Buscar",
     "searchClose": "Cerrar la búsqueda",
     "searching": "Buscando…",
-    "noResults": "Ninguna URL coincide."
+    "noResults": "Ninguna URL coincide.",
+    "domainOverview": "Resumen de {host}"
   },
   "Sidebar": {
     "toggle": "Alternar barra lateral",
@@ -3514,5 +3517,9 @@
     },
     "unreadable": "Guardada pero ilegible; introduce la clave de nuevo.",
     "crawlSource": "Rastreo n.º {ref} · {date}"
+  },
+  "FavouriteDomain": {
+    "set": "Marcar {host} como favorito",
+    "clear": "Quitar {host} de favoritos"
   }
 }

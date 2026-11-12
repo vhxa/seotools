@@ -91,7 +91,9 @@
     "addDomain": "Add domain",
     "addCompany": "Add company",
     "archived": "Archived",
-    "manageCompanies": "Manage companies"
+    "manageCompanies": "Manage companies",
+    "allDomains": "All domains",
+    "favourite": "Favourite"
   },
   "Header": {
     "home": "seotools home",
@@ -100,7 +102,8 @@
     "searchOpen": "Search",
     "searchClose": "Close search",
     "searching": "Searching…",
-    "noResults": "No URLs match."
+    "noResults": "No URLs match.",
+    "domainOverview": "Overview of {host}"
   },
   "Sidebar": {
     "toggle": "Toggle sidebar",
@@ -3514,5 +3517,9 @@
     },
     "unreadable": "Saved but unreadable; enter the key again.",
     "crawlSource": "Crawl #{ref} · {date}"
+  },
+  "FavouriteDomain": {
+    "set": "Set {host} as favourite",
+    "clear": "Clear {host} as favourite"
   }
 }

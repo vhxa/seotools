@@ -22,8 +22,9 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Upgrade notes
 
-- Two migrations: 0026 adds the Core Web Vitals tables and 0027 the ignored query parameters
-  (settings and a per-crawl snapshot; link rows are not rebuilt). Take the backup in
+- Three migrations (0026–0028): 0026 adds the Core Web Vitals tables, 0027 the ignored query
+  parameters (settings and a per-crawl snapshot; link rows are not rebuilt), and 0028 personal
+  favourite domain preferences. Take the backup in
   `docs/updating.md` first: an older image refuses to start on the updated database, so going back
   needs that backup together with the previous image.
 - On the first start, earlier crawls are analysed again under the new checks. Checks that read
@@ -39,6 +40,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- Each user can star one favourite domain to open automatically; the header logo opens the current
+  domain overview, and the domain switcher always offers the all-domains list at `/domains`.
 - Issues filters, per-issue crawl changes and template badges; current site-file findings; dashboard differences and comparison links; distinct referring-URL counts in Errors and Redirects and CSV exports.
 - Core Web Vitals: field data from the Chrome UX Report (origin trend on the dashboard and per
   URL) and PageSpeed Insights lab measurements for priority URLs, CSV columns, and warnings for

@@ -1348,7 +1348,13 @@ export interface VitalsRepository {
   saveOrigin(row: VitalsRecord): Promise<void>
   saveUrl(row: UrlVitalsRecord): Promise<void>
 }
+export interface UserPreferencesRepository {
+  favouriteDomainId(userId: string): Promise<string | null>
+  setFavouriteDomain(userId: string, domainId: string | null): Promise<void>
+}
+
 export interface Database {
+  readonly userPreferences: UserPreferencesRepository
   readonly vitals: VitalsRepository
   readonly dialect: Dialect
   readonly jobs: JobRepository

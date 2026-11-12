@@ -17,10 +17,12 @@ import { cn } from '@/lib/utils'
  * screens it also has the button that opens that navigation, which is otherwise always in view.
  */
 export function AppHeader({
+  favouriteDomainId,
   isAdmin,
   companies,
   user,
 }: {
+  favouriteDomainId: string | null
   isAdmin: boolean
   companies: SwitcherCompany[]
   user: NavUserData
@@ -37,18 +39,25 @@ export function AppHeader({
       {/* The sidebar only exists inside a domain, so only there is there something to open. */}
       {searchHost && <SidebarTrigger className="-ml-1 md:hidden" />}
       <Link
-        href="/"
+        href={searchHost ? `/domains/${searchHost}` : '/'}
+        aria-label={searchHost ? t('domainOverview', { host: searchHost }) : t('home')}
         className="flex shrink-0 items-center gap-2 rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <Logo className="size-8 shrink-0 rounded-lg" />
         <span className="hidden text-base font-semibold sm:inline">seotools</span>
-        <span className="sr-only sm:hidden">{t('home')}</span>
+        <span className="sr-only sm:hidden">
+          {searchHost ? t('domainOverview', { host: searchHost }) : t('home')}
+        </span>
       </Link>
       <Separator
         orientation="vertical"
         className="hidden sm:block data-vertical:h-8 data-vertical:self-center"
       />
-      <DomainSwitcher canManage={isAdmin} companies={companies} />
+      <DomainSwitcher
+        favouriteDomainId={favouriteDomainId}
+        canManage={isAdmin}
+        companies={companies}
+      />
       {searchHost && <UrlSearch host={searchHost} />}
       <div className={cn('shrink-0', searchHost ? 'md:ml-auto' : 'ml-auto')}>
         <NavUser user={user} isAdmin={isAdmin} />

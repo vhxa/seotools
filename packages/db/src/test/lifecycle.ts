@@ -29,7 +29,8 @@ const DAY = 24 * 60 * 60_000
  */
 function domainTables(): string[] {
   const tables = Object.values(sqliteSchema)
-    .filter((value) => is(value, SQLiteTable))
+    // Account preferences survive domain deletion with a null reference (contract-tested).
+    .filter((value) => is(value, SQLiteTable) && value !== sqliteSchema.userPreferences)
     .map((value) => getTableConfig(value as SQLiteTable))
   const referencing = (target: string) =>
     tables

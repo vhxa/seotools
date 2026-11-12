@@ -12,6 +12,9 @@ describeDatabaseContract(
     const sql = postgres(url!, { max: 1, onnotice: () => {} })
     return {
       db,
+      deleteUser: async (id: string) => {
+        await sql`delete from "user" where id = ${id}`
+      },
       legacy: {
         urlAcceptedNofollow: async (crawlId: string, urlHash: string) => {
           await sql`update crawl_url_audit set accept_nofollow = true where crawl_id = ${crawlId} and url_hash = ${urlHash}`
@@ -25,7 +28,7 @@ describeDatabaseContract(
         return Number(row?.n)
       },
       reset: async () => {
-        await sql`truncate table jobs, alert_notices, alert_subscriptions, mail_deliveries, worker_heartbeats, settings, user_tokens, user_access, "user", crawl_url_audit, crawl_url_accepted_issues, crawl_url_issues, crawl_sitemap_hreflang, crawl_url_links, crawl_vitals, crawl_url_vitals, crawl_url_history, crawl_urls, crawls, crawl_schedules, crawl_settings, url_verification_urls, url_verifications, priority_urls, domain_favicons, crawl_files, crawl_file_checks, audit_rules, domain_audit_config, domains, companies cascade`
+        await sql`truncate table jobs, alert_notices, alert_subscriptions, mail_deliveries, worker_heartbeats, settings, user_preferences, user_tokens, user_access, "user", crawl_url_audit, crawl_url_accepted_issues, crawl_url_issues, crawl_sitemap_hreflang, crawl_url_links, crawl_vitals, crawl_url_vitals, crawl_url_history, crawl_urls, crawls, crawl_schedules, crawl_settings, url_verification_urls, url_verifications, priority_urls, domain_favicons, crawl_files, crawl_file_checks, audit_rules, domain_audit_config, domains, companies cascade`
       },
     }
   },
