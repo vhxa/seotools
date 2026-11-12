@@ -1,7 +1,14 @@
 import { MAX_VERIFICATION_URLS } from '@seotools/core'
 import type { Verification, VerifiedUrl } from '@seotools/db'
 import { describe, expect, it } from 'vitest'
-import { ANNOUNCE_MS, announceRecheck, canRecheck, parseRecheckUrls, viewRecheck } from './recheck'
+import {
+  ANNOUNCE_MS,
+  announceRecheck,
+  canRecheck,
+  parseRecheckUrls,
+  previewSourceOf,
+  viewRecheck,
+} from './recheck'
 
 describe('parseRecheckUrls', () => {
   it('normalizes the URLs of the domain, each once', () => {
@@ -223,5 +230,102 @@ describe('announceRecheck', () => {
       announceRecheck({ active: null, latest: recheck({ status: 'cancelled' }), now }),
     ).toBeNull()
     expect(announceRecheck({ active: null, latest: null, now })).toBeNull()
+  })
+})
+
+describe('previewSourceOf', () => {
+  const at = (minute: number) => new Date(Date.UTC(2026, 0, 1, 12, minute))
+  const preview = { title: 'T', description: null, social: { openGraphTags: 0 } }
+  const verified = (
+    overrides: Partial<VerifiedUrl> = {},
+    withPreview: boolean = false,
+  ): VerifiedUrl =>
+    ({
+      verificationId: 'v',
+      url: 'https://example.com/a',
+      urlHash: 'h',
+      source: 'link',
+      state: 'done',
+      kind: 'page',
+      statusCode: 200,
+      contentType: 'text/html',
+      redirectTo: null,
+      error: null,
+      auditVersion: 2,
+      fetchedAt: at(30),
+      outcome: {
+        audit: {
+          participation: 'audited',
+          participationRule: null,
+          intent: 'indexable',
+          intentRule: null,
+          conditions: {},
+          indexability: 'indexable',
+          blockers: [],
+        },
+        findings: [],
+        unchecked: [],
+        ...(withPreview ? { preview } : {}),
+      },
+      ...overrides,
+    }) as VerifiedUrl
+  const crawl = { auditVersion: 2, pagesByWorstIssue: null }
+  const sourceOf = (
+    row: VerifiedUrl | null,
+    options: { crawledAt?: Date; historical?: boolean } = {},
+  ) =>
+    previewSourceOf({
+      view: viewRecheck({
+        verified: row,
+        crawl,
+        crawledAt: options.crawledAt ?? at(0),
+        crawlIssues: [],
+        configVersion: 2,
+      }),
+      historical: options.historical ?? false,
+    })
+
+  it('takes the preview of a recheck that is later than the crawl', () => {
+    expect(sourceOf(verified({}, true))).toEqual({ kind: 'page', at: at(30), preview })
+  })
+
+  it('says nothing for a recheck from before the preview was kept', () => {
+    expect(sourceOf(verified())).toBeNull()
+  })
+
+  it('says nothing for a recheck older than the crawl, or one that was pruned', () => {
+    expect(sourceOf(verified({}, true), { crawledAt: at(40) })).toBeNull()
+    expect(sourceOf(verified({}, true), { crawledAt: at(30) })).toBeNull()
+    expect(sourceOf(null)).toBeNull()
+  })
+
+  it('never replaces the preview of an older crawl', () => {
+    expect(sourceOf(verified({}, true), { historical: true })).toBeNull()
+  })
+
+  it.each([
+    [
+      { kind: 'unknown', statusCode: 404, contentType: 'text/html' },
+      { type: 'status', statusCode: 404 },
+    ],
+    [
+      { kind: 'unknown', statusCode: 503 },
+      { type: 'status', statusCode: 503 },
+    ],
+    [
+      { kind: 'redirect', statusCode: 301, contentType: null, redirectTo: 'https://example.com/b' },
+      { type: 'redirect', statusCode: 301, to: 'https://example.com/b' },
+    ],
+    [
+      { kind: 'resource', statusCode: 200, contentType: 'application/pdf' },
+      { type: 'not-html', statusCode: 200, contentType: 'application/pdf' },
+    ],
+    [{ kind: 'unknown', statusCode: null, error: 'ECONNRESET' }, { type: 'no-answer' }],
+  ] as const)('says how a URL that is no longer a page answered: %j', (row, answer) => {
+    expect(sourceOf(verified(row as Partial<VerifiedUrl>))).toEqual({
+      kind: 'not-page',
+      at: at(30),
+      answer,
+    })
   })
 })

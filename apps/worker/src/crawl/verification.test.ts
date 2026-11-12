@@ -284,6 +284,54 @@ describe('what a recheck can settle', () => {
   })
 })
 
+describe('the share preview of a recheck', () => {
+  it('keeps what the preview reads of a page, and nothing else of it', async () => {
+    const site = website()
+    await fullCrawl(site)
+    site[absolute('/good')] = page('/good', {
+      title: 'A new title for the page',
+      description: 'A new description of the page.',
+      social: `<meta property="og:title" content="Shared title">
+        <meta property="og:image" content="https://cdn.example.net/new.png">
+        <meta property="og:type" content="website">
+        <meta name="twitter:card" content="summary">`,
+    })
+    const { outcomeOf } = await verify(['/good'], site)
+    const preview = outcomeOf('/good')?.preview
+    expect(preview).toEqual({
+      title: 'A new title for the page',
+      description: 'A new description of the page.',
+      social: {
+        openGraphTags: 3,
+        title: 'Shared title',
+        image: 'https://cdn.example.net/new.png',
+        twitterCard: 'summary',
+      },
+    })
+    // Never the page data: only the fields of the preview.
+    expect(Object.keys(preview ?? {}).sort()).toEqual(['description', 'social', 'title'])
+  })
+
+  it('has no preview for a URL that did not answer as a page', async () => {
+    const site = website()
+    await fullCrawl(site)
+    site[absolute('/good')] = { ...page('/good'), statusCode: 404 }
+    site[absolute('/broken')] = moved(`${SITE}/leaf`)
+    site[absolute('/dup1')] = {
+      statusCode: 200,
+      headers: { 'content-type': 'application/pdf' },
+      body: Buffer.from('%PDF'),
+    }
+    site[absolute('/dup2')] = new FetchError('ECONNRESET', 'connection reset', 3)
+    const { outcomeOf, urls } = await verify(['/good', '/broken', '/dup1', '/dup2'], site)
+    expect(urls).toHaveLength(4)
+    for (const path of ['/good', '/broken', '/dup1', '/dup2']) {
+      expect(outcomeOf(path), path).toBeDefined()
+      expect(outcomeOf(path)?.preview, path).toBeUndefined()
+    }
+  })
+})
+
 describe('what a recheck leaves alone', () => {
   it('does not change a crawl: its results, its analysis or its history', async () => {
     const site = website()

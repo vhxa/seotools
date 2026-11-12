@@ -1,7 +1,9 @@
 import { ImageOffIcon } from 'lucide-react'
-import { getTranslations } from 'next-intl/server'
+import { getFormatter, getTranslations } from 'next-intl/server'
 import { Badge } from '@/components/ui/badge'
-import type { SharePreview } from '@/lib/share-preview'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import type { RecheckPreviewSource } from '@/lib/recheck'
+import { recheckSharePreview, type SharePreview } from '@/lib/share-preview'
 
 const MUTED = 'text-muted-foreground'
 
@@ -90,4 +92,83 @@ export async function SharePreviewView({ preview }: { preview: SharePreview }) {
       </div>
     </div>
   )
+}
+
+/**
+ * The preview of a page in the detail of its latest crawl. If a later recheck of the URL says
+ * something about it, the recheck's reading is the one shown first, with the crawl's one in a tab
+ * next to it; otherwise it is the crawl's alone.
+ */
+export async function UrlSharePreview({
+  crawlPreview,
+  crawledAt,
+  recheck,
+  url,
+}: {
+  crawlPreview: SharePreview
+  crawledAt: Date
+  recheck: RecheckPreviewSource | null
+  url: string
+}) {
+  if (!recheck) return <SharePreviewView preview={crawlPreview} />
+  const [t, format] = await Promise.all([getTranslations('UrlDetail.preview'), getFormatter()])
+  const when = (date: Date) => format.dateTime(date, { dateStyle: 'medium', timeStyle: 'short' })
+  const label = 'text-xs text-muted-foreground'
+  const recheckWhen = when(recheck.at)
+  return (
+    <Tabs defaultValue="recheck" className="min-w-0 gap-3">
+      <TabsList>
+        <TabsTrigger value="recheck">{t('tabRecheck')}</TabsTrigger>
+        <TabsTrigger value="crawl">{t('tabCrawl')}</TabsTrigger>
+      </TabsList>
+      <div className="grid">
+        <TabsContent
+          keepMounted
+          value="recheck"
+          className="col-start-1 row-start-1 grid content-start gap-3 data-[hidden]:invisible"
+          style={{ display: 'grid' }}
+        >
+          {recheck.kind === 'page' ? (
+            <>
+              <p className={label}>{t('fromRecheck', { when: recheckWhen })}</p>
+              <SharePreviewView preview={recheckSharePreview(url, recheck.preview)} />
+              <p className={label}>{t('recheckImageNote')}</p>
+            </>
+          ) : (
+            <p className="rounded-lg border border-dashed p-3 text-sm">
+              {notPageText(t, recheckWhen, recheck.answer)}
+            </p>
+          )}
+        </TabsContent>
+        <TabsContent
+          keepMounted
+          value="crawl"
+          className="col-start-1 row-start-1 grid content-start gap-3 data-[hidden]:invisible"
+          style={{ display: 'grid' }}
+        >
+          <p className={label}>{t('fromCrawl', { when: when(crawledAt) })}</p>
+          <SharePreviewView preview={crawlPreview} />
+        </TabsContent>
+      </div>
+    </Tabs>
+  )
+}
+
+function notPageText(
+  t: Awaited<ReturnType<typeof getTranslations<'UrlDetail.preview'>>>,
+  when: string,
+  answer: Extract<RecheckPreviewSource, { kind: 'not-page' }>['answer'],
+): string {
+  switch (answer.type) {
+    case 'redirect':
+      return answer.to
+        ? t('notPageRedirect', { when, status: answer.statusCode ?? '', target: answer.to })
+        : t('notPageRedirectNowhere', { when, status: answer.statusCode ?? '' })
+    case 'status':
+      return t('notPageStatus', { when, status: answer.statusCode })
+    case 'not-html':
+      return t('notPageNotHtml', { when, status: answer.statusCode })
+    case 'no-answer':
+      return t('notPageNoAnswer', { when })
+  }
 }

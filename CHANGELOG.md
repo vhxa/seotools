@@ -32,6 +32,10 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - Custom extraction uses newer CSS selector libraries: `:enabled` now matches only form elements
   (inputs, buttons, selects, text areas and the like), as browsers do.
+- A recheck of a URL now refreshes its search and social preview: in the detail of the latest
+  crawl, when a later recheck read the page, the preview shows what the recheck saw (with the
+  crawl's preview one tab away), and if the URL no longer answers as a page it says how it answered
+  instead. Older crawls and rechecks made before this are shown as they were.
 
 ### Security
 

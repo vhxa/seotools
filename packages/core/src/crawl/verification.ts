@@ -11,6 +11,8 @@
 import { PAGE_ISSUE_IDS, isPageIssueId, type PageIssueId } from './issues'
 import type { UrlAuditState } from './audit'
 import type { FindingAcceptance } from './acceptance'
+import { boundedText, boundedUrl } from './evidence'
+import type { CrawlPageData, SocialFacts } from './types'
 
 /** Most URLs one recheck takes: a recheck is a few requests, not a crawl. */
 export const MAX_VERIFICATION_URLS = 50
@@ -231,6 +233,74 @@ export interface VerificationAcceptedFinding extends VerificationFinding {
   acceptance: FindingAcceptance
 }
 
+/** The Open Graph and Twitter Card fields the share preview reads, as the crawl keeps them. */
+export type PreviewSocial = Pick<
+  SocialFacts,
+  | 'openGraphTags'
+  | 'title'
+  | 'description'
+  | 'image'
+  | 'siteName'
+  | 'twitterCard'
+  | 'twitterTitle'
+  | 'twitterDescription'
+  | 'twitterImage'
+>
+
+/**
+ * What a recheck read of a page for its share preview: only what the preview shows (never the page
+ * data), bounded like the crawl bounds it. The image is an address the recheck did not request.
+ */
+export interface RecheckPreview {
+  title: string | null
+  description: string | null
+  social: PreviewSocial
+}
+
+const PREVIEW_TEXT_FIELDS = [
+  'title',
+  'description',
+  'siteName',
+  'twitterCard',
+  'twitterTitle',
+  'twitterDescription',
+] as const satisfies readonly (keyof PreviewSocial)[]
+const PREVIEW_URL_FIELDS = [
+  'image',
+  'twitterImage',
+] as const satisfies readonly (keyof PreviewSocial)[]
+
+/**
+ * What a page answered, for the share preview of a recheck. `null` where the page was parsed
+ * without the tags (nothing to say about them). Copies field by field, so nothing else of `data`
+ * can end up in the outcome.
+ */
+export function recheckPreviewOf(
+  title: string | null,
+  data: Pick<CrawlPageData, 'description' | 'facts'> | null,
+): RecheckPreview | null {
+  const social = data?.facts?.social
+  if (!social) return null
+  const kept: PreviewSocial = {
+    openGraphTags: Number.isSafeInteger(social.openGraphTags)
+      ? Math.max(0, social.openGraphTags)
+      : 0,
+  }
+  for (const field of PREVIEW_TEXT_FIELDS) {
+    const value = social[field]
+    if (typeof value === 'string' && value !== '') kept[field] = boundedText(value)
+  }
+  for (const field of PREVIEW_URL_FIELDS) {
+    const value = boundedUrl(social[field])
+    if (value) kept[field] = value
+  }
+  return {
+    title: title ? boundedText(title) || null : null,
+    description: data?.description ? boundedText(data.description) || null : null,
+    social: kept,
+  }
+}
+
 /** What a recheck concluded about a URL, stored with the answer it concluded it from. */
 export interface VerificationOutcome {
   /** Whether the URL is audited, what is expected of it and what the recheck saw. */
@@ -247,6 +317,11 @@ export interface VerificationOutcome {
    * have any: it is what keeps a misclassified check from reporting as fixed what it did not see.
    */
   unchecked: string[]
+  /**
+   * What the page said for its share preview, only when the URL answered as a page (HTML, 2xx).
+   * Absent: a recheck from before this was kept, or one that did not get a page. It says nothing.
+   */
+  preview?: RecheckPreview
 }
 
 /**

@@ -3280,6 +3280,24 @@ export function createPgDatabase(options: {
         return newestVerifiedPerUrl(found)
       },
 
+      async latestFinishedFor(domainId, urlHash) {
+        const rows = await db
+          .select({ row: urlVerificationUrls })
+          .from(urlVerificationUrls)
+          .innerJoin(urlVerifications, eq(urlVerifications.id, urlVerificationUrls.verificationId))
+          .where(
+            and(
+              eq(urlVerifications.domainId, domainId),
+              eq(urlVerificationUrls.urlHash, urlHash),
+              eq(urlVerificationUrls.state, 'done'),
+              isNull(urlVerifications.activeKey),
+            ),
+          )
+          .orderBy(desc(urlVerificationUrls.fetchedAt), desc(urlVerifications.id))
+          .limit(1)
+        return rows[0] ? toVerifiedUrl(rows[0].row) : null
+      },
+
       async prune({ domainId, keep }) {
         const ended = await db
           .select({ id: urlVerifications.id })

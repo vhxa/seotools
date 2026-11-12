@@ -870,7 +870,17 @@
       "notRecorded": "Not recorded by this crawl: run a new crawl to see it.",
       "untagged": "The page has no Open Graph tags: social networks choose what to show.",
       "imageInsecure": "Image not shown: it is not served over HTTPS",
-      "noImage": "No image"
+      "noImage": "No image",
+      "tabRecheck": "Recheck",
+      "tabCrawl": "Crawl",
+      "fromRecheck": "From the recheck of {when}",
+      "fromCrawl": "From the crawl of {when}",
+      "recheckImageNote": "The image is the address the page declared; a recheck does not request it.",
+      "notPageRedirect": "At the recheck of {when} this URL redirected ({status}) to {target}. The preview of the crawl is in the other tab.",
+      "notPageRedirectNowhere": "At the recheck of {when} this URL redirected ({status}) without saying where. The preview of the crawl is in the other tab.",
+      "notPageStatus": "At the recheck of {when} this URL answered {status}, not a page. The preview of the crawl is in the other tab.",
+      "notPageNotHtml": "At the recheck of {when} this URL answered {status} with something that is not a web page. The preview of the crawl is in the other tab.",
+      "notPageNoAnswer": "At the recheck of {when} this URL did not answer. The preview of the crawl is in the other tab."
     }
   },
   "UrlLinks": {
