@@ -44,11 +44,6 @@ which moves the entries of `[Unreleased]` into the new version.
   few-internal-links check is unknown, never fixed or new, for a crawl in which a page's HTML was
   cut at the size limit.
 
-### Fixed
-
-- Rendered-only embeds do not affect served-HTML resource findings, so an incomplete render cannot
-  make an unchanged broken resource appear resolved or back.
-
 ### Upgrade notes
 
 This update adds forward-only database migrations for render settings, crawl snapshots and
