@@ -46,20 +46,12 @@ the new JavaScript IDs in `unobserved` (and catalog fields if any). Baselines wi
 from the unchanged base before implementation. Tests also cover three real Chromium crawls,
 JavaScript menu discovery, failed renders, browser recovery/exhaustion, and settings validation.
 
-## Blocking design gap: rechecks of existing graph checks
+## Rechecks and rendered link observations
 
-Implementation stopped pending an orchestrator decision. `no-outgoing-links` reads
-`internalAnchorsOut`, and `internal-nofollow-links` reads `nofollowAnchorsOut`. In a rendered crawl
-these are graph observations that can include rendered-only links. Both checks remain classified
-`url` in `packages/core/src/crawl/verification.ts`, and `runVerification` reads served HTML only.
-`viewRecheck` compares the audit version, not observation mode; the new scope-key field does not
-protect this path.
-
-The committed regression `rendered-recheck.test.ts` uses identical served responses in the crawl
-and recheck. Rendering adds one nofollow menu link. The recheck then falsely reports
-`no-outgoing-links` as appeared and `internal-nofollow-links` as fixed. It fails deliberately so
-this draft cannot pass unnoticed. This is independent of proof 1's resolved snapshot conflict.
-
-Two possible decisions need the orchestrator: retain HTML-only counts for these two checks in
-all modes, or make them site-scoped (at least when comparing against rendered observations) so
-an HTML-only recheck cannot settle them. No workaround has been applied.
+Per the orchestrator's decision 2, rendered-only links feed the site graph: inbound counts,
+click depth, graph walks, orphans, the unlinked condition and the JavaScript findings.
+`internalAnchorsOut` and `nofollowAnchorsOut` remain HTML-only, like `few-html-links`.
+Every URL-scoped finding therefore agrees with the same stored site with rendered links removed,
+and an HTML-only recheck cannot report a change merely because it does not render.
+`rendered-recheck.test.ts` guards every URL-scoped finding (including accepted findings),
+followed and nofollow rendered-only anchors, and the real crawl-to-recheck comparison.

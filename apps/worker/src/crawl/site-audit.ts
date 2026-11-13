@@ -177,7 +177,7 @@ export interface AuditedUrl {
    * listed or may only be an alternate. Never counted as listed, never as absent.
    */
   sitemapsAmbiguous: number
-  /** Anchors to other URLs of the site. */
+  /** HTML anchors to other URLs of the site; rendered-only anchors belong to the site graph. */
   internalAnchorsOut: number
   nofollowAnchorsOut: number
   /** The URLs of the site its anchors link to. */
@@ -503,6 +503,9 @@ export async function loadSite(
       if (!rendered) {
         target.htmlAnchorsIn++
         source.htmlInternalAnchorsOut++
+        // URL-scoped checks must agree with an HTML-only recheck in either crawl mode.
+        source.internalAnchorsOut++
+        if (kind === 'anchor-nofollow') source.nofollowAnchorsOut++
       } else {
         source.renderedAnchorsOut++
         if (source.renderedLinksTo.length < MAX_EVIDENCE_ITEMS)
@@ -513,8 +516,6 @@ export async function loadSite(
       target.anchorsIn++
       if (kind === 'anchor' && !source.nofollow) target.followedAnchorsIn++
       if (source.indexable) target.anchorsFromIndexable++
-      source.internalAnchorsOut++
-      if (kind === 'anchor-nofollow') source.nofollowAnchorsOut++
       source.linksTo.push(target)
     }
     for (const { pageHash, lang, url } of declared) {
