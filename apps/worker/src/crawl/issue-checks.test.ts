@@ -2242,6 +2242,23 @@ describe('HTML/render differences', () => {
     },
   )
 
+  it('attributes a complete navigation to the served meta refresh, even with an empty declaration', async () => {
+    const id = await crawl(
+      websiteOf(SCENARIOS['javascript-redirect']),
+      [],
+      true,
+      'javascript-redirect',
+    )
+    const stored = (await db.crawls.get(id))!
+    const site = await loadSite(db, stored, stored.auditSnapshot!)
+    const url = site.get(`${SITE}/x`)!
+    expect(CHECKS['javascript-redirect'](url, site)).not.toBe(false)
+    for (const refresh of ['0;url=/target', '']) {
+      url.facts!.refresh = refresh
+      expect(CHECKS['javascript-redirect'](url, site)).toBe(false)
+    }
+  })
+
   it('uses the configured text share, its disabling value, and the 50-word floor', async () => {
     const id = await crawl(
       websiteOf(SCENARIOS['text-only-after-rendering']),

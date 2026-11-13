@@ -20,7 +20,8 @@ stay unknown for the new checks, and HTML crawls leave every JavaScript finding 
 
 A main-frame navigation to another URL identity stops the render and records `redirected: true`
 and its target. This is a complete observation of a redirect, even though `settled` remains false
-(network quiet was not observed). It raises `javascript-redirect`, contributes no rendered-only
+(network quiet was not observed). It raises `javascript-redirect` unless the served HTML declares a meta refresh (reported by
+`refresh-redirect` instead), contributes no rendered-only
 links, and leaves the abandoned DOM's other differences unknown in comparisons. The served HTML's
 links still count. Fragment-only changes are same-document updates, not redirects; a stopped
 reload or navigation changing only ignored parameters is not a redirect and stays failed/unknown. A rendered `noindex` finding
@@ -124,7 +125,9 @@ newer Chrome version.
 
 ## What the worker requests
 
-The caller supplies the already-fetched document. Only GET, HEAD, OPTIONS and POST are requested; POST is sent at most once. Only HTTP(S) documents (subframes), scripts,
+The caller supplies the already-fetched document. Its browser response keeps an existing header
+charset; otherwise the worker adds the charset used by the crawler (the first meta charset in
+2 KiB, or UTF-8). This prevents encoding differences from being attributed to JavaScript. Only GET, HEAD, OPTIONS and POST are requested; POST is sent at most once. Only HTTP(S) documents (subframes), scripts,
 stylesheets, fetch/XHR and CORS preflight requests are eligible. The worker uses the caller's crawl
 requester and guarded fetcher: pacing, safe-method retries, User-Agent, connect-time public-address validation,
 `CRAWLER_ALLOW_PRIVATE_NETWORKS`, and credentials only to the tracked host apply as usual. Site
@@ -163,7 +166,9 @@ installed before document scripts in every frame, including cross-site out-of-pr
 complement that contract; they cannot make a changing API answer deterministic.
 
 The default wait is five seconds (at most thirty). A loaded page with no worker request in flight
-for 500 ms is settled; reaching the wait limit gives a rendered, unsettled snapshot. Failure to
+for 500 ms is settled; reaching the wait limit gives a rendered, unsettled snapshot.
+A redirect scheduled after the page settles (for example, a later timer) is outside this
+observation, as with search engines that snapshot the page. Failure to
 load has an additional 25-second hard cap; crashes/disconnections are retried only once.
 Limits in `apps/worker/src/render/limits.ts` bound requests (300), resource bytes (5 MiB), page
 bytes (30 MiB), request bodies (1 MiB), serialized DOM (10 MiB), script errors (count and five

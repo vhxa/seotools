@@ -317,7 +317,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  * - 9: a missing, repeated or misplaced title is secondary on a page that cannot be indexed, like
  *   the other title and description findings.
  */
-const CHECKS_REVISION = 13
+const CHECKS_REVISION = 14
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.

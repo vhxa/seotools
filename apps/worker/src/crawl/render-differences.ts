@@ -165,7 +165,7 @@ export function renderDifferenceChecks(figures: (site: Site) => AuditThresholds)
     ),
     'javascript-redirect': ((url, site) => {
       const render = completeRender(url, site)
-      if (!render) return false
+      if (!render || url.facts?.refresh !== null) return false
       const before = normalizeCrawlUrl(url.url.url)
       const after = normalizeCrawlUrl(render.finalUrl)
       const identity = site.identity ?? ((value: string) => value)

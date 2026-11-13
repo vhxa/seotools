@@ -5,7 +5,7 @@ import {
   stripIgnoredParameters,
 } from '@seotools/core'
 import type { Browser, BrowserContext, HTTPRequest } from 'puppeteer-core'
-import { FetchError } from '../crawl/fetcher'
+import { FetchError, textCharset } from '../crawl/fetcher'
 import { bestEffort } from './cleanup'
 import { seedPageRandom } from './determinism'
 import { renderRequestHeaders, renderResponseHeaders } from './headers'
@@ -143,9 +143,15 @@ export async function renderPage(
       if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
         if (!supplied) {
           supplied = true
+          const headers = renderResponseHeaders(input.document.headers)
+          const contentType = headers['content-type'] ?? 'text/html'
+          if (!/charset\s*=/i.test(contentType)) {
+            headers['content-type'] =
+              `${contentType}; charset=${textCharset(input.document.body ?? Buffer.alloc(0), contentType)}`
+          }
           return request.respond({
             status: input.document.statusCode,
-            headers: renderResponseHeaders(input.document.headers),
+            headers,
             body: input.document.body ?? Buffer.alloc(0),
           })
         }

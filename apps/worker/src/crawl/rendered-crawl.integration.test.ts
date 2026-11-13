@@ -5,6 +5,7 @@ import { chromium } from '@playwright/test'
 import puppeteer, { type Browser } from 'puppeteer-core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createLogger, crawlUrlHash } from '@seotools/core'
+import { PAGE_ISSUES } from '@seotools/core/crawl/issues'
 import { createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { createRenderService, type RenderService } from '../render/service'
@@ -153,6 +154,85 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
       },
       60000,
     )
+    it('script-free charset declarations and meta refresh never become JavaScript differences', async () => {
+      const title = 'Café, piñata y déjà vu'
+      const utf8 = page('/utf8', { title, h1: title, document: '' })
+      const conflict = page('/conflict', {
+        title,
+        h1: title,
+        document: '<meta charset="windows-1252">',
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })
+      const latin1 = page('/latin1', {
+        title,
+        h1: title,
+        document: '<meta charset="utf-8">',
+        headers: { 'content-type': 'text/html; charset=iso-8859-1' },
+      })
+      latin1.body = Buffer.from(latin1.body!.toString('utf8'), 'latin1')
+      const metaLatin1 = page('/meta-latin1', {
+        title,
+        h1: title,
+        document: '<meta charset="iso-8859-1">',
+      })
+      metaLatin1.body = Buffer.from(metaLatin1.body!.toString('utf8'), 'latin1')
+      const fake = fakeSite(
+        {
+          [`${SITE}/`]: page('/', {
+            links: ['/utf8', '/conflict', '/latin1', '/meta-latin1', '/refresh']
+              .map((path) => `<a href="${path}">${path}</a>`)
+              .join(''),
+          }),
+          [`${SITE}/utf8`]: utf8,
+          [`${SITE}/conflict`]: conflict,
+          [`${SITE}/latin1`]: latin1,
+          [`${SITE}/meta-latin1`]: metaLatin1,
+          [`${SITE}/refresh`]: page('/refresh', {
+            head: '<meta http-equiv="refresh" content="0;url=/target">',
+          }),
+        },
+        0,
+      )
+      const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      await runCrawl(crawl.id, {
+        db,
+        log: createLogger('test', 'silent'),
+        createFetcher: fake.createFetcher,
+        renderService: service,
+        signal: new AbortController().signal,
+      })
+      const stored = (await db.crawls.get(crawl.id))!
+      expect(stored.status).toBe('completed')
+      expect(stored.auditSnapshot?.rendersUnobserved).toBe(0)
+      const javascript = new Set<string>(
+        Object.entries(PAGE_ISSUES)
+          .filter(([, issue]) => issue.category === 'javascript')
+          .map(([id]) => id),
+      )
+      const renders = await db.crawls.renders(crawl.id)
+      for (const path of ['/utf8', '/conflict', '/latin1', '/meta-latin1', '/refresh']) {
+        const hash = crawlUrlHash(`${SITE}${path}`)
+        const issues = (await db.crawls.issuesOf(crawl.id, [hash])).map((row) => row.issue)
+        expect(issues.filter((id) => javascript.has(id))).toEqual([])
+        const render = renders.find((row) => row.urlHash === hash)!
+        expect(render.status).toBe('rendered')
+        if (path === '/refresh') {
+          expect(issues).toContain('refresh-redirect')
+          expect(render).toMatchObject({
+            settled: false,
+            data: { redirected: true, facts: null },
+            finalUrl: `${SITE}/target`,
+          })
+          expect(
+            (await db.crawls.linksFrom(crawl.id, [hash])).some((link) => link.rendered === 1),
+          ).toBe(false)
+        } else {
+          expect(render.settled).toBe(true)
+          expect(render.data.page).toMatchObject({ title, h1: title })
+          if (path === '/utf8') expect(issues).toContain('charset-missing')
+        }
+      }
+    }, 60000)
     it('three redirecting crawls stay complete, preserve orphans and ignore the abandoned DOM', async () => {
       let previous: unknown
       let baselineOrphans: string[] = []

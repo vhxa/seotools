@@ -295,14 +295,19 @@ export function decodeSitemapBody(body: Buffer): string {
   return body.toString('utf8')
 }
 
-/** Decodes text using the charset of the `Content-Type` or the document itself, or else UTF-8. */
-export function decodeText(body: Buffer, contentType: string | undefined): string {
+/** Selects the supported header charset, then the first meta charset in 2 KiB, else UTF-8. */
+export function textCharset(body: Buffer, contentType: string | undefined): string {
   const declared =
     /charset\s*=\s*["']?([\w.:-]+)/i.exec(contentType ?? '')?.[1] ??
     /<meta[^>]+charset\s*=\s*["']?([\w.:-]+)/i.exec(body.subarray(0, 2048).toString('latin1'))?.[1]
   try {
-    return new TextDecoder(declared ?? 'utf-8').decode(body)
+    return new TextDecoder(declared ?? 'utf-8').encoding
   } catch {
-    return new TextDecoder('utf-8').decode(body)
+    return 'utf-8'
   }
+}
+
+/** Decodes text with the same charset supplied to the rendering browser. */
+export function decodeText(body: Buffer, contentType: string | undefined): string {
+  return new TextDecoder(textCharset(body, contentType)).decode(body)
 }
