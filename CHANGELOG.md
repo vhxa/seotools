@@ -3,7 +3,22 @@
 What changed in each release of seotools. It follows [Keep a Changelog](https://keepachangelog.com)
 and [Semantic Versioning](https://semver.org), with the rules of
 [docs/releases.md](docs/releases.md): every change that reaches users, administrators or operators
-adds an entry under `## [Unreleased]
+adds an entry under `## [Unreleased]` in the pull request that makes it, under the heading that
+names its impact:
+
+| Heading    | Impact on the next version               |
+| ---------- | ---------------------------------------- |
+| `Breaking` | MAJOR (MINOR while the version is `0.x`) |
+| `Added`    | MINOR                                    |
+| `Changed`  | MINOR                                    |
+| `Fixed`    | PATCH                                    |
+| `Security` | PATCH                                    |
+
+Documentation, tests, CI and refactors that change nothing visible have no entry and, by
+themselves, no release. Releases are prepared with `node scripts/release.mjs prepare <version>`,
+which moves the entries of `[Unreleased]` into the new version.
+
+## [Unreleased]
 
 ### Added
 
