@@ -197,13 +197,14 @@ Sources checked for this guide:
 ## Raspberry Pi and verification
 
 `RENDER_CONCURRENCY` accepts **1–4**, default **2**. Use `1` on a small Pi. The browser image
-is approximately 540 MB uncompressed on arm64. Compose reserves a ceiling of **1,536 MiB** and
+is approximately 540 MB uncompressed on arm64. Compose sets a ceiling of **1,536 MiB** and
 **256 processes/threads**, with **256 MiB** shared memory. Keep spare memory for the app, database
 and operating system. A memory-exhausted page is a failed render, never a successful audit of an
 empty page; no finite limit guarantees every hostile page succeeds.
 
 Round 4 measurements use the pinned Chrome 158.0.8127.18 image on Docker Desktop arm64. Each
-concurrency starts a fresh hardened container, renders one polling page per slot with a fifteen-second wait limit,
+concurrency starts a fresh hardened container, renders one polling page per slot with a
+fifteen-second wait limit,
 and runs the full isolation check after every page has started polling. Throughout the workload,
 `docker exec` samples cgroup `pids.current`, `memory.current` and the sum of `/proc/*/status`
 `VmRSS` (including shared mappings repeatedly). The sampler itself adds a few tasks. These are
@@ -212,14 +213,15 @@ at a time. All cgroup PID/memory limit-hit and OOM counters stayed at zero.
 
 | Concurrent renders + one check | Peak tasks | Peak summed RSS (MiB) | Peak cgroup memory (MiB) |
 | ------------------------------ | ---------: | --------------------: | -----------------------: |
-| 1                              |        104 |                 612.1 |                    201.6 |
-| 2                              |        108 |                 661.3 |                    228.4 |
-| 3                              |        119 |                 758.8 |                    238.8 |
-| 4                              |        133 |                 828.3 |                    222.8 |
+| 1                              |        105 |                 622.1 |                    199.4 |
+| 2                              |        117 |                 717.6 |                    225.0 |
+| 3                              |        130 |                 755.3 |                    243.4 |
+| 4                              |        133 |                 864.7 |                    269.2 |
 
 An initial measurement pass used a temporary ceiling of 512 tasks / 2 GiB. The table is the
 repeat under the shipped 256-task / 1,536-MiB ceilings, exceeding its four-render task peak by
-92% and conservative summed-RSS peak by 78%. RSS and cgroup peaks occur at different instants; cgroup memory accounts shared
+92% and conservative summed-RSS peak by 78%. RSS and cgroup peaks occur at different instants;
+cgroup memory accounts shared
 pages once. Size a Pi using the row for its concurrency and at least 50% headroom, and measure
 its real pages before reducing limits. Earlier original-spike hostile-page runs peaked at 340.4
 MiB RSS for one render and 440.5 MiB for two (without a simultaneous check); the polling/check
