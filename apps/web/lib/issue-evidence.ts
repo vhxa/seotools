@@ -14,7 +14,7 @@ export const MAX_EVIDENCE_LOOKUPS = 60
 export function evidenceAddresses(issues: readonly { evidence?: IssueEvidence }[]): string[] {
   const found = new Set<string>()
   for (const { evidence } of issues) {
-    if (!evidence || evidence.kind === 'related-urls') continue
+    if (!evidence || evidence.kind === 'related-urls' || evidence.kind === 'values') continue
     for (const item of evidence.items) {
       const url = item.url === null ? null : normalizeCrawlUrl(item.url)
       if (url) found.add(url)

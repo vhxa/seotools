@@ -3,7 +3,8 @@
  * someone can act on it (which images, which other pages, which canonical declarations, which
  * links). The shapes are in `types.ts`; this says which issues have it and reads it back from
  * storage. The worker gathers it while parsing a page (`PageFactsCollector`) or while comparing the
- * pages of a crawl, and keeps `total` with only the first few samples of each list.
+ * pages of a crawl or reading stored page values, and keeps `total` with only the first few samples
+ * of each list.
  *
  * Pure on purpose (no Node imports): client components import it through
  * `@seotools/core/crawl/evidence`.
@@ -30,6 +31,8 @@ export type IssueEvidenceKind = IssueEvidence['kind']
  * makes up examples. Issues not listed have none.
  */
 export const ISSUE_EVIDENCE = {
+  'html-entities-as-text': 'values',
+  'few-html-links': 'values',
   'img-no-alt': 'images',
   'img-empty-alt': 'images',
   'img-long-alt': 'images',
@@ -167,6 +170,16 @@ export function parseIssueEvidence(value: unknown): IssueEvidence | null {
   if (!envelope.success) return null
   const { total } = envelope.data
   switch (envelope.data.kind) {
+    case 'values': {
+      const list = items(
+        envelope.data.items,
+        z.object({
+          field: z.enum(['title', 'description', 'h1', 'internal-links']),
+          text,
+        }),
+      )
+      return list && { kind: 'values', total, items: list }
+    }
     case 'images': {
       const list = items(envelope.data.items, imageSchema)
       return list && { kind: 'images', total, items: list }

@@ -820,6 +820,18 @@ describe('a finding decided by a figure the domain sets', () => {
   })
   const longer = { ...crawl, scope: 's2', thresholds: { ...DEFAULT_THRESHOLDS, titleMax: 100 } }
 
+  it('does not call a link finding fixed when its threshold changed', () => {
+    expect(
+      classifyFinding('few-html-links', {
+        base: { crawl, url: url(['few-html-links']) },
+        target: {
+          crawl: { ...crawl, thresholds: { ...DEFAULT_THRESHOLDS, htmlLinksMin: 0 } },
+          url: url([]),
+        },
+      }),
+    ).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+  })
+
   it('is not resolved when only the figure moved', () => {
     const change = classifyFinding('title-too-long', {
       base: { crawl, url: url(['title-too-long']) },

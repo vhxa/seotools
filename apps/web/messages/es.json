@@ -957,7 +957,8 @@
       "images": "{total, plural, one {# imagen} other {# imágenes}}",
       "links": "{total, plural, one {# enlace} other {# enlaces}}",
       "canonicals": "{total, plural, one {# declaración} other {# declaraciones}}",
-      "related-urls": "{total, plural, one {# otra página} other {# otras páginas}}"
+      "related-urls": "{total, plural, one {# otra página} other {# otras páginas}}",
+      "values": "{total, plural, one {# valor} other {# valores}}"
     },
     "labels": {
       "canonical-not-indexable": "Destino del canonical (bloqueos indicados arriba)",
@@ -990,7 +991,9 @@
       "resources-broken": "Recursos rotos que carga",
       "links-to-redirect": "URLs que redirigen a las que enlaza",
       "links-to-canonicalised": "URLs canonicalizadas a las que enlaza",
-      "links-tracking-parameters": "URLs con parámetros de seguimiento a las que enlaza"
+      "links-tracking-parameters": "URLs con parámetros de seguimiento a las que enlaza",
+      "html-entities-as-text": "Texto con referencias de caracteres",
+      "few-html-links": "Enlaces internos encontrados en el HTML"
     },
     "images": {
       "noSource": "Sin dirección (falta src)",
@@ -1015,6 +1018,12 @@
       "source": {
         "header": "Cabecera HTTP Link"
       }
+    },
+    "fields": {
+      "title": "Título",
+      "description": "Metadescripción",
+      "h1": "H1",
+      "internal-links": "Enlaces internos"
     }
   },
   "PageIssues": {
@@ -1331,8 +1340,8 @@
       "description": "Todos los enlaces que llegan a esta página salen de páginas que no se indexarán. No se señala en una página que se espera fuera del índice."
     },
     "orphan-in-sitemap": {
-      "name": "URL huérfana (solo está en el sitemap)",
-      "description": "No se ha encontrado ningún enlace interno a ella dentro del alcance del rastreo: solo se llega a ella por el sitemap. El rastreo lee el HTML que envía el servidor: un enlace que solo aparece al ejecutarse JavaScript (un menú o un pie de página construidos en el navegador) no se ve."
+      "name": "Solo en el sitemap, sin enlaces en el HTML",
+      "description": "Solo el sitemap llevó hasta aquí: no se encontró ningún enlace interno en el HTML de las páginas rastreadas. El rastreador no ejecuta JavaScript y no ve los enlaces que crea el navegador. Revisa los hallazgos «Muy pocos enlaces en el HTML» en las páginas que deberían enlazar aquí, si los hay."
     },
     "no-outgoing-links": {
       "name": "Sin enlaces internos salientes",
@@ -1565,6 +1574,14 @@
     "unlinked-required-missing": {
       "name": "La regla no permite enlaces internos entrantes",
       "description": "La regla exige que esta URL no reciba enlaces internos, pero al menos un enlace interno apunta a ella."
+    },
+    "html-entities-as-text": {
+      "name": "Entidades HTML visibles como texto",
+      "description": "El título, la metadescripción o un H1 ya decodificados aún contienen una referencia como &#8217; o &amp;. Puede aparecer como texto para el visitante. Una página sobre HTML puede mostrarla a propósito."
+    },
+    "few-html-links": {
+      "name": "Muy pocos enlaces en el HTML",
+      "description": "La página indexable tiene menos enlaces internos que el umbral configurado en el HTML que envía el servidor. El rastreador no ejecuta JavaScript; suele ocurrir cuando el navegador construye el menú o el pie. Los buscadores que renderizan pueden ver más enlaces, pero muchos rastreadores, incluidos los de varios asistentes de IA, solo leen el HTML."
     }
   },
   "LinkKinds": {
@@ -2464,6 +2481,10 @@
         "responseTimeMaxMs": {
           "label": "Respuesta más lenta",
           "unit": "Milisegundos"
+        },
+        "htmlLinksMin": {
+          "label": "Mínimo de enlaces internos en el HTML",
+          "unit": "Enlaces internos · 0 desactiva esta comprobación"
         }
       }
     },
@@ -2835,11 +2856,11 @@
       },
       "unlinked": {
         "label": "Sin enlaces internos",
-        "default": "Por defecto, una página incluida en un sitemap sin enlaces internos entrantes genera un hallazgo de página huérfana.",
+        "default": "Por defecto, una página incluida en un sitemap sin enlaces internos encontrados en el HTML rastreado genera un hallazgo de URL solo en el sitemap. No se ven los enlaces creados con JavaScript.",
         "help": {
           "required": "Se genera un hallazgo si un enlace interno apunta a esta URL. La ausencia de enlaces solo se confirma con un rastreo completo finalizado.",
-          "allowed": "La página puede recibir enlaces internos o no: se acepta el hallazgo de página huérfana. Los enlaces desde páginas con nofollow o noindex se evalúan por separado.",
-          "forbidden": "Se mantiene el hallazgo de página huérfana si un sitemap incluye la página pero ningún enlace interno apunta a ella."
+          "allowed": "La página puede recibir enlaces internos o no: se acepta el hallazgo de URL solo en el sitemap. Los enlaces desde páginas con nofollow o noindex se evalúan por separado.",
+          "forbidden": "Se mantiene el hallazgo de URL solo en el sitemap si no se encontró ningún enlace interno hacia ella en el HTML rastreado. No se ven los enlaces creados con JavaScript."
         }
       },
       "hint": "Cada condición es Obligatorio o Prohibido, o «No avisar en ningún caso», que no genera ningún hallazgo sea como sea la página. Si no se indica, la opción con borde discontinuo es lo que se aplica ahora.",

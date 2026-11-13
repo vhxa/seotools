@@ -979,7 +979,12 @@ describe('unchanged semantics 5 snapshots', () => {
     }
     // Baseline captured with checks, conditions, relations and catalog from 026c401 (pre-change),
     // on the synthetic website above. It includes every pending and accepted row for these URLs.
-    expect(before).toEqual(oldConditionsBaseline)
+    // New quality checks do not change the historical condition baseline.
+    expect({
+      ...before,
+      findings: before.findings.filter((f) => f.issue !== 'few-html-links'),
+    }).toEqual(oldConditionsBaseline)
+    expect(before.findings.some((f) => f.issue === 'few-html-links')).toBe(true)
     expect(before.accepted.map((f) => f.issue).sort()).toEqual([
       'nofollow',
       'noindex',

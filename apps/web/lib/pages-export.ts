@@ -389,6 +389,8 @@ function evidenceAddresses({ issue }: Finding): string[] {
     return target.kind === 'text' ? (text ?? url ?? '') : target.url
   }
   switch (evidence.kind) {
+    case 'values':
+      return evidence.items.map((item) => `${item.field}: ${item.text}`)
     case 'images':
       return evidence.items.map((item) => written(item.url, item.src))
     case 'links':

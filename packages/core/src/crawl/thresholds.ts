@@ -13,6 +13,8 @@ export const AUDIT_THRESHOLDS = {
   titleMax: { default: 60, min: 10, max: 300 },
   descriptionMin: { default: 70, min: 1, max: 300 },
   descriptionMax: { default: 155, min: 20, max: 500 },
+  /** Internal anchors in the served HTML below which a page has few links; zero disables it. */
+  htmlLinksMin: { default: 5, min: 0, max: 100 },
   /** Words of text under which a page is thin. */
   thinWords: { default: 200, min: 1, max: 5000 },
   /** Characters of a URL over which it is too long. */
@@ -36,6 +38,7 @@ export const THRESHOLD_ISSUES: Readonly<Record<string, readonly ThresholdKey[]>>
   'title-too-long': ['titleMax'],
   'description-too-short': ['descriptionMin'],
   'description-too-long': ['descriptionMax'],
+  'few-html-links': ['htmlLinksMin'],
   'content-thin': ['thinWords'],
   'url-too-long': ['urlMax'],
   'deep-page': ['clickDepthMax'],

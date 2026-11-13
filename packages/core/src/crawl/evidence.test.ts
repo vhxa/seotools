@@ -155,3 +155,16 @@ describe('parseIssueEvidence', () => {
     ).toEqual({ kind: 'related-urls', total: 3, urls: ['https://a.test/'] })
   })
 })
+
+it('bounds field evidence and drops unsupported fields without inventing values', () => {
+  expect(
+    parseIssueEvidence({
+      kind: 'values',
+      total: 2,
+      items: [
+        { field: 'h1', text: 'a\nb' },
+        { field: 'unsupported', text: 'no' },
+      ],
+    }),
+  ).toEqual({ kind: 'values', total: 2, items: [{ field: 'h1', text: 'a b' }] })
+})

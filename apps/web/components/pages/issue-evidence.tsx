@@ -93,6 +93,18 @@ function Items({ evidence, ...place }: Place & { evidence: IssueEvidence }) {
   const tKinds = useTranslations('LinkKinds')
 
   switch (evidence.kind) {
+    case 'values':
+      return (
+        <>
+          {evidence.items.map((item, index) => (
+            <li key={index} className="grid gap-1">
+              <span className="font-medium">{t(`fields.${item.field}`)}</span>
+              <code className="break-all">{item.text}</code>
+            </li>
+          ))}
+        </>
+      )
+
     case 'images':
       return (
         <>

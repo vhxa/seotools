@@ -155,6 +155,7 @@ const ISSUE_CATALOG = {
     'heading-too-long': ['opportunity', 'low'],
   },
   content: {
+    'html-entities-as-text': ['opportunity', 'low'],
     'content-duplicate': ['warning', 'high'],
     'content-near-duplicate': ['warning', 'medium'],
     'content-placeholder': ['warning', 'medium'],
@@ -194,6 +195,7 @@ const ISSUE_CATALOG = {
     'only-nofollow-inlinks': ['warning', 'medium'],
     'only-noindex-inlinks': ['warning', 'medium'],
     'orphan-in-sitemap': ['issue', 'medium'],
+    'few-html-links': ['opportunity', 'low'],
     'no-outgoing-links': ['warning', 'low'],
     'internal-nofollow-links': ['warning', 'low'],
     'deep-page': ['opportunity', 'medium'],

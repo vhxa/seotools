@@ -18,7 +18,7 @@ describe('the catalog', () => {
     // An id repeated across categories would be lost in `PAGE_ISSUES`.
     expect(new Set(listed).size).toBe(listed.length)
     expect([...listed].sort()).toEqual([...PAGE_ISSUE_IDS].sort())
-    expect(listed).toHaveLength(137)
+    expect(listed).toHaveLength(139)
   })
 
   it('knows the category of each issue', () => {
@@ -29,6 +29,7 @@ describe('the catalog', () => {
 
   it('keeps the order of the list within a category', () => {
     expect(issuesOfCategory('content')).toEqual([
+      'html-entities-as-text',
       'content-duplicate',
       'content-near-duplicate',
       'content-placeholder',
