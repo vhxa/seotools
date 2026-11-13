@@ -28,7 +28,6 @@ which moves the entries of `[Unreleased]` into the new version.
   observations establish differences; a stopped client redirect reports its target without
   treating its abandoned content as observed or making links elsewhere unknown. The text share
   threshold is configurable per domain.
-
 - Rendered crawls run JavaScript on each internal HTML page answering 200, follow links found only
   after rendering, and report pages linked only by JavaScript and pages whose internal links appear
   after rendering. Per-domain settings control the mode, wait limit and omitted hosts.
@@ -50,12 +49,6 @@ which moves the entries of `[Unreleased]` into the new version.
 - Earlier crawls are analysed again from their stored text and links for the two new checks. The
   few-internal-links check is unknown, never fixed or new, for a crawl in which a page's HTML was
   cut at the size limit.
-
-### Fixed
-
-- Script-free pages do not gain JavaScript difference findings from browser charset defaults or
-  meta-refresh navigation. Rendering uses the crawler's document encoding and leaves declared
-  refresh redirects to the existing refresh finding.
 
 ### Upgrade notes
 
