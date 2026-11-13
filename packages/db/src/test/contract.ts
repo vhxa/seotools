@@ -131,6 +131,7 @@ export function describeDatabaseContract(
         urlHash,
         status: 'rendered' as const,
         settled: true,
+        truncated: false,
         finalUrl: url,
         durationMs: 1,
         failure: null,

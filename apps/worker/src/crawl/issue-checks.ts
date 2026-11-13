@@ -22,6 +22,7 @@ import {
   type PageIssueId,
 } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
+import { graphAbsenceKnown } from './observed-inputs'
 import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
 import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
@@ -730,10 +731,16 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'uncrawlable-links': linkProblem('uncrawlable', (facts) => facts.uncrawlableLinks),
   // What links to a URL expected to be out of the index does not matter to it (`excusesInlinks`).
   'only-nofollow-inlinks': onPage(
-    (url, _, site) => INLINKS_WRONG['only-nofollow-inlinks'](url) && !excusesInlinks(url, site),
+    (url, _, site) =>
+      graphAbsenceKnown(site) &&
+      INLINKS_WRONG['only-nofollow-inlinks'](url) &&
+      !excusesInlinks(url, site),
   ),
   'only-noindex-inlinks': onPage(
-    (url, _, site) => INLINKS_WRONG['only-noindex-inlinks'](url) && !excusesInlinks(url, site),
+    (url, _, site) =>
+      graphAbsenceKnown(site) &&
+      INLINKS_WRONG['only-noindex-inlinks'](url) &&
+      !excusesInlinks(url, site),
   ),
   // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
   'linked-only-by-javascript': (url, site) =>
@@ -770,7 +777,10 @@ export const CHECKS: Record<PageIssueId, Check> = {
   ),
   'no-outgoing-links': onPage((url) => url.internalAnchorsOut === 0),
   'internal-nofollow-links': onPage((url) => url.nofollowAnchorsOut > 0),
-  'deep-page': onPage((url, _, site) => (url.clickDepth ?? 0) > figures(site).clickDepthMax),
+  'deep-page': onPage(
+    (url, _, site) =>
+      graphAbsenceKnown(site) && (url.clickDepth ?? 0) > figures(site).clickDepthMax,
+  ),
   'anchor-empty': linkProblem('empty-anchor', (facts) => facts.emptyAnchors),
   'anchor-vague': linkProblem('vague-anchor', (facts) => facts.vagueAnchors),
 
@@ -1008,7 +1018,7 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
     }
   }
 
-  if (url.facts && isExpectedOut(url)) {
+  if (url.facts && graphAbsenceKnown(site) && isExpectedOut(url)) {
     for (const issue of Object.keys(INLINKS_WRONG) as (keyof typeof INLINKS_WRONG)[]) {
       if (INLINKS_WRONG[issue](url)) add(issue, expectedOutAcceptance(url), null)
     }

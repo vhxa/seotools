@@ -20,7 +20,7 @@ import type {
 } from '@seotools/db'
 import { conditionStatesOf } from './conditions'
 import { detectFindings } from './issue-checks'
-import { unobservedIssues } from './observed-inputs'
+import { RENDERED_GRAPH_ISSUES, unobservedIssues } from './observed-inputs'
 import { loadSite } from './site-audit'
 
 const PAGE_ISSUES_IDS_FOR_RENDERING = PAGE_ISSUE_IDS.filter(
@@ -77,6 +77,7 @@ export async function analyseCrawl(
     unobserved: _recorded,
     rendering: _mode,
     rendersUnobserved: _missing,
+    renderCoverage: _coverage,
     ...rulesConfig
   } = given
   const config: AuditSnapshot = {
@@ -159,8 +160,9 @@ export async function analyseCrawl(
   )
   if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {
     unobserved.push(...PAGE_ISSUES_IDS_FOR_RENDERING)
-    unobserved.sort()
   }
+  if (crawl.rendering?.mode === 'rendered' && site.rendersUnobserved > 0)
+    unobserved.push(...RENDERED_GRAPH_ISSUES)
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,
@@ -172,9 +174,9 @@ export async function analyseCrawl(
       snapshot: {
         ...config,
         ...(crawl.rendering?.mode === 'rendered'
-          ? { rendersUnobserved: site.rendersUnobserved }
+          ? { rendersUnobserved: site.rendersUnobserved, renderCoverage: site.renderCoverage }
           : {}),
-        ...(unobserved.length > 0 ? { unobserved } : {}),
+        ...(unobserved.length > 0 ? { unobserved: [...new Set(unobserved)].sort() } : {}),
       },
       pages: audit,
       urls,

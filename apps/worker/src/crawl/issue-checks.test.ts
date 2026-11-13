@@ -1,5 +1,7 @@
 import { renderedOutcome } from './render-fixture'
-import htmlBeforeRendering from './fixtures/html-pre-rendering.json'
+import { readFileSync } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
+import { RENDERED_GRAPH_ISSUES } from './observed-inputs'
 import { htmlBaseline } from './html-baseline'
 import type { VitalMetrics } from '@seotools/core'
 import {
@@ -28,7 +30,62 @@ import { FetchError } from './fetcher'
 import { SAFE_HEADERS, SITE, page, sitemapOf, words, xml } from './test-site'
 import { CHECKS } from './issue-checks'
 import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
-import { parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
+import { loadSite, parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
+
+// Lossless compression retains the full base output and readable Vitest diffs on a mismatch.
+const htmlBeforeRendering = JSON.parse(
+  gunzipSync(
+    readFileSync(new URL('./fixtures/html-pre-rendering.json.gz', import.meta.url)),
+  ).toString(),
+) as Record<string, unknown>
+
+/** Exercise each check's real scenario, including helper/condition calls, and track graph reads. */
+function assertGraphReadersClassified(issue: PageIssueId, url: AuditedUrl, site: Site) {
+  const inputs = new Set([
+    'anchorsIn',
+    'followedAnchorsIn',
+    'anchorsFromIndexable',
+    'htmlAnchorsIn',
+    'renderedAnchorsFrom',
+    'renderedLinksTo',
+    'renderedAnchorsOut',
+    'linksTo',
+    'clickDepth',
+    'linksComplete',
+    'htmlLinksComplete',
+    'rendersUnobserved',
+  ])
+  const read = new Set<string>()
+  const tracked = new WeakMap<AuditedUrl, AuditedUrl>()
+  const track = (value: AuditedUrl): AuditedUrl => {
+    let proxy = tracked.get(value)
+    if (!proxy) {
+      proxy = new Proxy(value, {
+        get(target, key, receiver) {
+          if (inputs.has(String(key))) read.add(String(key))
+          return Reflect.get(target, key, receiver) as unknown
+        },
+      })
+      tracked.set(value, proxy)
+    }
+    return proxy
+  }
+  const observed = new Proxy(site, {
+    get(target, key, receiver) {
+      if (inputs.has(String(key))) read.add(String(key))
+      if (key === 'get')
+        return (address: string) => {
+          const found = target.get(address)
+          return found ? track(found) : undefined
+        }
+      if (key === 'urls') return target.urls.map(track)
+      return Reflect.get(target, key, receiver) as unknown
+    },
+  })
+  CHECKS[issue](track(url), observed)
+  if (read.size > 0)
+    expect(RENDERED_GRAPH_ISSUES, `${issue} reads ${[...read].join(', ')}`).toContain(issue)
+}
 
 const log = createLogger('test', 'silent')
 interface Scenario {
@@ -867,6 +924,9 @@ describe('each issue', () => {
         JSON.stringify(htmlBeforeRendering[id as keyof typeof htmlBeforeRendering]),
       )
     }
+    const stored = (await db.crawls.get(crawlId))!
+    const observedSite = await loadSite(db, stored, stored.auditSnapshot!)
+    assertGraphReadersClassified(id, observedSite.get(absolute(scenario.at))!, observedSite)
     const found = await issuesAt(crawlId, scenario.at)
     expect(found.map((row) => row.issue)).toContain(id)
     if (scenario.details) {

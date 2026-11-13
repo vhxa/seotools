@@ -246,6 +246,13 @@
       "when": 1794592674258,
       "tag": "0034_rendered_crawls",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794594410528,
+      "tag": "0035_render_truncation",
+      "breakpoints": true
     }
   ]
 }

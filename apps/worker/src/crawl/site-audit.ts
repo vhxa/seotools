@@ -211,6 +211,7 @@ export interface Site {
   /** A completed crawl was not cut at its URL limit. */
   htmlLinksComplete: boolean
   rendersUnobserved: number
+  renderCoverage: NonNullable<AuditSnapshot['renderCoverage']>
   linksComplete: boolean
   /**
    * The indexable pages that share each value, in URL order, which is what makes one a duplicate:
@@ -534,14 +535,22 @@ export async function loadSite(
   }
   measureClickDepth(internal, byHash, identity)
   const renders = new Map((await db.crawls.renders(crawl.id)).map((row) => [row.urlHash, row]))
-  const rendersUnobserved =
-    crawl.rendering?.mode === 'rendered'
-      ? internal.filter(
-          (url) =>
-            url.contentPage &&
-            (url.url.statusCode !== 200 || renders.get(url.url.urlHash)?.status !== 'rendered'),
-        ).length
-      : 0
+  let rendersUnobserved = 0
+  const renderCoverage = { failedOrMissing: 0, truncated: 0, unsettled: 0 }
+  if (crawl.rendering?.mode === 'rendered') {
+    for (const url of internal) {
+      if (!url.contentPage) continue
+      const render = renders.get(url.url.urlHash)
+      // A missing truncation flag in an older render is missing evidence, never proof of a whole page.
+      const failedOrMissing = render?.status !== 'rendered' || render.truncated === null
+      const truncated = url.url.data?.truncated === true || render?.truncated === true
+      const unsettled = render?.status === 'rendered' && !render.settled
+      if (failedOrMissing) renderCoverage.failedOrMissing++
+      if (truncated) renderCoverage.truncated++
+      if (unsettled) renderCoverage.unsettled++
+      if (failedOrMissing || truncated || unsettled) rendersUnobserved++
+    }
+  }
 
   // What pages are compared against each other: the audited ones that can be indexed. A page left
   // out of the audit stays in the site (links, canonicals, hreflang, redirects see it as it is) but
@@ -561,6 +570,7 @@ export async function loadSite(
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
     htmlLinksComplete: crawl.status === 'completed',
     rendersUnobserved,
+    renderCoverage,
     linksComplete: crawl.status === 'completed' && rendersUnobserved === 0,
     titles: sharedValues(indexable, (url) => comparable(url.url.title)),
     descriptions: sharedValues(indexable, (url) => comparable(url.url.data?.description)),

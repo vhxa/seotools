@@ -1018,6 +1018,7 @@ export const crawlUrlRenders = pgTable(
     urlHash: text('url_hash').notNull(),
     status: text('status', { enum: ['rendered', 'failed'] }).notNull(),
     settled: boolean('settled').notNull(),
+    truncated: boolean('truncated'),
     finalUrl: text('final_url').notNull(),
     durationMs: integer('duration_ms').notNull(),
     failure: text('failure'),

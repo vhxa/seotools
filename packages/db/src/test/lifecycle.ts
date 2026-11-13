@@ -217,6 +217,7 @@ export function describeLifecycle(
           urlHash: crawlUrlHash(url),
           status: 'rendered',
           settled: true,
+          truncated: false,
           finalUrl: url,
           durationMs: 1,
           failure: null,

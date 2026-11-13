@@ -45,14 +45,14 @@ type Entry = readonly [type: IssueType, importance: IssueImportance, detail?: Is
  * - `opportunity`: an improvement.
  */
 const ISSUE_CATALOG = {
-  javascript: {
-    'linked-only-by-javascript': ['warning', 'medium'],
-    'links-only-after-rendering': ['opportunity', 'medium'],
-  },
   performance: {
     'lcp-poor': ['warning', 'medium'],
     'inp-poor': ['warning', 'medium'],
     'cls-poor': ['warning', 'medium'],
+  },
+  javascript: {
+    'linked-only-by-javascript': ['warning', 'medium'],
+    'links-only-after-rendering': ['opportunity', 'medium'],
   },
   'response-codes': {
     'no-response': ['issue', 'high'],
@@ -296,7 +296,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  * - 9: a missing, repeated or misplaced title is secondary on a page that cannot be indexed, like
  *   the other title and description findings.
  */
-const CHECKS_REVISION = 10
+const CHECKS_REVISION = 11
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.

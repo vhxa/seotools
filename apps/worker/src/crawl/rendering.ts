@@ -145,6 +145,7 @@ export function renderObservation(
     urlHash,
     status: outcome.status,
     settled: outcome.settled,
+    truncated: outcome.truncated,
     finalUrl: outcome.finalUrl,
     durationMs: outcome.durationMs,
     failure: outcome.failure?.code ?? null,

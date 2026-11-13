@@ -1,5 +1,5 @@
 import { createLogger, crawlUrlHash } from '@seotools/core'
-import { createCompany } from '@seotools/db'
+import { compareWithPrevious, createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { BrowserUnavailableError, type RenderInput } from '../render/types'
@@ -11,6 +11,9 @@ import { SITE, page, xml, sitemapOf } from './test-site'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import { loadSite } from './site-audit'
 import { presenceOf } from './conditions'
+import { RENDERED_GRAPH_ISSUES } from './observed-inputs'
+import { detectFindings } from './issue-checks'
+import { runCrawlAlerts } from '../alerts/run'
 
 let db: Database
 let domainId: string
@@ -293,3 +296,180 @@ it('keeps a committed failed render unknown on resume without retrying its lost 
   }
   expect((await db.crawls.get(crawl.id))?.auditSnapshot?.rendersUnobserved).toBe(failed.length)
 })
+
+it.each(['failed', 'truncated', 'unsettled', 'served-truncated', 'legacy'] as const)(
+  '%s observation never resolves or creates graph findings or alert regressions in either direction',
+  async (cause) => {
+    const user = await db.users.create({
+      email: 'render@example.com',
+      name: 'Render',
+      role: 'admin',
+    })
+    await db.alerts.save({
+      userId: user.id,
+      locale: 'en',
+      domains: [{ domainId, kinds: ['change-summary', 'important-findings'] }],
+    })
+    // The unrelated /menu changes observation quality only; /orphan never gains a link.
+    for (const partial of [false, true, false]) {
+      const crawl = await start()
+      const data = {
+        ...siteData,
+        ...(partial && cause === 'served-truncated'
+          ? { [`${SITE}/menu`]: { ...page('/menu'), truncated: true } }
+          : {}),
+      }
+      await runCrawl(
+        crawl.id,
+        options({
+          createFetcher: fakeSite(data, 0).createFetcher,
+          renderService: {
+            check: ready,
+            render: async (input) => {
+              const outcome = await render(input)
+              if (!partial || !input.url.endsWith('/menu')) return outcome
+              if (cause === 'failed') return { ...outcome, status: 'failed' as const }
+              if (cause === 'truncated') return { ...outcome, truncated: true }
+              if (cause === 'unsettled') return { ...outcome, settled: false }
+              return outcome
+            },
+          },
+        }),
+      )
+      if (partial && cause === 'legacy') {
+        const url = (await db.crawls.getUrl(crawl.id, hash('/menu')))!
+        const row = (await db.crawls.renders(crawl.id)).find((row) => row.urlHash === url.urlHash)!
+        await db.crawls.recordResult({
+          crawlId: crawl.id,
+          urlHash: url.urlHash,
+          result: url,
+          render: { ...row, truncated: null },
+        })
+        await analyseCrawl(db, crawl.id, await currentAuditConfig(db, domainId))
+      }
+      const stored = (await db.crawls.get(crawl.id))!
+      expect(stored.auditSnapshot?.rendersUnobserved).toBe(partial ? 1 : 0)
+      expect(stored.auditSnapshot?.renderCoverage).toEqual({
+        failedOrMissing: partial && (cause === 'failed' || cause === 'legacy') ? 1 : 0,
+        truncated: partial && (cause === 'truncated' || cause === 'served-truncated') ? 1 : 0,
+        unsettled: partial && cause === 'unsettled' ? 1 : 0,
+      })
+      expect((await issues(crawl.id, '/orphan')).includes('orphan-in-sitemap')).toBe(!partial)
+      const site = await loadSite(db, stored, stored.auditSnapshot!)
+      expect(presenceOf('unlinked', site.get(`${SITE}/orphan`)!, site)).toBe(
+        partial ? 'unknown' : 'present',
+      )
+      // Even in a partial snapshot, the rendered menu positively proves that /only-js is linked.
+      expect(presenceOf('unlinked', site.get(`${SITE}/only-js`)!, site)).toBe('absent')
+      if (partial)
+        expect(stored.auditSnapshot?.unobserved).toEqual(
+          expect.arrayContaining([...RENDERED_GRAPH_ISSUES]),
+        )
+      const comparison = await compareWithPrevious({ db, target: stored, exact: true })
+      if (comparison.base) {
+        expect(comparison.byIssue.get('orphan-in-sitemap')).toMatchObject({
+          fresh: 0,
+          back: 0,
+          resolved: 0,
+          unverified: 1,
+          reasons: ['unobserved'],
+        })
+        expect(
+          [...comparison.byIssue].filter(([, counts]) => counts.resolved > 0 || counts.fresh > 0),
+        ).toEqual([])
+        expect(comparison.findings).toMatchObject({ fresh: 0, back: 0, resolved: 0 })
+        expect(comparison.important).toEqual([])
+        const messages: string[] = []
+        await runCrawlAlerts({
+          db,
+          log,
+          crawlId: crawl.id,
+          signal: new AbortController().signal,
+          publicUrl: 'https://seo.example.com',
+          getMailer: async () => ({
+            send: async (message) => {
+              messages.push(message.text ?? '')
+              return { id: 'sent' }
+            },
+            verify: async () => {},
+          }),
+        })
+        expect(messages).toHaveLength(1)
+        expect(messages[0]).toContain('Findings: 0 new, 0 back, 0 resolved,')
+      }
+    }
+  },
+)
+
+it.each(['failed', 'truncated', 'unsettled'] as const)(
+  'a %s /menu cannot prove only-nofollow/noindex inlinks or deep pages, including accepted findings',
+  async (cause) => {
+    await db.audit.setThresholds({ domainId, thresholds: { clickDepthMax: 1 } })
+    const data = {
+      [`${SITE}/`]: page('/', {
+        links:
+          '<a href="/nofollow" rel="nofollow">Target</a><a href="/noindex-source">Source</a><a href="/step">Step</a><a href="/menu">Menu</a>',
+      }),
+      [`${SITE}/noindex-source`]: page('/noindex-source', {
+        head: '<meta name="robots" content="noindex">',
+        links: '<a href="/noindex">Target</a><a href="/accepted">Accepted</a>',
+      }),
+      [`${SITE}/step`]: page('/step', { links: '<a href="/deep">Deep</a>' }),
+      [`${SITE}/deep`]: page('/deep'),
+      [`${SITE}/nofollow`]: page('/nofollow'),
+      [`${SITE}/noindex`]: page('/noindex'),
+      [`${SITE}/accepted`]: page('/accepted', { head: '<meta name="robots" content="noindex">' }),
+      [`${SITE}/menu`]: page('/menu'),
+    }
+    await db.audit.saveRule({
+      domainId,
+      rule: {
+        dimension: 'intent',
+        value: 'not-indexable',
+        selector: { kind: 'path', path: '/accepted', query: { mode: 'any' }, scope: 'literal' },
+        reason: null,
+        enabled: true,
+      },
+    })
+    const rendering = vi.fn(async (input: RenderInput) => {
+      const outcome = renderedOutcome(input)
+      if (!input.url.endsWith('/menu')) return outcome
+      // The omitted menu could have followed, indexable links and shorter routes to these pages.
+      if (cause === 'failed') return { ...outcome, status: 'failed' as const }
+      return { ...outcome, truncated: cause === 'truncated', settled: cause !== 'unsettled' }
+    })
+    const crawl = await start()
+    await runCrawl(
+      crawl.id,
+      options({
+        createFetcher: fakeSite(data, 0).createFetcher,
+        renderService: { check: ready, render: rendering },
+      }),
+    )
+    if (cause === 'failed')
+      expect(rendering.mock.calls.filter(([input]) => input.url.endsWith('/menu'))).toHaveLength(2)
+    const stored = (await db.crawls.get(crawl.id))!
+    const site = await loadSite(db, stored, stored.auditSnapshot!)
+    const absent = ['only-nofollow-inlinks', 'only-noindex-inlinks', 'deep-page']
+    for (const url of site.urls) {
+      const findings = detectFindings(url, site)
+      expect(
+        [...findings.found, ...findings.accepted].filter(({ issue }) => absent.includes(issue)),
+      ).toEqual([])
+    }
+    // Prove the fixtures would reproduce all three errors without the coverage guard.
+    const unchecked = { ...site, rendersUnobserved: 0 }
+    expect(
+      detectFindings(site.get(`${SITE}/nofollow`)!, unchecked).found.map(({ issue }) => issue),
+    ).toContain('only-nofollow-inlinks')
+    expect(
+      detectFindings(site.get(`${SITE}/noindex`)!, unchecked).found.map(({ issue }) => issue),
+    ).toContain('only-noindex-inlinks')
+    expect(
+      detectFindings(site.get(`${SITE}/deep`)!, unchecked).found.map(({ issue }) => issue),
+    ).toContain('deep-page')
+    expect(
+      detectFindings(site.get(`${SITE}/accepted`)!, unchecked).accepted.map(({ issue }) => issue),
+    ).toContain('only-noindex-inlinks')
+  },
+)

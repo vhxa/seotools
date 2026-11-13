@@ -1016,6 +1016,7 @@ export const crawlUrlRenders = sqliteTable(
     urlHash: text('url_hash').notNull(),
     status: text('status', { enum: ['rendered', 'failed'] }).notNull(),
     settled: integer('settled', { mode: 'boolean' }).notNull(),
+    truncated: integer('truncated', { mode: 'boolean' }),
     finalUrl: text('final_url').notNull(),
     durationMs: integer('duration_ms').notNull(),
     failure: text('failure'),

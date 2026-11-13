@@ -348,6 +348,8 @@ export interface CrawlUrlRender {
   urlHash: string
   status: 'rendered' | 'failed'
   settled: boolean
+  /** Null for observations made before truncation was recorded: completeness is unknown. */
+  truncated: boolean | null
   finalUrl: string
   durationMs: number
   failure: string | null
