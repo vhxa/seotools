@@ -29,6 +29,7 @@ describe('the catalog', () => {
 
   it('keeps the order of the list within a category', () => {
     expect(issuesOfCategory('content')).toEqual([
+      'html-entities-as-text',
       'content-duplicate',
       'content-near-duplicate',
       'content-placeholder',

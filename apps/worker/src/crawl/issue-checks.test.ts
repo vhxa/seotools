@@ -1894,3 +1894,27 @@ describe('stored HTML text and link heuristics', () => {
     expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('few-html-links')
   })
 })
+
+it('reanalyses legacy text and link data without needing newer optional facts', async () => {
+  const id = await crawl(
+    websiteOf({ at: '/x', pages: { '/x': page('/x', { title: 'An &amp;quot; example' }) } }),
+  )
+  const hash = crawlUrlHash(`${SITE}/x`)
+  const stored = (await db.crawls.getUrl(id, hash))!
+  const older = { ...stored.data!.facts! }
+  delete older.social
+  delete older.document
+  delete older.evidence
+  await db.crawls.recordResult({
+    crawlId: id,
+    urlHash: hash,
+    result: { ...stored, data: { ...stored.data, facts: older } },
+  })
+  await analyseCrawl(db, id, EMPTY_AUDIT_SNAPSHOT)
+  const found = (await issuesAt(id, '/x')).map((row) => row.issue)
+  expect(found).toContain('html-entities-as-text')
+  expect(found).toContain('few-html-links')
+  const snapshot = (await db.crawls.get(id))!.auditSnapshot!
+  expect(snapshot.unobserved).not.toContain('html-entities-as-text')
+  expect(snapshot.unobserved).not.toContain('few-html-links')
+})

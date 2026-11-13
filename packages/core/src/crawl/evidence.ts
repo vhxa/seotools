@@ -3,7 +3,8 @@
  * someone can act on it (which images, which other pages, which canonical declarations, which
  * links). The shapes are in `types.ts`; this says which issues have it and reads it back from
  * storage. The worker gathers it while parsing a page (`PageFactsCollector`) or while comparing the
- * pages of a crawl, and keeps `total` with only the first few samples of each list.
+ * pages of a crawl or reading stored page values, and keeps `total` with only the first few samples
+ * of each list.
  *
  * Pure on purpose (no Node imports): client components import it through
  * `@seotools/core/crawl/evidence`.

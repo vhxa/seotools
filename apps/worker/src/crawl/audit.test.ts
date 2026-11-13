@@ -263,11 +263,13 @@ describe('a URL excluded from the audit', () => {
     expect(after.pagesCount).toBe(before.pagesCount)
     expect(after.pagesAudit).toMatchObject({ audited: before.pagesCount - 1, excluded: 1 })
     expect(after.pagesAudit!.audited + after.pagesAudit!.excluded).toBe(after.pagesCount)
-    // The cart had warnings; nobody else has any.
+    // The cart had warnings; the other four pages still have the few-links opportunity.
     expect(before.pagesWithType!.warning).toBe(1)
-    expect(after.pagesWithType).toEqual({ issue: 0, warning: 0, opportunity: 0 })
-    expect(after.pagesByWorstIssue).toEqual({ issue: 0, warning: 0, opportunity: 0 })
-    expect(await db.crawls.issueCounts(after.id)).toEqual([])
+    expect(after.pagesWithType).toEqual({ issue: 0, warning: 0, opportunity: 4 })
+    expect(after.pagesByWorstIssue).toEqual({ issue: 0, warning: 0, opportunity: 4 })
+    expect(await db.crawls.issueCounts(after.id)).toEqual([
+      { issue: 'few-html-links', pages: 4, secondary: 0 },
+    ])
   })
 
   it('is not indexable or correct for having no findings: indexability is the crawl’s own', async () => {
@@ -490,9 +492,9 @@ describe('the indexation expected of a URL', () => {
       return { id, found: await findings(id, path) }
     }
 
-    it('says nothing about a page that can be indexed', async () => {
+    it('has only a quality opportunity on a page that can be indexed', async () => {
       const { id, found } = await only(page('/product'))
-      expect(found).toEqual([])
+      expect(found).toEqual(['few-html-links'])
       expect(await stateOf(id, '/product')).toMatchObject({
         intent: 'indexable',
         indexability: 'indexable',
@@ -728,7 +730,7 @@ describe('analysing again after the configuration changes', () => {
     expect(after.auditVersion).toBe(1)
     expect(after.pagesAudit).toMatchObject({ audited: before.pagesCount - 1, excluded: 1 })
     expect(before.pagesWithType!.warning).toBe(1)
-    expect(after.pagesWithType).toEqual({ issue: 0, warning: 0, opportunity: 0 })
+    expect(after.pagesWithType).toEqual({ issue: 0, warning: 0, opportunity: 4 })
     expect(await findings(id, '/cart')).toEqual([])
     expect(requests).toEqual(requested)
     // The data is the crawl's own, untouched.
@@ -1165,7 +1167,7 @@ describe('a page that allows its own nofollow', () => {
   it('does not need a nofollow to be there', async () => {
     await addRules([allowing()])
     const { id } = await crawl(shop())
-    expect(await findings(id, '/product')).toEqual([])
+    expect(await findings(id, '/product')).toEqual(['few-html-links'])
     expect(await stateOf(id, '/product')).toMatchObject({
       conditions: { nofollow: { requirement: 'allowed', observed: 'absent' } },
     })

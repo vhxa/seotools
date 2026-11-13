@@ -53,3 +53,12 @@ describe('thresholds', () => {
     )
   })
 })
+
+it('bounds the HTML link threshold and tracks it for comparisons', () => {
+  expect(DEFAULT_THRESHOLDS.htmlLinksMin).toBe(5)
+  expect(THRESHOLD_ISSUES['few-html-links']).toEqual(['htmlLinksMin'])
+  for (const value of [0, 100])
+    expect(parseThresholdOverrides({ htmlLinksMin: value })).toEqual({ htmlLinksMin: value })
+  for (const value of [-1, 101, 1.5])
+    expect(parseThresholdOverrides({ htmlLinksMin: value })).toEqual({})
+})
