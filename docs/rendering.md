@@ -221,8 +221,7 @@ at a time. All cgroup PID/memory limit-hit and OOM counters stayed at zero.
 An initial measurement pass used a temporary ceiling of 512 tasks / 2 GiB. The table is the
 repeat under the shipped 256-task / 1,536-MiB ceilings, exceeding its four-render task peak by
 92% and conservative summed-RSS peak by 78%. RSS and cgroup peaks occur at different instants;
-cgroup memory accounts shared
-pages once. Size a Pi using the row for its concurrency and at least 50% headroom, and measure
+cgroup memory accounts shared pages once. Size a Pi using the row for its concurrency and at least 50% headroom, and measure
 its real pages before reducing limits. Earlier original-spike hostile-page runs peaked at 340.4
 MiB RSS for one render and 440.5 MiB for two (without a simultaneous check); the polling/check
 measurements above are the more conservative sizing reference.
