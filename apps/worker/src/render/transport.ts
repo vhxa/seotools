@@ -1,4 +1,4 @@
-import { Resolver } from 'node:dns/promises'
+import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import http from 'node:http'
 import https from 'node:https'
@@ -7,14 +7,14 @@ import type { Browser, ConnectionTransport } from 'puppeteer-core'
 import { RENDER_LIMITS } from './limits'
 import { BrowserUnavailableError } from './types'
 
-/** One deadline, including cancellable c-ares DNS, discovery, WS and CDP initialization. */
+/** One deadline across system name resolution, discovery, WS and CDP initialization. */
 export async function connectBrowser(
   url: string,
   options: {
     timeoutMs?: number
-    createResolver?: () => Resolver
+    lookup?: (hostname: string) => Promise<{ address: string; family: number }>
   } = {},
-): Promise<{ browser: Browser; localAddress: string }> {
+): Promise<{ browser: Browser; localAddress: string; identity?: string }> {
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), options.timeoutMs ?? RENDER_LIMITS.connectionMs)
   const signal = abort.signal
@@ -25,22 +25,25 @@ export async function connectBrowser(
     const endpoint = new URL(url)
     const hostname = endpoint.hostname.replace(/^\[|\]$/g, '')
     if (!isIP(hostname)) {
-      const resolver = options.createResolver?.() ?? new Resolver()
-      const cancel = () => resolver.cancel()
-      signal.addEventListener('abort', cancel, { once: true })
-      try {
+      // lookup follows /etc/hosts and the system resolver (including Docker DNS).
+      // getaddrinfo cannot be cancelled: stop waiting at the shared deadline and ignore late answers.
+      const address = await new Promise<string>((resolve, reject) => {
+        const expired = () => reject(new Error('Browser lookup timed out'))
+        signal.addEventListener('abort', expired, { once: true })
         signal.throwIfAborted()
-        const addresses = await Promise.any([
-          resolver.resolve4(hostname),
-          resolver.resolve6(hostname),
-        ])
-        const address = addresses[0]
-        if (!address) throw new Error('No browser address')
-        endpoint.hostname = isIP(address) === 6 ? `[${address}]` : address
-      } finally {
-        signal.removeEventListener('abort', cancel)
-        resolver.cancel()
-      }
+        ;(options.lookup ?? lookup)(hostname).then(
+          (answer) => {
+            signal.removeEventListener('abort', expired)
+            if (!signal.aborted) resolve(answer.address)
+          },
+          (error: unknown) => {
+            signal.removeEventListener('abort', expired)
+            if (!signal.aborted) reject(error)
+          },
+        )
+      })
+      if (!isIP(address)) throw new Error('No browser address')
+      endpoint.hostname = isIP(address) === 6 ? `[${address}]` : address
     }
     endpoint.pathname = endpoint.pathname.replace(/\/?$/, '') + '/json/version'
     // Node HTTP avoids global fetch's connection pool and lets abort close discovery immediately.
@@ -115,7 +118,11 @@ export async function connectBrowser(
     const browser = await connect({ transport, protocolTimeout: RENDER_LIMITS.protocolMs })
     signal.throwIfAborted()
     if (!localAddress) throw new Error('Cannot determine canary address')
-    return { browser, localAddress }
+    // Chromium generates this GUID for the DevTools server and validates it on WS upgrade.
+    // A restart between discovery and upgrade therefore fails instead of leasing a replacement.
+    // Browser Target ids are unsuitable: Chromium can create a new browser target per connection.
+    const identity = /^\/devtools\/browser\/([0-9a-f-]{36})$/i.exec(new URL(wsUrl).pathname)?.[1]
+    return { browser, localAddress, ...(identity ? { identity } : {}) }
   } catch (error) {
     socket?.terminate()
     throw new BrowserUnavailableError(
