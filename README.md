@@ -15,7 +15,7 @@ Raspberry Pi to a VPS.
   blocks (auditing it is the point), with per-domain scope, depth, rate limits, request headers and
   Basic Auth for staging sites and lists of URLs. The Crawls area brings runs, comparison and
   rechecks together; schedules, in your time zone, live in Settings → Schedules.
-- **139 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
+- **161 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
   references, and page quality (titles, descriptions, headings, content, images, structured data
   against Google's rich result requirements, Open Graph and Twitter tags, accessibility, security
   and HTML), including entities shown as text and very few internal links in the served HTML. Findings explain why they matter and show the evidence. Each URL has a search-result
@@ -26,6 +26,11 @@ Raspberry Pi to a VPS.
   every condition and what an unstated one inherits; crawl comparisons say whether their rules
   match. Expected findings appear as accepted. Set conventional thresholds (title length, thin
   content…) per domain.
+- **HTML/render differences**: rendered crawls report text, metadata, directives and declarations
+  added or changed by JavaScript, render redirects, blocked resources, failures and script errors.
+  Client redirects preserve graph completeness and leave their abandoned content unknown; partial
+  renders keep differences unknown. Rendering keeps the crawler’s document encoding; declared
+  meta-refresh redirects stay with the existing refresh finding.
 - **Finding states and changes**: mark findings in progress or dismiss them for one URL or a whole
   domain, with a note and attribution. Dismissals stay separate from fixes and rule acceptances.
   Filter findings, spot template-wide problems, inspect current site files and crawl differences,

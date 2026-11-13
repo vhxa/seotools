@@ -9,14 +9,32 @@ its mode, wait limit (default 5000 ms, range 1000–30000) and omitted host suff
 Changing the mode makes link-dependent findings incomparable with earlier crawls in the other
 mode. Existing page checks continue to read the served HTML.
 
+The JavaScript findings compare the served and rendered word counts, title, description, first H1,
+canonical, meta robots directives, structured data, hreflang and social tags. They also report
+robots-blocked render resources, uncaught script errors and failed renders. The text check needs
+at least 50 added words and the configured share of rendered words (default 30%; 0 disables it).
+Only a settled, whole render of whole served HTML establishes a DOM difference. Failed, truncated
+or non-redirecting unsettled pages have no difference findings; a failed page can have `render-failed`.
+Comparisons with incomplete observations remain unverified. Earlier render rows without the extracted values
+stay unknown for the new checks, and HTML crawls leave every JavaScript finding unknown.
+
+A main-frame navigation to another URL identity stops the render and records `redirected: true`
+and its target. This is a complete observation of a redirect, even though `settled` remains false
+(network quiet was not observed). It raises `javascript-redirect` unless the served HTML declares a meta refresh (reported by
+`refresh-redirect` instead), contributes no rendered-only
+links, and leaves the abandoned DOM's other differences unknown in comparisons. The served HTML's
+links still count. Fragment-only changes are same-document updates, not redirects; a stopped
+reload or navigation changing only ignored parameters is not a redirect and stays failed/unknown. A rendered `noindex` finding
+does not change indexability in this release: indexability still reads the served HTML and headers.
+
 Rendered crawls render internal HTML pages answering exactly 200, using the already fetched
 document. Other 2xx pages keep their served results and an unknown render observation. Links
 found only after rendering are followed as ordinary crawl links. Failed pages can be rendered
 once more after the site drain, serially, while their served bodies fit an in-memory limit of
 200 pages and 64 MiB. Committed failures remain failed after a worker restart; done URLs are
 never rendered twice on resume. Per-URL render facts and diagnostics are pruned with the URL
-results; HTML is never stored. A page whose render failed, is missing, did not settle or was
-cut at the size limit (or whose served HTML was) makes link absence unknown for the whole crawl:
+results; HTML is never stored. A page whose render failed, is missing, neither settled nor
+redirected, or was cut at the size limit (or whose served HTML was) makes link absence unknown for the whole crawl:
 link-dependent findings are then not claimed, and comparisons treat them as unverified.
 
 An unavailable browser pauses the crawl for up to ten minutes total, polling every 30 seconds.
@@ -107,7 +125,9 @@ newer Chrome version.
 
 ## What the worker requests
 
-The caller supplies the already-fetched document. Only GET, HEAD, OPTIONS and POST are requested; POST is sent at most once. Only HTTP(S) documents (subframes), scripts,
+The caller supplies the already-fetched document. Its browser response keeps an existing header
+charset; otherwise the worker adds the charset used by the crawler (the first meta charset in
+2 KiB, or UTF-8). This prevents encoding differences from being attributed to JavaScript. Only GET, HEAD, OPTIONS and POST are requested; POST is sent at most once. Only HTTP(S) documents (subframes), scripts,
 stylesheets, fetch/XHR and CORS preflight requests are eligible. The worker uses the caller's crawl
 requester and guarded fetcher: pacing, safe-method retries, User-Agent, connect-time public-address validation,
 `CRAWLER_ALLOW_PRIVATE_NETWORKS`, and credentials only to the tracked host apply as usual. Site
@@ -146,7 +166,9 @@ installed before document scripts in every frame, including cross-site out-of-pr
 complement that contract; they cannot make a changing API answer deterministic.
 
 The default wait is five seconds (at most thirty). A loaded page with no worker request in flight
-for 500 ms is settled; reaching the wait limit gives a rendered, unsettled snapshot. Failure to
+for 500 ms is settled; reaching the wait limit gives a rendered, unsettled snapshot.
+A redirect scheduled after the page settles (for example, a later timer) is outside this
+observation, as with search engines that snapshot the page. Failure to
 load has an additional 25-second hard cap; crashes/disconnections are retried only once.
 Limits in `apps/worker/src/render/limits.ts` bound requests (300), resource bytes (5 MiB), page
 bytes (30 MiB), request bodies (1 MiB), serialized DOM (10 MiB), script errors (count and five

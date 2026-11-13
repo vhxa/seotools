@@ -22,6 +22,12 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- Rendered crawls report text, titles, descriptions, H1s, canonical URLs, meta robots directives,
+  structured data, hreflang and social tags added or changed by JavaScript, along with render
+  redirects, robots-blocked resources, failures and uncaught script errors. Only complete
+  observations establish differences; a stopped client redirect reports its target without
+  treating its abandoned content as observed or making links elsewhere unknown. The text share
+  threshold is configurable per domain.
 - Rendered crawls run JavaScript on each internal HTML page answering 200, follow links found only
   after rendering, and report pages linked only by JavaScript and pages whose internal links appear
   after rendering. Per-domain settings control the mode, wait limit and omitted hosts.
@@ -36,9 +42,9 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - Sitemap orphan findings describe the links observed in either HTML or rendered crawls. Rendered
   crawls pause when the browser is unavailable and fail after their recovery allowance, without
-  falling back to HTML. In a rendered crawl, a page that could not be rendered whole and settled
-  makes every link-dependent finding unknown for that crawl, so comparisons and alerts never report
-  it as new or fixed.
+  falling back to HTML. In a rendered crawl, a page that was neither rendered whole and settled nor
+  completely observed redirecting makes every link-dependent finding unknown for that crawl, so
+  comparisons and alerts never report it as new or fixed.
 - Pages load less translation text: the browser receives only the messages the interactive parts of each page use, not the whole catalog.
 - Earlier crawls are analysed again from their stored text and links for the two new checks. The
   few-internal-links check is unknown, never fixed or new, for a crawl in which a page's HTML was

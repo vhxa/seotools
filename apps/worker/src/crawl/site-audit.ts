@@ -21,7 +21,7 @@ import {
   type ParsedRobots,
   type ResolvedConditions,
 } from '@seotools/core'
-import type { Crawl, CrawlUrl, CrawlUrlView, Database } from '@seotools/db'
+import type { Crawl, CrawlUrl, CrawlUrlView, CrawlUrlRender, Database } from '@seotools/db'
 import { parseRobotsSitemaps } from './extract'
 import { findNearDuplicates } from './fingerprint'
 import { emptyPageFacts } from './page-facts'
@@ -100,6 +100,8 @@ export function unavailableAfter(directives: ReadonlySet<string>): Date | null {
 }
 
 export interface AuditedUrl {
+  /** The URL's render observation; never substituted for its served facts. */
+  render?: CrawlUrlRender
   vitals?: VitalMetrics
   url: CrawlUrl
   internal: boolean
@@ -461,6 +463,7 @@ export async function loadSite(
     }
   }
 
+  const renders = new Map((await db.crawls.renders(crawl.id)).map((row) => [row.urlHash, row]))
   const internal = urls.filter((url) => url.internal)
   // Links of the `sitemap` type from a sitemap parsed before the crawl told a listing from a mention,
   // by the URL they point at, and the URLs a sitemap declared as an alternate: only the ones in both
@@ -481,7 +484,9 @@ export async function loadSite(
       // for render details and future checks, never as input to existing HTML checks.
       if (
         rendered &&
-        (crawl.rendering?.mode !== 'rendered' || (kind !== 'anchor' && kind !== 'anchor-nofollow'))
+        (crawl.rendering?.mode !== 'rendered' ||
+          renders.get(sourceHash)?.data.redirected === true ||
+          (kind !== 'anchor' && kind !== 'anchor-nofollow'))
       )
         continue
       if (sourceHash === targetHash) continue
@@ -540,17 +545,18 @@ export async function loadSite(
     else target.sitemaps += count
   }
   measureClickDepth(internal, byHash, identity)
-  const renders = new Map((await db.crawls.renders(crawl.id)).map((row) => [row.urlHash, row]))
   let rendersUnobserved = 0
   const renderCoverage = { failedOrMissing: 0, truncated: 0, unsettled: 0 }
   if (crawl.rendering?.mode === 'rendered') {
     for (const url of internal) {
       if (!url.contentPage) continue
       const render = renders.get(url.url.urlHash)
+      url.render = render
       // A missing truncation flag in an older render is missing evidence, never proof of a whole page.
       const failedOrMissing = render?.status !== 'rendered' || render.truncated === null
       const truncated = url.url.data?.truncated === true || render?.truncated === true
-      const unsettled = render?.status === 'rendered' && !render.settled
+      const unsettled =
+        render?.status === 'rendered' && !render.settled && render.data.redirected !== true
       if (failedOrMissing) renderCoverage.failedOrMissing++
       if (truncated) renderCoverage.truncated++
       if (unsettled) renderCoverage.unsettled++

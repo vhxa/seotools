@@ -6,6 +6,7 @@ import type { RenderResourceCache } from './cache'
 export interface RenderInput {
   url: string
   host: string
+  ignoredParameters?: readonly string[]
   document: FetchedResponse
   userAgent: string
   requester: Requester
@@ -19,6 +20,8 @@ export interface RenderOutcome {
   status: 'rendered' | 'failed'
   failure?: { code: 'load-timeout' | 'crashed' | 'serialization' | 'navigation'; message: string }
   settled: boolean
+  /** A main-frame navigation to a different crawl identity ended this observation. */
+  redirected: boolean
   finalUrl: string
   html: string
   truncated: boolean

@@ -22,6 +22,7 @@ import {
   type PageIssueId,
 } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
+import { renderDifferenceChecks } from './render-differences'
 import { graphAbsenceKnown } from './observed-inputs'
 import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
@@ -59,7 +60,7 @@ interface Found {
  * object does, and is what backs it up.
  */
 type Verdict = boolean | string[] | Found
-type Check = (url: AuditedUrl, site: Site) => Verdict
+export type Check = (url: AuditedUrl, site: Site) => Verdict
 
 /** The figures of the configuration being applied (`AUDIT_THRESHOLDS`), resolved once per config. */
 const resolved = new WeakMap<object, AuditThresholds>()
@@ -371,6 +372,7 @@ const SEARCH_PARAMETERS = new Set(['s', 'q', 'query', 'search', 'keyword', 'keyw
 
 /** What each issue of `PAGE_ISSUES` looks for. Each check says itself which URLs it applies to. */
 export const CHECKS: Record<PageIssueId, Check> = {
+  ...renderDifferenceChecks(figures),
   'lcp-poor': (url) => (url.vitals?.lcp ?? 0) > 4000,
   'inp-poor': (url) => (url.vitals?.inp ?? 0) > 500,
   'cls-poor': (url) => (url.vitals?.cls ?? 0) > 0.25,

@@ -1,3 +1,4 @@
+import { RENDER_DIFFERENCE_IDS, unobservedCanonicalDifferences } from './render-differences'
 import {
   EMPTY_AUDIT_SNAPSHOT,
   ISSUE_CATALOG_VERSION,
@@ -165,10 +166,42 @@ export async function analyseCrawl(
   if (site.urls.some((url) => url.internal && url.contentPage && url.url.data?.truncated === true))
     unobserved.push(...TRUNCATION_SKIPPING_ISSUES)
   if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {
-    unobserved.push(...PAGE_ISSUES_IDS_FOR_RENDERING)
+    unobserved.push(
+      ...PAGE_ISSUES_IDS_FOR_RENDERING.filter(
+        (id) => crawl.rendering?.mode !== 'rendered' || id !== 'render-failed',
+      ),
+    )
   }
   if (crawl.rendering?.mode === 'rendered' && site.rendersUnobserved > 0)
     unobserved.push(...RENDERED_GRAPH_ISSUES)
+  if (crawl.rendering?.mode === 'rendered') {
+    // Legacy rows lack extracted values; redirected rows deliberately abandon them.
+    // Neither can establish DOM differences, but navigation needs only the final URL.
+    if (
+      site.urls.some(
+        (url) =>
+          url.internal &&
+          url.contentPage &&
+          (!url.render?.data.page || !url.render.data.facts || url.render.data.redirected === true),
+      )
+    ) {
+      unobserved.push(
+        ...RENDER_DIFFERENCE_IDS.filter(
+          (issue) => issue !== 'render-failed' && issue !== 'javascript-redirect',
+        ),
+      )
+    } else if (
+      site.urls.some(
+        (url) =>
+          url.internal &&
+          url.contentPage &&
+          (!url.facts?.social || !url.render?.data.facts?.social),
+      )
+    ) {
+      unobserved.push('social-tags-only-after-rendering')
+    }
+  }
+  for (const url of site.urls) unobserved.push(...unobservedCanonicalDifferences(url, site))
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,

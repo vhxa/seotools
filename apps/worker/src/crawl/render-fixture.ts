@@ -5,6 +5,7 @@ export function renderedOutcome(input: RenderInput, extra = ''): RenderOutcome {
   return {
     status: 'rendered',
     settled: true,
+    redirected: false,
     finalUrl: input.url,
     html: (input.document.body?.toString() ?? '') + extra,
     truncated: false,

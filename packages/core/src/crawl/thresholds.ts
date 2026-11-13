@@ -7,6 +7,8 @@ import { z } from '../zod'
  * afterwards, so they are not configurable. Pure, so client components can import it.
  */
 export const AUDIT_THRESHOLDS = {
+  /** Share of rendered words added over HTML, with at least 50 added words; zero disables it. */
+  renderedTextSharePct: { default: 30, min: 0, max: 100 },
   /** Characters of a title under which it is too short. */
   titleMin: { default: 30, min: 1, max: 200 },
   /** Characters of a title over which it is too long. */
@@ -39,6 +41,7 @@ export const THRESHOLD_ISSUES: Readonly<Record<string, readonly ThresholdKey[]>>
   'description-too-short': ['descriptionMin'],
   'description-too-long': ['descriptionMax'],
   'few-html-links': ['htmlLinksMin'],
+  'text-only-after-rendering': ['renderedTextSharePct'],
   'content-thin': ['thinWords'],
   'url-too-long': ['urlMax'],
   'deep-page': ['clickDepthMax'],

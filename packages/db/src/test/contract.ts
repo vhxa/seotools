@@ -135,7 +135,20 @@ export function describeDatabaseContract(
         finalUrl: url,
         durationMs: 1,
         failure: null,
-        data: { facts: null, requests: {}, scriptErrors: { count: 0, first: [] } },
+        data: {
+          facts: null,
+          redirected: true,
+          requests: {},
+          scriptErrors: { count: 0, first: [] },
+          page: {
+            title: 'Rendered title',
+            description: 'Rendered description',
+            h1: 'Rendered heading',
+            metaRobots: 'noindex',
+            botRobots: {},
+            hreflang: [],
+          },
+        },
       }
       await expect(
         db.crawls.recordResult({

@@ -298,6 +298,7 @@ export async function runCrawl(
       options.renderService!.render({
         url: item.url,
         host,
+        ignoredParameters: crawl!.ignoredParameters,
         document: response,
         userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
         requester,
@@ -313,8 +314,9 @@ export async function runCrawl(
     if (outcome.failure?.code === 'crashed' && (await recovery.start()))
       return renderUrl(item, response, served)
     let facts: CrawlPageFacts | null = null
+    let page: CrawlUrlRender['data']['page']
     let found: Discovered = { urls: [], links: [] }
-    if (outcome.status === 'rendered') {
+    if (outcome.status === 'rendered' && !outcome.redirected) {
       const analysed = analyse(
         item,
         {
@@ -328,6 +330,15 @@ export async function runCrawl(
       // analyseResponse supplies the same bounded facts as for the served document. Discard links
       // already present in HTML, including their first-occurrence context.
       facts = analysed.result.data?.facts ?? null
+      const result = analysed.result
+      page = {
+        title: result.title,
+        description: result.data?.description ?? null,
+        h1: result.data?.h1?.[0] ?? null,
+        metaRobots: result.metaRobots,
+        botRobots: result.data?.botRobots ?? {},
+        hreflang: result.data?.hreflang ?? [],
+      }
       found = {
         urls: analysed.found.urls,
         links: analysed.found.links.filter(
@@ -335,7 +346,9 @@ export async function runCrawl(
         ),
       }
     }
-    return { render: renderObservation(item.urlHash, outcome, facts), found }
+    const render = renderObservation(item.urlHash, outcome, facts)
+    if (page) render.data.page = page
+    return { render, found }
   }
 
   const observedFiles: NewCrawlFile[] = []

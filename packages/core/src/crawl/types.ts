@@ -317,7 +317,10 @@ export type IssueEvidence =
   | {
       kind: 'values'
       total: number
-      items: { field: 'title' | 'description' | 'h1' | 'internal-links'; text: string }[]
+      items: {
+        field: 'title' | 'description' | 'h1' | 'internal-links' | 'html' | 'rendered'
+        text: string
+      }[]
     }
   | { kind: 'images'; total: number; items: ImageEvidence[] }
   | { kind: 'links'; total: number; items: LinkEvidence[] }

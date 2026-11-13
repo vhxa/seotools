@@ -1,3 +1,4 @@
+import { RENDER_DIFFERENCE_IDS } from './render-differences'
 import {
   AUDIT_SEMANTICS,
   EMPTY_AUDIT_SNAPSHOT,
@@ -709,12 +710,13 @@ describe('the configuration across crawls', () => {
       semantics: AUDIT_SEMANTICS,
       languages: NO_LANGUAGES,
       unobserved: [
+        ...RENDER_DIFFERENCE_IDS,
         'cls-poor',
         'inp-poor',
         'lcp-poor',
         'linked-only-by-javascript',
         'links-only-after-rendering',
-      ],
+      ].sort(),
       rules: [],
     })
   })
