@@ -45,13 +45,16 @@ export function createRequester(options: {
     const signal = fetchOptions.signal
       ? AbortSignal.any([stopSignal, fetchOptions.signal])
       : stopSignal
+    const maxRetries = ['GET', 'HEAD', 'OPTIONS'].includes(fetchOptions.method ?? 'GET')
+      ? settings.maxRetries
+      : 0
     for (let attempt = 0; ; attempt++) {
       await waitForSlot(signal)
       if (signal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
       const backoff = retryBaseMs * 2 ** attempt
       try {
         const response = await fetcher.fetch(url, { ...fetchOptions, signal })
-        if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= settings.maxRetries) {
+        if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) {
           return response
         }
         // The server asked to slow down: every request of the domain waits, not just this one.
@@ -60,7 +63,7 @@ export function createRequester(options: {
         log.info({ url, status: response.statusCode, wait }, 'server asked to slow down')
       } catch (error) {
         if (!(error instanceof FetchError)) throw error
-        if (PERMANENT_ERRORS.has(error.code) || attempt >= settings.maxRetries) return error
+        if (PERMANENT_ERRORS.has(error.code) || attempt >= maxRetries) return error
         await abortableSleep(backoff, signal)
       }
     }

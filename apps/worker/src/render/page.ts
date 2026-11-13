@@ -135,6 +135,10 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
         omit(url, 'redirect')
         return abort()
       }
+      if (!['GET', 'HEAD', 'OPTIONS', 'POST'].includes(request.method())) {
+        omit(url, 'method')
+        return abort()
+      }
       const resourceType =
         request.method() === 'OPTIONS' && request.headers()['access-control-request-method']
           ? 'preflight'

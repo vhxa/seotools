@@ -152,6 +152,22 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(cors.requests.made).toBe(2)
     expect((await render('redirectScript')).html).toContain('<main>redirected script</main>')
   })
+  it('omits methods other than GET, HEAD, OPTIONS and POST', async () => {
+    const result = await render('head', {
+      document: {
+        statusCode: 200,
+        headers: { 'content-type': 'text/html' },
+        body: Buffer.from(
+          `<script>for(const method of ['PUT','PATCH','DELETE'])fetch('/binary',{method}).catch(()=>{})</script>`,
+        ),
+        bytes: 0,
+        truncated: false,
+        responseTimeMs: 0,
+      },
+    })
+    expect(result.requests.made).toBe(0)
+    expect(result.requests.omitted.filter((item) => item.reason === 'method')).toHaveLength(3)
+  })
   it('forwards binary POST bodies without UTF-8 replacement', async () => {
     const body = `<main></main><script>fetch('/binary',{method:'POST',body:new Uint8Array([0,128,255,65])}).then(r=>r.text()).then(text=>document.querySelector('main').textContent=text)</script>`
     const result = await render('head', {

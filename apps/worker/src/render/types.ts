@@ -31,7 +31,10 @@ export interface RenderOutcome {
     blockedByRobotsCount: number
     refusedCount: number
     failed: { url: string; code: string }[]
-    omitted: { url: string; reason: RenderOmitReason | 'scheme' | 'limit' | 'redirect' }[]
+    omitted: {
+      url: string
+      reason: RenderOmitReason | 'scheme' | 'limit' | 'redirect' | 'method'
+    }[]
     blockedByRobots: string[]
     refused: string[]
   }
