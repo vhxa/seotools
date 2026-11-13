@@ -121,7 +121,7 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
         return abort()
       }
       if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-        if (!supplied && url === input.url) {
+        if (!supplied) {
           supplied = true
           return request.respond({
             status: input.document.statusCode,

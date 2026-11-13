@@ -173,6 +173,16 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       '<template shadowrootmode="open"><a href="/shadow">',
     )
   })
+  it.each(['http://site.test', 'http://site.test/space here', 'http://síté.test/#fragment'])(
+    'supplies the first document when Chrome normalizes %s',
+    async (url) => {
+      const result = await render('head', { url })
+      expect(result.status).toBe('rendered')
+      expect(result.html).toContain('<title>JS title</title>')
+      expect(result.requests.omitted.some((item) => item.reason === 'redirect')).toBe(false)
+      expect(result.finalUrl).toBe(url)
+    },
+  )
   it('stops at a client redirect without fetching its target', async () => {
     const result = await render('redirect')
     expect(result.status).toBe('rendered')
