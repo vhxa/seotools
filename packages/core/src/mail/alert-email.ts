@@ -24,6 +24,7 @@ export const ALERT_EMAIL_COPY = {
     problemTitle: 'Crawl problem',
     problemFailed: 'The crawl failed and has no results.',
     problemReason: 'Reason: {error}',
+    browserUnavailable: 'The rendering browser was unavailable for the crawl’s recovery limit.',
     problemIncomplete:
       'The crawl stopped at its limit of URLs before it reached the whole site. Pages: {pages}. URLs found: {urls}.',
     problemHint: 'Raise the limit in the crawl settings, or narrow what is crawled.',
@@ -77,6 +78,8 @@ export const ALERT_EMAIL_COPY = {
     problemTitle: 'Problema de rastreo',
     problemFailed: 'El rastreo ha fallado y no tiene resultados.',
     problemReason: 'Motivo: {error}',
+    browserUnavailable:
+      'El navegador de renderizado no estuvo disponible durante el plazo de recuperación del rastreo.',
     problemIncomplete:
       'El rastreo se detuvo en su límite de URLs antes de llegar a todo el sitio. Páginas: {pages}. URLs encontradas: {urls}.',
     problemHint: 'Sube el límite en los ajustes de rastreo, o acota lo que se rastrea.',
@@ -233,7 +236,14 @@ export function alertEmail(input: AlertEmailInput): { subject: string; text: str
     if (input.crawl.status === 'failed') {
       lines.push(copy.problemFailed)
       if (input.crawl.error) {
-        lines.push(fill(copy.problemReason, { error: alertLine(input.crawl.error) }))
+        lines.push(
+          fill(copy.problemReason, {
+            error:
+              input.crawl.error === 'browser-unavailable'
+                ? copy.browserUnavailable
+                : alertLine(input.crawl.error),
+          }),
+        )
       }
       lines.push(fill(copy.open, { link: input.links.history }))
     } else {
