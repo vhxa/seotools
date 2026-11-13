@@ -44,6 +44,7 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    shm_size: 256m
     mem_limit: 512m
     pids_limit: 128
     networks: [render]
