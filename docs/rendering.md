@@ -13,9 +13,9 @@ The JavaScript findings compare the served and rendered word counts, title, desc
 canonical, meta robots directives, structured data, hreflang and social tags. They also report
 robots-blocked render resources, uncaught script errors and failed renders. The text check needs
 at least 50 added words and the configured share of rendered words (default 30%; 0 disables it).
-Only a settled, whole render of whole served HTML establishes a difference. Failed, truncated or
-unsettled pages have no difference findings; a failed page can have `render-failed`. Comparisons
-with incomplete observations remain unverified. Earlier render rows without the extracted values
+Only a settled, whole render of whole served HTML establishes a DOM difference. Failed, truncated
+or non-redirecting unsettled pages have no difference findings; a failed page can have `render-failed`.
+Comparisons with incomplete observations remain unverified. Earlier render rows without the extracted values
 stay unknown for the new checks, and HTML crawls leave every JavaScript finding unknown.
 
 A main-frame navigation to another URL identity stops the render and records `redirected: true`
