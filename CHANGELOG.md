@@ -20,6 +20,10 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Changed
+
+- Pages load less translation text: the browser receives only the messages the interactive parts of each page use, not the whole catalog.
+
 ## [0.5.0] - 2026-11-12
 
 ### Added
