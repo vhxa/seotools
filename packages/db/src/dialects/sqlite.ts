@@ -173,6 +173,7 @@ import { assertKnownMigrations } from '../migration-guard'
 import * as schema from '../schema/sqlite'
 import type {
   CrawlLink,
+  CrawlUrlRender,
   CrawlUrlAudit,
   CrawlUrlBrief,
   CrawlUrlAcceptedIssue,
@@ -209,6 +210,7 @@ const {
   crawlSettings,
   crawlVitals,
   crawlUrlVitals,
+  crawlUrlRenders,
   crawlSchedules,
   crawls,
   crawlUrls,
@@ -1577,7 +1579,7 @@ export function createSqliteDatabase(options: {
       async get(id) {
         return db.select().from(companies).where(eq(companies.id, id)).get() ?? null
       },
-      async create({ name, host }) {
+      async create({ name, host, crawlSettings: initialSettings }) {
         const now = new Date()
         const company = { id: randomUUID(), name, createdAt: now }
         const domain = {
@@ -1590,6 +1592,12 @@ export function createSqliteDatabase(options: {
         db.transaction((tx) => {
           tx.insert(companies).values(company).run()
           tx.insert(domains).values(domain).run()
+          tx.insert(crawlSettings)
+            .values({
+              domainId: domain.id,
+              ...crawlSettingsColumns(initialSettings ?? DEFAULT_CRAWL_SETTINGS),
+            })
+            .run()
         })
         return { company, domain }
       },
@@ -1627,7 +1635,7 @@ export function createSqliteDatabase(options: {
           .get()
         return row ? { ...row.domain, company: row.company } : null
       },
-      async add({ companyId, host }) {
+      async add({ companyId, host, crawlSettings: initialSettings }) {
         const domain = {
           id: randomUUID(),
           companyId,
@@ -1635,7 +1643,15 @@ export function createSqliteDatabase(options: {
           createdAt: new Date(),
           archivedAt: null,
         }
-        db.insert(domains).values(domain).run()
+        db.transaction((tx) => {
+          tx.insert(domains).values(domain).run()
+          tx.insert(crawlSettings)
+            .values({
+              domainId: domain.id,
+              ...crawlSettingsColumns(initialSettings ?? DEFAULT_CRAWL_SETTINGS),
+            })
+            .run()
+        })
         return domain
       },
       async archive(id) {
@@ -1809,7 +1825,7 @@ export function createSqliteDatabase(options: {
           db.transaction((tx) => {
             assertNotArchived(tx, domainId)
             const snapshot = tx
-              .select({ ignoredParameters: crawlSettings.ignoredParameters })
+              .select()
               .from(crawlSettings)
               .where(eq(crawlSettings.domainId, domainId))
               .get()
@@ -1830,6 +1846,13 @@ export function createSqliteDatabase(options: {
                 trigger,
                 seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
                 ignoredParameters: snapshot?.ignoredParameters ?? null,
+                rendering: JSON.stringify({
+                  mode: snapshot?.renderingMode === 'headless' ? 'rendered' : 'html',
+                  waitMs: snapshot?.renderWaitMs ?? 5000,
+                  omittedHosts: snapshot?.renderOmittedHosts
+                    ? JSON.parse(snapshot.renderOmittedHosts)
+                    : [],
+                }),
                 jobId,
                 activeKey: domainId,
                 ref: last + 1,
@@ -2110,6 +2133,7 @@ export function createSqliteDatabase(options: {
               .run()
             tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId)).run()
             tx.delete(crawlSitemapHreflang).where(eq(crawlSitemapHreflang.crawlId, crawlId)).run()
+            tx.delete(crawlUrlRenders).where(eq(crawlUrlRenders.crawlId, crawlId)).run()
             tx.delete(crawlUrlVitals).where(eq(crawlUrlVitals.crawlId, crawlId)).run()
             tx.delete(crawlUrls).where(eq(crawlUrls.crawlId, crawlId)).run()
             tx.update(crawls)
@@ -2185,7 +2209,22 @@ export function createSqliteDatabase(options: {
           .all()
       },
 
-      async recordResult({ crawlId, urlHash, result, urls = [], links = [] }) {
+      async renders(crawlId) {
+        const rows = db
+          .select()
+          .from(crawlUrlRenders)
+          .where(eq(crawlUrlRenders.crawlId, crawlId))
+          .all()
+        return rows.map((row) => ({
+          ...row,
+          data: JSON.parse(row.data) as CrawlUrlRender['data'],
+        }))
+      },
+      async saveBrowserWait(crawlId, milliseconds) {
+        db.update(crawls).set({ browserWaitMs: milliseconds }).where(eq(crawls.id, crawlId)).run()
+      },
+
+      async recordResult({ crawlId, urlHash, result, render, urls = [], links = [] }) {
         const columns = crawlResultColumns(result, new Date())
         db.transaction((tx) => {
           for (const batch of chunk(urls)) {
@@ -2215,6 +2254,16 @@ export function createSqliteDatabase(options: {
             for (const batch of chunk(rows)) {
               tx.insert(crawlUrlLinks).values(batch).onConflictDoNothing().run()
             }
+          }
+          if (render) {
+            const values = { crawlId, ...render, data: JSON.stringify(render.data) }
+            tx.insert(crawlUrlRenders)
+              .values(values)
+              .onConflictDoUpdate({
+                target: [crawlUrlRenders.crawlId, crawlUrlRenders.urlHash],
+                set: values,
+              })
+              .run()
           }
           tx.update(crawlUrls)
             .set(columns)
@@ -2628,6 +2677,7 @@ export function createSqliteDatabase(options: {
               sourceHash: sources.urlHash,
               targetHash: targets.urlHash,
               kind: crawlUrlLinks.kind,
+              rendered: crawlUrlLinks.rendered,
             })
             .from(crawlUrlLinks)
             .innerJoin(
@@ -2640,7 +2690,8 @@ export function createSqliteDatabase(options: {
             )
             .where(and(eq(crawlUrlLinks.crawlRef, ref), inArray(sources.urlHash, batch)))
             .all()
-          for (const row of rows as CrawlLink[]) found.push(row)
+          for (const { rendered, ...row } of rows as CrawlLink[])
+            found.push({ ...row, ...(rendered ? { rendered } : {}) })
         }
         return found
       },

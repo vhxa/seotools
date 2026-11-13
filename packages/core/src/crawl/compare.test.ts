@@ -929,3 +929,37 @@ it('never calls a dismissal fixed or an undismissal new, including compact trace
     reasons: ['dismissed'],
   })
 })
+
+describe('HTML and rendered observation scopes', () => {
+  it('keeps HTML keys unchanged and does not put render failures in configuration scope', () => {
+    const html = auditSnapshotOf(2, [])
+    const rendered = { ...html, rendering: 'rendered' as const }
+    expect(auditScopeKey(rendered)).not.toBe(auditScopeKey(html))
+    expect(auditScopeKey({ ...rendered, rendersUnobserved: 1 })).toBe(auditScopeKey(rendered))
+  })
+  it('never resolves or raises a site-dependent finding just because the crawl mode changed', () => {
+    const html = crawlFactsOf(crawl())
+    const rendered = crawlFactsOf(
+      crawl({
+        auditSnapshot: { ...auditSnapshotOf(2, []), rendering: 'rendered' },
+      }),
+    )
+    for (const issue of PAGE_ISSUE_IDS) {
+      const disappeared = classifyFinding(issue, {
+        base: seen([issue], {}, html),
+        target: seen([], {}, rendered),
+      })
+      const appeared = classifyFinding(issue, {
+        base: seen([], {}, html),
+        target: seen([issue], {}, rendered),
+      })
+      if (isPageLocalIssue(issue)) {
+        expect(disappeared?.kind, issue).toBe('resolved')
+        expect(appeared?.kind, issue).toBe('new')
+      } else {
+        expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+        expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+      }
+    }
+  })
+})

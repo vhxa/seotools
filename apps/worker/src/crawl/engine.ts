@@ -1,3 +1,11 @@
+import { createRenderResourceCache } from '../render/cache'
+import type { RenderService } from '../render/service'
+import {
+  BrowserWaitExpiredError,
+  createBrowserRecovery,
+  renderObservation,
+  renderRobots,
+} from './rendering'
 import { CRAWL_FILE_RETRY_INTERVAL_MS } from './file-refresher'
 import type { NewCrawlFile } from '@seotools/db'
 import { siteHeaders } from './credentials'
@@ -13,13 +21,21 @@ import {
   normalizeCrawlUrl,
   stripIgnoredParameters,
   type CrawlLinkKind,
+  type CrawlPageFacts,
   type LinkContext,
   type CrawlRobotsFiles,
   type CrawlSettings,
   type CrawlUrlSource,
   type Logger,
 } from '@seotools/core'
-import type { Crawl, CrawlLink, CrawlUrlResult, Database, NewCrawlUrl } from '@seotools/db'
+import type {
+  Crawl,
+  CrawlLink,
+  CrawlUrlResult,
+  CrawlUrlRender,
+  Database,
+  NewCrawlUrl,
+} from '@seotools/db'
 import { JobInterruptedError } from '../types'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import type { ParsedSitemap } from './extract'
@@ -49,6 +65,9 @@ const PROGRESS_INTERVAL_MS = 2000
 const EXTERNAL_BODY_BYTES = 1
 
 export interface CrawlEngineOptions {
+  renderService?: Pick<RenderService, 'check' | 'render'>
+  browserMaxWaitMs?: number
+  browserPollMs?: number
   settingsSecret?: string
   db: Database
   log: Logger
@@ -208,13 +227,15 @@ export async function runCrawl(
     await db.crawls.addUrls(crawlId, urls)
   }
 
-  const { waitForSlot, fetchWithRetries: request } = createRequester({
+  const requester = createRequester({
     fetcher,
     settings,
     signal: stopSignal,
     retryBaseMs,
     log,
   })
+
+  const { waitForSlot, fetchWithRetries: request } = requester
 
   function fetchWithRetries(item: NewCrawlUrl) {
     const fileKind = crawlFileKindOf(item.source)
@@ -224,24 +245,103 @@ export async function runCrawl(
   function analyse(
     item: NewCrawlUrl,
     response: FetchedResponse,
+    renderedHtml?: string,
+    servedLinks?: ReadonlySet<string>,
   ): { result: CrawlUrlResult; found: Discovered; sitemap?: ParsedSitemap | null } {
     const found: Discovered = { urls: [], links: [] }
     const depth = item.depth + 1
     const { result, sitemap } = analyseResponse({
       item,
       response,
+      renderedHtml,
       optionalFiles: settings.optionalFiles,
       extractors: settings.extractors,
       log,
-      discover: (url, kind, source = 'link', context) =>
-        discover(found, item, url, kind, source, depth, context),
+      discover: (url, kind, source = 'link', context) => {
+        if (servedLinks?.has(`${crawlUrlHash(identity(url))} ${kind}`)) return
+        const before = found.links.length
+        discover(found, item, url, kind, source, depth, context)
+        if (servedLinks) for (const link of found.links.slice(before)) link.rendered = 1
+      },
     })
     return { result, found, sitemap }
+  }
+
+  const rendered = crawl.rendering?.mode === 'rendered'
+  const cache = createRenderResourceCache()
+  const recovery = createBrowserRecovery({
+    crawl,
+    db,
+    service: options.renderService,
+    signal: stopSignal,
+    heartbeat,
+    maxWaitMs: options.browserMaxWaitMs,
+    pollMs: options.browserPollMs,
+  })
+  const retryRenders: {
+    item: NewCrawlUrl
+    response: FetchedResponse
+    result: CrawlUrlResult
+    links: Set<string>
+  }[] = []
+  let retryBytes = 0
+  let retryPages = 0
+  const linksOf = (found: Discovered) =>
+    new Set(found.links.map((link) => `${link.targetHash} ${link.kind}`))
+
+  async function renderUrl(
+    item: NewCrawlUrl,
+    response: FetchedResponse,
+    served: Set<string>,
+  ): Promise<{ render: CrawlUrlRender; found: Discovered }> {
+    const outcome = await recovery.run(() =>
+      options.renderService!.render({
+        url: item.url,
+        host,
+        document: response,
+        userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
+        requester,
+        cache,
+        allowedByRobots: renderRobots({ robots }),
+        waitMs: crawl!.rendering!.waitMs,
+        extraOmittedHosts: crawl!.rendering!.omittedHosts,
+        signal: stopSignal,
+      }),
+    )
+    // Two page crashes can also mean a disconnected browser. Confirm readiness before a failed
+    // observation can commit; if the browser had to recover, retry the current document instead.
+    if (outcome.failure?.code === 'crashed' && (await recovery.start()))
+      return renderUrl(item, response, served)
+    let facts: CrawlPageFacts | null = null
+    let found: Discovered = { urls: [], links: [] }
+    if (outcome.status === 'rendered') {
+      const analysed = analyse(
+        item,
+        {
+          ...response,
+          body: Buffer.from(outcome.html),
+          truncated: response.truncated || outcome.truncated,
+        },
+        outcome.html,
+        served,
+      )
+      // analyseResponse supplies the same bounded facts as for the served document. Discard links
+      // already present in HTML, including their first-occurrence context.
+      facts = analysed.result.data?.facts ?? null
+      found = {
+        urls: analysed.found.urls,
+        links: analysed.found.links.filter(
+          (link) => !served.has(`${link.targetHash} ${link.kind}`),
+        ),
+      }
+    }
+    return { render: renderObservation(item.urlHash, outcome, facts), found }
   }
 
   const observedFiles: NewCrawlFile[] = []
   let filesCapped = false
   async function processUrl(item: NewCrawlUrl) {
+    if (rendered) await recovery.ready()
     const outcome = await fetchWithRetries(item)
     let result: CrawlUrlResult
     let found: Discovered = { urls: [], links: [] }
@@ -292,7 +392,32 @@ export async function runCrawl(
         })),
       )
     }
-    await db.crawls.recordResult({ crawlId, urlHash: item.urlHash, result, ...found })
+    let render: CrawlUrlRender | undefined
+    if (
+      rendered &&
+      result.kind === 'page' &&
+      result.statusCode === 200 &&
+      !fileKind &&
+      !(outcome instanceof FetchError)
+    ) {
+      const served = linksOf(found)
+      const observation = await renderUrl(item, outcome, served)
+      render = observation.render
+      found.urls.push(...observation.found.urls)
+      found.links.push(...observation.found.links)
+      if (
+        render.status === 'failed' &&
+        retryPages < 200 &&
+        retryBytes + (outcome.body?.length ?? 0) <= 64 * 1024 * 1024
+      ) {
+        retryRenders.push({ item, response: outcome, result, links: served })
+        retryPages++
+        retryBytes += outcome.body?.length ?? 0
+      }
+    }
+    if (rendered) await recovery.ready()
+    stopSignal.throwIfAborted()
+    await db.crawls.recordResult({ crawlId, urlHash: item.urlHash, result, render, ...found })
     doneCount++
     // What counts as a page: HTML that answered 2xx (a page that fails is an error).
     const ok = result.statusCode !== null && result.statusCode >= 200 && result.statusCode < 300
@@ -392,6 +517,7 @@ export async function runCrawl(
     const queue: NewCrawlUrl[] = []
     while (!stopSignal.aborted) {
       await heartbeat()
+      if (rendered) await recovery.ready()
       if (queue.length === 0) {
         const batch = await next(QUEUE_BATCH)
         queue.push(...batch.filter((item) => !inFlight.has(item.urlHash)))
@@ -418,8 +544,25 @@ export async function runCrawl(
   }
 
   try {
+    if (rendered) await recovery.start()
     await seed()
     await drain((limit) => db.crawls.nextQueued(crawlId, limit), processUrl)
+    while (retryRenders.length > 0 && !stopSignal.aborted) {
+      const retry = retryRenders.shift()!
+      const observation = await renderUrl(retry.item, retry.response, retry.links)
+      if (observation.render.status === 'rendered') {
+        await recovery.ready()
+        stopSignal.throwIfAborted()
+        await db.crawls.recordResult({
+          crawlId,
+          urlHash: retry.item.urlHash,
+          result: retry.result,
+          render: observation.render,
+          ...observation.found,
+        })
+      }
+      await drain((limit) => db.crawls.nextQueued(crawlId, limit), processUrl)
+    }
     // Last, with the site done: while it runs, the crawl is still active and can be cancelled.
     if (followLinks) {
       await drain((limit) => db.crawls.pendingExternalLinks(crawlId, limit), checkExternalLink)
@@ -442,6 +585,9 @@ export async function runCrawl(
       )
       filesCapped = fresh.capped
     }
+  } catch (error) {
+    if (error instanceof BrowserWaitExpiredError) fatal = error
+    else if (!stopSignal.aborted) throw error
   } finally {
     fetcher.close()
   }
@@ -451,6 +597,17 @@ export async function runCrawl(
     if (!(await db.crawls.get(crawlId))) {
       log.info('the crawl was removed while it ran')
       return null
+    }
+    if (fatal instanceof BrowserWaitExpiredError) {
+      await saveProgress()
+      await db.crawls.finish(crawlId, { status: 'failed', error: 'browser-unavailable' })
+      return {
+        crawlId,
+        status: 'failed',
+        pages: pagesCount,
+        urls: internalCount,
+        external: externalCount,
+      }
     }
     throw fatal
   }

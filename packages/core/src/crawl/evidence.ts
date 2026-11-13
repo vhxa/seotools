@@ -31,6 +31,8 @@ export type IssueEvidenceKind = IssueEvidence['kind']
  * makes up examples. Issues not listed have none.
  */
 export const ISSUE_EVIDENCE = {
+  'linked-only-by-javascript': 'related-urls',
+  'links-only-after-rendering': 'related-urls',
   'html-entities-as-text': 'values',
   'few-html-links': 'values',
   'img-no-alt': 'images',

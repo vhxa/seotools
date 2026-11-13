@@ -708,7 +708,13 @@ describe('the configuration across crawls', () => {
       version: 0,
       semantics: AUDIT_SEMANTICS,
       languages: NO_LANGUAGES,
-      unobserved: ['cls-poor', 'inp-poor', 'lcp-poor'],
+      unobserved: [
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ],
       rules: [],
     })
   })

@@ -22,6 +22,7 @@ import {
   type PageIssueId,
 } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
+import { graphAbsenceKnown } from './observed-inputs'
 import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
 import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
@@ -730,28 +731,56 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'uncrawlable-links': linkProblem('uncrawlable', (facts) => facts.uncrawlableLinks),
   // What links to a URL expected to be out of the index does not matter to it (`excusesInlinks`).
   'only-nofollow-inlinks': onPage(
-    (url, _, site) => INLINKS_WRONG['only-nofollow-inlinks'](url) && !excusesInlinks(url, site),
+    (url, _, site) =>
+      graphAbsenceKnown(site) &&
+      INLINKS_WRONG['only-nofollow-inlinks'](url) &&
+      !excusesInlinks(url, site),
   ),
   'only-noindex-inlinks': onPage(
-    (url, _, site) => INLINKS_WRONG['only-noindex-inlinks'](url) && !excusesInlinks(url, site),
+    (url, _, site) =>
+      graphAbsenceKnown(site) &&
+      INLINKS_WRONG['only-noindex-inlinks'](url) &&
+      !excusesInlinks(url, site),
   ),
   // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
-  'orphan-in-sitemap': (url) =>
-    url.contentPage && url.sitemaps > 0 && url.anchorsIn === 0 && url.url.source !== 'seed',
+  'linked-only-by-javascript': (url, site) =>
+    site.config.rendering === 'rendered' &&
+    site.rendersUnobserved === 0 &&
+    site.htmlLinksComplete &&
+    url.contentPage &&
+    url.htmlAnchorsIn === 0 &&
+    url.renderedAnchorsFrom.length > 0 &&
+    backedBy({ kind: 'related-urls', total: url.anchorsIn, urls: url.renderedAnchorsFrom }),
+  'links-only-after-rendering': onPage(
+    (url, _, site) =>
+      site.config.rendering === 'rendered' &&
+      site.rendersUnobserved === 0 &&
+      url.renderedAnchorsOut > 0 &&
+      backedBy({ kind: 'related-urls', total: url.renderedAnchorsOut, urls: url.renderedLinksTo }),
+  ),
+  'orphan-in-sitemap': (url, site) =>
+    (site.config.rendering !== 'rendered' || site.linksComplete) &&
+    url.contentPage &&
+    url.sitemaps > 0 &&
+    url.anchorsIn === 0 &&
+    url.url.source !== 'seed',
   'few-html-links': onPage(
     (url, _, site) =>
       url.indexable &&
       url.url.data?.truncated !== true &&
-      url.internalAnchorsOut < figures(site).htmlLinksMin &&
+      url.htmlInternalAnchorsOut < figures(site).htmlLinksMin &&
       backedBy({
         kind: 'values',
         total: 1,
-        items: [{ field: 'internal-links', text: String(url.internalAnchorsOut) }],
+        items: [{ field: 'internal-links', text: String(url.htmlInternalAnchorsOut) }],
       }),
   ),
   'no-outgoing-links': onPage((url) => url.internalAnchorsOut === 0),
   'internal-nofollow-links': onPage((url) => url.nofollowAnchorsOut > 0),
-  'deep-page': onPage((url, _, site) => (url.clickDepth ?? 0) > figures(site).clickDepthMax),
+  'deep-page': onPage(
+    (url, _, site) =>
+      graphAbsenceKnown(site) && (url.clickDepth ?? 0) > figures(site).clickDepthMax,
+  ),
   'anchor-empty': linkProblem('empty-anchor', (facts) => facts.emptyAnchors),
   'anchor-vague': linkProblem('vague-anchor', (facts) => facts.vagueAnchors),
 
@@ -989,7 +1018,7 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
     }
   }
 
-  if (url.facts && isExpectedOut(url)) {
+  if (url.facts && graphAbsenceKnown(site) && isExpectedOut(url)) {
     for (const issue of Object.keys(INLINKS_WRONG) as (keyof typeof INLINKS_WRONG)[]) {
       if (INLINKS_WRONG[issue](url)) add(issue, expectedOutAcceptance(url), null)
     }

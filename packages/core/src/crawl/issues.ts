@@ -50,6 +50,10 @@ const ISSUE_CATALOG = {
     'inp-poor': ['warning', 'medium'],
     'cls-poor': ['warning', 'medium'],
   },
+  javascript: {
+    'linked-only-by-javascript': ['warning', 'medium'],
+    'links-only-after-rendering': ['opportunity', 'medium'],
+  },
   'response-codes': {
     'no-response': ['issue', 'high'],
     'server-error': ['issue', 'high'],
@@ -258,7 +262,7 @@ export const ISSUE_GROUPS = [
     ],
   },
   { id: 'architecture', categories: ['links', 'urls'] },
-  { id: 'technical', categories: ['security', 'html', 'performance'] },
+  { id: 'technical', categories: ['security', 'html', 'performance', 'javascript'] },
 ] as const satisfies readonly { id: string; categories: readonly IssueCategoryId[] }[]
 
 export type IssueGroupId = (typeof ISSUE_GROUPS)[number]['id']
@@ -292,7 +296,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  * - 9: a missing, repeated or misplaced title is secondary on a page that cannot be indexed, like
  *   the other title and description findings.
  */
-const CHECKS_REVISION = 10
+const CHECKS_REVISION = 12
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.

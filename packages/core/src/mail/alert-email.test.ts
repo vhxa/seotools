@@ -119,3 +119,14 @@ describe('safeMailError', () => {
     expect(safeMailError(new Error(''))).toBe('Unknown error')
   })
 })
+
+it.each(['en', 'es'] as const)('translates the browser-unavailable code in %s alerts', (locale) => {
+  const { text } = alertEmail({
+    ...base,
+    locale,
+    kinds: ['crawl-problem'],
+    crawl: { ...base.crawl, status: 'failed', error: 'browser-unavailable' },
+  })
+  expect(text).toContain(ALERT_EMAIL_COPY[locale].browserUnavailable)
+  expect(text).not.toContain('browser-unavailable')
+})

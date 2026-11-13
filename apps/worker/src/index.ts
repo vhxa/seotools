@@ -107,6 +107,7 @@ async function main() {
     log: log.child({ lane: 'crawl' }),
     handlers: {
       [JOB_TYPES.crawlRun]: createCrawlRunHandler({
+        renderService: rendering.service,
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,

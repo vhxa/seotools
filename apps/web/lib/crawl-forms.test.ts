@@ -263,3 +263,20 @@ describe('parseExtractors', () => {
     expect(parseExtractors('Price | [broken')).toBeNull()
   })
 })
+
+it('refuses rendered mode without fresh ready evidence, but always allows HTML', () => {
+  const form = formOf({ ...validSettings, renderingMode: 'headless' })
+  expect(parseCrawlSettingsForm(form, false)).toEqual({ ok: false, error: 'renderingUnavailable' })
+  expect(parseCrawlSettingsForm(form, true).ok).toBe(true)
+  form.set('renderingMode', 'http')
+  expect(parseCrawlSettingsForm(form, false).ok).toBe(true)
+})
+it.each(['https://example.com', 'bad host.test', '*.example.com', 'example.com/path', '-bad.test'])(
+  'rejects invalid omitted hostname %s',
+  (host) => {
+    expect(parseCrawlSettingsForm(formOf({ ...validSettings, renderOmittedHosts: host }))).toEqual({
+      ok: false,
+      error: 'renderSettings',
+    })
+  },
+)

@@ -3,13 +3,10 @@ import { extractorsSchema, type Extractor } from './extraction'
 import { parseAuditSelector } from './audit'
 import { INDEXNOW_KEY, OPTIONAL_CRAWL_FILES, type OptionalCrawlFile } from './files'
 
-/**
- * How pages are fetched. Only `http` is implemented; the other two are shown disabled in the UI
- * until a headless browser ships, and `CRAWL_RENDERING_AVAILABLE` is what the server action checks.
- */
-export const CRAWL_RENDERING_MODES = ['http', 'headless', 'both'] as const
+/** Stored mode values: served HTML or HTML followed by JavaScript rendering. */
+export const CRAWL_RENDERING_MODES = ['http', 'headless'] as const
 export type CrawlRenderingMode = (typeof CRAWL_RENDERING_MODES)[number]
-export const CRAWL_RENDERING_AVAILABLE: readonly CrawlRenderingMode[] = ['http']
+export const CRAWL_RENDERING_AVAILABLE: readonly CrawlRenderingMode[] = CRAWL_RENDERING_MODES
 
 export interface CrawlSettings {
   collectVitals: boolean
@@ -17,6 +14,8 @@ export interface CrawlSettings {
   excludePrefixes: string[]
   ignoredParameters: string[]
   maxDepth: number | null
+  renderWaitMs: number
+  renderOmittedHosts: string[]
   renderingMode: CrawlRenderingMode
   /** `null` uses `defaultCrawlerUserAgent`. */
   userAgent: string | null
@@ -50,6 +49,8 @@ export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
   ignoredParameters: [],
   maxDepth: null,
   renderingMode: 'http',
+  renderWaitMs: 5000,
+  renderOmittedHosts: [],
   userAgent: null,
   concurrency: 2,
   requestsPerSecond: 5,
@@ -133,6 +134,20 @@ export const crawlSettingsSchema = z.object({
   maxDepth: z.number().int().min(1).max(100).nullable().default(null),
   extractors: extractorsSchema.default([]),
   renderingMode: z.enum(CRAWL_RENDERING_MODES),
+  renderWaitMs: z.number().int().min(1000).max(30000).default(5000),
+  renderOmittedHosts: z
+    .array(
+      z
+        .string()
+        .trim()
+        .toLowerCase()
+        .max(253)
+        .refine((host) =>
+          host.split('.').every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)),
+        ),
+    )
+    .max(50)
+    .default([]),
   userAgent: z
     .string()
     .trim()

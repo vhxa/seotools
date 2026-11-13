@@ -1,5 +1,7 @@
 'use server'
 
+import { renderBrowserStatus } from '@/lib/render-browser'
+
 import { EXTRACTION_LIMITS } from '@seotools/core/crawl/extraction'
 import {
   CRAWL_SETTINGS_LIMITS,
@@ -160,13 +162,15 @@ export async function saveCrawlSettingsAction(
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('CrawlSettings.errors')
   const limits = CRAWL_SETTINGS_LIMITS
-  const parsed = parseCrawlSettingsForm(formData)
+  const parsed = parseCrawlSettingsForm(formData, (await renderBrowserStatus())?.state === 'ready')
   if (!parsed.ok) {
     switch (parsed.error) {
       case 'scope':
         return { error: t('scope') }
       case 'extractors':
         return { error: t('extractors', { max: EXTRACTION_LIMITS.extractors }) }
+      case 'renderSettings':
+        return { error: t('renderSettings') }
       case 'renderingUnavailable':
         return { error: t('renderingUnavailable') }
       case 'userAgent':

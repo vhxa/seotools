@@ -1,5 +1,11 @@
+import { renderedOutcome } from './render-fixture'
+import { readFileSync } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
+import { RENDERED_GRAPH_ISSUES } from './observed-inputs'
+import { htmlBaseline } from './html-baseline'
 import type { VitalMetrics } from '@seotools/core'
 import {
+  CRAWL_LINK_KINDS,
   emptyVitals,
   EMPTY_AUDIT_SNAPSHOT,
   MAX_EVIDENCE_ITEMS,
@@ -25,10 +31,72 @@ import { FetchError } from './fetcher'
 import { SAFE_HEADERS, SITE, page, sitemapOf, words, xml } from './test-site'
 import { CHECKS } from './issue-checks'
 import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
-import { parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
+import { loadSite, parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
+
+// Lossless compression retains the full base output and readable Vitest diffs on a mismatch.
+const htmlBeforeRendering = JSON.parse(
+  gunzipSync(
+    readFileSync(new URL('./fixtures/html-pre-rendering.json.gz', import.meta.url)),
+  ).toString(),
+) as Record<string, unknown>
+
+/** Exercise each check's real scenario, including helper/condition calls, and track graph reads. */
+function assertGraphReadersClassified(
+  issue: PageIssueId,
+  url: AuditedUrl,
+  site: Site,
+  changedInputs: Set<string>,
+) {
+  const inputs = new Set([
+    ...changedInputs,
+    'anchorsIn',
+    'followedAnchorsIn',
+    'anchorsFromIndexable',
+    'htmlAnchorsIn',
+    'renderedAnchorsFrom',
+    'renderedLinksTo',
+    'renderedAnchorsOut',
+    'linksTo',
+    'clickDepth',
+    'linksComplete',
+    'htmlLinksComplete',
+    'rendersUnobserved',
+  ])
+  const read = new Set<string>()
+  const tracked = new WeakMap<AuditedUrl, AuditedUrl>()
+  const track = (value: AuditedUrl): AuditedUrl => {
+    let proxy = tracked.get(value)
+    if (!proxy) {
+      proxy = new Proxy(value, {
+        get(target, key, receiver) {
+          if (inputs.has(String(key))) read.add(String(key))
+          return Reflect.get(target, key, receiver) as unknown
+        },
+      })
+      tracked.set(value, proxy)
+    }
+    return proxy
+  }
+  const observed = new Proxy(site, {
+    get(target, key, receiver) {
+      if (inputs.has(String(key))) read.add(String(key))
+      if (key === 'get')
+        return (address: string) => {
+          const found = target.get(address)
+          return found ? track(found) : undefined
+        }
+      if (key === 'urls') return target.urls.map(track)
+      return Reflect.get(target, key, receiver) as unknown
+    },
+  })
+  CHECKS[issue](track(url), observed)
+  if (read.size > 0)
+    expect(RENDERED_GRAPH_ISSUES, `${issue} reads ${[...read].join(', ')}`).toContain(issue)
+}
 
 const log = createLogger('test', 'silent')
 interface Scenario {
+  rendered?: boolean
   /** Where the issue should be found: a path, or an absolute URL. */
   at: string
   vitals?: Partial<VitalMetrics>
@@ -110,6 +178,18 @@ const shared = (
    ${card ? '<meta name="twitter:card" content="summary_large_image">' : ''}`
 
 const SCENARIOS: Record<PageIssueId, Scenario> = {
+  'linked-only-by-javascript': {
+    rendered: true,
+    notLinked: ['/x'],
+    at: '/x',
+    pages: { '/x': page('/x') },
+  },
+  'links-only-after-rendering': {
+    rendered: true,
+    notLinked: ['/x'],
+    at: '/',
+    pages: { '/x': page('/x') },
+  },
   'html-entities-as-text': { at: '/x', pages: { '/x': page('/x', { h1: 'd&amp;#8217;exemple' }) } },
   'few-html-links': { at: '/x', pages: { '/x': page('/x') } },
 
@@ -743,11 +823,16 @@ afterEach(async () => {
   await db.close()
 })
 
-async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = []) {
+async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = [], rendered = false) {
   for (const rule of rules) {
     const saved = await db.audit.saveRule({ domainId, rule })
     if (!saved.ok) throw new Error(`rule not saved: ${saved.error}`)
   }
+  if (rendered)
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      renderingMode: 'headless',
+    })
   const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
   if (!started) throw new Error('crawl did not start')
   await runCrawl(started.id, {
@@ -756,6 +841,11 @@ async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = []) {
     signal: new AbortController().signal,
     createFetcher: fakeSite(site, 0).createFetcher,
     retryBaseMs: 1,
+    renderService: {
+      check: async () => ({ state: 'ready', checkedAt: new Date().toISOString() }),
+      render: async (input) =>
+        renderedOutcome(input, input.url === `${SITE}/` ? '<a href="/x">JS menu</a>' : ''),
+    },
   })
   return started.id
 }
@@ -814,7 +904,7 @@ describe('each issue', () => {
     PAGE_ISSUE_IDS.filter((id) => id !== 'sitemap-too-big' && id !== 'indexed-not-in-sitemap'),
   )('finds %s', async (id) => {
     const scenario = SCENARIOS[id]
-    const crawlId = await crawl(websiteOf(scenario), scenario.rules)
+    const crawlId = await crawl(websiteOf(scenario), scenario.rules, scenario.rendered)
     if (scenario.vitals) {
       await db.vitals.saveUrl({
         ...emptyVitals(),
@@ -829,6 +919,76 @@ describe('each issue', () => {
       })
       await analyseCrawl(db, crawlId, await currentAuditConfig(db, domainId))
     }
+    if (id in htmlBeforeRendering) {
+      const actual = (await htmlBaseline(db, crawlId)) as { snapshot: { unobserved: string[] } }
+      expect(actual.snapshot.unobserved).toEqual(
+        expect.arrayContaining(['linked-only-by-javascript', 'links-only-after-rendering']),
+      )
+      // Decision 4: a crawl with a truncated served page also lists `few-html-links`; none here.
+      const truncated = (
+        await db.crawls.listUrls({ crawlId, view: 'all', limit: 10000, offset: 0 })
+      ).some((url) => url.data?.truncated === true)
+      expect(actual.snapshot.unobserved.includes('few-html-links')).toBe(truncated)
+      const added = ['linked-only-by-javascript', 'links-only-after-rendering']
+      if (truncated) added.push('few-html-links')
+      actual.snapshot.unobserved = actual.snapshot.unobserved.filter(
+        (issue) => !added.includes(issue),
+      )
+      expect(JSON.stringify(actual)).toBe(
+        JSON.stringify(htmlBeforeRendering[id as keyof typeof htmlBeforeRendering]),
+      )
+    }
+    const stored = (await db.crawls.get(crawlId))!
+    const observedSite = await loadSite(db, stored, stored.auditSnapshot!)
+    // Derive the guard's inputs from loadSite itself, rather than a hand-maintained field list.
+    // Inject EVERY kind between every source/target: this also exercises failed embeds,
+    // sitemap counts, linksIn and future fields, on each check's real positive scenario.
+    const linksFrom = db.crawls.linksFrom
+    const renderedCrawl = {
+      ...stored,
+      rendering: { mode: 'rendered' as const, waitMs: 5000, omittedHosts: [] },
+    }
+    const config = { ...stored.auditSnapshot!, rendering: 'rendered' as const }
+    const without = await loadSite(db, renderedCrawl, config)
+    db.crawls.linksFrom = async (crawlId, hashes) => [
+      ...(await linksFrom(crawlId, hashes)),
+      ...hashes.flatMap((sourceHash) =>
+        without.urls.flatMap((target) =>
+          CRAWL_LINK_KINDS.map((kind) => ({
+            sourceHash,
+            targetHash: target.url.urlHash,
+            kind,
+            rendered: 1 as const,
+          })),
+        ),
+      ),
+    ]
+    let withLinks: Site
+    try {
+      withLinks = await loadSite(db, renderedCrawl, config)
+    } finally {
+      db.crawls.linksFrom = linksFrom
+    }
+    // Nested AuditedUrl references can cycle through linksTo; compare their identities.
+    const serialize = (value: unknown) =>
+      JSON.stringify(value, (_key, nested: unknown) =>
+        nested && typeof nested === 'object' && 'contentPage' in nested
+          ? (nested as AuditedUrl).url.urlHash
+          : nested,
+      )
+    const changedInputs = new Set<string>()
+    for (const url of without.urls) {
+      const other = withLinks.get(url.url.url)!
+      for (const key of Object.keys(url) as (keyof AuditedUrl)[]) {
+        if (serialize(url[key]) !== serialize(other[key])) changedInputs.add(key)
+      }
+    }
+    assertGraphReadersClassified(
+      id,
+      observedSite.get(absolute(scenario.at))!,
+      observedSite,
+      changedInputs,
+    )
     const found = await issuesAt(crawlId, scenario.at)
     expect(found.map((row) => row.issue)).toContain(id)
     if (scenario.details) {
@@ -939,21 +1099,37 @@ describe('what a crawl did not look for', () => {
     await analyseCrawl(db, crawlId, EMPTY_AUDIT_SNAPSHOT)
     const snapshot = (await db.crawls.get(crawlId))?.auditSnapshot
     expect(snapshot?.unobserved).toEqual(
-      [...NEW_FACT_ISSUES, 'cls-poor', 'inp-poor', 'lcp-poor'].sort(),
+      [
+        ...NEW_FACT_ISSUES,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
     )
 
     // Analysed again from what it stored (as the startup reanalysis does): worked out again.
     await analyseCrawl(db, crawlId, snapshot!)
     expect((await db.crawls.get(crawlId))?.auditSnapshot?.unobserved).toEqual(
-      [...NEW_FACT_ISSUES, 'cls-poor', 'inp-poor', 'lcp-poor'].sort(),
+      [
+        ...NEW_FACT_ISSUES,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
     )
 
-    // A crawl that looked says nothing is unobserved, and keeps no field.
+    // A fresh HTML crawl observes the page facts, but neither vitals nor JavaScript.
     const fresh = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x') } }))
     expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual([
       'cls-poor',
       'inp-poor',
       'lcp-poor',
+      'linked-only-by-javascript',
+      'links-only-after-rendering',
     ])
     // Which also holds when it is analysed again from a snapshot that said otherwise.
     await analyseCrawl(db, fresh, snapshot!)
@@ -961,6 +1137,8 @@ describe('what a crawl did not look for', () => {
       'cls-poor',
       'inp-poor',
       'lcp-poor',
+      'linked-only-by-javascript',
+      'links-only-after-rendering',
     ])
 
     // Against the old crawl, what the new one reports is not new: nobody could have seen it.
@@ -1892,6 +2070,10 @@ describe('stored HTML text and link heuristics', () => {
     })
     await analyseCrawl(db, id, auditSnapshotOf(1, []))
     expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('few-html-links')
+    // Its silence on the cut page is not an absence: the whole crawl cannot tell, in either mode.
+    const snapshot = (await db.crawls.get(id))!.auditSnapshot!
+    expect(snapshot.rendering).toBeUndefined()
+    expect(snapshot.unobserved).toContain('few-html-links')
   })
 })
 

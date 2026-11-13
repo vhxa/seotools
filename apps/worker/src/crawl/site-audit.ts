@@ -156,6 +156,11 @@ export interface AuditedUrl {
   hreflang: HreflangEntry[]
   /** Links from other URLs of the site, not counting redirects. */
   linksIn: number
+  htmlAnchorsIn: number
+  htmlInternalAnchorsOut: number
+  renderedAnchorsFrom: string[]
+  renderedLinksTo: string[]
+  renderedAnchorsOut: number
   anchorsIn: number
   /** Anchors in that a search engine would follow. */
   followedAnchorsIn: number
@@ -172,7 +177,7 @@ export interface AuditedUrl {
    * listed or may only be an alternate. Never counted as listed, never as absent.
    */
   sitemapsAmbiguous: number
-  /** Anchors to other URLs of the site. */
+  /** HTML anchors to other URLs of the site; rendered-only anchors belong to the site graph. */
   internalAnchorsOut: number
   nofollowAnchorsOut: number
   /** The URLs of the site its anchors link to. */
@@ -204,6 +209,9 @@ export interface Site {
    */
   sitemapCoverage: SitemapCoverage
   /** A completed crawl was not cut at its URL limit. */
+  htmlLinksComplete: boolean
+  rendersUnobserved: number
+  renderCoverage: NonNullable<AuditSnapshot['renderCoverage']>
   linksComplete: boolean
   /**
    * The indexable pages that share each value, in URL order, which is what makes one a duplicate:
@@ -330,6 +338,11 @@ export function auditUrl(
     indexed: null,
     hreflang: url.data?.hreflang ? [...url.data.hreflang] : [],
     linksIn: 0,
+    htmlAnchorsIn: 0,
+    htmlInternalAnchorsOut: 0,
+    renderedAnchorsFrom: [],
+    renderedLinksTo: [],
+    renderedAnchorsOut: 0,
     anchorsIn: 0,
     followedAnchorsIn: 0,
     anchorsFromIndexable: 0,
@@ -463,7 +476,14 @@ export async function loadSite(
       db.crawls.linksFrom(crawl.id, hashes),
       db.crawls.sitemapHreflangOf(crawl.id, hashes),
     ])
-    for (const { sourceHash, targetHash, kind } of links) {
+    for (const { sourceHash, targetHash, kind, rendered } of links) {
+      // Only rendered anchors feed the audit graph; other rendered declarations stay stored
+      // for render details and future checks, never as input to existing HTML checks.
+      if (
+        rendered &&
+        (crawl.rendering?.mode !== 'rendered' || (kind !== 'anchor' && kind !== 'anchor-nofollow'))
+      )
+        continue
       if (sourceHash === targetHash) continue
       const source = byHash.get(sourceHash)
       const target = byHash.get(targetHash)
@@ -487,11 +507,22 @@ export async function loadSite(
       }
       if (kind !== 'redirect') target.linksIn++
       if (kind !== 'anchor' && kind !== 'anchor-nofollow') continue
+      if (!rendered) {
+        target.htmlAnchorsIn++
+        source.htmlInternalAnchorsOut++
+        // URL-scoped checks must agree with an HTML-only recheck in either crawl mode.
+        source.internalAnchorsOut++
+        if (kind === 'anchor-nofollow') source.nofollowAnchorsOut++
+      } else {
+        source.renderedAnchorsOut++
+        if (source.renderedLinksTo.length < MAX_EVIDENCE_ITEMS)
+          source.renderedLinksTo.push(target.url.url)
+        if (target.renderedAnchorsFrom.length < MAX_EVIDENCE_ITEMS)
+          target.renderedAnchorsFrom.push(source.url.url)
+      }
       target.anchorsIn++
       if (kind === 'anchor' && !source.nofollow) target.followedAnchorsIn++
       if (source.indexable) target.anchorsFromIndexable++
-      source.internalAnchorsOut++
-      if (kind === 'anchor-nofollow') source.nofollowAnchorsOut++
       source.linksTo.push(target)
     }
     for (const { pageHash, lang, url } of declared) {
@@ -509,6 +540,23 @@ export async function loadSite(
     else target.sitemaps += count
   }
   measureClickDepth(internal, byHash, identity)
+  const renders = new Map((await db.crawls.renders(crawl.id)).map((row) => [row.urlHash, row]))
+  let rendersUnobserved = 0
+  const renderCoverage = { failedOrMissing: 0, truncated: 0, unsettled: 0 }
+  if (crawl.rendering?.mode === 'rendered') {
+    for (const url of internal) {
+      if (!url.contentPage) continue
+      const render = renders.get(url.url.urlHash)
+      // A missing truncation flag in an older render is missing evidence, never proof of a whole page.
+      const failedOrMissing = render?.status !== 'rendered' || render.truncated === null
+      const truncated = url.url.data?.truncated === true || render?.truncated === true
+      const unsettled = render?.status === 'rendered' && !render.settled
+      if (failedOrMissing) renderCoverage.failedOrMissing++
+      if (truncated) renderCoverage.truncated++
+      if (unsettled) renderCoverage.unsettled++
+      if (failedOrMissing || truncated || unsettled) rendersUnobserved++
+    }
+  }
 
   // What pages are compared against each other: the audited ones that can be indexed. A page left
   // out of the audit stays in the site (links, canonicals, hreflang, redirects see it as it is) but
@@ -526,7 +574,10 @@ export async function loadSite(
     get: (url) => byHash.get(crawlUrlHash(identity(url))),
     answered: urls.some((url) => url.contentPage),
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
-    linksComplete: crawl.status === 'completed',
+    htmlLinksComplete: crawl.status === 'completed',
+    rendersUnobserved,
+    renderCoverage,
+    linksComplete: crawl.status === 'completed' && rendersUnobserved === 0,
     titles: sharedValues(indexable, (url) => comparable(url.url.title)),
     descriptions: sharedValues(indexable, (url) => comparable(url.url.data?.description)),
     h1s: sharedValues(indexable, (url) => comparable(url.url.data?.h1?.[0])),

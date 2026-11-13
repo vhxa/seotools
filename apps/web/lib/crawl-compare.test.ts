@@ -7,6 +7,8 @@ import { loadComparison, type ComparisonSource } from './crawl-compare'
 let n = 0
 const crawl = (id: string, overrides: Partial<Crawl> = {}): Crawl => ({
   id,
+  rendering: null,
+  browserWaitMs: 0,
   domainId: 'd1',
   type: 'full',
   status: 'completed',

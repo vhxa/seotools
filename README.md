@@ -8,6 +8,9 @@ Raspberry Pi to a VPS.
 
 ## What it does
 
+- **Renders JavaScript when enabled** with an isolated optional browser, follows menu links absent
+  from served HTML, and reports JavaScript-only links. Choose HTML or Rendered in domain crawl
+  settings; new domains use Rendered only when the browser is ready. See [rendering](docs/rendering.md).
 - **Crawls whole sites** from the home page, sitemaps and every link, including what `robots.txt`
   blocks (auditing it is the point), with per-domain scope, depth, rate limits, request headers and
   Basic Auth for staging sites and lists of URLs. The Crawls area brings runs, comparison and
@@ -42,7 +45,10 @@ Raspberry Pi to a VPS.
 - **Opt-in email alerts** for changes between crawls and Core Web Vitals regressions after full
   crawls. Daily site-file, availability and certificate checks record incidents, show open ones on
   the dashboard and keep a 30-day history in Issues; they are not an uptime monitor.
-- **Optional browser with network isolation and a safety check that refuses a browser able to reach the network**, with connection status in System → Integrations; [setup guide](docs/rendering.md). Crawl rendering follows separately.
+- **Optional JavaScript rendering**: crawls can run each page in a browser container that has no
+  network of its own (every request goes through the crawler), report links and pages that only
+  exist after JavaScript, and never mix rendered and HTML results in comparisons;
+  [setup guide](docs/rendering.md).
 - **Custom extraction** of values with CSS selectors.
 - **Portfolio and structure**: see every domain by company with its last crawl, figures and trend,
   and explore a domain by directory with pages, errors and findings. Star a favourite domain to

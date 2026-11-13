@@ -3,7 +3,25 @@
 The worker supplies every HTTP response to a fresh browser context using request interception.
 The browser belongs only to an internal Docker network; the worker belongs to that network and
 its ordinary outbound network. Rendering is disabled unless `RENDER_BROWSER_URL` is configured.
-Crawl integration follows in a separate work package.
+Choose HTML or Rendered in **Domain settings → Crawling**. New domains choose Rendered only
+when the browser status is ready and fresh; existing domains keep HTML. Each crawl snapshots
+its mode, wait limit (default 5000 ms, range 1000–30000) and omitted host suffixes (up to 50).
+Changing the mode makes link-dependent findings incomparable with earlier crawls in the other
+mode. Existing page checks continue to read the served HTML.
+
+Rendered crawls render internal HTML pages answering exactly 200, using the already fetched
+document. Other 2xx pages keep their served results and an unknown render observation. Links
+found only after rendering are followed as ordinary crawl links. Failed pages can be rendered
+once more after the site drain, serially, while their served bodies fit an in-memory limit of
+200 pages and 64 MiB. Committed failures remain failed after a worker restart; done URLs are
+never rendered twice on resume. Per-URL render facts and diagnostics are pruned with the URL
+results; HTML is never stored. A page whose render failed, is missing, did not settle or was
+cut at the size limit (or whose served HTML was) makes link absence unknown for the whole crawl:
+link-dependent findings are then not claimed, and comparisons treat them as unverified.
+
+An unavailable browser pauses the crawl for up to ten minutes total, polling every 30 seconds.
+The recovery allowance survives worker restarts. Exhaustion fails the crawl with a browser
+unavailable reason and follows ordinary crawl-problem alerts; it never falls back to HTML.
 
 The browser container is the sandbox: Chrome runs with `--no-sandbox`, as an unprivileged user,
 with a read-only filesystem, writable `/tmp`, no capabilities, no new privileges, and bounded

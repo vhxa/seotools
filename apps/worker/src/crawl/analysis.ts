@@ -2,6 +2,7 @@ import {
   EMPTY_AUDIT_SNAPSHOT,
   ISSUE_CATALOG_VERSION,
   PAGE_ISSUES,
+  PAGE_ISSUE_IDS,
   auditSnapshotOf,
   isSecondaryFinding,
   worstIssueType,
@@ -19,8 +20,16 @@ import type {
 } from '@seotools/db'
 import { conditionStatesOf } from './conditions'
 import { detectFindings } from './issue-checks'
-import { unobservedIssues } from './observed-inputs'
+import {
+  RENDERED_GRAPH_ISSUES,
+  TRUNCATION_SKIPPING_ISSUES,
+  unobservedIssues,
+} from './observed-inputs'
 import { loadSite } from './site-audit'
+
+const PAGE_ISSUES_IDS_FOR_RENDERING = PAGE_ISSUE_IDS.filter(
+  (id) => PAGE_ISSUES[id].category === 'javascript',
+)
 
 export interface CrawlAnalysis {
   /** Pages of the crawl, audited or not. */
@@ -68,7 +77,17 @@ export async function analyseCrawl(
 
   // What the crawl could not observe is about the crawl, not the configuration: it is worked out
   // again each time, never carried over from the snapshot that came with it.
-  const { unobserved: _recorded, ...config } = given
+  const {
+    unobserved: _recorded,
+    rendering: _mode,
+    rendersUnobserved: _missing,
+    renderCoverage: _coverage,
+    ...rulesConfig
+  } = given
+  const config: AuditSnapshot = {
+    ...rulesConfig,
+    ...(crawl.rendering?.mode === 'rendered' ? { rendering: 'rendered' as const } : {}),
+  }
   const site = await loadSite(db, crawl, config)
   const issues: CrawlUrlIssue[] = []
   const acceptedIssues: CrawlUrlAcceptedIssue[] = []
@@ -143,6 +162,13 @@ export async function analyseCrawl(
       (row) => row.formFactor === 'all' && row.status === 'collected',
     ),
   )
+  if (site.urls.some((url) => url.internal && url.contentPage && url.url.data?.truncated === true))
+    unobserved.push(...TRUNCATION_SKIPPING_ISSUES)
+  if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {
+    unobserved.push(...PAGE_ISSUES_IDS_FOR_RENDERING)
+  }
+  if (crawl.rendering?.mode === 'rendered' && site.rendersUnobserved > 0)
+    unobserved.push(...RENDERED_GRAPH_ISSUES)
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,
@@ -151,7 +177,13 @@ export async function analyseCrawl(
     withType: pagesWithType,
     catalog: ISSUE_CATALOG_VERSION,
     audit: {
-      snapshot: { ...config, ...(unobserved.length > 0 ? { unobserved } : {}) },
+      snapshot: {
+        ...config,
+        ...(crawl.rendering?.mode === 'rendered'
+          ? { rendersUnobserved: site.rendersUnobserved, renderCoverage: site.renderCoverage }
+          : {}),
+        ...(unobserved.length > 0 ? { unobserved: [...new Set(unobserved)].sort() } : {}),
+      },
       pages: audit,
       urls,
     },

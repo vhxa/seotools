@@ -1,4 +1,5 @@
 import type { CrawlPageFacts, PageIssueId } from '@seotools/core'
+import type { Site } from './site-audit'
 
 /**
  * The facts of a page that older crawls did not keep: optional in `CrawlPageFacts`, where `undefined`
@@ -73,3 +74,33 @@ export function unobservedIssues(
     for (const issue of ['lcp-poor', 'inp-poor', 'cls-poor'] as const) unobserved.add(issue)
   return [...unobserved].sort()
 }
+
+/** Every issue reading the rendered-inclusive graph, including positive references and conditions.
+ * Partial observations can support positive evidence, but cannot verify changes in either direction.
+ */
+export const RENDERED_GRAPH_ISSUES = [
+  'orphan-in-sitemap',
+  'only-nofollow-inlinks',
+  'only-noindex-inlinks',
+  'deep-page',
+  'unlinked-required-missing',
+  'linked-only-by-javascript',
+  'links-only-after-rendering',
+  'links-to-broken',
+  'links-to-redirect',
+  'links-to-canonicalised',
+  'links-tracking-parameters',
+] as const satisfies readonly PageIssueId[]
+
+/** HTML observations retain their established behavior. Rendered absence needs every page whole. */
+export const graphAbsenceKnown = (site: Pick<Site, 'config' | 'rendersUnobserved'>) =>
+  site.config.rendering !== 'rendered' || site.rendersUnobserved === 0
+
+/**
+ * Issues added in 0.6.0 whose check skips a page whose served HTML was cut at the body limit: a crawl
+ * with such a page cannot say they are absent there, so they are `unobserved` for the whole crawl (in
+ * both modes). Checks from 0.5.0 that skip truncated pages keep their behaviour.
+ */
+export const TRUNCATION_SKIPPING_ISSUES = [
+  'few-html-links',
+] as const satisfies readonly PageIssueId[]

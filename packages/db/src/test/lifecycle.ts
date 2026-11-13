@@ -213,6 +213,16 @@ export function describeLifecycle(
           error: null,
           data: null,
         },
+        render: {
+          urlHash: crawlUrlHash(url),
+          status: 'rendered',
+          settled: true,
+          truncated: false,
+          finalUrl: url,
+          durationMs: 1,
+          failure: null,
+          data: { facts: null, requests: {}, scriptErrors: { count: 0, first: [] } },
+        },
         links: [{ sourceHash: crawlUrlHash(url), targetHash: crawlUrlHash(other), kind: 'anchor' }],
       })
       await db.crawls.addSitemapHreflang(crawl.id, [

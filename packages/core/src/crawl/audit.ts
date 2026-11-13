@@ -820,6 +820,12 @@ export interface AuditSnapshot {
   languages?: LanguageConfig
   /** The figures the checks compared with, where they differed from the defaults. Absent: none did. */
   thresholds?: ThresholdOverrides
+  /** Present only for rendered crawls; changes the comparison scope of site-dependent findings. */
+  rendering?: 'rendered'
+  /** Pages without a whole, settled render and whole served HTML; link absence is unknown. */
+  rendersUnobserved?: number
+  /** Counts can overlap; failedOrMissing includes legacy renders without truncation metadata. */
+  renderCoverage?: { failedOrMissing: number; truncated: number; unsettled: number }
   /**
    * Issues this analysis could not see, sorted: their input was not recorded for some page, because
    * the crawl was made before a check could read it (`unobservedIssues`, in the worker). Absent: none,
@@ -843,6 +849,15 @@ const snapshotSchema = z.object({
   semantics: z.number().int().min(1).optional(),
   languages: z.object({ prefixes: z.array(z.string()), unprefixed: z.boolean() }).optional(),
   thresholds: thresholdOverridesSchema.optional(),
+  rendering: z.literal('rendered').optional(),
+  rendersUnobserved: z.number().int().min(0).optional(),
+  renderCoverage: z
+    .object({
+      failedOrMissing: z.number().int().min(0),
+      truncated: z.number().int().min(0),
+      unsettled: z.number().int().min(0),
+    })
+    .optional(),
   unobserved: z.array(z.string()).optional(),
   dismissals: z
     .array(
