@@ -20,25 +20,12 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
-### Breaking
-
-- Limit `RENDER_CONCURRENCY` to 1–4 pages per worker (default 2) and size the optional browser
-  container for four renders plus its safety check.
-
-### Upgrade notes
-
-- Installations testing the unreleased rendering service with `RENDER_CONCURRENCY=5`–`8` must lower
-  it to at most `4`. Recreate the browser container to apply its new memory and process limits.
-
-### Fixed
-
-- Clear the rendering browser's ready status when its connection fails or unexpectedly disconnects;
-  cleanup failures no longer replace render results or prevent crash retries.
-
 ### Added
 
-- An optional browser container with layered network isolation, a safety check that refuses any browser whose own traffic does not all fail at its blocking proxy (rechecked whenever the browser is replaced), and its connection status in System → Integrations; rendering of crawls arrives with the next entries.
-
+- An optional browser container with layered network isolation, a safety check that refuses any
+  browser whose own traffic does not all fail at its blocking proxy (rechecked whenever the browser
+  is replaced), and its connection status in System → Integrations; rendering of crawls arrives with
+  the next entries.
 - Two low-importance opportunities flag HTML character references shown as text in titles,
   descriptions or H1s, and indexable pages with very few internal links in the served HTML
   (default: fewer than 5; configurable per domain, with 0 disabling the check).
