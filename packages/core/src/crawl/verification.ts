@@ -1,3 +1,4 @@
+import { issueBasisOf } from './basis'
 /**
  * Rechecking some URLs after a fix, without a full crawl: what a recheck can establish and what it
  * cannot. Pure (no Node imports), so client components import it through
@@ -231,6 +232,10 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'charset-missing': U,
 }
 
+/** HTML-only rechecks cannot settle a rendered crawl's document observations. */
+export const canSettleIssue = (issue: string, renderedBase = false): boolean =>
+  isUrlScopedIssue(issue) && !(renderedBase && issueBasisOf(issue) === 'document')
+
 export const verificationScopeOf = (issue: PageIssueId): VerificationScope => SCOPE[issue]
 
 /** The issues a recheck settles, in catalog order. */
@@ -390,6 +395,7 @@ const byCatalog = (ids: Iterable<PageIssueId>) =>
  * the recheck could not check (`unchecked`) are pending too, never fixed.
  */
 export function compareWithCrawl(input: {
+  renderedBase?: boolean
   crawl: readonly string[]
   recheck: readonly string[]
   unchecked?: readonly string[]
@@ -402,7 +408,8 @@ export function compareWithCrawl(input: {
   const accepted = new Set(input.accepted ?? [])
   const before = new Set(input.crawl.filter(isPageIssueId))
   const after = new Set(input.recheck.filter(isPageIssueId))
-  const settled = (issue: PageIssueId) => SCOPE[issue] === 'url' && !unchecked.has(issue)
+  const settled = (issue: PageIssueId) =>
+    canSettleIssue(issue, input.renderedBase) && !unchecked.has(issue)
   const blind = new Set(input.unobserved ?? [])
   return {
     fixed: byCatalog(

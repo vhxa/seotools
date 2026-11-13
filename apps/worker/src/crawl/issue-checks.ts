@@ -1,3 +1,4 @@
+import { ISSUE_BASIS, isPageLocalIssue } from '@seotools/core'
 import {
   AUDIT_CONDITIONS,
   HREFLANG_SOURCES,
@@ -1044,7 +1045,15 @@ export function detectFindings(
 ): { found: Finding[]; accepted: AcceptedFinding[] } {
   const found: Finding[] = []
   for (const issue of PAGE_ISSUE_IDS) {
-    const result = CHECKS[issue](url, site)
+    if (
+      ISSUE_BASIS[issue] === 'document' &&
+      (url.documentUnobserved?.includes(issue) ||
+        (!isPageLocalIssue(issue) && site.documentUnobserved?.has(issue)))
+    )
+      continue
+    const subject =
+      ISSUE_BASIS[issue] === 'html' || ISSUE_BASIS[issue] === 'response' ? (url.served ?? url) : url
+    const result = CHECKS[issue](subject, site)
     // A check that has nothing to read gives no finding, never a failed analysis.
     if (!result) continue
     if (result === true) found.push({ issue })
@@ -1059,7 +1068,14 @@ export function detectFindings(
     }
   }
   const { kept, accepted } = auditPolicy(url, found)
-  return applyFindingDismissals(url, site, kept, [...accepted, ...acceptedRelations(url, site)])
+  return applyFindingDismissals(url, site, kept, [
+    ...accepted,
+    ...acceptedRelations(url, site).filter(
+      ({ issue }) =>
+        ISSUE_BASIS[issue] !== 'document' ||
+        (!url.documentUnobserved?.includes(issue) && !site.documentUnobserved?.has(issue)),
+    ),
+  ])
 }
 
 const dismissalIndexes = new WeakMap<AuditSnapshot, ReadonlyMap<string, FindingDismissal>>()

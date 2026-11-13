@@ -1,3 +1,4 @@
+import { issueBasisOf } from './basis'
 import { describe, expect, it } from 'vitest'
 import { EMPTY_AUDIT_SNAPSHOT, auditSnapshotOf, type AuditRule } from './audit'
 import {
@@ -953,7 +954,10 @@ describe('HTML and rendered observation scopes', () => {
         base: seen([], {}, html),
         target: seen([issue], {}, rendered),
       })
-      if (isPageLocalIssue(issue)) {
+      if (issueBasisOf(issue) === 'graph') {
+        expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+        expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+      } else if (isPageLocalIssue(issue)) {
         expect(disappeared?.kind, issue).toBe('resolved')
         expect(appeared?.kind, issue).toBe('new')
       } else {
@@ -997,4 +1001,34 @@ it('keeps page-local JavaScript findings unverified across HTML or partial rende
       ).toMatchObject({ kind: 'unverified', reasons: ['unobserved'] })
     }
   }
+})
+
+it('guards every document and graph basis before persistent and accepted shortcuts', () => {
+  const html = facts()
+  const rendered = facts({ documentBasis: 'rendered-v1', graphBasis: 'rendered' })
+  for (const issue of PAGE_ISSUE_IDS.filter((id) => ['document', 'graph'].includes(issueBasisOf(id)!))) {
+    for (const [a, b] of [[html, rendered], [rendered, html]]) {
+      for (const targetIssues of [[], [issue]]) {
+        expect(classifyFinding(issue, {
+          base: seen([issue], {}, a),
+          target: seen(targetIssues, { accepted: new Set([issue]) }, b),
+        })).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+      }
+    }
+  }
+  expect(issuePairReasons(['basis'], 'title-missing')).toEqual(['basis'])
+  expect(issuePairReasons(['basis'], 'og-missing')).toEqual([])
+})
+
+it('keeps document uncertainty URL-local and refuses unknown or cross-basis history as reappearance evidence', () => {
+  const rendered = facts({ documentBasis: 'rendered-v1', graphBasis: 'rendered' })
+  const reported = seen(['title-missing'], { documentObservation: 'complete' }, rendered)
+  const unknown = seen([], { documentObservation: 'unobserved' }, rendered)
+  const absent = seen([], { documentObservation: 'complete' }, rendered)
+  for (const pair of [{base: reported, target: unknown}, {base: unknown, target: reported}]) {
+    expect(classifyFinding('title-missing', pair)).toMatchObject({kind: 'unverified', reasons: ['unobserved']})
+  }
+  expect(classifyFinding('title-missing', {base: reported, target: reported, between: [unknown]})).toMatchObject({kind: 'persistent'})
+  expect(classifyFinding('title-missing', {base: absent, target: reported, earlier: [unknown, seen(['title-missing'])]})).toMatchObject({kind: 'new'})
+  expect(classifyFinding('title-missing', {base: absent, target: reported})).toMatchObject({kind: 'new'})
 })

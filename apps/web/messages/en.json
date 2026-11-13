@@ -389,7 +389,8 @@
         "badge": "Needs a full crawl"
       },
       "checkedScope": "Checked again: the HTTP response, page data, robots.txt and checks that depend only on this URL. Links from other pages, duplicates and sitemap membership still require a full crawl.",
-      "evidenceNote": "The response fields above and the recorded details below are from this recheck. Evidence samples from the full crawl are not reused here."
+      "evidenceNote": "The response fields above and the recorded details below are from this recheck. Evidence samples from the full crawl are not reused here.",
+      "htmlOnly": "This recheck reads served HTML. Rendered document findings require a full crawl."
     },
     "results": {
       "metaTitle": "Recheck · {host} · seotools",
@@ -2856,8 +2857,9 @@
       "incomplete": "a crawl stopped at its URL limit and this finding depends on other pages",
       "catalog": "the issue catalogs differ",
       "audit": "the audit configuration or the expectation for the URL differs",
-      "unobserved": "a crawl did not record what this check needs: compare with crawls made after the update",
-      "dismissed": "A person dismissed this finding."
+      "unobserved": "a crawl could not completely observe the input this check needs",
+      "dismissed": "A person dismissed this finding.",
+      "basis": "the document or graph observation basis differs"
     },
     "notes": {
       "pruned": {
@@ -2903,6 +2905,10 @@
       "ignoredParameters": {
         "title": "Ignored query parameters changed",
         "description": "Added and not seen URLs may reflect changed ignored parameters. Per-issue change summaries are unverified because URL identity changed."
+      },
+      "basis": {
+        "title": "Different observation bases",
+        "description": "Document and graph findings cannot be attributed across HTML and rendered observations."
       }
     },
     "rowsShown": "{shown, number} of {matching, number} URLs shown",
@@ -3936,5 +3942,17 @@
     "check": "Check now",
     "checking": "Queueing check…",
     "hint": "The worker runs this check in the background. Refresh this page to see the result."
+  },
+  "AuditBasis": {
+    "rendered": "Judged on the rendered page",
+    "html": "Judged on the served HTML",
+    "exceptions": "Response and source diagnostics, raw fields and the share preview use the served response.",
+    "unknown": "Document findings unknown.",
+    "failed": "Rendering failed.",
+    "redirected": "Redirect observed; the source document was abandoned.",
+    "truncated": "The served or rendered document was truncated.",
+    "unsettled": "The page did not settle within the observation window.",
+    "missing": "A complete document observation was not stored.",
+    "coverage": "{complete, number} complete documents; {redirected, number} redirects; {unobserved, number} unobserved documents."
   }
 }

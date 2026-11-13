@@ -87,7 +87,21 @@ export async function UrlDetail({
     getTranslations('PageIssues'),
     getFormatter(),
   ])
+  const basis = await getTranslations('AuditBasis')
   const { url, crawl, audit } = data
+  const renderedBasis = crawl.auditSnapshot?.documentBasis === 'rendered-v1'
+  const documentUnknown =
+    renderedBasis && isPageUrl(data) && audit?.documentObservation !== 'complete'
+  const renderReason =
+    data.render?.status === 'failed'
+      ? 'failed'
+      : data.render?.data.redirected
+        ? 'redirected'
+        : url.data?.truncated || data.render?.truncated
+          ? 'truncated'
+          : data.render?.status === 'rendered' && !data.render.settled
+            ? 'unsettled'
+            : 'missing'
   const findingGroups = groupDetailFindings(data.issues)
   const findingsId = `url-findings-${crawl.id}-${url.urlHash}`
   const isPage = url.kind === 'page'
@@ -135,6 +149,17 @@ export async function UrlDetail({
         </a>
       </div>
 
+      {crawl.pagesByWorstIssue !== null && (
+        <div className="grid gap-1 text-sm text-muted-foreground">
+          <p>{basis(renderedBasis ? 'rendered' : 'html')}</p>
+          <p>{basis('exceptions')}</p>
+          {documentUnknown && (
+            <p role="status">
+              {basis('unknown')} {basis(renderReason)}
+            </p>
+          )}
+        </div>
+      )}
       {context}
       <AuditResultsNotice host={host} state={data.results} />
       <Section title={v('title')}>
@@ -328,7 +353,11 @@ export async function UrlDetail({
               <p className="text-sm text-muted-foreground">{t('excludedFindings')}</p>
             ) : data.issues.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {data.accepted.length > 0 ? t('noPendingIssues') : t('noIssues')}
+                {documentUnknown
+                  ? basis('unknown')
+                  : data.accepted.length > 0
+                    ? t('noPendingIssues')
+                    : t('noIssues')}
               </p>
             ) : (
               <div className="grid gap-4">
@@ -525,5 +554,15 @@ export async function UrlDetail({
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+function isPageUrl(data: UrlDetailData) {
+  return (
+    data.url.scope === 'internal' &&
+    data.url.kind === 'page' &&
+    data.url.statusCode !== null &&
+    data.url.statusCode >= 200 &&
+    data.url.statusCode < 300
   )
 }

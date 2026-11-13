@@ -389,7 +389,8 @@
         "badge": "Necesita un rastreo completo"
       },
       "checkedScope": "Comprobado de nuevo: la respuesta HTTP, los datos de página, robots.txt y las comprobaciones que dependen solo de esta URL. Los enlaces de otras páginas, los duplicados y la presencia en sitemaps siguen requiriendo un rastreo completo.",
-      "evidenceNote": "Los campos de respuesta de arriba y los detalles registrados debajo proceden de esta reverificación. Aquí no se reutilizan muestras de evidencia del rastreo completo."
+      "evidenceNote": "Los campos de respuesta de arriba y los detalles registrados debajo proceden de esta reverificación. Aquí no se reutilizan muestras de evidencia del rastreo completo.",
+      "htmlOnly": "Esta revisión lee el HTML recibido. Para revisar los hallazgos del documento renderizado hace falta un rastreo completo."
     },
     "results": {
       "metaTitle": "Recomprobación · {host} · seotools",
@@ -2856,8 +2857,9 @@
       "incomplete": "un rastreo se detuvo en su límite de URL y este hallazgo depende de otras páginas",
       "catalog": "los catálogos de problemas difieren",
       "audit": "la configuración de auditoría o la expectativa de la URL difieren",
-      "unobserved": "un rastreo no registró lo que esta comprobación necesita: compara con rastreos hechos después de la actualización",
-      "dismissed": "Una persona descartó este hallazgo."
+      "unobserved": "un rastreo no pudo observar por completo los datos que necesita esta comprobación",
+      "dismissed": "Una persona descartó este hallazgo.",
+      "basis": "la base de observación del documento o de los enlaces es distinta"
     },
     "notes": {
       "pruned": {
@@ -2903,6 +2905,10 @@
       "ignoredParameters": {
         "title": "Han cambiado los parámetros ignorados",
         "description": "Las URL añadidas o no vistas pueden reflejar cambios en los parámetros ignorados. Los resúmenes de cambios por problema no se verifican porque cambió la identidad de las URL."
+      },
+      "basis": {
+        "title": "Bases de observación distintas",
+        "description": "No se pueden atribuir cambios de hallazgos del documento o de los enlaces entre observaciones HTML y renderizadas."
       }
     },
     "rowsShown": "{shown, number} de {matching, number} URLs mostradas",
@@ -3936,5 +3942,17 @@
     "check": "Comprobar ahora",
     "checking": "Encolando comprobación…",
     "hint": "El worker realiza esta comprobación en segundo plano. Recarga la página para ver el resultado."
+  },
+  "AuditBasis": {
+    "rendered": "Evaluado sobre la página renderizada",
+    "html": "Evaluado sobre el HTML recibido",
+    "exceptions": "Los diagnósticos de respuesta y código fuente, los campos originales y la vista previa social usan la respuesta recibida.",
+    "unknown": "No se pueden determinar los hallazgos del documento.",
+    "failed": "Falló la renderización.",
+    "redirected": "Se observó una redirección y no se terminó de observar el documento de origen.",
+    "truncated": "El documento recibido o renderizado quedó incompleto.",
+    "unsettled": "La página no se estabilizó durante el tiempo de observación.",
+    "missing": "No se guardó una observación completa del documento.",
+    "coverage": "{complete, number} documentos completos; {redirected, number} redirecciones; {unobserved, number} documentos sin observar."
   }
 }

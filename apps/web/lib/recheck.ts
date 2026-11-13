@@ -68,6 +68,7 @@ export interface RecheckView {
 export function viewRecheck(input: {
   verified: VerifiedUrl | null
   crawl: {
+    rendering?: { mode: 'html' | 'rendered' } | null
     auditVersion: number | null
     pagesByWorstIssue: unknown
     auditSnapshot?: { unobserved?: string[] | undefined } | null
@@ -92,6 +93,7 @@ export function viewRecheck(input: {
     current: verified.auditVersion === input.configVersion,
     comparison: comparable
       ? compareWithCrawl({
+          renderedBase: input.crawl.rendering?.mode === 'rendered',
           crawl: input.crawlIssues,
           recheck: verified.outcome.findings.map((finding) => finding.issue),
           unchecked: verified.outcome.unchecked,

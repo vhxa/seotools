@@ -39,6 +39,8 @@ export interface IndexabilityInput {
   /** Its canonical says another URL is the one to index. */
   canonicalised: boolean
   robotsBlocked: boolean
+  documentKnown?: boolean
+  clientRedirect?: boolean
 }
 
 export interface Indexability {
@@ -58,12 +60,16 @@ export function assessIndexability(input: IndexabilityInput): Indexability {
   if (input.state !== 'done' || input.statusCode === null) return { state: 'unknown', blockers: [] }
 
   const blockers: IndexabilityBlocker[] = []
-  if (input.statusCode >= 300 && input.statusCode < 400) blockers.push('redirect')
+  if (input.clientRedirect || (input.statusCode >= 300 && input.statusCode < 400))
+    blockers.push('redirect')
   else if (input.statusCode >= 400) blockers.push('http-error')
   if (input.noindex) blockers.push('noindex')
   if (input.canonicalised) blockers.push('canonical')
   if (input.robotsBlocked) blockers.push('robots')
 
   if (blockers.length > 0) return { state: 'not-indexable', blockers }
-  return { state: input.kind === 'page' ? 'indexable' : 'unknown', blockers: [] }
+  return {
+    state: input.kind === 'page' && input.documentKnown !== false ? 'indexable' : 'unknown',
+    blockers: [],
+  }
 }

@@ -1161,7 +1161,15 @@ export function crawlAuditRows(crawlId: string, urls: CrawlUrlAudit[]) {
     acceptNofollow: false,
     ...conditionColumns(url.conditions),
     indexability: url.indexability,
-    blockers: url.blockers.length > 0 ? JSON.stringify(url.blockers) : null,
+    blockers: url.documentObservation
+      ? JSON.stringify({
+          blockers: url.blockers,
+          documentObservation: url.documentObservation,
+          documentUnobserved: url.documentUnobserved ?? [],
+        })
+      : url.blockers.length > 0
+        ? JSON.stringify(url.blockers)
+        : null,
   }))
 }
 
@@ -1253,7 +1261,7 @@ export const toCrawlUrlAudit = (
     acceptNofollow: row.acceptNofollow,
     conditions,
     indexability: row.indexability as CrawlUrlAudit['indexability'],
-    blockers: row.blockers === null ? [] : (parseJson(row.blockers) as string[]),
+    ...readBlockerObservation(row.blockers),
   })
 }
 
@@ -1812,4 +1820,29 @@ export function groupAcceptedIssues(rows: { urlHash: string; issue: string; deta
     grouped.set(row.urlHash, [...(grouped.get(row.urlHash) ?? []), value])
   }
   return grouped
+}
+
+/** Legacy arrays and the bounded rendered-observation envelope share the existing JSON column. */
+function readBlockerObservation(
+  raw: string | null,
+): Pick<CrawlUrlAudit, 'blockers' | 'documentObservation' | 'documentUnobserved'> {
+  const value: unknown = raw === null ? [] : parseJson(raw)
+  if (Array.isArray(value))
+    return { blockers: value.filter((x): x is string => typeof x === 'string') }
+  if (!value || typeof value !== 'object') return { blockers: [] }
+  const v = value as Record<string, unknown>
+  const state = v.documentObservation
+  return {
+    blockers: Array.isArray(v.blockers)
+      ? v.blockers.filter((x): x is string => typeof x === 'string')
+      : [],
+    ...(state === 'complete' || state === 'redirected' || state === 'unobserved'
+      ? { documentObservation: state }
+      : {}),
+    documentUnobserved: Array.isArray(v.documentUnobserved)
+      ? v.documentUnobserved
+          .filter((x): x is string => typeof x === 'string' && x.length <= 100)
+          .slice(0, 200)
+      : [],
+  }
 }

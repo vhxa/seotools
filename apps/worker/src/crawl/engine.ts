@@ -247,6 +247,7 @@ export async function runCrawl(
     response: FetchedResponse,
     renderedHtml?: string,
     servedLinks?: ReadonlySet<string>,
+    observeLink?: (url: string, kind: CrawlLinkKind) => void,
   ): { result: CrawlUrlResult; found: Discovered; sitemap?: ParsedSitemap | null } {
     const found: Discovered = { urls: [], links: [] }
     const depth = item.depth + 1
@@ -258,6 +259,7 @@ export async function runCrawl(
       extractors: settings.extractors,
       log,
       discover: (url, kind, source = 'link', context) => {
+        observeLink?.(identity(url), kind)
         if (servedLinks?.has(`${crawlUrlHash(identity(url))} ${kind}`)) return
         const before = found.links.length
         discover(found, item, url, kind, source, depth, context)
@@ -315,6 +317,24 @@ export async function runCrawl(
       return renderUrl(item, response, served)
     let facts: CrawlPageFacts | null = null
     let page: CrawlUrlRender['data']['page']
+    const anchors = new Set<string>()
+    const nofollow = new Set<string>()
+    const embeds = new Set<string>()
+    let embedsComplete = true
+    const observeLink = (url: string, kind: CrawlLinkKind) => {
+      if (
+        (kind === 'anchor' || kind === 'anchor-nofollow') &&
+        isInternalUrl(url, host) &&
+        url !== identity(item.url)
+      ) {
+        anchors.add(kind + ':' + url)
+        if (kind === 'anchor-nofollow') nofollow.add(url)
+      }
+      if (['image', 'script', 'style', 'media', 'frame'].includes(kind)) {
+        if (url.length > 2048 || (!embeds.has(url) && embeds.size >= 1000)) embedsComplete = false
+        else embeds.add(url)
+      }
+    }
     let found: Discovered = { urls: [], links: [] }
     if (outcome.status === 'rendered' && !outcome.redirected) {
       const analysed = analyse(
@@ -325,13 +345,15 @@ export async function runCrawl(
           truncated: response.truncated || outcome.truncated,
         },
         outcome.html,
-        served,
+        new Set(),
+        observeLink,
       )
       // analyseResponse supplies the same bounded facts as for the served document. Discard links
       // already present in HTML, including their first-occurrence context.
       facts = analysed.result.data?.facts ?? null
       const result = analysed.result
       page = {
+        canonical: result.canonical,
         title: result.title,
         description: result.data?.description ?? null,
         h1: result.data?.h1?.[0] ?? null,
@@ -347,7 +369,15 @@ export async function runCrawl(
       }
     }
     const render = renderObservation(item.urlHash, outcome, facts)
-    if (page) render.data.page = page
+    if (page) {
+      render.data.page = page
+      render.data.documentLinks = {
+        internal: anchors.size,
+        nofollow: nofollow.size,
+        embeds: [...embeds].sort(),
+        embedsComplete,
+      }
+    }
     return { render, found }
   }
 

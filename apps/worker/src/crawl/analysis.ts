@@ -1,6 +1,8 @@
 import { RENDER_DIFFERENCE_IDS, unobservedCanonicalDifferences } from './render-differences'
 import {
   EMPTY_AUDIT_SNAPSHOT,
+  ISSUE_BASIS,
+  isPageLocalIssue,
   ISSUE_CATALOG_VERSION,
   PAGE_ISSUES,
   PAGE_ISSUE_IDS,
@@ -79,6 +81,8 @@ export async function analyseCrawl(
   // What the crawl could not observe is about the crawl, not the configuration: it is worked out
   // again each time, never carried over from the snapshot that came with it.
   const {
+    documentBasis: _basis,
+    documentCoverage: _documents,
     unobserved: _recorded,
     rendering: _mode,
     rendersUnobserved: _missing,
@@ -87,7 +91,9 @@ export async function analyseCrawl(
   } = given
   const config: AuditSnapshot = {
     ...rulesConfig,
-    ...(crawl.rendering?.mode === 'rendered' ? { rendering: 'rendered' as const } : {}),
+    ...(crawl.rendering?.mode === 'rendered'
+      ? { rendering: 'rendered' as const, documentBasis: 'rendered-v1' as const }
+      : {}),
   }
   const site = await loadSite(db, crawl, config)
   const issues: CrawlUrlIssue[] = []
@@ -133,6 +139,12 @@ export async function analyseCrawl(
       conditions: conditionStatesOf(url, site),
       indexability: url.indexability.state,
       blockers: url.indexability.blockers,
+      ...(url.documentObservation
+        ? {
+            documentObservation: url.documentObservation,
+            documentUnobserved: url.documentUnobserved,
+          }
+        : {}),
     })
     // A page is HTML that answered 2xx: a page that fails is an error, counted with the errors.
     if (!url.contentPage) continue
@@ -157,12 +169,24 @@ export async function analyseCrawl(
       pagesWithType[type]++
     }
   }
-  const unobserved = unobservedIssues(
-    site.urls.flatMap((url) => (url.internal && url.facts ? [url.facts] : [])),
+  let unobserved = unobservedIssues(
+    site.urls.flatMap((url) =>
+      url.internal && (url.served ?? url).facts ? [(url.served ?? url).facts!] : [],
+    ),
     (await db.vitals.origins(crawlId)).some(
       (row) => row.formFactor === 'all' && row.status === 'collected',
     ),
   )
+  if (config.documentBasis) {
+    unobserved = unobserved.filter((id) => ISSUE_BASIS[id] !== 'document')
+    for (const url of site.urls)
+      for (const id of url.documentUnobserved ?? [])
+        if (!isPageLocalIssue(id)) unobserved.push(id as (typeof unobserved)[number])
+    if (site.urls.some((url) => url.contentPage && url.documentObservation !== 'complete'))
+      unobserved.push(
+        ...PAGE_ISSUE_IDS.filter((id) => ISSUE_BASIS[id] === 'document' && !isPageLocalIssue(id)),
+      )
+  }
   if (site.urls.some((url) => url.internal && url.contentPage && url.url.data?.truncated === true))
     unobserved.push(...TRUNCATION_SKIPPING_ISSUES)
   if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {
@@ -201,7 +225,8 @@ export async function analyseCrawl(
       unobserved.push('social-tags-only-after-rendering')
     }
   }
-  for (const url of site.urls) unobserved.push(...unobservedCanonicalDifferences(url, site))
+  for (const url of site.urls)
+    unobserved.push(...unobservedCanonicalDifferences(url.served ?? url, site))
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,
@@ -213,7 +238,27 @@ export async function analyseCrawl(
       snapshot: {
         ...config,
         ...(crawl.rendering?.mode === 'rendered'
-          ? { rendersUnobserved: site.rendersUnobserved, renderCoverage: site.renderCoverage }
+          ? {
+              rendersUnobserved: site.rendersUnobserved,
+              renderCoverage: site.renderCoverage,
+              documentCoverage: {
+                complete: site.urls.filter(
+                  (url) => url.contentPage && url.documentObservation === 'complete',
+                ).length,
+                redirected: site.urls.filter(
+                  (url) => url.contentPage && url.documentObservation === 'redirected',
+                ).length,
+                unobserved: site.urls.filter(
+                  (url) => url.contentPage && url.documentObservation === 'unobserved',
+                ).length,
+                legacyMissing: site.urls.filter(
+                  (url) =>
+                    url.contentPage &&
+                    url.render?.status === 'rendered' &&
+                    (!url.render.data.facts || !url.render.data.page),
+                ).length,
+              },
+            }
           : {}),
         ...(unobserved.length > 0 ? { unobserved: [...new Set(unobserved)].sort() } : {}),
       },

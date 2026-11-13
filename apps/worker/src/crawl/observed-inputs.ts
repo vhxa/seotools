@@ -78,19 +78,7 @@ export function unobservedIssues(
 /** Every issue reading the rendered-inclusive graph, including positive references and conditions.
  * Partial observations can support positive evidence, but cannot verify changes in either direction.
  */
-export const RENDERED_GRAPH_ISSUES = [
-  'orphan-in-sitemap',
-  'only-nofollow-inlinks',
-  'only-noindex-inlinks',
-  'deep-page',
-  'unlinked-required-missing',
-  'linked-only-by-javascript',
-  'links-only-after-rendering',
-  'links-to-broken',
-  'links-to-redirect',
-  'links-to-canonicalised',
-  'links-tracking-parameters',
-] as const satisfies readonly PageIssueId[]
+export { RENDERED_GRAPH_ISSUES } from '@seotools/core/crawl/basis'
 
 /** HTML observations retain their established behavior. Rendered absence needs every page whole. */
 export const graphAbsenceKnown = (site: Pick<Site, 'config' | 'rendersUnobserved'>) =>

@@ -29,7 +29,8 @@
     "./crawl/audit-templates": "./src/crawl/audit-templates.ts",
     "./incidents": "./src/incidents.ts",
     "./crawl-file-views": "./src/crawl-file-views.ts",
-    "./render-status": "./src/render-status.ts"
+    "./render-status": "./src/render-status.ts",
+    "./crawl/basis": "./src/crawl/basis.ts"
   },
   "scripts": {
     "lint": "eslint .",

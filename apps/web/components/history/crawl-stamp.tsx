@@ -38,6 +38,7 @@ export function useRulesLabel() {
  */
 export function CrawlStamp({ crawl, currentVersion }: { crawl: Crawl; currentVersion: number }) {
   const t = useTranslations('CrawlHistory.stamp')
+  const basis = useTranslations('AuditBasis')
   const when = useCrawlMoment()
   const rulesLabel = useRulesLabel()
   // Pruned crawls have no findings to be out of date.
@@ -57,6 +58,16 @@ export function CrawlStamp({ crawl, currentVersion }: { crawl: Crawl; currentVer
       <span className="text-muted-foreground">
         {rulesLabel(rulesStateOf(crawlConfigVersion(crawl), currentVersion))}
       </span>
+      {crawl.pagesByWorstIssue !== null && (
+        <span className="text-muted-foreground">
+          {basis(crawl.auditSnapshot?.documentBasis ? 'rendered' : 'html')}
+        </span>
+      )}
+      {crawl.auditSnapshot?.documentCoverage && (
+        <span className="text-muted-foreground">
+          {basis('coverage', crawl.auditSnapshot.documentCoverage)}
+        </span>
+      )}
       {olderCatalog && (
         <Badge variant="secondary" title={t('catalogOlderHint')}>
           {t('catalogOlder')}
