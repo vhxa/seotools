@@ -477,3 +477,58 @@ it.each(['failed', 'truncated', 'unsettled'] as const)(
     ).toContain('only-noindex-inlinks')
   },
 )
+
+it.each([false, true])(
+  'keeps resources-broken identical across a twice-failed home render (HTML embed=%s)',
+  async (htmlEmbed) => {
+    const data = {
+      ...siteData,
+      [`${SITE}/`]: page('/', { links: htmlEmbed ? '<img src="/html-missing.png">' : '' }),
+      [`${SITE}/js-missing.png`]: { statusCode: 404, headers: {}, body: Buffer.from('missing') },
+      [`${SITE}/html-missing.png`]: { statusCode: 404, headers: {}, body: Buffer.from('missing') },
+    }
+    const findings = []
+    for (const partial of [false, true, false]) {
+      const crawl = await start()
+      const rendering = vi.fn(async (input: RenderInput) => {
+        const outcome = renderedOutcome(
+          input,
+          input.url === `${SITE}/` ? '<img src="/js-missing.png">' : '',
+        )
+        return partial && input.url === `${SITE}/`
+          ? { ...outcome, status: 'failed' as const }
+          : outcome
+      })
+      await runCrawl(
+        crawl.id,
+        options({
+          createFetcher: fakeSite(data, 0).createFetcher,
+          renderService: { check: ready, render: rendering },
+        }),
+      )
+      expect(rendering.mock.calls.filter(([input]) => input.url === `${SITE}/`)).toHaveLength(
+        partial ? 2 : 1,
+      )
+      const rows = (await db.crawls.issuesOf(crawl.id, [hash('/')]))
+        .filter((row) => row.issue === 'resources-broken')
+        .map(({ issue, details }) => ({ issue, details }))
+      expect(rows).toHaveLength(htmlEmbed ? 1 : 0)
+      findings.push(rows)
+      const links = await db.crawls.linksFrom(crawl.id, [hash('/')])
+      expect(
+        links.some((link) => link.targetHash === hash('/js-missing.png') && link.rendered === 1),
+      ).toBe(!partial)
+      const comparison = await compareWithPrevious({
+        db,
+        target: (await db.crawls.get(crawl.id))!,
+        exact: true,
+      })
+      const changes = comparison.byIssue.get('resources-broken')
+      expect(changes?.fresh ?? 0).toBe(0)
+      expect(changes?.back ?? 0).toBe(0)
+      expect(changes?.resolved ?? 0).toBe(0)
+    }
+    expect(findings[1]).toEqual(findings[0])
+    expect(findings[2]).toEqual(findings[0])
+  },
+)

@@ -5,6 +5,7 @@ import { RENDERED_GRAPH_ISSUES } from './observed-inputs'
 import { htmlBaseline } from './html-baseline'
 import type { VitalMetrics } from '@seotools/core'
 import {
+  CRAWL_LINK_KINDS,
   emptyVitals,
   EMPTY_AUDIT_SNAPSHOT,
   MAX_EVIDENCE_ITEMS,
@@ -40,8 +41,14 @@ const htmlBeforeRendering = JSON.parse(
 ) as Record<string, unknown>
 
 /** Exercise each check's real scenario, including helper/condition calls, and track graph reads. */
-function assertGraphReadersClassified(issue: PageIssueId, url: AuditedUrl, site: Site) {
+function assertGraphReadersClassified(
+  issue: PageIssueId,
+  url: AuditedUrl,
+  site: Site,
+  changedInputs: Set<string>,
+) {
   const inputs = new Set([
+    ...changedInputs,
     'anchorsIn',
     'followedAnchorsIn',
     'anchorsFromIndexable',
@@ -933,7 +940,55 @@ describe('each issue', () => {
     }
     const stored = (await db.crawls.get(crawlId))!
     const observedSite = await loadSite(db, stored, stored.auditSnapshot!)
-    assertGraphReadersClassified(id, observedSite.get(absolute(scenario.at))!, observedSite)
+    // Derive the guard's inputs from loadSite itself, rather than a hand-maintained field list.
+    // Inject EVERY kind between every source/target: this also exercises failed embeds,
+    // sitemap counts, linksIn and future fields, on each check's real positive scenario.
+    const linksFrom = db.crawls.linksFrom
+    const renderedCrawl = {
+      ...stored,
+      rendering: { mode: 'rendered' as const, waitMs: 5000, omittedHosts: [] },
+    }
+    const config = { ...stored.auditSnapshot!, rendering: 'rendered' as const }
+    const without = await loadSite(db, renderedCrawl, config)
+    db.crawls.linksFrom = async (crawlId, hashes) => [
+      ...(await linksFrom(crawlId, hashes)),
+      ...hashes.flatMap((sourceHash) =>
+        without.urls.flatMap((target) =>
+          CRAWL_LINK_KINDS.map((kind) => ({
+            sourceHash,
+            targetHash: target.url.urlHash,
+            kind,
+            rendered: 1 as const,
+          })),
+        ),
+      ),
+    ]
+    let withLinks: Site
+    try {
+      withLinks = await loadSite(db, renderedCrawl, config)
+    } finally {
+      db.crawls.linksFrom = linksFrom
+    }
+    // Nested AuditedUrl references can cycle through linksTo; compare their identities.
+    const serialize = (value: unknown) =>
+      JSON.stringify(value, (_key, nested: unknown) =>
+        nested && typeof nested === 'object' && 'contentPage' in nested
+          ? (nested as AuditedUrl).url.urlHash
+          : nested,
+      )
+    const changedInputs = new Set<string>()
+    for (const url of without.urls) {
+      const other = withLinks.get(url.url.url)!
+      for (const key of Object.keys(url) as (keyof AuditedUrl)[]) {
+        if (serialize(url[key]) !== serialize(other[key])) changedInputs.add(key)
+      }
+    }
+    assertGraphReadersClassified(
+      id,
+      observedSite.get(absolute(scenario.at))!,
+      observedSite,
+      changedInputs,
+    )
     const found = await issuesAt(crawlId, scenario.at)
     expect(found.map((row) => row.issue)).toContain(id)
     if (scenario.details) {

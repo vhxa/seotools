@@ -477,7 +477,13 @@ export async function loadSite(
       db.crawls.sitemapHreflangOf(crawl.id, hashes),
     ])
     for (const { sourceHash, targetHash, kind, rendered } of links) {
-      if (rendered && crawl.rendering?.mode !== 'rendered') continue
+      // Only rendered anchors feed the audit graph; other rendered declarations stay stored
+      // for render details and future checks, never as input to existing HTML checks.
+      if (
+        rendered &&
+        (crawl.rendering?.mode !== 'rendered' || (kind !== 'anchor' && kind !== 'anchor-nofollow'))
+      )
+        continue
       if (sourceHash === targetHash) continue
       const source = byHash.get(sourceHash)
       const target = byHash.get(targetHash)
