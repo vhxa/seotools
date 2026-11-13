@@ -8,6 +8,7 @@ import { createBrotliDecompress, createGunzip, createInflate, gunzipSync } from 
 import { pipeline, type Readable } from 'node:stream'
 
 /** Largest body read, after decompression. A page cut here is flagged as truncated. */
+export const MAX_REQUEST_BODY_BYTES = 1024 * 1024
 export const MAX_BODY_BYTES = 10 * 1024 * 1024
 /** Sitemaps may legally be 50 MB uncompressed. */
 export const MAX_SITEMAP_BYTES = 64 * 1024 * 1024
@@ -42,6 +43,10 @@ export interface Fetcher {
     url: string,
     options: {
       signal: AbortSignal
+      /** Render requests only; existing callers remain GET. Never pass browser credentials. */
+      method?: string
+      headers?: Record<string, string>
+      body?: Buffer
       readBody?: 'auto' | 'force'
       /** Stops reading the body here (the response is then `truncated`). Defaults by `readBody`. */
       maxBytes?: number
@@ -186,7 +191,12 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
       httpsAgent.destroy()
     },
 
-    async fetch(url, { signal, readBody = 'auto', maxBytes }) {
+    async fetch(
+      url,
+      { signal, readBody = 'auto', maxBytes, method = 'GET', headers: requestHeaders, body },
+    ) {
+      if (body && body.length > MAX_REQUEST_BODY_BYTES)
+        throw new FetchError('BODY_LIMIT', 'Request body too large', 0)
       const started = Date.now()
       const elapsed = () => Date.now() - started
       const { hostname, protocol } = new URL(url)
@@ -199,15 +209,17 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
       const client = protocol === 'https:' ? https : http
       try {
         return await new Promise<FetchedResponse>((resolve, reject) => {
-          const request = client.get(
+          const request = client.request(
             url,
             {
+              method,
               agent: protocol === 'https:' ? httpsAgent : httpAgent,
               signal: deadline,
               ...(config.allowPrivateNetworks ? {} : { lookup: guardedLookup }),
               headers: {
                 'User-Agent': config.userAgent,
                 Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                ...requestHeaders,
                 'Accept-Encoding': 'gzip, deflate, br',
                 ...(config.siteHeaders && isInternalUrl(url, config.siteHeaders.host)
                   ? config.siteHeaders.headers
@@ -248,6 +260,7 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
             },
           )
           request.on('error', reject)
+          request.end(body)
         })
       } catch (error) {
         if (signal.aborted) throw error

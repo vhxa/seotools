@@ -3,7 +3,9 @@ import { FetchError, type FetchedResponse, type Fetcher } from './fetcher'
 import { PERMANENT_ERRORS, RETRYABLE_STATUS, abortableSleep, parseRetryAfter } from './requests'
 
 /** What a request can ask for besides its URL: the fetcher's options, except who can stop it. */
-export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'>
+export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
+  signal?: AbortSignal
+}
 
 /**
  * Paces the requests of one piece of work to a domain's settings, whoever makes them: a crawl, or a
@@ -25,14 +27,14 @@ export function createRequester(options: {
   const interval = 1000 / settings.requestsPerSecond
   let nextSlot = 0
   let pausedUntil = 0
-  async function waitForSlot() {
+  async function waitForSlot(signal = stopSignal) {
     const now = Date.now()
     const at = Math.max(now, nextSlot, pausedUntil)
     nextSlot = at + interval
-    await abortableSleep(at - now, stopSignal)
+    await abortableSleep(at - now, signal)
     // A pause may have started while this request was waiting its turn.
-    while (Date.now() < pausedUntil && !stopSignal.aborted) {
-      await abortableSleep(pausedUntil - Date.now(), stopSignal)
+    while (Date.now() < pausedUntil && !signal.aborted) {
+      await abortableSleep(pausedUntil - Date.now(), signal)
     }
   }
 
@@ -40,12 +42,15 @@ export function createRequester(options: {
     url: string,
     fetchOptions: RequestOptions,
   ): Promise<FetchedResponse | FetchError> {
+    const signal = fetchOptions.signal
+      ? AbortSignal.any([stopSignal, fetchOptions.signal])
+      : stopSignal
     for (let attempt = 0; ; attempt++) {
-      await waitForSlot()
-      if (stopSignal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
+      await waitForSlot(signal)
+      if (signal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
       const backoff = retryBaseMs * 2 ** attempt
       try {
-        const response = await fetcher.fetch(url, { signal: stopSignal, ...fetchOptions })
+        const response = await fetcher.fetch(url, { ...fetchOptions, signal })
         if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= settings.maxRetries) {
           return response
         }
@@ -56,7 +61,7 @@ export function createRequester(options: {
       } catch (error) {
         if (!(error instanceof FetchError)) throw error
         if (PERMANENT_ERRORS.has(error.code) || attempt >= settings.maxRetries) return error
-        await abortableSleep(backoff, stopSignal)
+        await abortableSleep(backoff, signal)
       }
     }
   }

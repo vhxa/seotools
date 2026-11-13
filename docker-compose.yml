@@ -27,6 +27,26 @@ services:
       - seotools-data:/data
     # Gives the worker time to finish running jobs on `docker compose stop`.
     stop_grace_period: 40s
+    networks: [default, render]
+
+  browser:
+    image: chromedp/headless-shell:158.0.8127.18
+    profiles: [rendering]
+    restart: unless-stopped
+    user: '65534:65534'
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 128
+    networks: [render]
 
 volumes:
   seotools-data:
+
+networks:
+  default: {}
+  render:
+    internal: true

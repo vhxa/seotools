@@ -42,6 +42,7 @@ Raspberry Pi to a VPS.
 - **Opt-in email alerts** for changes between crawls and Core Web Vitals regressions after full
   crawls. Daily site-file, availability and certificate checks record incidents, show open ones on
   the dashboard and keep a 30-day history in Issues; they are not an uptime monitor.
+- **Optional isolated browser** with connection status in System → Integrations; [setup guide](docs/rendering.md). Crawl rendering follows separately.
 - **Custom extraction** of values with CSS selectors.
 - **Portfolio and structure**: see every domain by company with its last crawl, figures and trend,
   and explore a domain by directory with pages, errors and findings. Star a favourite domain to
@@ -97,24 +98,26 @@ Administrators can save an encrypted Google API key in **Administration → Inte
 All configuration is through environment variables. See [`.env.example`](.env.example) for the
 annotated list.
 
-| Variable                         | Default                  | Description                                                              |
-| -------------------------------- | ------------------------ | ------------------------------------------------------------------------ |
-| `BETTER_AUTH_SECRET`             | —                        | **Required.** 32+ chars. Signs sessions.                                 |
-| `BETTER_AUTH_URL`                | `http://localhost:3000`  | Public URL of the app. Must match the browser's address.                 |
-| `TRUSTED_ORIGINS`                | —                        | Extra comma-separated origins allowed to call the auth API.              |
-| `SETTINGS_ENCRYPTION_KEY`        | `BETTER_AUTH_SECRET`     | Key for secrets saved from the admin panel (SMTP password, Resend key).  |
-| `DATABASE_URL`                   | `file:/data/seotools.db` | `file:…` (SQLite) or `postgres://…`.                                     |
-| `DATABASE_DIALECT`               | inferred                 | `sqlite` \| `pg`. Only if it can't be inferred from the URL.             |
-| `RUN_MIGRATIONS`                 | `true`                   | Apply pending migrations at startup.                                     |
-| `PORT`                           | `3000`                   | HTTP port (in Compose: the host port; the container always uses 3000).   |
-| `LOG_LEVEL`                      | `info`                   | `fatal` … `trace`, or `silent`.                                          |
-| `WORKER_CONCURRENCY`             | `2`                      | Jobs processed in parallel.                                              |
-| `WORKER_POLL_INTERVAL_MS`        | `1000`                   | How often an idle worker looks for jobs.                                 |
-| `JOB_LOCK_TIMEOUT_MS`            | `300000`                 | A job running longer than this is assumed orphaned and re-queued.        |
-| `CRAWL_CONCURRENCY`              | `2`                      | Crawls running in parallel, in slots separate from other jobs.           |
-| `CRAWLER_ALLOW_PRIVATE_NETWORKS` | `false`                  | Let the crawler reach private addresses, to audit sites on your network. |
-| `SEOTOOLS_PAUSE_AUTOMATION`      | `false`                  | Staging copies: no scheduled crawls, refreshes, update checks or email.  |
-| `SEOTOOLS_MODE`                  | `all`                    | Docker only: `all`, `web`, `worker` or `migrate` (see below).            |
+| Variable                         | Default                                                                                                             | Description                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET`             | —                                                                                                                   | **Required.** 32+ chars. Signs sessions.                                 |
+| `BETTER_AUTH_URL`                | `http://localhost:3000`                                                                                             | Public URL of the app. Must match the browser's address.                 |
+| `TRUSTED_ORIGINS`                | —                                                                                                                   | Extra comma-separated origins allowed to call the auth API.              |
+| `SETTINGS_ENCRYPTION_KEY`        | `BETTER_AUTH_SECRET`                                                                                                | Key for secrets saved from the admin panel (SMTP password, Resend key).  |
+| `DATABASE_URL`                   | `file:/data/seotools.db`                                                                                            | `file:…` (SQLite) or `postgres://…`.                                     |
+| `DATABASE_DIALECT`               | inferred                                                                                                            | `sqlite` \| `pg`. Only if it can't be inferred from the URL.             |
+| `RUN_MIGRATIONS`                 | `true`                                                                                                              | Apply pending migrations at startup.                                     |
+| `PORT`                           | `3000`                                                                                                              | HTTP port (in Compose: the host port; the container always uses 3000).   |
+| `LOG_LEVEL`                      | `info`                                                                                                              | `fatal` … `trace`, or `silent`.                                          |
+| `WORKER_CONCURRENCY`             | `2`                                                                                                                 | Jobs processed in parallel.                                              |
+| `WORKER_POLL_INTERVAL_MS`        | `1000`                                                                                                              | How often an idle worker looks for jobs.                                 |
+| `JOB_LOCK_TIMEOUT_MS`            | `300000`                                                                                                            | A job running longer than this is assumed orphaned and re-queued.        |
+| `CRAWL_CONCURRENCY`              | `2`                                                                                                                 | Crawls running in parallel, in slots separate from other jobs.           |
+| `RENDER_BROWSER_URL`             | Optional worker DevTools URL (`http://browser:9222`); unset disables rendering. See [the guide](docs/rendering.md). |
+| `RENDER_CONCURRENCY`             | Simultaneous rendered pages per worker (default `2`, range `1–8`; use `1` on Raspberry Pi).                         |
+| `CRAWLER_ALLOW_PRIVATE_NETWORKS` | `false`                                                                                                             | Let the crawler reach private addresses, to audit sites on your network. |
+| `SEOTOOLS_PAUSE_AUTOMATION`      | `false`                                                                                                             | Staging copies: no scheduled crawls, refreshes, update checks or email.  |
+| `SEOTOOLS_MODE`                  | `all`                                                                                                               | Docker only: `all`, `web`, `worker` or `migrate` (see below).            |
 
 ### Accounts
 
