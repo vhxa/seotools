@@ -5,6 +5,8 @@ import { PERMANENT_ERRORS, RETRYABLE_STATUS, abortableSleep, parseRetryAfter } f
 /** What a request can ask for besides its URL: the fetcher's options, except who can stop it. */
 export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   signal?: AbortSignal
+  /** Rechecked before every attempt, after pacing. */
+  beforeAttempt?: () => void
 }
 
 /**
@@ -53,7 +55,18 @@ export function createRequester(options: {
       if (signal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
       const backoff = retryBaseMs * 2 ** attempt
       try {
-        const response = await fetcher.fetch(url, { ...fetchOptions, signal })
+        fetchOptions.beforeAttempt?.()
+        let reported = 0
+        const response = await fetcher.fetch(url, {
+          ...fetchOptions,
+          signal,
+          onBodyBytes: (size) => {
+            reported += size
+            fetchOptions.onBodyBytes?.(size)
+          },
+        })
+        // Alternate fetchers may report only a completed body. Never miss those bytes.
+        if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
         if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) {
           return response
         }

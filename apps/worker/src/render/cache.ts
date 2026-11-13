@@ -33,7 +33,7 @@ export function createRenderResourceCache(maxBytes: number = RENDER_LIMITS.cache
           (answer instanceof FetchError
             ? Buffer.byteLength(answer.code + answer.message) + 64
             : (answer.body?.length ?? 0) + Buffer.byteLength(JSON.stringify(answer.headers)) + 128)
-        if (size <= maxBytes) {
+        if (size <= maxBytes && !(answer instanceof FetchError && answer.code === 'BODY_LIMIT')) {
           while (bytes + size > maxBytes) {
             const first = entries.entries().next().value
             if (!first) break

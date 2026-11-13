@@ -41,7 +41,7 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
   let lastActivity = started
   let requested = 0
   let bytes = input.document.body?.length ?? 0
-  let reserved = 0
+  let resourceQueue = Promise.resolve()
   let supplied = false
   let redirected = false
   const pending = new Set<Promise<void>>()
@@ -165,21 +165,18 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
       }
       inFlight++
       lastActivity = Date.now()
-      let resourceCap = 0
+      let release = () => {}
+      const previous = resourceQueue
+      resourceQueue = new Promise<void>((resolve) => {
+        release = resolve
+      })
       try {
-        while (RENDER_LIMITS.pageBytes - bytes - reserved <= 0 && reserved > 0 && !signal.aborted) {
-          await new Promise((resolve) => setTimeout(resolve, 25))
-        }
-        resourceCap = Math.min(
-          RENDER_LIMITS.resourceBytes,
-          RENDER_LIMITS.pageBytes - bytes - reserved,
-        )
+        await previous
         if (signal.aborted) return abort()
-        if (resourceCap <= 0) {
+        if (bytes >= RENDER_LIMITS.pageBytes) {
           omit(url, 'limit')
           return abort()
         }
-        reserved += resourceCap
         const postData = await request.content()
         if (postData && postData.byteLength > RENDER_LIMITS.requestBodyBytes) {
           omit(url, 'limit')
@@ -206,13 +203,29 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
               headers: renderRequestHeaders(request.headers()),
               ...(postData === undefined ? {} : { body: Buffer.from(postData) }),
               readBody: 'force',
-              maxBytes: resourceCap,
+              maxBytes: RENDER_LIMITS.resourceBytes,
+              beforeAttempt: () => {
+                if (bytes >= RENDER_LIMITS.pageBytes)
+                  throw new FetchError('BODY_LIMIT', 'Page byte budget exceeded')
+              },
+              onBodyBytes: (size) => {
+                bytes += size
+                const cacheable =
+                  request.method() === 'GET' &&
+                  ['script', 'stylesheet'].includes(request.resourceType())
+                if (!cacheable && bytes > RENDER_LIMITS.pageBytes)
+                  throw new FetchError('BODY_LIMIT', 'Page byte budget exceeded')
+              },
             })
           },
         )
         if (finished || signal.aborted) return abort()
         if (cached) result.requests.cached++
         if (answer instanceof FetchError) {
+          if (answer.code === 'BODY_LIMIT') {
+            omit(url, 'limit')
+            return abort()
+          }
           if (answer.code === 'BLOCKED_ADDRESS') {
             result.requests.refusedCount++
             addSample(
@@ -231,11 +244,11 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
           return abort()
         }
         const size = answer.body?.length ?? 0
-        if (size > resourceCap || bytes + size > RENDER_LIMITS.pageBytes || answer.truncated) {
+        if (cached) bytes += size
+        if (bytes > RENDER_LIMITS.pageBytes || answer.truncated) {
           omit(url, 'limit')
           return abort()
         }
-        bytes += size
         if (answer.statusCode >= 400) {
           result.requests.failedCount++
           addSample(
@@ -260,7 +273,7 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
         }
         await abort()
       } finally {
-        reserved -= resourceCap
+        release()
         inFlight--
         lastActivity = Date.now()
       }

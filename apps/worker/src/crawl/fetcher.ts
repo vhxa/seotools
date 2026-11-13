@@ -50,6 +50,8 @@ export interface Fetcher {
       readBody?: 'auto' | 'force'
       /** Stops reading the body here (the response is then `truncated`). Defaults by `readBody`. */
       maxBytes?: number
+      /** Called for every decoded chunk, including rejected/truncated/error responses. May throw to stop. */
+      onBodyBytes?: (bytes: number) => void
     },
   ): Promise<FetchedResponse>
   close(): void
@@ -153,10 +155,11 @@ function decompressed(response: http.IncomingMessage): Readable {
 }
 
 /** Reads a stream up to `limit` bytes, so that a decompression bomb cannot exhaust the memory. */
-async function readLimited(stream: Readable, limit: number) {
+async function readLimited(stream: Readable, limit: number, onBodyBytes?: (bytes: number) => void) {
   const chunks: Buffer[] = []
   let size = 0
   for await (const chunk of stream as AsyncIterable<Buffer>) {
+    onBodyBytes?.(chunk.length)
     const room = limit - size
     if (chunk.length >= room) {
       if (room > 0) chunks.push(chunk.subarray(0, room))
@@ -193,7 +196,15 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
 
     async fetch(
       url,
-      { signal, readBody = 'auto', maxBytes, method = 'GET', headers: requestHeaders, body },
+      {
+        signal,
+        readBody = 'auto',
+        maxBytes,
+        method = 'GET',
+        headers: requestHeaders,
+        body,
+        onBodyBytes,
+      },
     ) {
       if (body && body.length > MAX_REQUEST_BODY_BYTES)
         throw new FetchError('BODY_LIMIT', 'Request body too large', 0)
@@ -251,7 +262,7 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
                 return finish(null, false)
               }
               const limit = maxBytes ?? (readBody === 'force' ? MAX_SITEMAP_BYTES : MAX_BODY_BYTES)
-              readLimited(decompressed(response), limit)
+              readLimited(decompressed(response), limit, onBodyBytes)
                 .then(({ body, truncated }) => {
                   if (truncated) response.destroy()
                   finish(body, truncated)
@@ -263,7 +274,7 @@ export function createHttpFetcher(config: FetcherConfig): Fetcher {
           request.end(body)
         })
       } catch (error) {
-        if (signal.aborted) throw error
+        if (signal.aborted || error instanceof FetchError) throw error
         if (deadline.aborted) {
           throw new FetchError('TIMEOUT', `No answer within ${config.timeoutMs} ms`, elapsed())
         }

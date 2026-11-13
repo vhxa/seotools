@@ -6,6 +6,7 @@ export const RETRYABLE_STATUS = new Set([429, 503])
 /** Errors that will fail the same way on a second try, seconds later. */
 export const PERMANENT_ERRORS = new Set([
   'BLOCKED_ADDRESS',
+  'BODY_LIMIT',
   'ENOTFOUND',
   'CERT_HAS_EXPIRED',
   'DEPTH_ZERO_SELF_SIGNED_CERT',

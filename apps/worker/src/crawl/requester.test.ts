@@ -33,3 +33,27 @@ describe('request retries by method', () => {
     },
   )
 })
+
+it('charges bodies from retries and bytes received before a network error', async () => {
+  const sizes: number[] = []
+  let attempt = 0
+  const requester = createRequester({
+    fetcher: {
+      close() {},
+      async fetch(_url, options) {
+        attempt++
+        options.onBodyBytes?.(7)
+        if (attempt === 1) throw new FetchError('ECONNRESET', 'partial answer')
+        return answer
+      },
+    },
+    settings: { requestsPerSecond: 10000, maxRetries: 2 },
+    signal: new AbortController().signal,
+    retryBaseMs: 0,
+    log: createLogger('test', 'silent'),
+  })
+  await requester.fetchWithRetries('http://site.test/api', {
+    onBodyBytes: (size) => sizes.push(size),
+  })
+  expect(sizes).toEqual([7, 7, 7])
+})

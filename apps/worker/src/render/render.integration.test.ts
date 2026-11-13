@@ -53,6 +53,15 @@ const pages = {
   hostile: `<script>for(const u of ['http://169.254.169.254/latest/meta-data/','http://127.0.0.1:9223/json/version','http://localhost:3113/','http://127.0.0.1:3113/'])fetch(u).catch(()=>{});new WebSocket('ws://localhost:3113/');navigator.sendBeacon('http://google-analytics.com/g/collect','x')</script><img src="/image"><script src="https://dev.visualwebsiteoptimizer.com/j.php"></script>`,
 }
 
+const baseDocument = (body: string) => ({
+  statusCode: 200,
+  headers: { 'content-type': 'text/html' },
+  body: Buffer.from(body),
+  bytes: Buffer.byteLength(body),
+  truncated: false,
+  responseTimeMs: 0,
+})
+
 describe.skipIf(!available)('isolated Chromium rendering', () => {
   const binaryBodies: Buffer[] = []
   let browser: Browser
@@ -230,6 +239,70 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(blocked.requests.blockedByRobots).toEqual(['http://site.test/nav.js'])
     expect(blocked.requests.made).toBe(0)
   })
+  it('charges truncated resources and stops downloading at the page budget', async () => {
+    let downloads = 0
+    const resource = Buffer.alloc(RENDER_LIMITS.resourceBytes)
+    const requester = createRequester({
+      fetcher: {
+        close() {},
+        async fetch() {
+          downloads++
+          return {
+            statusCode: 200,
+            headers: {},
+            body: resource,
+            bytes: resource.length,
+            truncated: true,
+            responseTimeMs: 0,
+          }
+        },
+      },
+      settings: { requestsPerSecond: 10000, maxRetries: 0 },
+      signal: base.signal,
+      retryBaseMs: 0,
+      log: createLogger('test', 'silent'),
+    })
+    const body = `<script>(async()=>{for(let n=0;n<20;n++)await fetch('/large'+n).catch(()=>{})})()</script>`
+    const result = await render('head', {
+      requester,
+      document: {
+        ...baseDocument(body),
+      },
+    })
+    expect(downloads).toBeLessThanOrEqual(6)
+    expect(result.requests.omittedCount).toBeGreaterThan(0)
+  })
+  it('does not cache a script truncated by another page remaining budget', async () => {
+    const cache = createRenderResourceCache()
+    let downloads = 0
+    const requester = createRequester({
+      fetcher: {
+        close() {},
+        async fetch(_url, options) {
+          downloads++
+          const body = Buffer.from("document.querySelector('main').textContent='complete script'")
+          return {
+            ...baseDocument(''),
+            headers: { 'content-type': 'application/javascript' },
+            body: body.subarray(0, options.maxBytes),
+            truncated: (options.maxBytes ?? body.length) < body.length,
+          }
+        },
+      },
+      settings: { requestsPerSecond: 10000, maxRetries: 0 },
+      signal: base.signal,
+      retryBaseMs: 0,
+      log: createLogger('test', 'silent'),
+    })
+    const small = '<main></main><script src="/budget.js"></script>'
+    const large = small + '<!--' + ' '.repeat(RENDER_LIMITS.pageBytes - small.length - 10) + '-->'
+    const first = await render('head', { requester, cache, document: baseDocument(large) })
+    expect(first.requests.omitted.some((item) => item.reason === 'limit')).toBe(true)
+    const second = await render('head', { requester, cache, document: baseDocument(small) })
+    expect(second.html).toContain('<main>complete script</main>')
+    expect(second.requests.cached).toBe(1)
+    expect(downloads).toBe(1)
+  }, 15000)
   it('takes a never-quiet page at the wait limit without reporting failure', async () => {
     const document = {
       body: Buffer.from(
