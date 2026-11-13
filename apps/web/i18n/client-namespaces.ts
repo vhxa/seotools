@@ -44,6 +44,7 @@ export const CLIENT_NAMESPACES: readonly string[] = [
   'Parameters',
   'PasswordRecovery',
   'PrioritySettings',
+  'RenderBrowser',
   'ResultsTable',
   'Schedules',
   'SetPassword',

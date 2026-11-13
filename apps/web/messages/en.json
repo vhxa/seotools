@@ -3795,5 +3795,21 @@
     "formerMember": "a former member",
     "decisionChanged": "The decision has changed since this analysis.",
     "unknownDate": "date not recorded"
+  },
+  "RenderBrowser": {
+    "title": "Browser for JavaScript rendering",
+    "not-configured": "Not configured. Follow the guide to enable the optional browser.",
+    "ready": "Ready. The isolation check passed.",
+    "unreachable": "The worker cannot connect to or check the browser.",
+    "has-network": "Refused: the browser can reach the network by itself. See the guide.",
+    "unsafe-configuration": "Refused: the check could not prove that all of the browser's own traffic goes to the blocking proxy. Start it with the flags in the guide, without proxy exceptions.",
+    "too-old": "Refused: the browser version is too old. Update the browser image.",
+    "unknown": "Browser status is unknown. The worker has not reported a recent check.",
+    "version": "Version: {version}",
+    "checked": "Last checked: {when}",
+    "guide": "Rendering setup and isolation guide",
+    "check": "Check now",
+    "checking": "Queueing check…",
+    "hint": "The worker runs this check in the background. Refresh this page to see the result."
   }
 }

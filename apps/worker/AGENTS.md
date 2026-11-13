@@ -5,7 +5,7 @@ Job runner and handlers, crawler, crawl scheduler, refreshers and the CLIs. Repo
 ## Structure
 
 ```
-apps/worker/         # Background job runner + handlers (example.echo, mail.send, access.email, crawl.alerts, crawl.run, audit.recompute), crawler, crawl scheduler, favicon and crawl file refreshers; also the bootstrap CLI (migrations), `recover` and `migrate-db` (SQLite → PostgreSQL copy, `copySqliteToPostgres`)
+apps/worker/         # Background job runner + handlers (example.echo, mail.send, access.email, crawl.alerts, crawl.run, audit.recompute, render.check), crawler, crawl scheduler, favicon and crawl file refreshers; also the bootstrap CLI (migrations), `recover` and `migrate-db` (SQLite → PostgreSQL copy, `copySqliteToPostgres`)
 ```
 
 ## Main third-party packages
@@ -24,6 +24,8 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 - Every outbound request goes through `createHttpFetcher` (`apps/worker/src/crawl/fetcher.ts`), which refuses non-public addresses when connecting, unless `CRAWLER_ALLOW_PRIVATE_NETWORKS` is set. Never fetch a user-controlled URL any other way. The update check uses a constant URL (see `apps/web/AGENTS.md`). The Google vitals client (`@seotools/core`, plain fetch) sends page addresses and origin to constant CrUX and PageSpeed Insights hosts only with an administrator-saved key and domain collection enabled; never to a user-controlled host.
 - Crawl files (robots.txt, sitemaps, llms.txt and the optional ones) live in `crawl_files`, one row per URL with what the last request answered, written by both full crawls and the daily refresher (`createCrawlFileRefresher`). Add a new kind in `crawlFileRequests` (`@seotools/core`), so both request it; an optional one also goes in `OPTIONAL_CRAWL_FILES`, which gives it a settings switch, a sidebar entry and a page under `crawl-files/[kind]`.
 - What these files contain is untrusted: parse it without backtracking regexes, and link a URL taken from one only after `normalizeCrawlUrl`, which refuses `javascript:` and the like.
+
+- During a render, the worker requests resources the page asks for on the site and other public hosts, always through the crawl's `createRequester` and `createHttpFetcher`. The browser container has no route out and sends all unintercepted traffic to a dead proxy (no bypass but `<-loopback>`, no non-proxied WebRTC UDP). The worker renders only on a browser instance that passed the isolation check (bound to its DevTools GUID): every unintercepted probe must fail with exactly the dead-proxy error; any other outcome, a timeout, a WebRTC candidate or traffic at the live canaries refuses it. Obey the site's robots.txt for render resources, never for the pages to audit.
 
 - On-demand bot access tests request only the tracked homepage and its redirect chain through `createRequester` and `createHttpFetcher`, with the domain’s crawl settings and credentials; only the User-Agent changes.
 

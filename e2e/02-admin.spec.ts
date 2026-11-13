@@ -341,6 +341,10 @@ test('Core Web Vitals stays hidden without a key and Integrations remains access
   await page.goto('/system/integrations')
   await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible()
   await expect(page.getByLabel('Google API key')).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Browser for JavaScript rendering' }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Check now', exact: true })).toBeVisible()
   const testKey = page.getByRole('button', { name: 'Test', exact: true })
   await expect(testKey).toBeDisabled()
   // Saving a key enables the test (never run here: it would ask Google); removing it disables it.

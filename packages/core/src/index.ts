@@ -17,3 +17,6 @@ export * from './vitals'
 export * from './incidents'
 export * from './vitals-regression'
 export * from './mail/incident-email'
+
+export * from './crawl/render-policy'
+export * from './render-status'
