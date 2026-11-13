@@ -59,11 +59,16 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
       browserContextId: context.id,
     })
     context.on('targetcreated', (target) => {
-      if (target !== page.target())
-        void target
-          .page()
-          .then((popup) => popup?.close())
-          .catch(() => {})
+      if (target === page.target()) return
+      void (async () => {
+        const session = await target.createCDPSession()
+        try {
+          const { targetInfo } = await session.send('Target.getTargetInfo')
+          await cdp.send('Target.closeTarget', { targetId: targetInfo.targetId })
+        } finally {
+          await session.detach().catch(() => {})
+        }
+      })().catch(() => {})
     })
     await page.setViewport({
       width: 412,

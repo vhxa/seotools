@@ -19,6 +19,10 @@ export async function checkIsolation(browser: Browser): Promise<RenderStatus> {
   try {
     const page = await context.newPage()
     let answered = false
+    let crashed = false
+    page.on('error', () => {
+      crashed = true
+    })
     // Chrome synthesizes 307 HTTPS upgrades without contacting a server (empty remote IP).
     const isHttpAnswer = (response: HTTPResponse) =>
       /^https?:/.test(response.url()) && response.status() > 0 && !!response.remoteAddress().ip
@@ -34,7 +38,7 @@ export async function checkIsolation(browser: Browser): Promise<RenderStatus> {
         })
         if (response && isHttpAnswer(response)) return { state: 'has-network', version, checkedAt }
       } catch {
-        if (!browser.connected || page.isClosed())
+        if (crashed || !browser.connected || page.isClosed())
           throw new Error('Browser disconnected during isolation check')
       }
     }
