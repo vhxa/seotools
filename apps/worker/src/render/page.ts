@@ -80,6 +80,10 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
     await page.setUserAgent({ userAgent: input.userAgent })
     await page.setBypassServiceWorker(true)
     await page.setCacheEnabled(false)
+    // Dedicated workers are page events and cannot be closed with Target.closeTarget.
+    page.on('workercreated', (worker) => {
+      void worker.close().catch(() => {})
+    })
     page.on('dialog', (dialog) => void dialog.dismiss().catch(() => {}))
     let rejectInterrupted: (error: Error) => void = () => {}
     const interrupted = new Promise<never>((_resolve, reject) => {
@@ -172,9 +176,18 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
           return abort()
         }
         reserved += resourceCap
-        const postData = await request.fetchPostData()
-        if (postData && Buffer.byteLength(postData) > RENDER_LIMITS.requestBodyBytes) {
+        const postData = await request.content()
+        if (postData && postData.byteLength > RENDER_LIMITS.requestBodyBytes) {
           omit(url, 'limit')
+          return abort()
+        }
+        if (request.hasPostData() && postData === undefined) {
+          result.requests.failedCount++
+          addSample(
+            result.requests.failed,
+            { url: url.slice(0, RENDER_LIMITS.urlChars), code: 'BODY_UNAVAILABLE' },
+            (value) => `${value.url} ${value.code}`,
+          )
           return abort()
         }
         const { answer, cached } = await input.cache.request(

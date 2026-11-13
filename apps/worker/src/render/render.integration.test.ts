@@ -30,6 +30,7 @@ const site: Record<string, Answer> = {
     headers: { 'content-type': 'application/javascript' },
     body: Buffer.from("setTimeout(()=>postMessage('worker survived'),100)"),
   },
+  'http://site.test/binary': { body: Buffer.from('ok') },
   'http://site.test/poll': { body: Buffer.from('ok') },
   'http://api.other.test/graphql': {
     headers: {
@@ -53,6 +54,7 @@ const pages = {
 }
 
 describe.skipIf(!available)('isolated Chromium rendering', () => {
+  const binaryBodies: Buffer[] = []
   let browser: Browser
   let fetcher: Fetcher
   let base: Omit<RenderInput, 'url' | 'document'>
@@ -81,8 +83,9 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     const original = fetcher
     fetcher = {
       close: () => original.close(),
-      fetch: (url, options) =>
-        url === 'http://site.test/hang'
+      fetch: (url, options) => {
+        if (url === 'http://site.test/binary' && options.body) binaryBodies.push(options.body)
+        return url === 'http://site.test/hang'
           ? new Promise((_resolve, reject) => {
               if (options.signal.aborted) {
                 reject(new DOMException('Stopped', 'AbortError'))
@@ -94,7 +97,8 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
                 { once: true },
               )
             })
-          : original.fetch(url, options),
+          : original.fetch(url, options)
+      },
     }
     base = {
       host: 'site.test',
@@ -147,6 +151,21 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(cors.html).toContain('<main>from api</main>')
     expect(cors.requests.made).toBe(2)
     expect((await render('redirectScript')).html).toContain('<main>redirected script</main>')
+  })
+  it('forwards binary POST bodies without UTF-8 replacement', async () => {
+    const body = `<main></main><script>fetch('/binary',{method:'POST',body:new Uint8Array([0,128,255,65])}).then(r=>r.text()).then(text=>document.querySelector('main').textContent=text)</script>`
+    const result = await render('head', {
+      document: {
+        statusCode: 200,
+        headers: { 'content-type': 'text/html' },
+        body: Buffer.from(body),
+        bytes: body.length,
+        truncated: false,
+        responseTimeMs: 0,
+      },
+    })
+    expect(binaryBodies.at(-1)).toEqual(Buffer.from([0, 128, 255, 65]))
+    expect(result.html).toContain('<main>ok</main>')
   })
   it('observes viewport lazy content and serializes open shadow roots', async () => {
     expect((await render('lazy')).html).toContain('href="/lazy"')

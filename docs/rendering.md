@@ -68,7 +68,7 @@ Responses lose `set-cookie`, `content-encoding`, `content-length` and `transfer-
 bodies are already decompressed. Redirects are answered as redirects so each hop is checked.
 
 Each page uses a fresh context, a 412×2400 mobile/touch viewport and the crawl's User-Agent.
-Permissions and downloads are denied; dialogs dismissed; popups closed. There is no clicking,
+Permissions and downloads are denied; dialogs dismissed; popups and worker targets closed. There is no clicking,
 scrolling or other simulated interaction. Open shadow roots are included in the DOM snapshot.
 Client redirects record the target and stop; they never audit the target's content here.
 
