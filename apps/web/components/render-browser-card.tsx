@@ -23,7 +23,9 @@ export function RenderBrowserCard({ status }: { status: RenderStatus | null }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('title')}</CardTitle>
+        <CardTitle>
+          <h2>{t('title')}</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
         <p>{t(status?.state ?? 'unknown')}</p>

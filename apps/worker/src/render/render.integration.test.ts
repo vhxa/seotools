@@ -74,6 +74,24 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
         allowPrivateNetworks: false,
       }),
     )
+    const original = fetcher
+    fetcher = {
+      close: () => original.close(),
+      fetch: (url, options) =>
+        url === 'http://site.test/hang'
+          ? new Promise((_resolve, reject) => {
+              if (options.signal.aborted) {
+                reject(new DOMException('Stopped', 'AbortError'))
+                return
+              }
+              options.signal.addEventListener(
+                'abort',
+                () => reject(new DOMException('Stopped', 'AbortError')),
+                { once: true },
+              )
+            })
+          : original.fetch(url, options),
+    }
     base = {
       host: 'site.test',
       userAgent: 'render-test',
@@ -166,7 +184,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
   it('takes a never-quiet page at the wait limit without reporting failure', async () => {
     const document = {
       body: Buffer.from(
-        `<main>still useful</main><script>setInterval(()=>fetch('/poll').catch(()=>{}),50)</script>`,
+        `<main>still useful</main><script>fetch('/hang').catch(()=>{});setInterval(()=>fetch('/poll').catch(()=>{}),50)</script>`,
       ),
       statusCode: 200,
       headers: { 'content-type': 'text/html' },
