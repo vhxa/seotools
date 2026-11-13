@@ -186,3 +186,16 @@ export function renderDifferenceChecks(figures: (site: Site) => AuditThresholds)
     ),
   } satisfies Partial<Record<string, Check>>
 }
+
+/** Conflicting or unresolved targets cannot establish that a previous canonical difference ended. */
+export function unobservedCanonicalDifferences(url: AuditedUrl, site: Site) {
+  const observation = complete(url, site)
+  if (!observation) return []
+  const { html, rendered } = observation
+  const unknown = [html, rendered].some(
+    (facts) => canonicals(facts).length > 0 && !target(facts, site),
+  )
+  return unknown
+    ? (['canonical-only-after-rendering', 'canonical-changed-by-javascript'] as const)
+    : []
+}

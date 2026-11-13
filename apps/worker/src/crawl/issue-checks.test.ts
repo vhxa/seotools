@@ -4,7 +4,7 @@ import {
   differenceOutcome,
   type DifferenceId,
 } from './render-difference-fixtures'
-import { RENDER_DIFFERENCE_IDS } from './render-differences'
+import { RENDER_DIFFERENCE_IDS, unobservedCanonicalDifferences } from './render-differences'
 import { renderedOutcome } from './render-fixture'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
@@ -16,6 +16,7 @@ import {
   emptyVitals,
   EMPTY_AUDIT_SNAPSHOT,
   MAX_EVIDENCE_ITEMS,
+  MAX_EVIDENCE_TEXT,
   PAGE_ISSUE_IDS,
   auditSnapshotOf,
   crawlUrlHash,
@@ -969,6 +970,23 @@ describe('each issue', () => {
         await db.crawls.listUrls({ crawlId, view: 'all', limit: 10000, offset: 0 })
       ).some((url) => url.data?.truncated === true)
       expect(actual.snapshot.unobserved.includes('few-html-links')).toBe(truncated)
+      const htmlIssues = (
+        await db.crawls.issuesOf(
+          crawlId,
+          (await db.crawls.listUrls({ crawlId, view: 'all', limit: 10000, offset: 0 })).map(
+            (row) => row.urlHash,
+          ),
+        )
+      ).map((row) => row.issue)
+      expect(
+        htmlIssues.filter((issue) =>
+          [
+            ...RENDER_DIFFERENCE_IDS,
+            'linked-only-by-javascript',
+            'links-only-after-rendering',
+          ].some((id) => id === issue),
+        ),
+      ).toEqual([])
       const added: string[] = [
         ...RENDER_DIFFERENCE_IDS,
         'linked-only-by-javascript',
@@ -1035,6 +1053,19 @@ describe('each issue', () => {
     )
     const found = await issuesAt(crawlId, scenario.at)
     expect(found.map((row) => row.issue)).toContain(id)
+    if (scenario.difference) {
+      const evidence = found.find((row) => row.issue === id)?.evidence
+      expect(evidence).toMatchObject({
+        kind: 'values',
+        total: 2,
+        items: [{ field: 'html' }, { field: 'rendered' }],
+      })
+      if (evidence?.kind === 'values')
+        for (const item of evidence.items) {
+          expect(item.text.length).toBeLessThanOrEqual(MAX_EVIDENCE_TEXT)
+          expect(item.text).not.toMatch(/[\r\n]/)
+        }
+    }
     if (scenario.details) {
       expect(found.find((row) => row.issue === id)?.details).toEqual(scenario.details)
     }
@@ -1170,22 +1201,28 @@ describe('what a crawl did not look for', () => {
 
     // A fresh HTML crawl observes the page facts, but neither vitals nor JavaScript.
     const fresh = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x') } }))
-    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual([
-      'cls-poor',
-      'inp-poor',
-      'lcp-poor',
-      'linked-only-by-javascript',
-      'links-only-after-rendering',
-    ])
+    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual(
+      [
+        ...RENDER_DIFFERENCE_IDS,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
+    )
     // Which also holds when it is analysed again from a snapshot that said otherwise.
     await analyseCrawl(db, fresh, snapshot!)
-    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual([
-      'cls-poor',
-      'inp-poor',
-      'lcp-poor',
-      'linked-only-by-javascript',
-      'links-only-after-rendering',
-    ])
+    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual(
+      [
+        ...RENDER_DIFFERENCE_IDS,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
+    )
 
     // Against the old crawl, what the new one reports is not new: nobody could have seen it.
     const bare = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x', { social: null }) } }))
@@ -2248,5 +2285,6 @@ describe('HTML/render differences', () => {
     expect(CHECKS['nofollow-only-in-html'](url, site)).toBe(false)
     url.render!.data.facts!.canonicals.push({ ...url.facts!.canonicals[0]!, url: `${SITE}/other` })
     expect(CHECKS['canonical-changed-by-javascript'](url, site)).toBe(false)
+    expect(unobservedCanonicalDifferences(url, site)).toContain('canonical-changed-by-javascript')
   })
 })

@@ -25,7 +25,7 @@ import {
   type UrlEvidence,
   type UrlSnapshot,
 } from './compare'
-import { PAGE_ISSUE_IDS } from './issues'
+import { PAGE_ISSUES, PAGE_ISSUE_IDS } from './issues'
 import { DEFAULT_THRESHOLDS } from './thresholds'
 
 const CATALOG = '3.abc'
@@ -962,4 +962,39 @@ describe('HTML and rendered observation scopes', () => {
       }
     }
   })
+})
+
+it('keeps page-local JavaScript findings unverified across HTML or partial render observations', () => {
+  const issues = PAGE_ISSUE_IDS.filter(
+    (id) => PAGE_ISSUES[id].category === 'javascript' && isPageLocalIssue(id),
+  )
+  expect(issues).toHaveLength(20)
+  const rendered = crawlFactsOf(
+    crawl({ auditSnapshot: { ...auditSnapshotOf(2, []), rendering: 'rendered' } }),
+  )
+  for (const mode of ['html', 'rendered'] as const) {
+    const unknown = crawlFactsOf(
+      crawl({
+        auditSnapshot: {
+          ...auditSnapshotOf(2, []),
+          ...(mode === 'rendered' ? { rendering: mode } : {}),
+          unobserved: issues,
+        },
+      }),
+    )
+    for (const issue of issues) {
+      expect(
+        classifyFinding(issue, {
+          base: seen([], {}, unknown),
+          target: seen([issue], {}, rendered),
+        }),
+      ).toMatchObject({ kind: 'unverified', reasons: ['unobserved'] })
+      expect(
+        classifyFinding(issue, {
+          base: seen([issue], {}, rendered),
+          target: seen([], {}, unknown),
+        }),
+      ).toMatchObject({ kind: 'unverified', reasons: ['unobserved'] })
+    }
+  }
 })

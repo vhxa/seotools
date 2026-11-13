@@ -1,4 +1,4 @@
-import { RENDER_DIFFERENCE_IDS } from './render-differences'
+import { RENDER_DIFFERENCE_IDS, unobservedCanonicalDifferences } from './render-differences'
 import {
   EMPTY_AUDIT_SNAPSHOT,
   ISSUE_CATALOG_VERSION,
@@ -175,21 +175,26 @@ export async function analyseCrawl(
   if (crawl.rendering?.mode === 'rendered' && site.rendersUnobserved > 0)
     unobserved.push(...RENDERED_GRAPH_ISSUES)
   if (crawl.rendering?.mode === 'rendered') {
-    for (const url of site.urls) {
-      if (!url.internal || !url.contentPage) continue
-      // Legacy observations lack extracted values; missing optional rendered facts are unknown too.
-      for (const issue of RENDER_DIFFERENCE_IDS) {
-        if (issue === 'render-failed') continue
-        if (
-          !url.render?.data.page ||
-          !url.render.data.facts ||
-          (issue === 'social-tags-only-after-rendering' &&
-            (!url.facts?.social || !url.render.data.facts.social))
-        )
-          unobserved.push(issue)
-      }
+    // Legacy rows did not retain the extracted values used by the new difference checks.
+    if (
+      site.urls.some(
+        (url) =>
+          url.internal && url.contentPage && (!url.render?.data.page || !url.render.data.facts),
+      )
+    ) {
+      unobserved.push(...RENDER_DIFFERENCE_IDS.filter((issue) => issue !== 'render-failed'))
+    } else if (
+      site.urls.some(
+        (url) =>
+          url.internal &&
+          url.contentPage &&
+          (!url.facts?.social || !url.render?.data.facts?.social),
+      )
+    ) {
+      unobserved.push('social-tags-only-after-rendering')
     }
   }
+  for (const url of site.urls) unobserved.push(...unobservedCanonicalDifferences(url, site))
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,

@@ -62,3 +62,17 @@ it('bounds the HTML link threshold and tracks it for comparisons', () => {
   for (const value of [-1, 101, 1.5])
     expect(parseThresholdOverrides({ htmlLinksMin: value })).toEqual({})
 })
+
+it('bounds the rendered text share and scopes comparisons to its value', () => {
+  expect(DEFAULT_THRESHOLDS.renderedTextSharePct).toBe(30)
+  expect(THRESHOLD_ISSUES['text-only-after-rendering']).toEqual(['renderedTextSharePct'])
+  for (const value of [0, 100])
+    expect(parseThresholdOverrides({ renderedTextSharePct: value })).toEqual({
+      renderedTextSharePct: value,
+    })
+  for (const value of [-1, 101, 0.5])
+    expect(parseThresholdOverrides({ renderedTextSharePct: value })).toEqual({})
+  expect(auditScopeKey(auditSnapshotOf(1, [], undefined, { renderedTextSharePct: 0 }))).not.toBe(
+    auditScopeKey(auditSnapshotOf(1, [])),
+  )
+})

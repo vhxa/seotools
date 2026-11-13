@@ -9,6 +9,20 @@ its mode, wait limit (default 5000 ms, range 1000–30000) and omitted host suff
 Changing the mode makes link-dependent findings incomparable with earlier crawls in the other
 mode. Existing page checks continue to read the served HTML.
 
+The JavaScript findings compare the served and rendered word counts, title, description, first H1,
+canonical, meta robots directives, structured data, hreflang and social tags. They also report
+robots-blocked render resources, uncaught script errors and failed renders. The text check needs
+at least 50 added words and the configured share of rendered words (default 30%; 0 disables it).
+Only a settled, whole render of whole served HTML establishes a difference. Failed, truncated or
+unsettled pages have no difference findings; a failed page can have `render-failed`. Comparisons
+with incomplete observations remain unverified. Earlier render rows without the extracted values
+stay unknown for the new checks, and HTML crawls leave every JavaScript finding unknown.
+
+Client redirects are recorded but stop the render before it settles. Their difference findings,
+including `javascript-redirect`, therefore remain unknown under the completeness rule. A complete,
+settled observation with a different final URL can raise that check. A rendered `noindex` finding
+does not change indexability in this release: indexability still reads the served HTML and headers.
+
 Rendered crawls render internal HTML pages answering exactly 200, using the already fetched
 document. Other 2xx pages keep their served results and an unknown render observation. Links
 found only after rendering are followed as ordinary crawl links. Failed pages can be rendered
