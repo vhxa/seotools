@@ -7,6 +7,10 @@ export const RENDER_LIMITS = {
   protocolMs: 35_000,
   pageBytes: 30 * 1024 * 1024,
   resourceBytes: 5 * 1024 * 1024,
+  // DOM: at most 10 MiB UTF-8, at worst 6x JSON escaping + protocol envelope < 64 MiB.
+  // ws enforces this before JSON.parse or Puppeteer's eager postData decoding.
+  cdpMessageBytes: 64 * 1024 * 1024,
+  pageRequestBodyBytes: 5 * 1024 * 1024,
   requestBodyBytes: 1024 * 1024,
   domBytes: MAX_BODY_BYTES,
   cacheBytes: 64 * 1024 * 1024,

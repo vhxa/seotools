@@ -25,9 +25,31 @@ keeps its ordinary outbound network in either case. The browser has no published
 only `render`, whose `internal: true` prevents external routing. Do not change its entrypoint:
 `run.sh` forwards port 9222 to Chrome's loopback DevTools listener on 9223.
 
+The network boundary is only one layer: browsers can otherwise reach their own loopback and
+the app on `render`. The browser service therefore passes all four required flags through the
+image's `run.sh` (which appends its arguments to headless-shell):
+
+```text
+--proxy-server=http://127.0.0.1:9
+--proxy-bypass-list=<-loopback>
+--host-resolver-rules=MAP * ~NOTFOUND
+--force-webrtc-ip-handling-policy=disable_non_proxied_udp
+```
+
+Unintercepted HTTP/WebSocket traffic goes to a dead proxy, including loopback; names do not
+resolve; WebRTC cannot send non-proxied UDP. Intercepted responses are supplied by the worker
+and still render. These flags apply to **headless-shell**: full Chrome does not implement the
+same WebRTC command-line override. An external/Dokploy browser must retain the internal network
+boundary **and** pass these flags (or demonstrably equivalent restrictions); the worker refuses
+an unprotected browser. Do not rely on permissions or HTTP interception alone.
+
 Open **System → Integrations**, check the browser, and refresh for the worker's result. Ready
-means the worker connected, accepted the Chrome version and observed failures for all three
-constant network probes (hostname, public IP and cloud metadata IP), without interception.
+means the worker connected, accepted the Chrome version and passed live TCP/UDP canaries without
+interception. The worker binds ephemeral listeners on its CDP socket's local address (the address
+the browser sees). The browser tries fetch, WebSocket and WebRTC/STUN there and at its own
+loopback, plus constant public/metadata HTTP probes. Any byte, datagram or HTTP answer refuses
+rendering. Only known DNS/no-route/dead-proxy errors and completed WebRTC gathering without
+traffic prove isolation; a timeout is refused with an explicit detail.
 A networked browser is refused even if it would otherwise work. Status expires after 15 minutes.
 Checks run at connection and every five minutes; `SEOTOOLS_PAUSE_AUTOMATION` stops periodic checks,
 while the administrator's **Check now** still runs. WP4 callers must call `check()` before a crawl.
@@ -41,9 +63,9 @@ newer Chrome version.
 
 ## What the worker requests
 
-The caller supplies the already-fetched document. Only HTTP(S) documents (subframes), scripts,
+The caller supplies the already-fetched document. Only GET, HEAD, OPTIONS and POST are requested; POST is sent at most once. Only HTTP(S) documents (subframes), scripts,
 stylesheets, fetch/XHR and CORS preflight requests are eligible. The worker uses the caller's crawl
-requester and guarded fetcher: pacing, retries, User-Agent, connect-time public-address validation,
+requester and guarded fetcher: pacing, safe-method retries, User-Agent, connect-time public-address validation,
 `CRAWLER_ALLOW_PRIVATE_NETWORKS`, and credentials only to the tracked host apply as usual. Site
 robots rules block render resources when explicitly disallowed; unknown is not treated as absent.
 This never makes robots rules a reason to skip pages being audited.
@@ -79,7 +101,20 @@ Limits in `apps/worker/src/render/limits.ts` bound requests (300), resource byte
 bytes (30 MiB), request bodies (1 MiB), serialized DOM (10 MiB), script errors (count and five
 200-character samples) and resource lists (count and fifty sorted samples). A 64 MiB LRU cache
 created per crawl shares GET scripts/styles, including failures. API calls and documents are
-never cached. Omitted or unread content is unknown, never proof that a declaration is absent.
+never cached. Every decoded download byte, including partial/error/truncated responses and retries,
+counts toward the page budget. Resource loads are serialized per page so concurrent loads cannot
+race that budget. A cacheable script/style is fetched with its full 5 MiB resource cap even when
+less page budget remains, cached independently of that page, then omitted if it does not fit.
+This allows at most one resource's bounded overread before the page stops requesting resources.
+
+Each render and each status check owns a separate CDP connection. The `ws` transport rejects
+messages above 64 MiB **before** parsing JSON or Puppeteer's eager POST decoding: a 10 MiB DOM
+can expand up to 60 MiB with JSON escaping, leaving room for its protocol envelope. A larger
+message severs only that render; it is retried once then failed. Per-request POST bodies are
+limited to 1 MiB and cumulative page POST bytes to 5 MiB. DNS, discovery and the WS/CDP handshake
+share one ten-second deadline, cancelling the resolver/request/socket on expiry.
+
+Omitted or unread content is unknown, never proof that a declaration is absent.
 
 ## Dokploy
 
@@ -112,6 +147,10 @@ Sources checked for this guide:
 - [Docker internal networks](https://docs.docker.com/reference/compose-file/networks/#internal)
 - [Compose profiles](https://docs.docker.com/compose/how-tos/profiles/)
 - [headless-shell README and entrypoint](https://github.com/chromedp/docker-headless-shell)
+- [Versioned headless-shell WebRTC override](https://github.com/chromium/chromium/blob/158.0.8127.18/headless/lib/browser/headless_web_contents_impl.cc#L462-L467)
+- [Versioned WebRTC policy effect](https://github.com/chromium/chromium/blob/158.0.8127.18/third_party/blink/renderer/modules/peerconnection/peer_connection_dependency_factory.cc#L1091-L1111)
+- [Versioned proxy and loopback bypass semantics](https://github.com/chromium/chromium/blob/158.0.8127.18/net/docs/proxy.md)
+- [ws message limit](https://github.com/websockets/ws/blob/8.22.1/doc/ws.md#new-websocketaddress-protocols-options)
 - [Puppeteer supported browsers](https://pptr.dev/supported-browsers)
 
 ## Raspberry Pi and verification
@@ -131,5 +170,6 @@ pnpm exec vitest run apps/worker/src/render/render.integration.test.ts
 
 It uses Chromium's [proxy switches](https://chromium.googlesource.com/chromium/src/+/main/net/base/net_switches.cc)
 and [host resolver rules](https://chromium.googlesource.com/chromium/src/+/main/net/dns/host_resolver_manager.cc)
-to deny direct network access during local tests. These test flags do not replace the production
-container network boundary.
+to deny direct network access during local tests. These same flags are required in production as well as the
+container network boundary. Negative live TCP/WebSocket fixtures disable Chromium's local-network
+access checks solely to prove the canary receives actual traffic; render contexts deny permissions.

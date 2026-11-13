@@ -25,7 +25,7 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 - Crawl files (robots.txt, sitemaps, llms.txt and the optional ones) live in `crawl_files`, one row per URL with what the last request answered, written by both full crawls and the daily refresher (`createCrawlFileRefresher`). Add a new kind in `crawlFileRequests` (`@seotools/core`), so both request it; an optional one also goes in `OPTIONAL_CRAWL_FILES`, which gives it a settings switch, a sidebar entry and a page under `crawl-files/[kind]`.
 - What these files contain is untrusted: parse it without backtracking regexes, and link a URL taken from one only after `normalizeCrawlUrl`, which refuses `javascript:` and the like.
 
-- During a render, the worker requests resources the page asks for on the site and other public hosts, always through the crawl's `createRequester` and `createHttpFetcher`. The browser container has no route out; refuse a browser that has one. Obey the site's robots.txt for render resources, never for the pages to audit.
+- During a render, the worker requests resources the page asks for on the site and other public hosts, always through the crawl's `createRequester` and `createHttpFetcher`. The browser container has no route out and must block unintercepted traffic, including loopback and WebRTC; refuse a browser that fails the live TCP/UDP isolation canaries or times out. Obey the site's robots.txt for render resources, never for the pages to audit.
 
 - On-demand bot access tests request only the tracked homepage and its redirect chain through `createRequester` and `createHttpFetcher`, with the domain’s crawl settings and credentials; only the User-Agent changes.
 

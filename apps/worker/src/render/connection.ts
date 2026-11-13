@@ -1,61 +1,42 @@
-import { lookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
-import type { Browser } from 'puppeteer-core'
+import type { Browser, BrowserContext } from 'puppeteer-core'
 import type { RenderStatus } from '@seotools/core'
-import { RENDER_LIMITS } from './limits'
 import { checkIsolation } from './isolation'
+import { connectBrowser } from './transport'
 import { BrowserUnavailableError } from './types'
 
+/** No live CDP connection is shared by a status check or two renders. */
 export function createBrowserConnection(
   url: string | undefined,
   writeStatus: (status: RenderStatus) => Promise<void>,
 ) {
-  let browser: Browser | undefined
-  let connecting: Promise<Browser> | undefined
+  const active = new Map<Browser, BrowserContext>()
   let checking: Promise<RenderStatus> | undefined
   let status: RenderStatus | undefined
-
   async function connect() {
     if (!url) throw new BrowserUnavailableError('Browser not configured')
-    if (browser?.connected) return browser
-    if (!connecting)
-      connecting = (async () => {
-        const endpoint = new URL(url)
-        const hostname = endpoint.hostname.replace(/^\[|\]$/g, '')
-        const address = isIP(hostname) ? hostname : (await lookup(hostname)).address
-        endpoint.hostname = isIP(address) === 6 ? `[${address}]` : address
-        // Dynamic import: no Puppeteer runtime is loaded when rendering is disabled.
-        const { connect } = await import('puppeteer-core')
-        const pending = connect({
-          browserURL: endpoint.toString(),
-          protocolTimeout: RENDER_LIMITS.protocolMs,
-          wsOptions: { handshakeTimeout: RENDER_LIMITS.connectionMs },
-        })
-        let timer: ReturnType<typeof setTimeout> | undefined
+    return connectBrowser(url)
+  }
+  async function release(browser: Browser) {
+    const context = active.get(browser)
+    active.delete(browser)
+    const ids = context?.id ? [context.id] : []
+    if (!browser.connected && ids.length) {
+      // An oversized message/crash can sever CDP before the context's finally block runs.
+      // A separate bounded connection disposes only this lease's contexts, never other renders.
+      const cleanup = await connect().catch(() => undefined)
+      if (cleanup) {
         try {
-          browser = await Promise.race([
-            pending,
-            new Promise<never>((_resolve, reject) => {
-              timer = setTimeout(
-                () => reject(new BrowserUnavailableError('Browser connection timed out')),
-                RENDER_LIMITS.connectionMs,
-              )
-            }),
-          ])
-        } catch (error) {
-          void pending.then((late) => late.disconnect()).catch(() => {})
-          throw error
+          const session = await cleanup.browser.target().createCDPSession()
+          for (const browserContextId of ids)
+            await session.send('Target.disposeBrowserContext', { browserContextId }).catch(() => {})
         } finally {
-          if (timer) clearTimeout(timer)
+          await cleanup.browser.disconnect()
         }
-        browser.once('disconnected', () => {
-          status = undefined
-        })
-        return browser
-      })().finally(() => {
-        connecting = undefined
-      })
-    return connecting
+      }
+    } else {
+      await context?.close().catch(() => {})
+    }
+    await browser.disconnect()
   }
   async function check(): Promise<RenderStatus> {
     if (!checking)
@@ -63,14 +44,18 @@ export function createBrowserConnection(
         let result: RenderStatus
         if (!url) result = { state: 'not-configured', checkedAt: new Date().toISOString() }
         else {
+          let connection: Awaited<ReturnType<typeof connect>> | undefined
           try {
-            result = await checkIsolation(await connect())
+            connection = await connect()
+            result = await checkIsolation(connection.browser, connection.localAddress)
           } catch {
             result = {
               state: 'unreachable',
               checkedAt: new Date().toISOString(),
               detail: 'Cannot connect to or check the configured browser.',
             }
+          } finally {
+            await connection?.browser.disconnect()
           }
         }
         status = result
@@ -83,22 +68,25 @@ export function createBrowserConnection(
   }
   return {
     check,
+    release,
     async get() {
-      const current = await connect().catch(() => undefined)
-      if (!current) {
-        await check()
-        throw new BrowserUnavailableError('Browser unreachable')
-      }
       if (!status || status.state !== 'ready') {
         const result = await check()
         if (result.state !== 'ready')
           throw new BrowserUnavailableError(`Browser refused: ${result.state}`)
       }
-      return current
+      const { browser } = await connect()
+      try {
+        const context = await browser.createBrowserContext()
+        active.set(browser, context)
+        return { browser, context }
+      } catch (error) {
+        await browser.disconnect()
+        throw error
+      }
     },
     async close() {
-      await browser?.disconnect()
-      browser = undefined
+      await Promise.all([...active.keys()].map(release))
       status = undefined
     },
   }

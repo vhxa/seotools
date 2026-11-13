@@ -1,11 +1,15 @@
 import { isInternalUrl, renderRequestDecision } from '@seotools/core'
-import type { Browser, HTTPRequest } from 'puppeteer-core'
+import type { Browser, BrowserContext, HTTPRequest } from 'puppeteer-core'
 import { FetchError } from '../crawl/fetcher'
 import { renderRequestHeaders, renderResponseHeaders } from './headers'
 import { addSample, oneLine, RENDER_LIMITS } from './limits'
 import { RenderInterruptedError, type RenderInput, type RenderOutcome } from './types'
 
-export async function renderPage(browser: Browser, input: RenderInput): Promise<RenderOutcome> {
+export async function renderPage(
+  browser: Browser,
+  input: RenderInput,
+  ownedContext?: BrowserContext,
+): Promise<RenderOutcome> {
   const started = Date.now()
   const waitMs = Math.max(
     0,
@@ -32,7 +36,7 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
     },
     scriptErrors: { count: 0, first: [] },
   }
-  const context = await browser.createBrowserContext()
+  const context = ownedContext ?? (await browser.createBrowserContext())
   const stop = new AbortController()
   const signal = AbortSignal.any([input.signal, stop.signal])
   let crashed = false
@@ -42,6 +46,7 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
   let requested = 0
   let bytes = input.document.body?.length ?? 0
   let resourceQueue = Promise.resolve()
+  let requestBodyBytes = 0
   let supplied = false
   let redirected = false
   const pending = new Set<Promise<void>>()
@@ -178,7 +183,11 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
           return abort()
         }
         const postData = await request.content()
-        if (postData && postData.byteLength > RENDER_LIMITS.requestBodyBytes) {
+        requestBodyBytes += postData?.byteLength ?? 0
+        if (
+          (postData && postData.byteLength > RENDER_LIMITS.requestBodyBytes) ||
+          requestBodyBytes > RENDER_LIMITS.pageRequestBodyBytes
+        ) {
           omit(url, 'limit')
           return abort()
         }

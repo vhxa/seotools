@@ -32,6 +32,11 @@ services:
   browser:
     image: chromedp/headless-shell:158.0.8127.18
     profiles: [rendering]
+    command:
+      - --proxy-server=http://127.0.0.1:9
+      - --proxy-bypass-list=<-loopback>
+      - --host-resolver-rules=MAP * ~NOTFOUND
+      - --force-webrtc-ip-handling-policy=disable_non_proxied_udp
     restart: unless-stopped
     user: '65534:65534'
     init: true

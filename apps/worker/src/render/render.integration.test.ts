@@ -1,7 +1,8 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { chromium } from '@playwright/test'
 import puppeteer, { type Browser, type Target } from 'puppeteer-core'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createLogger, DEFAULT_CRAWL_SETTINGS } from '@seotools/core'
 import { fakeRenderSite, moved, type Answer } from '../crawl/fake-site'
 import { createHttpFetcher, type Fetcher } from '../crawl/fetcher'
@@ -13,8 +14,18 @@ import { RENDER_LIMITS } from './limits'
 import { renderPage } from './page'
 import type { RenderInput } from './types'
 
-const executablePath = chromium.executablePath()
-const available = existsSync(executablePath)
+// headless-shell applies the WebRTC switch; full Chrome ignores this content-shell flag.
+const shellDirectory = chromium
+  .executablePath()
+  .replace(/chromium-(\d+)[/\\].*$/, 'chromium_headless_shell-$1')
+const executable = existsSync(shellDirectory)
+  ? readdirSync(shellDirectory, { recursive: true }).find(
+      (path) =>
+        typeof path === 'string' && /(?:^|[/\\])chrome-headless-shell(?:\.exe)?$/.test(path),
+    )
+  : undefined
+const executablePath = typeof executable === 'string' ? join(shellDirectory, executable) : ''
+const available = !!executablePath && existsSync(executablePath)
 const site: Record<string, Answer> = {
   'http://site.test/nav.js': {
     headers: { 'content-type': 'application/javascript' },
@@ -78,6 +89,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
         '--proxy-server=http://127.0.0.1:9',
         '--proxy-bypass-list=<-loopback>',
         '--host-resolver-rules=MAP * ~NOTFOUND',
+        '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
       ],
     })
     fetcher = fakeRenderSite(
@@ -143,7 +155,8 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       ...extra,
     })
   it('passes every isolation probe without interception', async () => {
-    expect((await checkIsolation(browser)).state).toBe('ready')
+    const status = await checkIsolation(browser)
+    expect(status.state, status.detail).toBe('ready')
   }, 15_000)
   it('renders script-built navigation/footer and mutated head declarations', async () => {
     const nav = await render('nav')
@@ -431,11 +444,141 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       await service.close()
     }
   }, 30_000)
+  it.each(['fetch', 'websocket', 'webrtc'] as const)(
+    'refuses a browser that reaches the live worker %s canary',
+    async (protocol) => {
+      const networked = await puppeteer.launch({
+        executablePath,
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--remote-debugging-port=0',
+          '--disable-features=LocalNetworkAccessChecks',
+        ],
+      })
+      try {
+        const result = await checkIsolation(networked, '127.0.0.1', [protocol])
+        expect(result.state).toBe('has-network')
+        expect(result.detail).toMatch(/canary was reached/)
+      } finally {
+        await networked.close()
+      }
+    },
+    15000,
+  )
+  it('refuses a probe timeout with a clear isolation detail', async () => {
+    const createContext = browser.createBrowserContext.bind(browser)
+    const spy = vi.spyOn(browser, 'createBrowserContext').mockImplementationOnce(async () => {
+      const context = await createContext()
+      const page = await context.newPage()
+      vi.spyOn(context, 'newPage').mockResolvedValue(page)
+      vi.spyOn(page, 'evaluate').mockResolvedValue('timeout')
+      return context
+    })
+    try {
+      const result = await checkIsolation(browser)
+      expect(result.state).toBe('has-network')
+      expect(result.detail).toContain('timed out; isolation is not proven')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+  it('refuses a WebRTC timeout rather than treating it as isolation', async () => {
+    const unprotected = await puppeteer.launch({
+      executablePath,
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--remote-debugging-port=0',
+        '--proxy-server=http://127.0.0.1:9',
+        '--proxy-bypass-list=<-loopback>',
+        '--host-resolver-rules=MAP * ~NOTFOUND',
+      ],
+    })
+    try {
+      const result = await checkIsolation(unprotected)
+      expect(result.state).toBe('has-network')
+      expect(result.detail).toMatch(/WebRTC.*(?:canary|timed out)/)
+    } finally {
+      await unprotected.close()
+    }
+  }, 15000)
+  it('bounds the cumulative POST body bytes of one page', async () => {
+    let sent = 0
+    const requester = {
+      ...base.requester,
+      async fetchWithRetries() {
+        sent++
+        return baseDocument('ok')
+      },
+    }
+    const body = `<script>(async()=>{for(let n=0;n<8;n++)await fetch('/binary',{method:'POST',body:'x'.repeat(1024*1024)}).catch(()=>{})})()</script>`
+    const result = await render('head', { requester, document: baseDocument(body) })
+    expect(sent).toBe(5)
+    expect(result.requests.omitted.filter((item) => item.reason === 'limit')).toHaveLength(3)
+  })
+  it.each([8, 64])(
+    'bounds worker heap and never sends a %i MiB POST body',
+    async (mib) => {
+      const service = createRenderService({
+        browserUrl: `http://127.0.0.1:${new URL(browser.wsEndpoint()).port}`,
+        concurrency: 2,
+        writeStatus: async () => {},
+      })
+      let sent = 0
+      const requester = {
+        ...base.requester,
+        async fetchWithRetries() {
+          sent++
+          return baseDocument('unexpected')
+        },
+      }
+      let peak = process.memoryUsage().heapUsed
+      const before = peak
+      const sample = setInterval(() => {
+        peak = Math.max(peak, process.memoryUsage().heapUsed)
+      }, 5)
+      const body = `<script>fetch('/binary',{method:'POST',body:'x'.repeat(${mib}*1024*1024)}).catch(()=>{})</script>`
+      try {
+        const [hostile, ordinary] = await Promise.all([
+          service.render({
+            ...base,
+            requester,
+            url: 'http://site.test/body',
+            document: baseDocument(body),
+          }),
+          service.render({
+            ...base,
+            url: 'http://site.test/ordinary',
+            document: baseDocument('<main>unaffected</main>'),
+          }),
+        ])
+        expect(sent).toBe(0)
+        expect(
+          hostile.status === 'failed' ||
+            hostile.requests.omitted.some((item) => item.reason === 'limit'),
+        ).toBe(true)
+        if (mib === 64) expect(hostile.status).toBe('failed')
+        expect(ordinary.status).toBe('rendered')
+        expect(ordinary.html).toContain('<main>unaffected</main>')
+        // Pre-parse ws bound: a 64 MiB POST cannot allocate its 150+ MiB JSON/postData copies.
+        expect(peak - before).toBeLessThan(240 * 1024 * 1024)
+      } finally {
+        clearInterval(sample)
+        await service.close()
+      }
+    },
+    30000,
+  )
   it('refuses a browser with actual network access (when this machine has network)', async (context) => {
     const networked = await puppeteer.launch({
       executablePath,
       headless: true,
-      args: ['--no-sandbox', '--remote-debugging-port=0'],
+      args: [
+        '--no-sandbox',
+        '--remote-debugging-port=0',
+        '--disable-features=LocalNetworkAccessChecks',
+      ],
     })
     try {
       const result = await checkIsolation(networked)

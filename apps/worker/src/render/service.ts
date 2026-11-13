@@ -1,3 +1,4 @@
+import type { Browser } from 'puppeteer-core'
 import type { RenderStatus } from '@seotools/core'
 import { createBrowserConnection } from './connection'
 import { RENDER_LIMITS } from './limits'
@@ -41,8 +42,11 @@ export function createRenderService(options: {
       await acquire(input.signal)
       try {
         for (let attempt = 0; ; attempt++) {
+          let browser: Browser | undefined
           try {
-            return await renderPage(await connection.get(), input)
+            const lease = await connection.get()
+            browser = lease.browser
+            return await renderPage(browser, input, lease.context)
           } catch (error) {
             input.signal.throwIfAborted()
             if (!(error instanceof RenderInterruptedError)) throw error
@@ -69,6 +73,8 @@ export function createRenderService(options: {
               },
               scriptErrors: { count: 0, first: [] },
             }
+          } finally {
+            if (browser) await connection.release(browser)
           }
         }
       } finally {
