@@ -95,3 +95,12 @@ export const RENDERED_GRAPH_ISSUES = [
 /** HTML observations retain their established behavior. Rendered absence needs every page whole. */
 export const graphAbsenceKnown = (site: Pick<Site, 'config' | 'rendersUnobserved'>) =>
   site.config.rendering !== 'rendered' || site.rendersUnobserved === 0
+
+/**
+ * Issues added in 0.6.0 whose check skips a page whose served HTML was cut at the body limit: a crawl
+ * with such a page cannot say they are absent there, so they are `unobserved` for the whole crawl (in
+ * both modes). Checks from 0.5.0 that skip truncated pages keep their behaviour.
+ */
+export const TRUNCATION_SKIPPING_ISSUES = [
+  'few-html-links',
+] as const satisfies readonly PageIssueId[]

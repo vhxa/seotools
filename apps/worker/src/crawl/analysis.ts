@@ -20,7 +20,11 @@ import type {
 } from '@seotools/db'
 import { conditionStatesOf } from './conditions'
 import { detectFindings } from './issue-checks'
-import { RENDERED_GRAPH_ISSUES, unobservedIssues } from './observed-inputs'
+import {
+  RENDERED_GRAPH_ISSUES,
+  TRUNCATION_SKIPPING_ISSUES,
+  unobservedIssues,
+} from './observed-inputs'
 import { loadSite } from './site-audit'
 
 const PAGE_ISSUES_IDS_FOR_RENDERING = PAGE_ISSUE_IDS.filter(
@@ -158,6 +162,8 @@ export async function analyseCrawl(
       (row) => row.formFactor === 'all' && row.status === 'collected',
     ),
   )
+  if (site.urls.some((url) => url.internal && url.contentPage && url.url.data?.truncated === true))
+    unobserved.push(...TRUNCATION_SKIPPING_ISSUES)
   if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {
     unobserved.push(...PAGE_ISSUES_IDS_FOR_RENDERING)
   }

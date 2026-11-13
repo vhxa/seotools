@@ -365,6 +365,10 @@ it.each(['failed', 'truncated', 'unsettled', 'served-truncated', 'legacy'] as co
         expect(stored.auditSnapshot?.unobserved).toEqual(
           expect.arrayContaining([...RENDERED_GRAPH_ISSUES]),
         )
+      // A served page cut at the body limit cannot prove `few-html-links` absent anywhere.
+      expect(stored.auditSnapshot?.unobserved?.includes('few-html-links') ?? false).toBe(
+        partial && cause === 'served-truncated',
+      )
       const comparison = await compareWithPrevious({ db, target: stored, exact: true })
       if (comparison.base) {
         expect(comparison.byIssue.get('orphan-in-sitemap')).toMatchObject({

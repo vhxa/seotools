@@ -917,8 +917,15 @@ describe('each issue', () => {
       expect(actual.snapshot.unobserved).toEqual(
         expect.arrayContaining(['linked-only-by-javascript', 'links-only-after-rendering']),
       )
+      // Decision 4: a crawl with a truncated served page also lists `few-html-links`; none here.
+      const truncated = (
+        await db.crawls.listUrls({ crawlId, view: 'all', limit: 10000, offset: 0 })
+      ).some((url) => url.data?.truncated === true)
+      expect(actual.snapshot.unobserved.includes('few-html-links')).toBe(truncated)
+      const added = ['linked-only-by-javascript', 'links-only-after-rendering']
+      if (truncated) added.push('few-html-links')
       actual.snapshot.unobserved = actual.snapshot.unobserved.filter(
-        (issue) => issue !== 'linked-only-by-javascript' && issue !== 'links-only-after-rendering',
+        (issue) => !added.includes(issue),
       )
       expect(JSON.stringify(actual)).toBe(
         JSON.stringify(htmlBeforeRendering[id as keyof typeof htmlBeforeRendering]),
@@ -2008,6 +2015,10 @@ describe('stored HTML text and link heuristics', () => {
     })
     await analyseCrawl(db, id, auditSnapshotOf(1, []))
     expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('few-html-links')
+    // Its silence on the cut page is not an absence: the whole crawl cannot tell, in either mode.
+    const snapshot = (await db.crawls.get(id))!.auditSnapshot!
+    expect(snapshot.rendering).toBeUndefined()
+    expect(snapshot.unobserved).toContain('few-html-links')
   })
 })
 
