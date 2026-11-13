@@ -15,7 +15,9 @@ found only after rendering are followed as ordinary crawl links. Failed pages ca
 once more after the site drain, serially, while their served bodies fit an in-memory limit of
 200 pages and 64 MiB. Committed failures remain failed after a worker restart; done URLs are
 never rendered twice on resume. Per-URL render facts and diagnostics are pruned with the URL
-results; HTML is never stored. A failed or missing render makes link absence unknown.
+results; HTML is never stored. A page whose render failed, is missing, did not settle or was
+cut at the size limit (or whose served HTML was) makes link absence unknown for the whole crawl:
+link-dependent findings are then not claimed, and comparisons treat them as unverified.
 
 An unavailable browser pauses the crawl for up to ten minutes total, polling every 30 seconds.
 The recovery allowance survives worker restarts. Exhaustion fails the crawl with a browser

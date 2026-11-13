@@ -36,11 +36,13 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - Sitemap orphan findings describe the links observed in either HTML or rendered crawls. Rendered
   crawls pause when the browser is unavailable and fail after their recovery allowance, without
-  falling back to HTML. Missing render observations remain unknown in findings and comparisons.
+  falling back to HTML. In a rendered crawl, a page that could not be rendered whole and settled
+  makes every link-dependent finding unknown for that crawl, so comparisons and alerts never report
+  it as new or fixed.
 - Pages load less translation text: the browser receives only the messages the interactive parts of each page use, not the whole catalog.
-- Sitemap-only findings now state that no internal link was found in the HTML of the pages crawled,
-  and explain that links built by JavaScript are not seen. Earlier crawls are analysed again from
-  their stored text and links for the two new checks.
+- Earlier crawls are analysed again from their stored text and links for the two new checks. The
+  few-internal-links check is unknown, never fixed or new, for a crawl in which a page's HTML was
+  cut at the size limit.
 
 ### Upgrade notes
 
