@@ -32,6 +32,22 @@ services:
   browser:
     image: chromedp/headless-shell:158.0.8127.18
     profiles: [rendering]
+    # Upstream run.sh expands $@ unquoted, splitting/globbing the resolver rule.
+    # Preserve its forwarder and Chrome flags, but pass each extra argument intact.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -ex
+        exec socat TCP4-LISTEN:9222,fork TCP4:127.0.0.1:9223 &
+        exec /headless-shell/headless-shell \
+          --no-sandbox \
+          --use-gl=angle \
+          --use-angle=swiftshader \
+          --remote-debugging-address=0.0.0.0 \
+          --remote-debugging-port=9223 \
+          "$$@"
+      - --
     command:
       - --proxy-server=http://127.0.0.1:9
       - --proxy-bypass-list=<-loopback>

@@ -22,12 +22,15 @@ RENDER_CONCURRENCY=2
 Run `docker compose --profile rendering up -d`. Without this profile the browser is not started;
 without the URL the worker loads no browser library and attempts no connection. The application
 keeps its ordinary outbound network in either case. The browser has no published ports and joins
-only `render`, whose `internal: true` prevents external routing. Do not change its entrypoint:
-`run.sh` forwards port 9222 to Chrome's loopback DevTools listener on 9223.
+only `render`, whose `internal: true` prevents external routing. The Compose entrypoint reproduces
+the pinned image's `run.sh`: socat forwards port 9222 to Chrome's loopback DevTools listener on
+9223, with the same five built-in Chrome flags. It fixes upstream's unquoted `$@`, which splits
+and globs the resolver rule. Keep this override when updating the image and compare its
+`run.sh` for changes.
 
 The network boundary is only one layer: browsers can otherwise reach their own loopback and
 the app on `render`. The browser service therefore passes all four required flags through the
-image's `run.sh` (which appends its arguments to headless-shell):
+quoted-argument entrypoint:
 
 ```text
 --proxy-server=http://127.0.0.1:9
@@ -40,7 +43,9 @@ Unintercepted HTTP/WebSocket traffic goes to a dead proxy, including loopback; n
 resolve; WebRTC cannot send non-proxied UDP. Intercepted responses are supplied by the worker
 and still render. These flags apply to **headless-shell**: full Chrome does not implement the
 same WebRTC command-line override. An external/Dokploy browser must retain the internal network
-boundary **and** pass these flags (or demonstrably equivalent restrictions); the worker refuses
+boundary **and** pass these flags (or demonstrably equivalent restrictions). Forward arguments
+with quoted `"$@"` in shell wrappers; keep the resolver rule as one argument, including its spaces
+and literal `*`. The worker refuses
 an unprotected browser. Do not rely on permissions or HTTP interception alone.
 
 Open **System → Integrations**, check the browser, and refresh for the worker's result. Ready
