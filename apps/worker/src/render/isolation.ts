@@ -35,7 +35,7 @@ export const PROBE_PUBLIC_ADDRESSES = ['1.1.1.1', '2606:4700:4700::1111'] as con
 export const PROBE_NAMES = ['example.com', 'localhost'] as const
 const MAX_INTERFACE_ADDRESSES = 16
 const PROBE_PATH = '/seotools-isolation-probe'
-const NAVIGATION_PAGES = 4
+const NAVIGATION_PAGES = 2
 const WEBSOCKETS_PER_PAGE = 6
 
 export type ProbeProtocol = 'fetch' | 'websocket' | 'navigation' | 'webrtc'
@@ -97,6 +97,7 @@ const netError = (text: string) => /net::ERR_[A-Z0-9_]+/.exec(text)?.[0] ?? text
 interface ProbePage {
   page: Page
   cdp: CDPSession
+  close: () => Promise<void>
 }
 
 interface Canary {
@@ -211,7 +212,8 @@ async function probeFetches(probe: ProbePage, origins: readonly string[]) {
 /**
  * WebSocket probes, one at a time per page. Chromium delays a renderer's WebSocket handshakes
  * more after each failure (observed on 158: the eighth failure in one page waits seconds), so
- * each batch gets a fresh context, hence a fresh renderer.
+ * each batch gets a fresh context, hence a fresh renderer. Batches run one after another: the
+ * browser container's process and memory limits must hold while renders run beside the check.
  */
 async function probeWebSockets(open: () => Promise<ProbePage>, origins: readonly string[]) {
   const urls = new Map<string, ProbeOutcome | undefined>()
@@ -222,9 +224,9 @@ async function probeWebSockets(open: () => Promise<ProbePage>, origins: readonly
     if (!batches.at(-1) || batches.at(-1)!.length >= WEBSOCKETS_PER_PAGE) batches.push([])
     batches.at(-1)!.push(url)
   }
-  await Promise.all(
-    batches.map(async (batch) => {
-      const probe = await open()
+  for (const batch of batches) {
+    const probe = await open()
+    try {
       watchProbes(probe.cdp, urls)
       await probe.page.evaluate(
         async (list, timeout) => {
@@ -248,9 +250,13 @@ async function probeWebSockets(open: () => Promise<ProbePage>, origins: readonly
         batch,
         RENDER_LIMITS.probeTimeoutMs,
       )
-    }),
-  )
-  await settled(urls)
+      await settled(new Map(batch.map((url) => [url, urls.get(url)])))
+    } finally {
+      await probe.close()
+    }
+    // A batch with an unproven probe already refuses the browser.
+    if (firstUnproven(new Map(batch.map((url) => [url, urls.get(url)])))) break
+  }
   return urls
 }
 
@@ -352,10 +358,11 @@ export async function checkIsolation(
   const reached = new Set<'tcp' | 'udp'>()
   const sockets = new Set<Socket>()
   const canaries: Canary[] = []
-  const contexts: BrowserContext[] = []
+  // At most one probe context is open at a time (bounded browser processes and memory).
+  const contexts = new Set<BrowserContext>()
   const open = async (): Promise<ProbePage> => {
     const context = await browser.createBrowserContext()
-    contexts.push(context)
+    contexts.add(context)
     const page = await context.newPage()
     page.on('error', () => {})
     const cdp = await page.createCDPSession()
@@ -367,7 +374,14 @@ export async function checkIsolation(
         permissions: ['localNetwork', 'loopbackNetwork', 'localNetworkAccess'],
       })
       .catch(() => {})
-    return { page, cdp }
+    return {
+      page,
+      cdp,
+      close: async () => {
+        contexts.delete(context)
+        await context.close().catch(() => {})
+      },
+    }
   }
   const refuse = (state: 'has-network' | 'unsafe-configuration', detail: string) =>
     ({ state, version, checkedAt, detail: detail.slice(0, 200) }) satisfies RenderStatus
@@ -400,7 +414,9 @@ export async function checkIsolation(
     const origins = isolationProbeOrigins({ localAddress, canaries, interfaces })
     // Deliberately no interception and no page-controlled URL. A timeout is never isolation.
     if (protocols.includes('fetch')) {
-      const result = verdict('fetch', await probeFetches(await open(), origins))
+      const probe = await open()
+      const outcomes = await probeFetches(probe, origins).finally(probe.close)
+      const result = verdict('fetch', outcomes)
       if (result) return result
     }
     if (protocols.includes('websocket')) {
@@ -408,16 +424,20 @@ export async function checkIsolation(
       if (result) return result
     }
     if (protocols.includes('navigation')) {
-      const sessions: CDPSession[] = []
-      for (let n = 0; n < NAVIGATION_PAGES; n++) sessions.push((await open()).cdp)
-      const result = verdict('navigation', await probeNavigations(sessions, origins))
+      const probe = await open()
+      const sessions = [probe.cdp]
+      for (let n = 1; n < NAVIGATION_PAGES; n++)
+        sessions.push(await (await probe.page.browserContext().newPage()).createCDPSession())
+      const outcomes = await probeNavigations(sessions, origins).finally(probe.close)
+      const result = verdict('navigation', outcomes)
       if (result) return result
     }
     if (protocols.includes('webrtc')) {
+      const probe = await open()
       const rtc = await probeWebRtc(
-        (await open()).page,
+        probe.page,
         canaries.filter((canary) => canary.udp).map((c) => `stun:${origin(c.address, c.port)}`),
-      )
+      ).finally(probe.close)
       // Datagrams can trail ICE completion.
       await new Promise((resolve) => setTimeout(resolve, 100))
       const result = canaryReached()
@@ -432,7 +452,7 @@ export async function checkIsolation(
     }
     return canaryReached() ?? { state: 'ready', version, checkedAt }
   } finally {
-    await Promise.all(contexts.map((context) => context.close().catch(() => {})))
+    await Promise.all([...contexts].map((context) => context.close().catch(() => {})))
     for (const socket of sockets) socket.destroy()
     await Promise.all(canaries.map(closeCanary))
   }
