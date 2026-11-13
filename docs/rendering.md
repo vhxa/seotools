@@ -168,9 +168,20 @@ Sources checked for this guide:
 ## Raspberry Pi and verification
 
 Use `RENDER_CONCURRENCY=1` on a small Pi. The browser image is approximately 540 MB uncompressed
-on arm64; Compose limits its memory to 512 MiB and processes to 128. Memory exhaustion can crash a
+on arm64; Compose limits its memory to 768 MiB and processes to 128. Memory exhaustion can crash a
 page; it must remain a failed render, never a successful audit of an empty page. Increase the
 container's `mem_limit` only if the host has sufficient spare memory for the app and database.
+
+On Docker Desktop arm64 with Chrome 158.0.8127.18, the heaviest original spike fixture
+(`hostile`, 986 document bytes plus its resource attempts) peaked at **340.4 MiB** with
+`RENDER_CONCURRENCY=1` and **440.5 MiB** with `2`. These are sampled sums of browser-container
+process RSS (including shared mappings more than once), sampled about every 100–200 ms from
+`/proc/*/status` throughout rendering, after restarting the browser for each run. They are
+workload measurements, not a worst-case bound. The 768 MiB limit gives roughly 74% headroom over
+the two-page observation; retain 256 MiB shared memory. For higher concurrency, measure your
+workload and adjust memory with host capacity in mind. A separate near-limit 9 MiB DOM stress
+fixture exhausted the former 512 MiB limit and returned `failed` after its one retry, as required;
+no finite container limit guarantees that every hostile page can render.
 
 The Chromium integration suite runs automatically when Playwright's Chromium is installed, skips
 otherwise, and runs in CI's e2e job after Chromium installation:
