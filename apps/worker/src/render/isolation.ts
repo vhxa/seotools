@@ -186,7 +186,8 @@ async function settled(urls: ReadonlyMap<string, ProbeOutcome | undefined>) {
 async function probeFetches(probe: ProbePage, origins: readonly string[]) {
   const urls = new Map<string, ProbeOutcome | undefined>()
   for (const scheme of ['http', 'https'])
-    for (const item of origins) urls.set(new URL(`${scheme}://${item}${PROBE_PATH}`).href, undefined)
+    for (const item of origins)
+      urls.set(new URL(`${scheme}://${item}${PROBE_PATH}`).href, undefined)
   watchProbes(probe.cdp, urls)
   await probe.page.evaluate(
     async (list, timeout) => {
@@ -227,19 +228,22 @@ async function probeWebSockets(open: () => Promise<ProbePage>, origins: readonly
       watchProbes(probe.cdp, urls)
       await probe.page.evaluate(
         async (list, timeout) => {
-          for (const url of list)
-            await new Promise<void>((resolve) => {
+          for (const url of list) {
+            const settled = await new Promise<boolean>((resolve) => {
               const socket = new WebSocket(url)
               const timer = setTimeout(() => {
                 socket.close()
-                resolve()
+                resolve(false)
               }, timeout)
               socket.onopen = socket.onerror = () => {
                 clearTimeout(timer)
                 socket.close()
-                resolve()
+                resolve(true)
               }
             })
+            // A timeout already refuses the browser; the rest of the batch adds nothing.
+            if (!settled) break
+          }
         },
         batch,
         RENDER_LIMITS.probeTimeoutMs,
@@ -273,7 +277,11 @@ async function probeNavigations(pages: readonly CDPSession[], origins: readonly 
         ])
         clearTimeout(timer)
         urls.set(url, outcome)
-        if ('timeout' in outcome) await cdp.send('Page.stopLoading').catch(() => {})
+        if ('timeout' in outcome) {
+          await cdp.send('Page.stopLoading').catch(() => {})
+          // A timeout already refuses the browser: stop every navigation page.
+          queue.length = 0
+        }
       }
     }),
   )

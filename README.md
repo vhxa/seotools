@@ -42,7 +42,7 @@ Raspberry Pi to a VPS.
 - **Opt-in email alerts** for changes between crawls and Core Web Vitals regressions after full
   crawls. Daily site-file, availability and certificate checks record incidents, show open ones on
   the dashboard and keep a 30-day history in Issues; they are not an uptime monitor.
-- **Optional browser with network isolation and live TCP/UDP safety checks**, with connection status in System → Integrations; [setup guide](docs/rendering.md). Crawl rendering follows separately.
+- **Optional browser with network isolation and a safety check that refuses a browser able to reach the network**, with connection status in System → Integrations; [setup guide](docs/rendering.md). Crawl rendering follows separately.
 - **Custom extraction** of values with CSS selectors.
 - **Portfolio and structure**: see every domain by company with its last crawl, figures and trend,
   and explore a domain by directory with pages, errors and findings. Star a favourite domain to

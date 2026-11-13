@@ -22,7 +22,7 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
-- An optional browser container with layered network isolation, live TCP/UDP safety checks and its connection status in System → Integrations; rendering of crawls arrives with the next entries.
+- An optional browser container with layered network isolation, a safety check that refuses any browser whose own traffic does not all fail at its blocking proxy (rechecked whenever the browser is replaced), and its connection status in System → Integrations; rendering of crawls arrives with the next entries.
 
 - Two low-importance opportunities flag HTML character references shown as text in titles,
   descriptions or H1s, and indexable pages with very few internal links in the served HTML

@@ -39,25 +39,46 @@ quoted-argument entrypoint:
 --force-webrtc-ip-handling-policy=disable_non_proxied_udp
 ```
 
-Unintercepted HTTP/WebSocket traffic goes to a dead proxy, including loopback; names do not
-resolve; WebRTC cannot send non-proxied UDP. Intercepted responses are supplied by the worker
-and still render. These flags apply to **headless-shell**: full Chrome does not implement the
-same WebRTC command-line override. An external/Dokploy browser must retain the internal network
-boundary **and** pass these flags (or demonstrably equivalent restrictions). Forward arguments
-with quoted `"$@"` in shell wrappers; keep the resolver rule as one argument, including its spaces
-and literal `*`. The worker refuses
-an unprotected browser. Do not rely on permissions or HTTP interception alone.
+Unintercepted HTTP/WebSocket traffic goes to a dead proxy, including loopback and names (with an
+HTTP proxy, Chromium hands names to the proxy); WebRTC cannot send non-proxied UDP. The resolver
+rule is a further layer for any path that does not use the proxy; the check below does not try to
+prove it. Intercepted responses are supplied by the worker and still render. These flags apply to
+**headless-shell**: full Chrome does not implement the same WebRTC command-line override. An
+external/Dokploy browser must retain the internal network boundary **and** pass exactly these
+flags, with no other proxy exception. A browser started without them is refused, and so is one
+whose `--proxy-bypass-list` adds an exception covering a sampled destination (`[::1]`, a worker
+address, one of the sampled ports…); see below for what sampling cannot see.
+Forward arguments with quoted `"$@"` in shell wrappers; keep the resolver rule as one argument,
+including its spaces and literal `*`. Do not rely on permissions or HTTP interception alone.
 
-Open **System → Integrations**, check the browser, and refresh for the worker's result. Ready
-means the worker connected, accepted the Chrome version and passed live TCP/UDP canaries without
-interception. The worker binds ephemeral listeners on its CDP socket's local address (the address
-the browser sees). The browser tries fetch, WebSocket and WebRTC/STUN there and at its own
-loopback, plus constant public/metadata HTTP probes. Any byte, datagram or HTTP answer refuses
-rendering. Only known DNS/no-route/dead-proxy errors and completed WebRTC gathering without
-traffic prove isolation; a timeout is refused with an explicit detail.
-A networked browser is refused even if it would otherwise work. Status expires after 15 minutes.
-Checks run at connection and every five minutes; `SEOTOOLS_PAUSE_AUTOMATION` stops periodic checks,
-while the administrator's **Check now** still runs. WP4 callers must call `check()` before a crawl.
+Open **System → Integrations**, check the browser, and refresh for the worker's result. **Ready**
+means the worker connected, accepted the Chrome version and obtained positive proof that the dead
+proxy applies. In a context without interception the browser fetches (HTTP and HTTPS), opens
+WebSockets to and navigates to a fixed sample of destinations: IPv4 and IPv6 loopback and every
+address of every worker network interface on ports 80, 443, 3000, 5432, 9222 and 9223, one address
+in each private range, public address literals, `example.com` and `localhost`. **Every** probe must
+fail with exactly `net::ERR_PROXY_CONNECTION_FAILED`. Any other outcome (an answer, a refusal, a
+reset, a timeout, a certificate error, a not-resolved error, any other net error) means some
+destination does not go through the dead proxy, and the browser is refused as **unsafe
+configuration**. WebRTC must gather no candidate at all (no TURN server is configured, so any
+candidate is a direct socket). As a second signal the worker binds live TCP and UDP listeners on the
+address the browser sees it at (its CDP socket's local address) and on its loopback; the probes
+include them, and any byte or datagram they receive, or any answer, refuses the browser as **has
+network**.
+
+Sampling is a safeguard against misconfiguration **on top of** the internal network, not a proof
+for arbitrary configurations: a bypass rule for a destination outside the sample (another port, an
+address the worker does not have) would not be seen. Keep the browser on the internal network and
+use the flags exactly as above.
+
+A passed check is bound to the browser **instance**: Chrome publishes a random identifier for its
+DevTools server in `/json/version`, refuses connections that name another one, and draws a new one
+when it restarts. Every render compares the identifier of the connection it actually holds with the
+one that passed; a different or unknown identifier (a restarted or replaced browser) runs the full
+check on that connection before any page, and a failure refuses the render. A failed connection or
+an unexpected disconnection forgets the result. Status expires after 15 minutes. Checks run at
+connection and every five minutes; `SEOTOOLS_PAUSE_AUTOMATION` stops periodic checks, while the
+administrator's **Check now** still runs. WP4 callers must call `check()` before a crawl.
 
 The pinned image supports amd64 and arm64. The minimum accepted Chrome major is 157, the version
 listed for Puppeteer 25.17.0; open-shadow-root `getHTML` support predates that minimum. The Compose
@@ -123,8 +144,11 @@ Each render and each status check owns a separate CDP connection. The `ws` trans
 messages above 64 MiB **before** parsing JSON or Puppeteer's eager POST decoding: a 10 MiB DOM
 can expand up to 60 MiB with JSON escaping, leaving room for its protocol envelope. A larger
 message severs only that render; it is retried once then failed. Per-request POST bodies are
-limited to 1 MiB and cumulative page POST bytes to 5 MiB. DNS, discovery and the WS/CDP handshake
-share one ten-second deadline, cancelling the resolver/request/socket on expiry.
+limited to 1 MiB and cumulative page POST bytes to 5 MiB. Name resolution, discovery and the
+WS/CDP handshake share one ten-second deadline. The browser's name is resolved like any other
+client does (the system resolver: `/etc/hosts`, then DNS, including Docker's), trying each address
+in order; that lookup cannot be cancelled, so the worker stops waiting at the deadline and ignores
+a late answer. Discovery and the socket are closed on expiry.
 
 Omitted or unread content is unknown, never proof that a declaration is absent.
 
@@ -161,6 +185,9 @@ Sources checked for this guide:
 - [headless-shell README and entrypoint](https://github.com/chromedp/docker-headless-shell)
 - [Versioned headless-shell WebRTC override](https://github.com/chromium/chromium/blob/158.0.8127.18/headless/lib/browser/headless_web_contents_impl.cc#L462-L467)
 - [Versioned WebRTC policy effect](https://github.com/chromium/chromium/blob/158.0.8127.18/third_party/blink/renderer/modules/peerconnection/peer_connection_dependency_factory.cc#L1091-L1111)
+- [Versioned net error list (`PROXY_CONNECTION_FAILED`, -130)](https://github.com/chromium/chromium/blob/158.0.8127.18/net/base/net_error_list.h#L256)
+- [Versioned restricted ports (the probe ports are not among them)](https://github.com/chromium/chromium/blob/158.0.8127.18/net/base/port_util.cc)
+- [Versioned DevTools browser identifier: drawn per process, required on upgrade](https://github.com/chromium/chromium/blob/158.0.8127.18/content/browser/devtools/devtools_http_handler.cc#L949-L954)
 - [Versioned proxy and loopback bypass semantics](https://github.com/chromium/chromium/blob/158.0.8127.18/net/docs/proxy.md)
 - [ws message limit](https://github.com/websockets/ws/blob/8.22.1/doc/ws.md#new-websocketaddress-protocols-options)
 - [Puppeteer supported browsers](https://pptr.dev/supported-browsers)
@@ -194,5 +221,7 @@ pnpm exec vitest run apps/worker/src/render/render.integration.test.ts
 It uses Chromium's [proxy switches](https://chromium.googlesource.com/chromium/src/+/main/net/base/net_switches.cc)
 and [host resolver rules](https://chromium.googlesource.com/chromium/src/+/main/net/dns/host_resolver_manager.cc)
 to deny direct network access during local tests. These same flags are required in production as well as the
-container network boundary. Negative live TCP/WebSocket fixtures disable Chromium's local-network
-access checks solely to prove the canary receives actual traffic; render contexts deny permissions.
+container network boundary. Negative fixtures (no flags, a missing WebRTC flag, and proxy bypasses
+for `[::1]`, another worker address and one loopback port, each with and without the resolver
+rule) must be refused; they disable Chromium's local-network access checks solely so the live
+canaries can receive actual traffic; render contexts deny permissions.

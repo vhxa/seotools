@@ -1,4 +1,5 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { connect, createServer, isIP, type AddressInfo, type Socket } from 'node:net'
 import { join } from 'node:path'
 import { chromium } from '@playwright/test'
 import puppeteer, { type Browser, type Target } from 'puppeteer-core'
@@ -8,7 +9,9 @@ import { fakeRenderSite, moved, type Answer } from '../crawl/fake-site'
 import { createHttpFetcher, type Fetcher } from '../crawl/fetcher'
 import { createRequester } from '../crawl/requester'
 import { createRenderResourceCache } from './cache'
-import { checkIsolation } from './isolation'
+import { checkIsolation, workerAddresses } from './isolation'
+import { connectBrowser } from './transport'
+import { BrowserUnavailableError } from './types'
 import { createRenderService } from './service'
 import { RENDER_LIMITS } from './limits'
 import { renderPage } from './page'
@@ -66,6 +69,18 @@ const pages = {
   shadow: `<x-card></x-card><script>document.querySelector('x-card').attachShadow({mode:'open'}).innerHTML='<a href="/shadow">Shadow content</a>'</script>`,
   redirect: '<title>Redirect</title><script>location.href="/target"</script>',
   hostile: `<script>for(const u of ['http://169.254.169.254/latest/meta-data/','http://127.0.0.1:9223/json/version','http://localhost:3113/','http://127.0.0.1:3113/'])fetch(u).catch(()=>{});new WebSocket('ws://localhost:3113/');navigator.sendBeacon('http://google-analytics.com/g/collect','x')</script><img src="/image"><script src="https://dev.visualwebsiteoptimizer.com/j.php"></script>`,
+}
+
+/** Names other than localhost that this machine's hosts file maps to IPv4 loopback. */
+function hostsFileLoopbackAliases() {
+  const hosts = existsSync('/etc/hosts') ? readFileSync('/etc/hosts', 'utf8') : ''
+  return hosts
+    .split('\n')
+    .map((line) => line.replace(/#.*/, '').trim().split(/\s+/))
+    .filter(([address]) => address === '127.0.0.1')
+    .flatMap(([, ...names]) => names)
+    .filter((name) => name && name !== 'localhost' && /^[a-z0-9.-]+$/i.test(name))
+    .slice(0, 1)
 }
 
 const baseDocument = (body: string) => ({
@@ -494,18 +509,17 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       await service.close()
     }
   }, 30_000)
-  it.each(['fetch', 'websocket', 'webrtc'] as const)(
+  const launchWith = (args: string[]) =>
+    puppeteer.launch({
+      executablePath,
+      headless: true,
+      args: ['--no-sandbox', '--remote-debugging-port=0', ...args],
+    })
+  // Live listeners are the second signal: a browser with a network reaches them.
+  it.each(['fetch', 'websocket', 'navigation', 'webrtc'] as const)(
     'refuses a browser that reaches the live worker %s canary',
     async (protocol) => {
-      const networked = await puppeteer.launch({
-        executablePath,
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--remote-debugging-port=0',
-          '--disable-features=LocalNetworkAccessChecks',
-        ],
-      })
+      const networked = await launchWith(['--disable-features=LocalNetworkAccessChecks'])
       try {
         const result = await checkIsolation(networked, '127.0.0.1', [protocol])
         expect(result.state).toBe('has-network')
@@ -516,43 +530,125 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     },
     15000,
   )
-  it('refuses a probe timeout with a clear isolation detail', async () => {
+  it('refuses probes without an observed outcome instead of treating silence as isolation', async () => {
     const createContext = browser.createBrowserContext.bind(browser)
     const spy = vi.spyOn(browser, 'createBrowserContext').mockImplementationOnce(async () => {
       const context = await createContext()
-      const page = await context.newPage()
-      vi.spyOn(context, 'newPage').mockResolvedValue(page)
-      vi.spyOn(page, 'evaluate').mockResolvedValue('timeout')
+      const newPage = context.newPage.bind(context)
+      vi.spyOn(context, 'newPage').mockImplementationOnce(async () => {
+        const page = await newPage()
+        // The probes never run: no net error is observed for any of them.
+        vi.spyOn(page, 'evaluate').mockResolvedValue(undefined)
+        return page
+      })
       return context
     })
     try {
       const result = await checkIsolation(browser)
-      expect(result.state).toBe('has-network')
-      expect(result.detail).toContain('timed out; isolation is not proven')
+      expect(result.state).toBe('unsafe-configuration')
+      expect(result.detail).toContain('no outcome in time')
     } finally {
       spy.mockRestore()
     }
   })
-  it('refuses a WebRTC timeout rather than treating it as isolation', async () => {
-    const unprotected = await puppeteer.launch({
-      executablePath,
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--remote-debugging-port=0',
-        '--proxy-server=http://127.0.0.1:9',
-        '--proxy-bypass-list=<-loopback>',
-        '--host-resolver-rules=MAP * ~NOTFOUND',
-      ],
-    })
+  it('refuses a browser without the WebRTC policy flag', async () => {
+    const unprotected = await launchWith([
+      '--proxy-server=http://127.0.0.1:9',
+      '--proxy-bypass-list=<-loopback>',
+      '--host-resolver-rules=MAP * ~NOTFOUND',
+    ])
     try {
       const result = await checkIsolation(unprotected)
-      expect(result.state).toBe('has-network')
-      expect(result.detail).toMatch(/WebRTC.*(?:canary|timed out)/)
+      expect(result.state).not.toBe('ready')
+      expect(result.detail).toMatch(/udp canary was reached|WebRTC/)
     } finally {
       await unprotected.close()
     }
   }, 15000)
+  // The re-review's three reproductions: selective proxy bypasses that let WebSockets through
+  // while the former canaries saw nothing. With and without the resolver rule, they are refused.
+  const otherWorkerAddress = workerAddresses().find(
+    (address) => isIP(address) === 4 && !address.startsWith('127.'),
+  )
+  describe.each([
+    ['IPv6 loopback', '[::1]', '[::1]'],
+    ['another worker address', otherWorkerAddress ?? '', otherWorkerAddress ?? ''],
+    ['one specific loopback port', '127.0.0.1:9223', '127.0.0.1:9223'],
+  ])('a browser that bypasses the proxy for %s', (_name, bypass, shown) => {
+    it.skipIf(!bypass).each([true, false])(
+      'is refused (resolver rule: %s)',
+      async (resolverRule) => {
+        const misconfigured = await launchWith([
+          '--proxy-server=http://127.0.0.1:9',
+          `--proxy-bypass-list=<-loopback>;${bypass}`,
+          ...(resolverRule ? ['--host-resolver-rules=MAP * ~NOTFOUND'] : []),
+          '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+          '--disable-features=LocalNetworkAccessChecks',
+        ])
+        try {
+          const result = await checkIsolation(misconfigured)
+          expect(['has-network', 'unsafe-configuration']).toContain(result.state)
+          if (result.state === 'unsafe-configuration') expect(result.detail).toContain(shown)
+        } finally {
+          await misconfigured.close()
+        }
+      },
+      15000,
+    )
+  })
+  it('connects through the system resolver: localhost and a hosts-file alias', async () => {
+    const port = new URL(browser.wsEndpoint()).port
+    const names = ['localhost', ...hostsFileLoopbackAliases()]
+    for (const name of names) {
+      const connection = await connectBrowser(`http://${name}:${port}`)
+      try {
+        expect(connection.identity).toMatch(/^[0-9a-f-]{36}$/)
+        expect(await connection.browser.version()).toMatch(/Chrome/)
+      } finally {
+        await connection.browser.disconnect()
+      }
+    }
+  })
+  it('refuses the next render when the endpoint restarts as an unprotected browser', async () => {
+    let target = Number(new URL(browser.wsEndpoint()).port)
+    const sockets = new Set<Socket>()
+    const forwarder = createServer((client) => {
+      const upstream = connect(target, '127.0.0.1')
+      for (const socket of [client, upstream]) {
+        sockets.add(socket)
+        socket.on('close', () => sockets.delete(socket))
+        socket.on('error', () => {})
+      }
+      client.pipe(upstream).pipe(client)
+    })
+    await new Promise<void>((resolve) => forwarder.listen(0, '127.0.0.1', resolve))
+    const statuses: string[] = []
+    const service = createRenderService({
+      browserUrl: `http://127.0.0.1:${(forwarder.address() as AddressInfo).port}`,
+      concurrency: 1,
+      writeStatus: async (status) => {
+        statuses.push(status.state)
+      },
+    })
+    const unprotected = await launchWith(['--disable-features=LocalNetworkAccessChecks'])
+    const page = { ...base, url: 'http://site.test/nav', document: baseDocument(pages.nav) }
+    try {
+      expect(await service.check()).toMatchObject({ state: 'ready' })
+      expect((await service.render(page)).status).toBe('rendered')
+      // The bound identity matched: no second check ran for that render.
+      expect(statuses).toEqual(['ready'])
+      // The browser behind the same endpoint is replaced, as a container restart would.
+      target = Number(new URL(unprotected.wsEndpoint()).port)
+      for (const socket of sockets) socket.destroy()
+      await expect(service.render(page)).rejects.toBeInstanceOf(BrowserUnavailableError)
+      expect(statuses).toEqual(['ready', 'has-network'])
+    } finally {
+      await service.close()
+      await unprotected.close()
+      for (const socket of sockets) socket.destroy()
+      await new Promise<void>((resolve) => forwarder.close(() => resolve()))
+    }
+  }, 30_000)
   it('bounds the cumulative POST body bytes of one page', async () => {
     let sent = 0
     const requester = {

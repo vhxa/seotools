@@ -50,7 +50,10 @@ describe('isolation verdict', () => {
     expect(firstUnproven(new Map([['http://a/', proxy]]))).toBeUndefined()
   })
   it.each([
-    ['a resolver failure (bypassed, then MAP * ~NOTFOUND)', { error: 'net::ERR_NAME_NOT_RESOLVED' }],
+    [
+      'a resolver failure (bypassed, then MAP * ~NOTFOUND)',
+      { error: 'net::ERR_NAME_NOT_RESOLVED' },
+    ],
     ['a refusal', { error: 'net::ERR_CONNECTION_REFUSED' }],
     ['a reset', { error: 'net::ERR_CONNECTION_RESET' }],
     ['no route', { error: 'net::ERR_ADDRESS_UNREACHABLE' }],
