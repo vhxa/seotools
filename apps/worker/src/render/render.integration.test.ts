@@ -26,6 +26,10 @@ const site: Record<string, Answer> = {
   'http://site.test/new.js': {
     body: Buffer.from("document.querySelector('main').textContent='redirected script'"),
   },
+  'http://site.test/worker.js': {
+    headers: { 'content-type': 'application/javascript' },
+    body: Buffer.from("setTimeout(()=>postMessage('worker survived'),100)"),
+  },
   'http://site.test/poll': { body: Buffer.from('ok') },
   'http://api.other.test/graphql': {
     headers: {
@@ -197,6 +201,25 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(result.status).toBe('rendered')
     expect(result.settled).toBe(false)
     expect(Date.now() - start).toBeLessThan(1800)
+  })
+  it('closes popup and worker targets before they can alter the page', async () => {
+    const body = `<main>unchanged</main><script>
+      window.open('/popup');
+      const worker = new Worker('/worker.js');
+      worker.onmessage = e => document.querySelector('main').textContent = e.data;
+    </script>`
+    const result = await render('head', {
+      document: {
+        statusCode: 200,
+        headers: { 'content-type': 'text/html' },
+        body: Buffer.from(body),
+        bytes: body.length,
+        truncated: false,
+        responseTimeMs: 0,
+      },
+    })
+    expect(result.status).toBe('rendered')
+    expect(result.html).toContain('<main>unchanged</main>')
   })
   it('bounds requests, diagnostics and script errors', async () => {
     const body = `<main>bounded</main><script>
