@@ -45,6 +45,10 @@ type Entry = readonly [type: IssueType, importance: IssueImportance, detail?: Is
  * - `opportunity`: an improvement.
  */
 const ISSUE_CATALOG = {
+  javascript: {
+    'linked-only-by-javascript': ['warning', 'medium'],
+    'links-only-after-rendering': ['opportunity', 'medium'],
+  },
   performance: {
     'lcp-poor': ['warning', 'medium'],
     'inp-poor': ['warning', 'medium'],
@@ -258,7 +262,7 @@ export const ISSUE_GROUPS = [
     ],
   },
   { id: 'architecture', categories: ['links', 'urls'] },
-  { id: 'technical', categories: ['security', 'html', 'performance'] },
+  { id: 'technical', categories: ['security', 'html', 'performance', 'javascript'] },
 ] as const satisfies readonly { id: string; categories: readonly IssueCategoryId[] }[]
 
 export type IssueGroupId = (typeof ISSUE_GROUPS)[number]['id']

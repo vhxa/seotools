@@ -171,7 +171,7 @@ export const crawlSettings = sqliteTable('crawl_settings', {
   domainId: text('domain_id')
     .primaryKey()
     .references(() => domains.id, { onDelete: 'cascade' }),
-  renderingMode: text('rendering_mode', { enum: ['http', 'headless', 'both'] })
+  renderingMode: text('rendering_mode', { enum: ['http', 'headless'] })
     .notNull()
     .default('http'),
   userAgent: text('user_agent'),
@@ -194,6 +194,8 @@ export const crawlSettings = sqliteTable('crawl_settings', {
   /** JSON array of `Extractor` (custom extraction). `null`: none. */
   extractors: text('extractors'),
   maxDepth: integer('max_depth'),
+  renderWaitMs: integer('render_wait_ms').notNull().default(5000),
+  renderOmittedHosts: text('render_omitted_hosts'),
   requestSecrets: text('request_secrets'),
   updatedAt: ts('updated_at').notNull().$defaultFn(now),
 })
@@ -287,6 +289,8 @@ export const crawls = sqliteTable(
     history: integer('history', { mode: 'boolean' }).notNull().default(false),
     /** Whether the results per URL were pruned by the domain's retention setting. */
     pruned: integer('pruned', { mode: 'boolean' }).notNull().default(false),
+    rendering: text('rendering'),
+    browserWaitMs: integer('browser_wait_ms').notNull().default(0),
     error: text('error'),
     createdAt: ts('created_at').notNull().$defaultFn(now),
     startedAt: ts('started_at'),
@@ -355,6 +359,7 @@ export const crawlUrlLinks = sqliteTable(
       .references(() => crawls.ref, { onDelete: 'cascade' }),
     source: integer('source').notNull(),
     target: integer('target').notNull(),
+    rendered: integer('rendered'),
     kind: text('kind').notNull(),
     /** The anchor text, bounded. */
     text: text('text'),
@@ -999,4 +1004,22 @@ export const findingStates = sqliteTable(
     setAt: ts('set_at').notNull(),
   },
   (t) => [uniqueIndex('finding_states_target_idx').on(t.domainId, t.issue, t.targetKey)],
+)
+
+/** Bounded rendering observations, committed and pruned with each URL result. */
+export const crawlUrlRenders = sqliteTable(
+  'crawl_url_renders',
+  {
+    crawlId: text('crawl_id')
+      .notNull()
+      .references(() => crawls.id, { onDelete: 'cascade' }),
+    urlHash: text('url_hash').notNull(),
+    status: text('status', { enum: ['rendered', 'failed'] }).notNull(),
+    settled: integer('settled', { mode: 'boolean' }).notNull(),
+    finalUrl: text('final_url').notNull(),
+    durationMs: integer('duration_ms').notNull(),
+    failure: text('failure'),
+    data: text('data').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.crawlId, t.urlHash] })],
 )

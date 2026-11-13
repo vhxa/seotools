@@ -993,7 +993,9 @@
       "links-to-canonicalised": "URLs canonicalizadas a las que enlaza",
       "links-tracking-parameters": "URLs con parámetros de seguimiento a las que enlaza",
       "html-entities-as-text": "Texto con referencias de caracteres",
-      "few-html-links": "Enlaces internos encontrados en el HTML"
+      "few-html-links": "Enlaces internos encontrados en el HTML",
+      "linked-only-by-javascript": "Páginas que enlazan tras el renderizado",
+      "links-only-after-rendering": "Destinos encontrados tras el renderizado"
     },
     "images": {
       "noSource": "Sin dirección (falta src)",
@@ -1340,8 +1342,8 @@
       "description": "Todos los enlaces que llegan a esta página salen de páginas que no se indexarán. No se señala en una página que se espera fuera del índice."
     },
     "orphan-in-sitemap": {
-      "name": "Solo en el sitemap, sin enlaces en el HTML",
-      "description": "Solo el sitemap llevó hasta aquí: no se encontró ningún enlace interno en el HTML de las páginas rastreadas. El rastreador no ejecuta JavaScript y no ve los enlaces que crea el navegador. Revisa los hallazgos «Muy pocos enlaces en el HTML» en las páginas que deberían enlazar aquí, si los hay."
+      "name": "URL huérfana (solo en el sitemap)",
+      "description": "No se encontró ningún enlace interno a esta URL en las páginas rastreadas: ni en su HTML ni, cuando se activó el renderizado, después de ejecutar JavaScript."
     },
     "no-outgoing-links": {
       "name": "Sin enlaces internos salientes",
@@ -1582,6 +1584,14 @@
     "few-html-links": {
       "name": "Muy pocos enlaces en el HTML",
       "description": "La página indexable tiene menos enlaces internos que el umbral configurado en el HTML que envía el servidor. El rastreador no ejecuta JavaScript; suele ocurrir cuando el navegador construye el menú o el pie. Los buscadores que renderizan pueden ver más enlaces, pero muchos rastreadores, incluidos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "linked-only-by-javascript": {
+      "name": "Enlazada solo mediante JavaScript",
+      "description": "Los enlaces internos a esta página solo se encontraron después de ejecutar JavaScript. Un rastreador que no lo ejecuta no puede descubrirla a través de esos enlaces."
+    },
+    "links-only-after-rendering": {
+      "name": "Enlaces que aparecen al ejecutar JavaScript",
+      "description": "Esta página tiene enlaces internos después del renderizado que no figuran en el HTML recibido."
     }
   },
   "LinkKinds": {
@@ -1622,12 +1632,17 @@
     "description": "Cómo se comportan los rastreos de {host}. Los cambios se aplican desde el siguiente rastreo.",
     "rendering": {
       "label": "Renderizado de páginas",
-      "hint": "Un navegador headless encuentra enlaces que solo existen tras ejecutar JavaScript. Todavía no está disponible.",
+      "hint": "El renderizado ejecuta JavaScript para descubrir más enlaces.",
       "modes": {
-        "http": "Solo HTTP",
-        "headless": "Navegador headless (próximamente)",
-        "both": "HTTP y navegador headless, recomendado (próximamente)"
-      }
+        "http": "HTML",
+        "headless": "Renderizado"
+      },
+      "unavailable": "Renderizado no disponible: {reason}",
+      "comparison": "El próximo rastreo no será comparable con los anteriores para los hallazgos que dependen de enlaces.",
+      "wait": "Límite de espera del renderizado (ms)",
+      "waitHint": "Entre 1000 y 30000 milisegundos; 5000 por defecto.",
+      "omitted": "Hosts adicionales que omitir",
+      "omittedHint": "Un sufijo de hostname por línea, hasta 50. Se omiten las solicitudes a estos hosts y sus subdominios."
     },
     "userAgent": {
       "label": "User-Agent",
@@ -1711,7 +1726,7 @@
     "save": "Guardar ajustes",
     "saved": "Guardado.",
     "errors": {
-      "renderingUnavailable": "Ese modo de renderizado todavía no está disponible.",
+      "renderingUnavailable": "El renderizado requiere una conexión al navegador verificada y vigente.",
       "userAgent": "El User-Agent solo admite caracteres simples, hasta {max}.",
       "concurrency": "Las peticiones simultáneas deben estar entre {min} y {max}.",
       "requestsPerSecond": "Las peticiones por segundo deben estar entre {min} y {max}.",
@@ -1724,7 +1739,8 @@
       "historyDays": "Los días de historial deben estar entre {min} y {max}.",
       "scope": "Introduce hasta 100 prefijos válidos por lista y una profundidad de 1 a 100. Comprueba también los parámetros ignorados: sin =, &, ?, # ni * intermedio.",
       "requestSecrets": "Credenciales o cabeceras no válidas (máximo 10; Host y cabeceras de transporte no permitidas).",
-      "extractors": "Cada extracción necesita un nombre y un selector CSS válido, y puede haber {max} como máximo."
+      "extractors": "Cada extracción necesita un nombre y un selector CSS válido, y puede haber {max} como máximo.",
+      "renderSettings": "Indica una espera de 1000 a 30000 ms y un máximo de 50 hostnames válidos."
     },
     "includePrefixes": {
       "label": "Incluir rutas",
@@ -2170,7 +2186,8 @@
       "security": "Seguridad",
       "html": "HTML",
       "indexing-intent": "Expectativas declaradas",
-      "performance": "Rendimiento"
+      "performance": "Rendimiento",
+      "javascript": "JavaScript"
     },
     "types": {
       "issue": "Issue",
@@ -2943,7 +2960,8 @@
     "performance": "Rendimiento",
     "canonical-required-missing": "Declara el canonical previsto a otra URL o corrige la regla. Vuelve a comprobar la página.",
     "canonical-forbidden-present": "Usa un canonical a la propia página o corrige la regla si la otra URL es intencionada. Vuelve a comprobar la página.",
-    "unlinked-required-missing": "Elimina los enlaces internos entrantes si este requisito es correcto o edita la regla. Ejecuta un rastreo completo para verificarlo."
+    "unlinked-required-missing": "Elimina los enlaces internos entrantes si este requisito es correcto o edita la regla. Ejecuta un rastreo completo para verificarlo.",
+    "javascript": "Los hallazgos de JavaScript describen lo observado al renderizar. Los rastreos de solo HTML no los comprueban."
   },
   "Companies": {
     "metaTitle": "Empresas · Administración · seotools",
@@ -3533,7 +3551,8 @@
       "start": "Iniciar rastreo de lista"
     },
     "started": "Inicio: {when}",
-    "finished": "Fin: {when}"
+    "finished": "Fin: {when}",
+    "browserUnavailable": "El navegador de renderizado no estuvo disponible durante el plazo de recuperación del rastreo."
   },
   "Schedules": {
     "metaTitle": "Programaciones · {host} · seotools",

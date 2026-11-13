@@ -239,6 +239,13 @@
       "when": 1794484518153,
       "tag": "0033_finding_states",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1794592673920,
+      "tag": "0034_rendered_crawls",
+      "breakpoints": true
     }
   ]
 }

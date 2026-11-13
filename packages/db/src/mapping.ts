@@ -270,6 +270,7 @@ export function foldUsage(
 
 export type CrawlRow = Omit<
   Crawl,
+  | 'rendering'
   | 'ignoredParameters'
   | 'seedUrls'
   | 'robots'
@@ -278,6 +279,7 @@ export type CrawlRow = Omit<
   | 'pagesAudit'
   | 'auditSnapshot'
 > & {
+  rendering: string | null
   ignoredParameters: string | null
   seedUrls: string | null
   robots: string | null
@@ -308,6 +310,7 @@ export type CrawlUrlRow = Omit<
 export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
 
 export const toCrawl = ({
+  rendering,
   ignoredParameters,
   seedUrls,
   robots,
@@ -325,6 +328,7 @@ export const toCrawl = ({
   auditSnapshot,
   ...row
 }: CrawlRow): Crawl => ({
+  rendering: parseJson(rendering) as Crawl['rendering'],
   ...row,
   pagesByWorstIssue:
     issue === null || warning === null || opportunity === null
@@ -577,6 +581,7 @@ export function newCrawlLinkRow(crawlRef: number, source: number, target: number
     source,
     target,
     kind: link.kind,
+    rendered: link.rendered ?? null,
     text: cleanText(context?.text, LINK_CONTEXT_LIMITS.text),
     element: cleanText(context?.element, LINK_CONTEXT_LIMITS.element),
     region: context?.region && LINK_REGIONS.includes(context.region) ? context.region : null,
@@ -1326,8 +1331,14 @@ export function toDomainFavicon(row: {
 
 export type CrawlSettingsRow = Omit<
   CrawlSettings,
-  'optionalFiles' | 'includePrefixes' | 'excludePrefixes' | 'extractors' | 'ignoredParameters'
+  | 'optionalFiles'
+  | 'includePrefixes'
+  | 'excludePrefixes'
+  | 'extractors'
+  | 'ignoredParameters'
+  | 'renderOmittedHosts'
 > & {
+  renderOmittedHosts: string | null
   optionalFiles: string | null
   extractors: string | null
   requestSecrets: string | null
@@ -1339,6 +1350,7 @@ export type CrawlSettingsRow = Omit<
 }
 
 export const toCrawlSettings = ({
+  renderOmittedHosts,
   domainId: _domainId,
   updatedAt: _updatedAt,
   optionalFiles,
@@ -1349,6 +1361,7 @@ export const toCrawlSettings = ({
   extractors,
   ...row
 }: CrawlSettingsRow): CrawlSettings => ({
+  renderOmittedHosts: (parseJson(renderOmittedHosts) ?? []) as string[],
   ...row,
   // Read back through its schema: an extractor that no longer checks out is dropped, not run.
   extractors: extractorsSchema.catch([]).parse(parseJson(extractors) ?? []),
@@ -1369,6 +1382,7 @@ export function enabledFilesByDomain(rows: CrawlSettingsRow[]): Map<string, Extr
 }
 
 export const crawlSettingsColumns = ({
+  renderOmittedHosts,
   optionalFiles,
   includePrefixes,
   excludePrefixes,
@@ -1376,6 +1390,7 @@ export const crawlSettingsColumns = ({
   extractors,
   ...settings
 }: CrawlSettings) => ({
+  renderOmittedHosts: JSON.stringify(renderOmittedHosts),
   ...settings,
   extractors: extractors.length > 0 ? JSON.stringify(extractors) : null,
   optionalFiles: JSON.stringify(optionalFiles),

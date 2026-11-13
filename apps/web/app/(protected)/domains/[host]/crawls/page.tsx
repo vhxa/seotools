@@ -177,7 +177,13 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                           )}
                         </span>
                         <span className="flex flex-wrap items-center gap-1">
-                          <span title={crawl.error ?? undefined}>
+                          <span
+                            title={
+                              crawl.error === 'browser-unavailable'
+                                ? t('browserUnavailable')
+                                : (crawl.error ?? undefined)
+                            }
+                          >
                             <CrawlStatusBadge status={crawl.status} />
                           </span>
                           <span className="text-xs text-muted-foreground">

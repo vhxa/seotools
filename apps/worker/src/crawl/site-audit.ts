@@ -156,6 +156,11 @@ export interface AuditedUrl {
   hreflang: HreflangEntry[]
   /** Links from other URLs of the site, not counting redirects. */
   linksIn: number
+  htmlAnchorsIn: number
+  htmlInternalAnchorsOut: number
+  renderedAnchorsFrom: string[]
+  renderedLinksTo: string[]
+  renderedAnchorsOut: number
   anchorsIn: number
   /** Anchors in that a search engine would follow. */
   followedAnchorsIn: number
@@ -204,6 +209,8 @@ export interface Site {
    */
   sitemapCoverage: SitemapCoverage
   /** A completed crawl was not cut at its URL limit. */
+  htmlLinksComplete: boolean
+  rendersUnobserved: number
   linksComplete: boolean
   /**
    * The indexable pages that share each value, in URL order, which is what makes one a duplicate:
@@ -330,6 +337,11 @@ export function auditUrl(
     indexed: null,
     hreflang: url.data?.hreflang ? [...url.data.hreflang] : [],
     linksIn: 0,
+    htmlAnchorsIn: 0,
+    htmlInternalAnchorsOut: 0,
+    renderedAnchorsFrom: [],
+    renderedLinksTo: [],
+    renderedAnchorsOut: 0,
     anchorsIn: 0,
     followedAnchorsIn: 0,
     anchorsFromIndexable: 0,
@@ -463,7 +475,8 @@ export async function loadSite(
       db.crawls.linksFrom(crawl.id, hashes),
       db.crawls.sitemapHreflangOf(crawl.id, hashes),
     ])
-    for (const { sourceHash, targetHash, kind } of links) {
+    for (const { sourceHash, targetHash, kind, rendered } of links) {
+      if (rendered && crawl.rendering?.mode !== 'rendered') continue
       if (sourceHash === targetHash) continue
       const source = byHash.get(sourceHash)
       const target = byHash.get(targetHash)
@@ -487,6 +500,16 @@ export async function loadSite(
       }
       if (kind !== 'redirect') target.linksIn++
       if (kind !== 'anchor' && kind !== 'anchor-nofollow') continue
+      if (!rendered) {
+        target.htmlAnchorsIn++
+        source.htmlInternalAnchorsOut++
+      } else {
+        source.renderedAnchorsOut++
+        if (source.renderedLinksTo.length < MAX_EVIDENCE_ITEMS)
+          source.renderedLinksTo.push(target.url.url)
+        if (target.renderedAnchorsFrom.length < MAX_EVIDENCE_ITEMS)
+          target.renderedAnchorsFrom.push(source.url.url)
+      }
       target.anchorsIn++
       if (kind === 'anchor' && !source.nofollow) target.followedAnchorsIn++
       if (source.indexable) target.anchorsFromIndexable++
@@ -509,6 +532,15 @@ export async function loadSite(
     else target.sitemaps += count
   }
   measureClickDepth(internal, byHash, identity)
+  const renders = new Map((await db.crawls.renders(crawl.id)).map((row) => [row.urlHash, row]))
+  const rendersUnobserved =
+    crawl.rendering?.mode === 'rendered'
+      ? internal.filter(
+          (url) =>
+            url.contentPage &&
+            (url.url.statusCode !== 200 || renders.get(url.url.urlHash)?.status !== 'rendered'),
+        ).length
+      : 0
 
   // What pages are compared against each other: the audited ones that can be indexed. A page left
   // out of the audit stays in the site (links, canonicals, hreflang, redirects see it as it is) but
@@ -526,7 +558,9 @@ export async function loadSite(
     get: (url) => byHash.get(crawlUrlHash(identity(url))),
     answered: urls.some((url) => url.contentPage),
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
-    linksComplete: crawl.status === 'completed',
+    htmlLinksComplete: crawl.status === 'completed',
+    rendersUnobserved,
+    linksComplete: crawl.status === 'completed' && rendersUnobserved === 0,
     titles: sharedValues(indexable, (url) => comparable(url.url.title)),
     descriptions: sharedValues(indexable, (url) => comparable(url.url.data?.description)),
     h1s: sharedValues(indexable, (url) => comparable(url.url.data?.h1?.[0])),

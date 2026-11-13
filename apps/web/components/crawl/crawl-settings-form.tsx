@@ -1,4 +1,5 @@
 'use client'
+import type { RenderStatus } from '@seotools/core/render-status'
 import { extractorsText } from '@/lib/crawl-extractors'
 
 import {
@@ -104,12 +105,15 @@ export function CrawlSettingsForm({
   settings,
   defaultUserAgent,
   secretsSaved,
+  browserState,
 }: {
   host: string
   settings: CrawlSettings
   defaultUserAgent: string
   secretsSaved: boolean
+  browserState: RenderStatus['state'] | 'unknown'
 }) {
+  const browser = useTranslations('RenderBrowser')
   const v = useTranslations('Vitals')
   const t = useTranslations('CrawlSettings')
   const canEdit = useCanEdit()
@@ -165,18 +169,49 @@ export function CrawlSettingsForm({
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false}>
                 {modes.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
+                  <SelectItem
+                    key={item.value}
+                    value={item.value}
+                    disabled={item.value === 'headless' && browserState !== 'ready'}
+                  >
                     {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">{t('rendering.hint')}</p>
+            {browserState !== 'ready' && (
+              <p className="text-xs text-muted-foreground">
+                {t('rendering.unavailable', { reason: browser(browserState) })}
+              </p>
+            )}
+            <p className="min-h-8 text-xs text-muted-foreground">
+              {mode !== settings.renderingMode ? t('rendering.comparison') : ''}
+            </p>
           </div>
         ) : (
           <input type="hidden" name="renderingMode" value={modes[0]?.value ?? mode} />
         )}
 
+        <NumberField
+          name="renderWaitMs"
+          label={t('rendering.wait')}
+          hint={t('rendering.waitHint')}
+          defaultValue={settings.renderWaitMs}
+          min={1000}
+          max={30000}
+          disabled={!canEdit}
+        />
+        <div className="grid gap-2">
+          <Label htmlFor="renderOmittedHosts">{t('rendering.omitted')}</Label>
+          <Textarea
+            id="renderOmittedHosts"
+            name="renderOmittedHosts"
+            defaultValue={settings.renderOmittedHosts.join('\n')}
+            disabled={!canEdit}
+          />
+          <p className="text-xs text-muted-foreground">{t('rendering.omittedHint')}</p>
+        </div>
         <div className="grid gap-2">
           <Label htmlFor="userAgent">{t('userAgent.label')}</Label>
           <Input

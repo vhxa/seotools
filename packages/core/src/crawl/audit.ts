@@ -826,6 +826,8 @@ export interface AuditSnapshot {
    * as in every snapshot stored before this. It describes what the crawl kept, not a configuration:
    * `auditScopeKey` never reads it, and a comparison reads those issues as unknown (`unobserved`).
    */
+  rendering?: 'rendered'
+  rendersUnobserved?: number
   unobserved?: string[]
 }
 
@@ -843,6 +845,8 @@ const snapshotSchema = z.object({
   semantics: z.number().int().min(1).optional(),
   languages: z.object({ prefixes: z.array(z.string()), unprefixed: z.boolean() }).optional(),
   thresholds: thresholdOverridesSchema.optional(),
+  rendering: z.literal('rendered').optional(),
+  rendersUnobserved: z.number().int().min(0).optional(),
   unobserved: z.array(z.string()).optional(),
   dismissals: z
     .array(

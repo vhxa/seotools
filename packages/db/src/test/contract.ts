@@ -87,6 +87,85 @@ export function describeDatabaseContract(
     )
     describeIncidents(() => db)
 
+    it('snapshots rendering transactionally, keeps atomic URL/render records and prunes them together', async () => {
+      const created = await createCompany(db, {
+        name: 'Rendering',
+        domain: 'example.com',
+        crawlSettings: {
+          ...DEFAULT_CRAWL_SETTINGS,
+          renderingMode: 'headless',
+          renderWaitMs: 1200,
+          renderOmittedHosts: ['omit.test'],
+        },
+      })
+      if (!created.ok) throw new Error('setup failed')
+      const domainId = created.domain.id
+      const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      expect(crawl.rendering).toEqual({
+        mode: 'rendered',
+        waitMs: 1200,
+        omittedHosts: ['omit.test'],
+      })
+      await db.crawls.saveSettings(domainId, DEFAULT_CRAWL_SETTINGS)
+      expect((await db.crawls.get(crawl.id))?.rendering).toEqual(crawl.rendering)
+      const url = 'https://example.com/'
+      const urlHash = crawlUrlHash(url)
+      await db.crawls.addUrls(crawl.id, [
+        { url, urlHash, seq: 1, depth: 0, source: 'seed', scope: 'internal' },
+      ])
+      const result: CrawlUrlResult = {
+        kind: 'page',
+        statusCode: 200,
+        contentType: 'text/html',
+        redirectTo: null,
+        title: null,
+        metaRobots: null,
+        xRobotsTag: null,
+        canonical: null,
+        responseTimeMs: 1,
+        bytes: 1,
+        error: null,
+        data: null,
+      }
+      const render = {
+        urlHash,
+        status: 'rendered' as const,
+        settled: true,
+        finalUrl: url,
+        durationMs: 1,
+        failure: null,
+        data: { facts: null, requests: {}, scriptErrors: { count: 0, first: [] } },
+      }
+      await expect(
+        db.crawls.recordResult({
+          crawlId: crawl.id,
+          urlHash,
+          result,
+          render: { ...render, data: { ...render.data, requests: 1n } },
+        }),
+      ).rejects.toThrow()
+      expect((await db.crawls.getUrl(crawl.id, urlHash))?.state).toBe('queued')
+      expect(await db.crawls.renders(crawl.id)).toEqual([])
+      await db.crawls.recordResult({
+        crawlId: crawl.id,
+        urlHash,
+        result,
+        render,
+        links: [{ sourceHash: urlHash, targetHash: urlHash, kind: 'anchor', rendered: 1 }],
+      })
+      expect((await db.crawls.getUrl(crawl.id, urlHash))?.state).toBe('done')
+      expect(await db.crawls.renders(crawl.id)).toMatchObject([render])
+      expect(await db.crawls.linksFrom(crawl.id, [urlHash])).toMatchObject([{ rendered: 1 }])
+      await db.crawls.saveBrowserWait(crawl.id, 30000)
+      expect((await db.crawls.get(crawl.id))?.browserWaitMs).toBe(30000)
+      await db.crawls.finish(crawl.id, { status: 'completed' })
+      const next = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      await db.crawls.finish(next.id, { status: 'completed' })
+      await db.crawls.prune({ domainId, type: 'full', keep: 1 })
+      expect(await db.crawls.renders(crawl.id)).toEqual([])
+      expect((await db.crawls.get(crawl.id))?.rendering).toEqual(crawl.rendering)
+    })
+
     it('stores one favourite per user, replaces and clears it, and enforces foreign keys', async () => {
       const user = await db.users.create({
         name: 'Member',

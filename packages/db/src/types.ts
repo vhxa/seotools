@@ -292,7 +292,11 @@ export interface CompanyRepository {
   list(): Promise<CompanyWithDomains[]>
   get(id: string): Promise<Company | null>
   /** Creates a company together with its first domain. Rejects if the host is already taken. */
-  create(input: { name: string; host: string }): Promise<{ company: Company; domain: Domain }>
+  create(input: {
+    name: string
+    host: string
+    crawlSettings?: CrawlSettings
+  }): Promise<{ company: Company; domain: Domain }>
   /** `null` when the company does not exist. */
   rename(id: string, name: string): Promise<Company | null>
   /**
@@ -307,7 +311,7 @@ export interface DomainRepository {
   get(id: string): Promise<Domain | null>
   findByHost(host: string): Promise<DomainWithCompany | null>
   /** Rejects if the host is already taken or the company does not exist. */
-  add(input: { companyId: string; host: string }): Promise<Domain>
+  add(input: { companyId: string; host: string; crawlSettings?: CrawlSettings }): Promise<Domain>
   /**
    * Archives a domain, and in the same transaction cancels its active crawl and recheck: the jobs
    * notice at their next check and stop requesting. Archiving twice keeps the first date. `null`
@@ -333,7 +337,29 @@ export interface DomainRepository {
   usage(): Promise<Map<string, DomainUsage>>
 }
 
+export interface CrawlRendering {
+  mode: 'html' | 'rendered'
+  waitMs: number
+  omittedHosts: string[]
+}
+
+export interface CrawlUrlRender {
+  urlHash: string
+  status: 'rendered' | 'failed'
+  settled: boolean
+  finalUrl: string
+  durationMs: number
+  failure: string | null
+  data: {
+    facts: import('@seotools/core').CrawlPageFacts | null
+    requests: unknown
+    scriptErrors: { count: number; first: string[] }
+  }
+}
+
 export interface Crawl {
+  rendering: CrawlRendering | null
+  browserWaitMs: number
   ignoredParameters?: string[]
   seedUrls?: string[] | null
   id: string
@@ -451,6 +477,7 @@ export interface CrawlUrl
 }
 
 export interface CrawlLink {
+  rendered?: number | null
   sourceHash: string
   targetHash: string
   kind: CrawlLinkKind
@@ -719,7 +746,10 @@ export interface CrawlRepository {
     crawlId: string,
   ): Promise<{ urlHash: string; scope: CrawlUrlScope; seq: number | null }[]>
   /** Stores what a request returned along with the URLs and links found in it, atomically. */
+  renders(crawlId: string): Promise<CrawlUrlRender[]>
+  saveBrowserWait(crawlId: string, milliseconds: number): Promise<void>
   recordResult(input: {
+    render?: CrawlUrlRender
     crawlId: string
     urlHash: string
     result: CrawlUrlResult

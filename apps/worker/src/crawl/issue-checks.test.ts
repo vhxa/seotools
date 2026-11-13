@@ -1,3 +1,6 @@
+import { renderedOutcome } from './render-fixture'
+import htmlBeforeRendering from './fixtures/html-pre-rendering.json'
+import { htmlBaseline } from './html-baseline'
 import type { VitalMetrics } from '@seotools/core'
 import {
   emptyVitals,
@@ -29,6 +32,7 @@ import { parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
 
 const log = createLogger('test', 'silent')
 interface Scenario {
+  rendered?: boolean
   /** Where the issue should be found: a path, or an absolute URL. */
   at: string
   vitals?: Partial<VitalMetrics>
@@ -110,6 +114,18 @@ const shared = (
    ${card ? '<meta name="twitter:card" content="summary_large_image">' : ''}`
 
 const SCENARIOS: Record<PageIssueId, Scenario> = {
+  'linked-only-by-javascript': {
+    rendered: true,
+    notLinked: ['/x'],
+    at: '/x',
+    pages: { '/x': page('/x') },
+  },
+  'links-only-after-rendering': {
+    rendered: true,
+    notLinked: ['/x'],
+    at: '/',
+    pages: { '/x': page('/x') },
+  },
   'html-entities-as-text': { at: '/x', pages: { '/x': page('/x', { h1: 'd&amp;#8217;exemple' }) } },
   'few-html-links': { at: '/x', pages: { '/x': page('/x') } },
 
@@ -743,11 +759,16 @@ afterEach(async () => {
   await db.close()
 })
 
-async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = []) {
+async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = [], rendered = false) {
   for (const rule of rules) {
     const saved = await db.audit.saveRule({ domainId, rule })
     if (!saved.ok) throw new Error(`rule not saved: ${saved.error}`)
   }
+  if (rendered)
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      renderingMode: 'headless',
+    })
   const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
   if (!started) throw new Error('crawl did not start')
   await runCrawl(started.id, {
@@ -756,6 +777,11 @@ async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = []) {
     signal: new AbortController().signal,
     createFetcher: fakeSite(site, 0).createFetcher,
     retryBaseMs: 1,
+    renderService: {
+      check: async () => ({ state: 'ready', checkedAt: new Date().toISOString() }),
+      render: async (input) =>
+        renderedOutcome(input, input.url === `${SITE}/` ? '<a href="/x">JS menu</a>' : ''),
+    },
   })
   return started.id
 }
@@ -814,7 +840,7 @@ describe('each issue', () => {
     PAGE_ISSUE_IDS.filter((id) => id !== 'sitemap-too-big' && id !== 'indexed-not-in-sitemap'),
   )('finds %s', async (id) => {
     const scenario = SCENARIOS[id]
-    const crawlId = await crawl(websiteOf(scenario), scenario.rules)
+    const crawlId = await crawl(websiteOf(scenario), scenario.rules, scenario.rendered)
     if (scenario.vitals) {
       await db.vitals.saveUrl({
         ...emptyVitals(),
@@ -828,6 +854,18 @@ describe('each issue', () => {
         collectedAt: new Date(),
       })
       await analyseCrawl(db, crawlId, await currentAuditConfig(db, domainId))
+    }
+    if (id in htmlBeforeRendering) {
+      const actual = (await htmlBaseline(db, crawlId)) as { snapshot: { unobserved: string[] } }
+      expect(actual.snapshot.unobserved).toEqual(
+        expect.arrayContaining(['linked-only-by-javascript', 'links-only-after-rendering']),
+      )
+      actual.snapshot.unobserved = actual.snapshot.unobserved.filter(
+        (issue) => issue !== 'linked-only-by-javascript' && issue !== 'links-only-after-rendering',
+      )
+      expect(JSON.stringify(actual)).toBe(
+        JSON.stringify(htmlBeforeRendering[id as keyof typeof htmlBeforeRendering]),
+      )
     }
     const found = await issuesAt(crawlId, scenario.at)
     expect(found.map((row) => row.issue)).toContain(id)
@@ -939,13 +977,27 @@ describe('what a crawl did not look for', () => {
     await analyseCrawl(db, crawlId, EMPTY_AUDIT_SNAPSHOT)
     const snapshot = (await db.crawls.get(crawlId))?.auditSnapshot
     expect(snapshot?.unobserved).toEqual(
-      [...NEW_FACT_ISSUES, 'cls-poor', 'inp-poor', 'lcp-poor'].sort(),
+      [
+        ...NEW_FACT_ISSUES,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
     )
 
     // Analysed again from what it stored (as the startup reanalysis does): worked out again.
     await analyseCrawl(db, crawlId, snapshot!)
     expect((await db.crawls.get(crawlId))?.auditSnapshot?.unobserved).toEqual(
-      [...NEW_FACT_ISSUES, 'cls-poor', 'inp-poor', 'lcp-poor'].sort(),
+      [
+        ...NEW_FACT_ISSUES,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
     )
 
     // A crawl that looked says nothing is unobserved, and keeps no field.

@@ -993,7 +993,9 @@
       "links-to-canonicalised": "Canonicalised URLs it links to",
       "links-tracking-parameters": "URLs with tracking parameters it links to",
       "html-entities-as-text": "Text containing character references",
-      "few-html-links": "Internal links found in the HTML"
+      "few-html-links": "Internal links found in the HTML",
+      "linked-only-by-javascript": "Pages linking after rendering",
+      "links-only-after-rendering": "Targets found after rendering"
     },
     "images": {
       "noSource": "No address (src is missing)",
@@ -1340,8 +1342,8 @@
       "description": "Every link reaching this page comes from pages that will not be indexed. Not reported for a page that is expected to be out of the index."
     },
     "orphan-in-sitemap": {
-      "name": "Found only in a sitemap, with no link in the HTML",
-      "description": "Only the sitemap led here: no internal link was found in the HTML of the pages crawled. The crawler does not run JavaScript and misses links built in the browser. Check “Very few links in the HTML” findings on pages that should link here, if any."
+      "name": "Orphan URL (only in the sitemap)",
+      "description": "No internal anchor link to this URL was found in the pages crawled: in their HTML, and after rendering when rendering was enabled."
     },
     "no-outgoing-links": {
       "name": "No outgoing internal links",
@@ -1582,6 +1584,14 @@
     "few-html-links": {
       "name": "Very few links in the HTML",
       "description": "The indexable page has fewer internal links than the configured threshold in the HTML sent by the server. The crawler does not run JavaScript; a menu or footer built in the browser is a common reason. Search engines that render may see more links, but many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "linked-only-by-javascript": {
+      "name": "Linked only by JavaScript",
+      "description": "Internal links to this page were found only after rendering. A crawler that does not run JavaScript cannot find it through these links."
+    },
+    "links-only-after-rendering": {
+      "name": "Links found only after rendering",
+      "description": "This page has internal anchor links after rendering that its served HTML does not contain."
     }
   },
   "LinkKinds": {
@@ -1622,12 +1632,17 @@
     "description": "How crawls of {host} behave. Changes apply from the next crawl.",
     "rendering": {
       "label": "Page rendering",
-      "hint": "A headless browser finds links that only exist after running JavaScript. It is not available yet.",
+      "hint": "Rendering runs JavaScript to discover additional links.",
       "modes": {
-        "http": "HTTP only",
-        "headless": "Headless browser (coming soon)",
-        "both": "HTTP and headless browser, recommended (coming soon)"
-      }
+        "http": "HTML",
+        "headless": "Rendered"
+      },
+      "unavailable": "Rendered mode unavailable: {reason}",
+      "comparison": "The next crawl will not be comparable with earlier ones for findings that depend on links.",
+      "wait": "Render wait limit (ms)",
+      "waitHint": "From 1000 to 30000 milliseconds; default 5000.",
+      "omitted": "Additional omitted hosts",
+      "omittedHint": "One hostname suffix per line, up to 50. Requests to these hosts and their subdomains are omitted."
     },
     "userAgent": {
       "label": "User-Agent",
@@ -1711,7 +1726,7 @@
     "save": "Save settings",
     "saved": "Saved.",
     "errors": {
-      "renderingUnavailable": "That rendering mode is not available yet.",
+      "renderingUnavailable": "Rendered mode requires a fresh, ready browser connection.",
       "userAgent": "The User-Agent can only have plain characters, up to {max}.",
       "concurrency": "Simultaneous requests must be between {min} and {max}.",
       "requestsPerSecond": "Requests per second must be between {min} and {max}.",
@@ -1724,7 +1739,8 @@
       "historyDays": "The days of history must be between {min} and {max}.",
       "scope": "Enter up to 100 valid path prefixes per list and a depth from 1 to 100. Check ignored parameter names too: no =, &, ?, # or embedded *.",
       "requestSecrets": "Invalid request credentials or headers (maximum 10; Host and transport headers are refused).",
-      "extractors": "Each extraction needs a name and a valid CSS selector, and there can be at most {max}."
+      "extractors": "Each extraction needs a name and a valid CSS selector, and there can be at most {max}.",
+      "renderSettings": "Use a wait of 1000–30000 ms and at most 50 valid hostnames."
     },
     "includePrefixes": {
       "label": "Include paths",
@@ -2170,7 +2186,8 @@
       "security": "Security",
       "html": "HTML",
       "indexing-intent": "Declared expectations",
-      "performance": "Performance"
+      "performance": "Performance",
+      "javascript": "JavaScript"
     },
     "types": {
       "issue": "Issue",
@@ -2943,7 +2960,8 @@
     "performance": "Performance",
     "canonical-required-missing": "Set the intended canonical to another URL, or correct the rule. Recheck the page.",
     "canonical-forbidden-present": "Use a self canonical or correct the rule if the other URL is intentional. Recheck the page.",
-    "unlinked-required-missing": "Remove incoming internal anchors if this requirement is correct, or edit the rule. Run a full crawl to verify."
+    "unlinked-required-missing": "Remove incoming internal anchors if this requirement is correct, or edit the rule. Run a full crawl to verify.",
+    "javascript": "JavaScript findings describe what rendering observed. HTML-only crawls did not check them."
   },
   "Companies": {
     "metaTitle": "Companies · Administration · seotools",
@@ -3533,7 +3551,8 @@
       "start": "Start list crawl"
     },
     "started": "Started {when}",
-    "finished": "Finished {when}"
+    "finished": "Finished {when}",
+    "browserUnavailable": "The rendering browser was unavailable for the crawl’s recovery limit."
   },
   "Schedules": {
     "metaTitle": "Schedules · {host} · seotools",

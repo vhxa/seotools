@@ -8,6 +8,9 @@ Raspberry Pi to a VPS.
 
 ## What it does
 
+- **Renders JavaScript when enabled** with an isolated optional browser, follows menu links absent
+  from served HTML, and reports JavaScript-only links. Choose HTML or Rendered in domain crawl
+  settings; new domains use Rendered only when the browser is ready. See [rendering](docs/rendering.md).
 - **Crawls whole sites** from the home page, sitemaps and every link, including what `robots.txt`
   blocks (auditing it is the point), with per-domain scope, depth, rate limits, request headers and
   Basic Auth for staging sites and lists of URLs. The Crawls area brings runs, comparison and

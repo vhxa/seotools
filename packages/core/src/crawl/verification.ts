@@ -45,6 +45,8 @@ const U = 'url'
 const S = 'site'
 
 const SCOPE: Record<PageIssueId, VerificationScope> = {
+  'linked-only-by-javascript': S,
+  'links-only-after-rendering': S,
   'lcp-poor': S,
   'inp-poor': S,
   'cls-poor': S,

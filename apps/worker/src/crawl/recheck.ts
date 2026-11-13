@@ -32,6 +32,10 @@ const refuse = (what: string) => () => {
 /** What of a URL's place in the site is only known by looking at the whole site. */
 const SITE_FIELDS = [
   'anchorsIn',
+  'htmlAnchorsIn',
+  'renderedAnchorsFrom',
+  'renderedLinksTo',
+  'renderedAnchorsOut',
   'followedAnchorsIn',
   'anchorsFromIndexable',
   'sitemaps',
@@ -67,6 +71,8 @@ function siteOfARecheck(input: { now: Date; config: AuditSnapshot; answered: boo
     nearDuplicates: 'the texts of the other pages',
     sitemapCoverage: 'the sitemaps',
     linksComplete: 'all internal links',
+    htmlLinksComplete: 'all HTML links',
+    rendersUnobserved: 'render coverage',
   }
   for (const [field, what] of Object.entries(unknown)) {
     Object.defineProperty(site, field, { get: refuse(what) })
@@ -195,6 +201,7 @@ export function recheckSubject(
   }
   const url = withoutSiteContext(auditUrl(row, context.robots, context.resolver, context.identity))
   url.linksIn = input.linksIn
+  url.htmlInternalAnchorsOut = input.anchors.internal
   url.internalAnchorsOut = input.anchors.internal
   url.nofollowAnchorsOut = input.anchors.nofollow
   const site = siteOfARecheck({

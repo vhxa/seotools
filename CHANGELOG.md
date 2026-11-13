@@ -22,20 +22,32 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- Rendered crawls run JavaScript on each internal HTML page answering 200, follow links found only
+  after rendering, and report pages linked only by JavaScript and pages whose internal links appear
+  after rendering. Per-domain settings control the mode, wait limit and omitted hosts.
 - An optional browser container with layered network isolation, a safety check that refuses any
   browser whose own traffic does not all fail at its blocking proxy (rechecked whenever the browser
-  is replaced), and its connection status in System → Integrations; rendering of crawls arrives with
-  the next entries.
+  is replaced), and its connection status in System → Integrations.
 - Two low-importance opportunities flag HTML character references shown as text in titles,
   descriptions or H1s, and indexable pages with very few internal links in the served HTML
   (default: fewer than 5; configurable per domain, with 0 disabling the check).
 
 ### Changed
 
+- Sitemap orphan findings describe the links observed in either HTML or rendered crawls. Rendered
+  crawls pause when the browser is unavailable and fail after their recovery allowance, without
+  falling back to HTML. Missing render observations remain unknown in findings and comparisons.
 - Pages load less translation text: the browser receives only the messages the interactive parts of each page use, not the whole catalog.
 - Sitemap-only findings now state that no internal link was found in the HTML of the pages crawled,
   and explain that links built by JavaScript are not seen. Earlier crawls are analysed again from
   their stored text and links for the two new checks.
+
+### Upgrade notes
+
+This update adds forward-only database migrations for render settings, crawl snapshots and
+per-URL observations. Going back to an earlier image requires restoring the pre-update backup.
+Earlier retained crawls are analysed again from stored observations; JavaScript findings remain
+unknown for crawls that did not render.
 
 ## [0.5.0] - 2026-11-12
 

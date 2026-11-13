@@ -156,6 +156,7 @@ export function auditScopeKey(snapshot: AuditSnapshot): string {
     semantics: meaningOf(snapshot),
     languages: canonicalLanguages(snapshot.languages ?? NO_LANGUAGES),
     rules,
+    ...(snapshot.rendering === 'rendered' ? { rendering: 'rendered' } : {}),
     // Absent when the defaults applied, so that a key from before thresholds existed is the same.
     ...(Object.keys(thresholds).length > 0 ? { thresholds } : {}),
   })

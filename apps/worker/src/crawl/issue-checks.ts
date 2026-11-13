@@ -736,17 +736,36 @@ export const CHECKS: Record<PageIssueId, Check> = {
     (url, _, site) => INLINKS_WRONG['only-noindex-inlinks'](url) && !excusesInlinks(url, site),
   ),
   // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
-  'orphan-in-sitemap': (url) =>
-    url.contentPage && url.sitemaps > 0 && url.anchorsIn === 0 && url.url.source !== 'seed',
+  'linked-only-by-javascript': (url, site) =>
+    site.config.rendering === 'rendered' &&
+    site.rendersUnobserved === 0 &&
+    site.htmlLinksComplete &&
+    url.contentPage &&
+    url.htmlAnchorsIn === 0 &&
+    url.renderedAnchorsFrom.length > 0 &&
+    backedBy({ kind: 'related-urls', total: url.anchorsIn, urls: url.renderedAnchorsFrom }),
+  'links-only-after-rendering': onPage(
+    (url, _, site) =>
+      site.config.rendering === 'rendered' &&
+      site.rendersUnobserved === 0 &&
+      url.renderedAnchorsOut > 0 &&
+      backedBy({ kind: 'related-urls', total: url.renderedAnchorsOut, urls: url.renderedLinksTo }),
+  ),
+  'orphan-in-sitemap': (url, site) =>
+    (site.config.rendering !== 'rendered' || site.linksComplete) &&
+    url.contentPage &&
+    url.sitemaps > 0 &&
+    url.anchorsIn === 0 &&
+    url.url.source !== 'seed',
   'few-html-links': onPage(
     (url, _, site) =>
       url.indexable &&
       url.url.data?.truncated !== true &&
-      url.internalAnchorsOut < figures(site).htmlLinksMin &&
+      url.htmlInternalAnchorsOut < figures(site).htmlLinksMin &&
       backedBy({
         kind: 'values',
         total: 1,
-        items: [{ field: 'internal-links', text: String(url.internalAnchorsOut) }],
+        items: [{ field: 'internal-links', text: String(url.htmlInternalAnchorsOut) }],
       }),
   ),
   'no-outgoing-links': onPage((url) => url.internalAnchorsOut === 0),

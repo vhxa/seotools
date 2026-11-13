@@ -85,7 +85,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Isolated browser rendering integration
-        run: pnpm exec vitest run apps/worker/src/render/render.integration.test.ts
+        run: pnpm exec vitest run apps/worker/src/render/render.integration.test.ts apps/worker/src/crawl/rendered-crawl.integration.test.ts
 
       - name: End-to-end tests
         run: pnpm test:e2e
