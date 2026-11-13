@@ -61,7 +61,7 @@ export const workerEnvSchema = commonEnvSchema.extend({
       )
     }, 'must be an http(s) browser endpoint without credentials, path or query')
     .optional(),
-  RENDER_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
+  RENDER_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(2),
   WORKER_CONCURRENCY: int(2),
   WORKER_POLL_INTERVAL_MS: int(1000, 50),
   /** A job `running` for longer than this is considered abandoned and re-queued. */

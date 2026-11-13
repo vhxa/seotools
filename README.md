@@ -114,7 +114,7 @@ annotated list.
 | `JOB_LOCK_TIMEOUT_MS`            | `300000`                                                                                                            | A job running longer than this is assumed orphaned and re-queued.        |
 | `CRAWL_CONCURRENCY`              | `2`                                                                                                                 | Crawls running in parallel, in slots separate from other jobs.           |
 | `RENDER_BROWSER_URL`             | Optional worker DevTools URL (`http://browser:9222`); unset disables rendering. See [the guide](docs/rendering.md). |
-| `RENDER_CONCURRENCY`             | Simultaneous rendered pages per worker (default `2`, range `1–8`; use `1` on Raspberry Pi).                         |
+| `RENDER_CONCURRENCY`             | Simultaneous rendered pages per worker (default `2`, range `1–4`; use `1` on Raspberry Pi).                         |
 | `CRAWLER_ALLOW_PRIVATE_NETWORKS` | `false`                                                                                                             | Let the crawler reach private addresses, to audit sites on your network. |
 | `SEOTOOLS_PAUSE_AUTOMATION`      | `false`                                                                                                             | Staging copies: no scheduled crawls, refreshes, update checks or email.  |
 | `SEOTOOLS_MODE`                  | `all`                                                                                                               | Docker only: `all`, `web`, `worker` or `migrate` (see below).            |

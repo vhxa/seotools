@@ -61,8 +61,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     shm_size: 256m
-    mem_limit: 768m
-    pids_limit: 128
+    mem_limit: 1536m
+    pids_limit: 256
     networks: [render]
 
 volumes:

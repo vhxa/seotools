@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext } from 'puppeteer-core'
 import { RENDER_STATUS_STALE_MS, type RenderStatus } from '@seotools/core'
+import { bestEffort } from './cleanup'
 import { checkIsolation } from './isolation'
 import { connectBrowser, type BrowserConnection } from './transport'
 import { BrowserUnavailableError } from './types'
@@ -18,13 +19,27 @@ export function createBrowserConnection(
   const leaseChecks = new Map<string, Promise<RenderStatus>>()
   let checking: Promise<RenderStatus> | undefined
   let verified: { identity: string | undefined; status: RenderStatus } | undefined
+  let statusWrite = Promise.resolve()
+  function persist(status: RenderStatus) {
+    // Preserve event order even when an unexpected disconnect writes asynchronously.
+    statusWrite = statusWrite.catch(() => {}).then(() => writeStatus(status))
+    return statusWrite
+  }
+  async function unavailable() {
+    verified = undefined
+    await persist({
+      state: 'unreachable',
+      checkedAt: new Date().toISOString(),
+      detail: 'Cannot connect to or check the configured browser.',
+    })
+  }
   async function connect() {
     if (!url) throw new BrowserUnavailableError('Browser not configured')
     try {
       return await connectBrowser(url)
     } catch (error) {
       // An endpoint that cannot be reached may come back as another browser.
-      verified = undefined
+      await bestEffort(unavailable)
       throw error
     }
   }
@@ -56,22 +71,28 @@ export function createBrowserConnection(
       if (!browser.connected && ids.length) {
         // An oversized message/crash can sever CDP before the context's finally block runs.
         // A separate bounded connection disposes only this lease's contexts, never other renders.
-        const cleanup = await connect().catch(() => undefined)
+        const cleanup = await connectBrowser(url!).catch(() => undefined)
         if (cleanup) {
           try {
-            const session = await cleanup.browser.target().createCDPSession()
-            for (const browserContextId of ids)
-              await session
-                .send('Target.disposeBrowserContext', { browserContextId })
-                .catch(() => {})
+            await bestEffort(async () => {
+              const session = await cleanup.browser.target().createCDPSession()
+              try {
+                for (const browserContextId of ids)
+                  await bestEffort(() =>
+                    session.send('Target.disposeBrowserContext', { browserContextId }),
+                  )
+              } finally {
+                await bestEffort(() => session.detach())
+              }
+            })
           } finally {
-            await cleanup.browser.disconnect()
+            await bestEffort(() => cleanup.browser.disconnect())
           }
         }
       } else {
-        await context?.close().catch(() => {})
+        await bestEffort(() => context?.close())
       }
-      await browser.disconnect()
+      await bestEffort(() => browser.disconnect())
     } finally {
       releasing.delete(browser)
     }
@@ -93,10 +114,10 @@ export function createBrowserConnection(
               detail: 'Cannot connect to or check the configured browser.',
             }
           } finally {
-            await connection?.browser.disconnect()
+            await bestEffort(() => connection?.browser.disconnect())
           }
         }
-        await writeStatus(result)
+        await persist(result)
         return result
       })().finally(() => {
         checking = undefined
@@ -111,7 +132,7 @@ export function createBrowserConnection(
     const run = (async () => {
       const result = await checkOn(lease)
       // The status is already bound in memory; a failed write must not fail the render.
-      await writeStatus(result).catch(() => {})
+      await persist(result).catch(() => {})
       return result
     })().finally(() => {
       if (key) leaseChecks.delete(key)
@@ -133,13 +154,14 @@ export function createBrowserConnection(
         }
         browser.once('disconnected', () => {
           // Our own release is expected; any other disconnection may mean a new browser.
-          if (!releasing.has(browser) && verified?.identity === lease.identity) verified = undefined
+          if (!releasing.has(browser) && verified?.identity === lease.identity)
+            void bestEffort(unavailable)
         })
         const context = await browser.createBrowserContext()
         active.set(browser, context)
         return { browser, context }
       } catch (error) {
-        await browser.disconnect()
+        await bestEffort(() => browser.disconnect())
         throw error
       }
     },

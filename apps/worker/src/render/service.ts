@@ -1,5 +1,6 @@
 import type { Browser } from 'puppeteer-core'
 import type { RenderStatus } from '@seotools/core'
+import { bestEffort } from './cleanup'
 import { createBrowserConnection } from './connection'
 import { RENDER_LIMITS } from './limits'
 import { renderPage } from './page'
@@ -11,7 +12,7 @@ export function createRenderService(options: {
   concurrency: number
   writeStatus: (status: RenderStatus) => Promise<void>
 }) {
-  if (!Number.isInteger(options.concurrency) || options.concurrency < 1 || options.concurrency > 8)
+  if (!Number.isInteger(options.concurrency) || options.concurrency < 1 || options.concurrency > 4)
     throw new Error('Invalid render concurrency')
   const connection = createBrowserConnection(options.browserUrl, options.writeStatus)
   let active = 0
@@ -74,7 +75,7 @@ export function createRenderService(options: {
               scriptErrors: { count: 0, first: [] },
             }
           } finally {
-            if (browser) await connection.release(browser)
+            if (browser) await bestEffort(() => connection.release(browser!))
           }
         }
       } finally {

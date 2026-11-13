@@ -1,6 +1,7 @@
 import { isInternalUrl, renderRequestDecision } from '@seotools/core'
 import type { Browser, BrowserContext, HTTPRequest } from 'puppeteer-core'
 import { FetchError } from '../crawl/fetcher'
+import { bestEffort } from './cleanup'
 import { seedPageRandom } from './determinism'
 import { renderRequestHeaders, renderResponseHeaders } from './headers'
 import { addSample, oneLine, RENDER_LIMITS } from './limits'
@@ -73,7 +74,7 @@ export async function renderPage(
           if (targetInfo.type === 'iframe') return
           await cdp.send('Target.closeTarget', { targetId: targetInfo.targetId })
         } finally {
-          await session.detach().catch(() => {})
+          await bestEffort(() => session.detach())
         }
       })().catch(() => {})
     })
@@ -382,7 +383,7 @@ export async function renderPage(
   } finally {
     finished = true
     stop.abort()
-    await context.close().catch(() => {})
+    await bestEffort(() => context.close())
     // Every resource uses our abort signal, so all requester waits and requests now stop.
     await Promise.allSettled([...pending])
     result.scriptErrors.first.sort()

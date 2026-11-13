@@ -1,3 +1,4 @@
+import { bestEffort } from './cleanup'
 import { createServer, isIP, type Server, type Socket } from 'node:net'
 import { createSocket, type Socket as UdpSocket } from 'node:dgram'
 import { networkInterfaces } from 'node:os'
@@ -150,7 +151,7 @@ async function openCanary(
 }
 
 async function closeCanary(canary: Canary) {
-  canary.udp?.close()
+  await bestEffort(() => canary.udp?.close())
   await new Promise<void>((resolve) => canary.tcp.close(() => resolve()))
 }
 
@@ -256,7 +257,7 @@ async function probeWebSockets(open: () => Promise<ProbePage>, origins: readonly
       )
       await settled(urls, batch)
     } finally {
-      await probe.close()
+      await bestEffort(probe.close)
     }
     // A batch with an unproven probe already refuses the browser.
     if (firstUnproven(new Map(batch.map((url) => [url, urls.get(url)])))) break
@@ -383,7 +384,7 @@ export async function checkIsolation(
       cdp,
       close: async () => {
         contexts.delete(context)
-        await context.close().catch(() => {})
+        await bestEffort(() => context.close())
       },
     }
   }
@@ -419,7 +420,7 @@ export async function checkIsolation(
     // Deliberately no interception and no page-controlled URL. A timeout is never isolation.
     if (protocols.includes('fetch')) {
       const probe = await open()
-      const outcomes = await probeFetches(probe, origins).finally(probe.close)
+      const outcomes = await probeFetches(probe, origins).finally(() => bestEffort(probe.close))
       const result = verdict('fetch', outcomes)
       if (result) return result
     }
@@ -432,7 +433,9 @@ export async function checkIsolation(
       const sessions = [probe.cdp]
       for (let n = 1; n < NAVIGATION_PAGES; n++)
         sessions.push(await (await probe.page.browserContext().newPage()).createCDPSession())
-      const outcomes = await probeNavigations(sessions, origins).finally(probe.close)
+      const outcomes = await probeNavigations(sessions, origins).finally(() =>
+        bestEffort(probe.close),
+      )
       const result = verdict('navigation', outcomes)
       if (result) return result
     }
@@ -441,7 +444,7 @@ export async function checkIsolation(
       const rtc = await probeWebRtc(
         probe.page,
         canaries.filter((canary) => canary.udp).map((c) => `stun:${origin(c.address, c.port)}`),
-      ).finally(probe.close)
+      ).finally(() => bestEffort(probe.close))
       // Datagrams can trail ICE completion.
       await new Promise((resolve) => setTimeout(resolve, 100))
       const result = canaryReached()
@@ -456,8 +459,8 @@ export async function checkIsolation(
     }
     return canaryReached() ?? { state: 'ready', version, checkedAt }
   } finally {
-    await Promise.all([...contexts].map((context) => context.close().catch(() => {})))
-    for (const socket of sockets) socket.destroy()
-    await Promise.all(canaries.map(closeCanary))
+    await Promise.all([...contexts].map((context) => bestEffort(() => context.close())))
+    for (const socket of sockets) await bestEffort(() => socket.destroy())
+    await Promise.all(canaries.map((canary) => bestEffort(() => closeCanary(canary))))
   }
 }
