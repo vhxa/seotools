@@ -633,6 +633,25 @@ export const CHECKS: Record<PageIssueId, Check> = {
   ),
   'heading-too-long': onPage((_, facts) => facts.longHeadings > 0),
 
+  'html-entities-as-text': onPage(({ url }) => {
+    // These texts were decoded once at extraction. Bound each scan, not just the evidence.
+    const fields = [
+      { field: 'title' as const, text: url.title },
+      { field: 'description' as const, text: url.data?.description },
+      ...(url.data?.h1 ?? [])
+        .slice(0, MAX_EVIDENCE_ITEMS)
+        .map((text) => ({ field: 'h1' as const, text })),
+    ]
+    const items = fields.flatMap(({ field, text }) => {
+      const value = text?.slice(0, 16_384)
+      const match = value && /&(?:#\d{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,31});/i.exec(value)
+      return match
+        ? [{ field, text: boundedText(value!.slice(Math.max(0, match.index - 40))) }]
+        : []
+    })
+    return items.length > 0 && backedBy({ kind: 'values', total: items.length, items })
+  }),
+
   // --- content -------------------------------------------------------------
   'content-duplicate': onPage(
     (url, facts, site) =>
@@ -719,6 +738,17 @@ export const CHECKS: Record<PageIssueId, Check> = {
   // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
   'orphan-in-sitemap': (url) =>
     url.contentPage && url.sitemaps > 0 && url.anchorsIn === 0 && url.url.source !== 'seed',
+  'few-html-links': onPage(
+    (url, _, site) =>
+      url.indexable &&
+      url.url.data?.truncated !== true &&
+      url.internalAnchorsOut < figures(site).htmlLinksMin &&
+      backedBy({
+        kind: 'values',
+        total: 1,
+        items: [{ field: 'internal-links', text: String(url.internalAnchorsOut) }],
+      }),
+  ),
   'no-outgoing-links': onPage((url) => url.internalAnchorsOut === 0),
   'internal-nofollow-links': onPage((url) => url.nofollowAnchorsOut > 0),
   'deep-page': onPage((url, _, site) => (url.clickDepth ?? 0) > figures(site).clickDepthMax),

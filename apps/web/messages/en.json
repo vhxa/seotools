@@ -957,7 +957,8 @@
       "images": "{total, plural, one {# image} other {# images}}",
       "links": "{total, plural, one {# link} other {# links}}",
       "canonicals": "{total, plural, one {# declaration} other {# declarations}}",
-      "related-urls": "{total, plural, one {# other page} other {# other pages}}"
+      "related-urls": "{total, plural, one {# other page} other {# other pages}}",
+      "values": "{total, plural, one {# value} other {# values}}"
     },
     "labels": {
       "canonical-not-indexable": "Canonical target (blockers shown above)",
@@ -990,7 +991,9 @@
       "resources-broken": "Broken resources it loads",
       "links-to-redirect": "Redirecting URLs it links to",
       "links-to-canonicalised": "Canonicalised URLs it links to",
-      "links-tracking-parameters": "URLs with tracking parameters it links to"
+      "links-tracking-parameters": "URLs with tracking parameters it links to",
+      "html-entities-as-text": "Text containing character references",
+      "few-html-links": "Internal links found in the HTML"
     },
     "images": {
       "noSource": "No address (src is missing)",
@@ -1015,6 +1018,12 @@
       "source": {
         "header": "HTTP Link header"
       }
+    },
+    "fields": {
+      "title": "Title",
+      "description": "Meta description",
+      "h1": "H1",
+      "internal-links": "Internal links"
     }
   },
   "PageIssues": {
@@ -1331,8 +1340,8 @@
       "description": "Every link reaching this page comes from pages that will not be indexed. Not reported for a page that is expected to be out of the index."
     },
     "orphan-in-sitemap": {
-      "name": "Orphan URL (only in the sitemap)",
-      "description": "No internal link to it was found within the scope of the crawl: only the sitemap leads to it. The crawl reads the HTML the server sends: a link that only appears after JavaScript runs (a menu or footer built in the browser) is not seen."
+      "name": "Found only in a sitemap, with no link in the HTML",
+      "description": "Only the sitemap led here: no internal link was found in the HTML of the pages crawled. The crawler does not run JavaScript and misses links built in the browser. Check “Very few links in the HTML” findings on pages that should link here, if any."
     },
     "no-outgoing-links": {
       "name": "No outgoing internal links",
@@ -1565,6 +1574,14 @@
     "unlinked-required-missing": {
       "name": "Internal links are not allowed by the rule",
       "description": "The rule requires no internal links to this URL, but at least one internal anchor points at it."
+    },
+    "html-entities-as-text": {
+      "name": "HTML entities shown as text",
+      "description": "The decoded title, meta description or an H1 still contains a character reference such as &#8217; or &amp;. Visitors may see it as text. A page about HTML may show one intentionally."
+    },
+    "few-html-links": {
+      "name": "Very few links in the HTML",
+      "description": "The indexable page has fewer internal links than the configured threshold in the HTML sent by the server. The crawler does not run JavaScript; a menu or footer built in the browser is a common reason. Search engines that render may see more links, but many crawlers, including those of several AI assistants, read only the HTML."
     }
   },
   "LinkKinds": {
@@ -2464,6 +2481,10 @@
         "responseTimeMaxMs": {
           "label": "Slowest response",
           "unit": "Milliseconds"
+        },
+        "htmlLinksMin": {
+          "label": "Fewest internal links in the HTML",
+          "unit": "Internal links · 0 disables this check"
         }
       }
     },
@@ -2835,11 +2856,11 @@
       },
       "unlinked": {
         "label": "No internal links",
-        "default": "By default, a page listed in a sitemap with no internal anchor links gets an orphan finding.",
+        "default": "By default, a page listed in a sitemap with no internal link found in the crawled HTML gets a sitemap-only finding. JavaScript-built links are not seen.",
         "help": {
           "required": "A finding is raised when an internal anchor links to this URL. Absence of links is confirmed only by a completed full crawl.",
-          "allowed": "The page may have internal links or none: its orphan finding is accepted. Links from nofollow or noindex pages are judged separately.",
-          "forbidden": "An orphan finding is kept when a sitemap lists the page but no internal anchor links to it."
+          "allowed": "The page may have internal links or none: its sitemap-only finding is accepted. Links from nofollow or noindex pages are judged separately.",
+          "forbidden": "A sitemap-only finding is kept when no internal link to the page was found in the crawled HTML. JavaScript-built links are not seen."
         }
       },
       "hint": "Each condition is Required or Forbidden, or “Don’t warn either way”, which raises no finding whichever way the page is. When it is not stated, the dashed option is what applies now.",

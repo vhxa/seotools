@@ -3,26 +3,20 @@
 What changed in each release of seotools. It follows [Keep a Changelog](https://keepachangelog.com)
 and [Semantic Versioning](https://semver.org), with the rules of
 [docs/releases.md](docs/releases.md): every change that reaches users, administrators or operators
-adds an entry under `## [Unreleased]` in the pull request that makes it, under the heading that
-names its impact:
+adds an entry under `## [Unreleased]
 
-| Heading    | Impact on the next version               |
-| ---------- | ---------------------------------------- |
-| `Breaking` | MAJOR (MINOR while the version is `0.x`) |
-| `Added`    | MINOR                                    |
-| `Changed`  | MINOR                                    |
-| `Fixed`    | PATCH                                    |
-| `Security` | PATCH                                    |
+### Added
 
-Documentation, tests, CI and refactors that change nothing visible have no entry and, by
-themselves, no release. Releases are prepared with `node scripts/release.mjs prepare <version>`,
-which moves the entries of `[Unreleased]` into the new version.
-
-## [Unreleased]
+- Two low-importance opportunities flag HTML character references shown as text in titles,
+  descriptions or H1s, and indexable pages with very few internal links in the served HTML
+  (default: fewer than 5; configurable per domain, with 0 disabling the check).
 
 ### Changed
 
 - Pages load less translation text: the browser receives only the messages the interactive parts of each page use, not the whole catalog.
+- Sitemap-only findings now state that no internal link was found in the HTML of the pages crawled,
+  and explain that links built by JavaScript are not seen. Earlier crawls are analysed again from
+  their stored text and links for the two new checks.
 
 ## [0.5.0] - 2026-11-12
 

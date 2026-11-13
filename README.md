@@ -12,10 +12,10 @@ Raspberry Pi to a VPS.
   blocks (auditing it is the point), with per-domain scope, depth, rate limits, request headers and
   Basic Auth for staging sites and lists of URLs. The Crawls area brings runs, comparison and
   rechecks together; schedules, in your time zone, live in Settings → Schedules.
-- **137 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
+- **139 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
   references, and page quality (titles, descriptions, headings, content, images, structured data
   against Google's rich result requirements, Open Graph and Twitter tags, accessibility, security
-  and HTML). Findings explain why they matter and show the evidence. Each URL has a search-result
+  and HTML), including entities shown as text and very few internal links in the served HTML. Findings explain why they matter and show the evidence. Each URL has a search-result
   and share-card preview; a later recheck refreshes it while keeping the crawl's preview available.
 - **Your own rules**: declare which URLs should be indexed, require or forbid directives, sitemap
   membership, a canonical to another URL or the absence of internal links, and leave URLs out of

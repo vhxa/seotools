@@ -308,11 +308,17 @@ export interface CanonicalEvidence {
 /**
  * What an issue found on a URL says to back it, kept with the finding (`ISSUE_EVIDENCE` says which
  * issues have it). Every list is bounded: `total` is how many there are, `items` the first few.
+ * - `values`: decoded text fields or measurements read from the stored page.
  * - `images`, `links`: the elements of the page, from what the crawl gathered (`PageEvidenceFacts`).
  * - `canonicals`: the declarations that make the finding.
  * - `related-urls`: the other pages of the crawl that share what makes this one a duplicate.
  */
 export type IssueEvidence =
+  | {
+      kind: 'values'
+      total: number
+      items: { field: 'title' | 'description' | 'h1' | 'internal-links'; text: string }[]
+    }
   | { kind: 'images'; total: number; items: ImageEvidence[] }
   | { kind: 'links'; total: number; items: LinkEvidence[] }
   | { kind: 'canonicals'; total: number; items: CanonicalEvidence[] }

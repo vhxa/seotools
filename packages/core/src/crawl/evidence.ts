@@ -30,6 +30,8 @@ export type IssueEvidenceKind = IssueEvidence['kind']
  * makes up examples. Issues not listed have none.
  */
 export const ISSUE_EVIDENCE = {
+  'html-entities-as-text': 'values',
+  'few-html-links': 'values',
   'img-no-alt': 'images',
   'img-empty-alt': 'images',
   'img-long-alt': 'images',
@@ -167,6 +169,16 @@ export function parseIssueEvidence(value: unknown): IssueEvidence | null {
   if (!envelope.success) return null
   const { total } = envelope.data
   switch (envelope.data.kind) {
+    case 'values': {
+      const list = items(
+        envelope.data.items,
+        z.object({
+          field: z.enum(['title', 'description', 'h1', 'internal-links']),
+          text,
+        }),
+      )
+      return list && { kind: 'values', total, items: list }
+    }
     case 'images': {
       const list = items(envelope.data.items, imageSchema)
       return list && { kind: 'images', total, items: list }

@@ -172,6 +172,9 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'only-nofollow-inlinks': S,
   'only-noindex-inlinks': S,
   'orphan-in-sitemap': S,
+  'html-entities-as-text': U,
+  // Counts only anchors in this page's own response, without judging their destinations.
+  'few-html-links': U,
   'no-outgoing-links': U,
   'internal-nofollow-links': U,
   'deep-page': S,

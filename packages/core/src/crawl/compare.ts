@@ -350,6 +350,8 @@ export function assessPair(base: CrawlLike, target: CrawlLike): PairAssessment {
  * treated as such: that is the safe default for an issue added later.
  */
 const PAGE_LOCAL_LIST = [
+  'html-entities-as-text',
+  'few-html-links',
   'no-response',
   'server-error',
   'client-error',

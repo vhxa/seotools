@@ -110,6 +110,9 @@ const shared = (
    ${card ? '<meta name="twitter:card" content="summary_large_image">' : ''}`
 
 const SCENARIOS: Record<PageIssueId, Scenario> = {
+  'html-entities-as-text': { at: '/x', pages: { '/x': page('/x', { h1: 'd&amp;#8217;exemple' }) } },
+  'few-html-links': { at: '/x', pages: { '/x': page('/x') } },
+
   'lcp-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { lcp: 4001 } },
   'inp-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { inp: 501 } },
   'cls-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { cls: 0.251 } },
@@ -1213,6 +1216,7 @@ describe('a URL a search engine has indexed', () => {
 describe('a site with nothing wrong', () => {
   it('has no issues at all', async () => {
     const crawlId = await crawl(websiteOf({ at: '/' }))
+    await analyseCrawl(db, crawlId, auditSnapshotOf(1, [], undefined, { htmlLinksMin: 0 }))
     expect(await issuesAt(crawlId, '/')).toEqual([])
     expect(await issuesAt(crawlId, '/about')).toEqual([])
     expect(await issuesAt(crawlId, '/sitemap.xml')).toEqual([])
@@ -1555,6 +1559,7 @@ describe('what is not an issue', () => {
         '/es': page('/es', { head: alternates }),
       },
     })
+    await analyseCrawl(db, crawlId, auditSnapshotOf(1, [], undefined, { htmlLinksMin: 0 }))
     expect(await issuesAt(crawlId, '/x')).toEqual([])
     expect(await issuesAt(crawlId, '/es')).toEqual([])
   })
@@ -1826,4 +1831,66 @@ it('records Alice and her decision time in the snapshot and acceptance before Bo
       (r) => r.issue === input.issue,
     )?.acceptance,
   ).toEqual(original.acceptance)
+})
+
+describe('stored HTML text and link heuristics', () => {
+  it.each([
+    ['title', { title: 'An &amp;amp; example' }, true],
+    ['description', { description: 'An &amp;nbsp; example' }, true],
+    ['second H1', { body: '<h1>d&amp;#x2019;exemple</h1>' }, true],
+    ['decoded once', { h1: 'd&#8217;exemple &amp; other' }, false],
+    ['no semicolon', { h1: 'd&amp;#8217 example' }, false],
+    ['name bound', { h1: '&amp;' + 'a'.repeat(33) + ';' }, false],
+    ['numeric bound', { h1: '&amp;#12345678;' }, false],
+    ['named boundary', { h1: '&amp;' + 'a'.repeat(32) + ';' }, true],
+    ['numeric boundary', { h1: '&amp;#1234567;' }, true],
+  ])('detects references in %s after one decode', async (_, options, raised) => {
+    const id = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x', options) } }))
+    const finding = (await issuesAt(id, '/x')).find((row) => row.issue === 'html-entities-as-text')
+    expect(Boolean(finding)).toBe(raised)
+    if (raised) expect(finding?.evidence).toMatchObject({ kind: 'values', total: 1 })
+  })
+
+  it('counts stored internal anchors, handles the threshold boundary and skips unjudgeable responses', async () => {
+    const links = (count: number) =>
+      Array.from({ length: count }, (_, i) => `<a href="/target${i}">Target</a>`).join('')
+    const id = await crawl(
+      websiteOf({
+        at: '/x',
+        pages: {
+          '/x': page('/x', { links: links(4) + '<a href="https://external.test/">External</a>' }),
+          '/boundary': page('/boundary', { links: links(5) }),
+          '/noindex': page('/noindex', { head: '<meta name="robots" content="noindex">' }),
+          '/redirect': moved('/about'),
+          '/error': { ...page('/error'), statusCode: 404 },
+          '/resource': {
+            statusCode: 200,
+            headers: { 'content-type': 'text/plain' },
+            body: Buffer.from('text'),
+          },
+        },
+      }),
+    )
+    const found = (await issuesAt(id, '/x')).find((row) => row.issue === 'few-html-links')
+    expect(found?.evidence).toEqual({
+      kind: 'values',
+      total: 1,
+      items: [{ field: 'internal-links', text: '4' }],
+    })
+    for (const path of ['/boundary', '/noindex', '/redirect', '/error', '/resource'])
+      expect((await issuesAt(id, path)).map((row) => row.issue)).not.toContain('few-html-links')
+    await analyseCrawl(db, id, auditSnapshotOf(1, [], undefined, { htmlLinksMin: 0 }))
+    expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('few-html-links')
+    await analyseCrawl(db, id, auditSnapshotOf(1, [], undefined, { htmlLinksMin: 6 }))
+    expect((await issuesAt(id, '/boundary')).map((row) => row.issue)).toContain('few-html-links')
+    const hash = crawlUrlHash(`${SITE}/x`)
+    const stored = await db.crawls.getUrl(id, hash)
+    await db.crawls.recordResult({
+      crawlId: id,
+      urlHash: hash,
+      result: { ...stored!, data: { ...stored!.data, truncated: true } },
+    })
+    await analyseCrawl(db, id, auditSnapshotOf(1, []))
+    expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('few-html-links')
+  })
 })
