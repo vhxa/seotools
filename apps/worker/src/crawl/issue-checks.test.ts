@@ -1000,12 +1000,14 @@ describe('what a crawl did not look for', () => {
       ].sort(),
     )
 
-    // A crawl that looked says nothing is unobserved, and keeps no field.
+    // A fresh HTML crawl observes the page facts, but neither vitals nor JavaScript.
     const fresh = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x') } }))
     expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual([
       'cls-poor',
       'inp-poor',
       'lcp-poor',
+      'linked-only-by-javascript',
+      'links-only-after-rendering',
     ])
     // Which also holds when it is analysed again from a snapshot that said otherwise.
     await analyseCrawl(db, fresh, snapshot!)
@@ -1013,6 +1015,8 @@ describe('what a crawl did not look for', () => {
       'cls-poor',
       'inp-poor',
       'lcp-poor',
+      'linked-only-by-javascript',
+      'links-only-after-rendering',
     ])
 
     // Against the old crawl, what the new one reports is not new: nobody could have seen it.

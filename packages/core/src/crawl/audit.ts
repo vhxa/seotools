@@ -820,14 +820,16 @@ export interface AuditSnapshot {
   languages?: LanguageConfig
   /** The figures the checks compared with, where they differed from the defaults. Absent: none did. */
   thresholds?: ThresholdOverrides
+  /** Present only for rendered crawls; changes the comparison scope of site-dependent findings. */
+  rendering?: 'rendered'
+  /** Failed or missing page renders; their link absence is unknown. */
+  rendersUnobserved?: number
   /**
    * Issues this analysis could not see, sorted: their input was not recorded for some page, because
    * the crawl was made before a check could read it (`unobservedIssues`, in the worker). Absent: none,
    * as in every snapshot stored before this. It describes what the crawl kept, not a configuration:
    * `auditScopeKey` never reads it, and a comparison reads those issues as unknown (`unobserved`).
    */
-  rendering?: 'rendered'
-  rendersUnobserved?: number
   unobserved?: string[]
 }
 

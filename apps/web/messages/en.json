@@ -1583,7 +1583,7 @@
     },
     "few-html-links": {
       "name": "Very few links in the HTML",
-      "description": "The indexable page has fewer internal links than the configured threshold in the HTML sent by the server. The crawler does not run JavaScript; a menu or footer built in the browser is a common reason. Search engines that render may see more links, but many crawlers, including those of several AI assistants, read only the HTML."
+      "description": "The indexable page has fewer internal links than the configured threshold in the HTML sent by the server. This check counts only links in the served HTML; a menu or footer built by JavaScript is a common reason for a low count. Search engines that render may see more links, but many crawlers, including those of several AI assistants, read only the HTML."
     },
     "linked-only-by-javascript": {
       "name": "Linked only by JavaScript",

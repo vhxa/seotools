@@ -173,6 +173,7 @@ import { assertKnownMigrations } from '../migration-guard'
 import * as schema from '../schema/sqlite'
 import type {
   CrawlLink,
+  CrawlUrlRender,
   CrawlUrlAudit,
   CrawlUrlBrief,
   CrawlUrlAcceptedIssue,
@@ -2216,7 +2217,7 @@ export function createSqliteDatabase(options: {
           .all()
         return rows.map((row) => ({
           ...row,
-          data: JSON.parse(row.data) as import('../types').CrawlUrlRender['data'],
+          data: JSON.parse(row.data) as CrawlUrlRender['data'],
         }))
       },
       async saveBrowserWait(crawlId, milliseconds) {

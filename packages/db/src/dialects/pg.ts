@@ -170,6 +170,7 @@ import { assertKnownMigrations } from '../migration-guard'
 import * as schema from '../schema/pg'
 import type {
   CrawlLink,
+  CrawlUrlRender,
   CrawlUrlAudit,
   CrawlUrlBrief,
   CrawlUrlAcceptedIssue,
@@ -2156,7 +2157,7 @@ export function createPgDatabase(options: {
           .where(eq(crawlUrlRenders.crawlId, crawlId))
         return rows.map((row) => ({
           ...row,
-          data: JSON.parse(row.data) as import('../types').CrawlUrlRender['data'],
+          data: JSON.parse(row.data) as CrawlUrlRender['data'],
         }))
       },
       async saveBrowserWait(crawlId, milliseconds) {

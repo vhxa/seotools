@@ -1583,7 +1583,7 @@
     },
     "few-html-links": {
       "name": "Muy pocos enlaces en el HTML",
-      "description": "La página indexable tiene menos enlaces internos que el umbral configurado en el HTML que envía el servidor. El rastreador no ejecuta JavaScript; suele ocurrir cuando el navegador construye el menú o el pie. Los buscadores que renderizan pueden ver más enlaces, pero muchos rastreadores, incluidos los de varios asistentes de IA, solo leen el HTML."
+      "description": "La página indexable tiene menos enlaces internos que el umbral configurado en el HTML que envía el servidor. Esta comprobación solo cuenta los enlaces del HTML recibido; el número suele ser bajo cuando JavaScript construye el menú o el pie. Los buscadores que renderizan pueden ver más enlaces, pero muchos rastreadores, incluidos los de varios asistentes de IA, solo leen el HTML."
     },
     "linked-only-by-javascript": {
       "name": "Enlazada solo mediante JavaScript",

@@ -121,7 +121,20 @@ it('keeps a twice-failed page unknown, suppressing orphan and unlinked absence e
   expect(await issues(crawl.id, '/orphan')).not.toContain('orphan-in-sitemap')
   const stored = (await db.crawls.get(crawl.id))!
   expect(stored.auditSnapshot?.rendersUnobserved).toBe(1)
-  expect(stored.auditSnapshot?.unobserved).toContain('linked-only-by-javascript')
+  expect(stored.auditSnapshot?.unobserved).toEqual(
+    expect.arrayContaining(['linked-only-by-javascript', 'links-only-after-rendering']),
+  )
+  const allUrls = await db.crawls.listUrls({
+    crawlId: crawl.id,
+    view: 'all',
+    limit: 1000,
+    offset: 0,
+  })
+  const allFindings = await db.crawls.issuesOf(
+    crawl.id,
+    allUrls.map((url) => url.urlHash),
+  )
+  expect(allFindings.some((row) => row.issue === 'orphan-in-sitemap')).toBe(false)
   const site = await loadSite(db, stored, stored.auditSnapshot!)
   for (const url of site.urls.filter((url) => url.contentPage && url.anchorsIn === 0))
     expect(presenceOf('unlinked', url, site)).toBe('unknown')
@@ -239,4 +252,44 @@ it('keeps other 2xx pages served-only and their render unknown', async () => {
   expect((await db.crawls.get(crawl.id))?.auditSnapshot?.rendersUnobserved).toBe(1)
   await analyseCrawl(db, crawl.id, await currentAuditConfig(db, domainId))
   expect((await db.crawls.get(crawl.id))?.auditSnapshot?.rendering).toBe('rendered')
+})
+
+it('keeps a committed failed render unknown on resume without retrying its lost body', async () => {
+  const crawl = await start()
+  const shutdown = new AbortController()
+  const record = db.crawls.recordResult
+  db.crawls.recordResult = async (input) => {
+    await record(input)
+    if (input.render?.status === 'failed') shutdown.abort()
+  }
+  await expect(
+    runCrawl(
+      crawl.id,
+      options({
+        signal: shutdown.signal,
+        renderService: {
+          check: ready,
+          render: async (input) => ({
+            ...renderedOutcome(input),
+            status: 'failed' as const,
+            failure: { code: 'serialization', message: 'failed' },
+          }),
+        },
+      }),
+    ),
+  ).rejects.toBeInstanceOf(JobInterruptedError)
+  const failed = (await db.crawls.renders(crawl.id)).filter((row) => row.status === 'failed')
+  expect(failed.length).toBeGreaterThan(0)
+  db.crawls.recordResult = record
+  const rendering = vi.fn(render)
+  await runCrawl(crawl.id, options({ renderService: { check: ready, render: rendering } }))
+  for (const row of failed) {
+    expect(rendering.mock.calls.some(([input]) => crawlUrlHash(input.url) === row.urlHash)).toBe(
+      false,
+    )
+    expect(
+      (await db.crawls.renders(crawl.id)).find((kept) => kept.urlHash === row.urlHash),
+    ).toEqual(row)
+  }
+  expect((await db.crawls.get(crawl.id))?.auditSnapshot?.rendersUnobserved).toBe(failed.length)
 })

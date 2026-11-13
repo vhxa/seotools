@@ -34,6 +34,7 @@ import type {
   LinkContext,
   ThresholdOverrides,
   CrawlPageData,
+  CrawlPageFacts,
   CrawlRecurrence,
   CrawlRobotsFiles,
   CrawlSettings,
@@ -351,7 +352,7 @@ export interface CrawlUrlRender {
   durationMs: number
   failure: string | null
   data: {
-    facts: import('@seotools/core').CrawlPageFacts | null
+    facts: CrawlPageFacts | null
     requests: unknown
     scriptErrors: { count: number; first: string[] }
   }

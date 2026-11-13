@@ -21,13 +21,21 @@ import {
   normalizeCrawlUrl,
   stripIgnoredParameters,
   type CrawlLinkKind,
+  type CrawlPageFacts,
   type LinkContext,
   type CrawlRobotsFiles,
   type CrawlSettings,
   type CrawlUrlSource,
   type Logger,
 } from '@seotools/core'
-import type { Crawl, CrawlLink, CrawlUrlResult, Database, NewCrawlUrl } from '@seotools/db'
+import type {
+  Crawl,
+  CrawlLink,
+  CrawlUrlResult,
+  CrawlUrlRender,
+  Database,
+  NewCrawlUrl,
+} from '@seotools/db'
 import { JobInterruptedError } from '../types'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import type { ParsedSitemap } from './extract'
@@ -285,7 +293,7 @@ export async function runCrawl(
     item: NewCrawlUrl,
     response: FetchedResponse,
     served: Set<string>,
-  ): Promise<{ render: import('@seotools/db').CrawlUrlRender; found: Discovered }> {
+  ): Promise<{ render: CrawlUrlRender; found: Discovered }> {
     const outcome = await recovery.run(() =>
       options.renderService!.render({
         url: item.url,
@@ -304,7 +312,7 @@ export async function runCrawl(
     // observation can commit; if the browser had to recover, retry the current document instead.
     if (outcome.failure?.code === 'crashed' && (await recovery.start()))
       return renderUrl(item, response, served)
-    let facts: import('@seotools/core').CrawlPageFacts | null = null
+    let facts: CrawlPageFacts | null = null
     let found: Discovered = { urls: [], links: [] }
     if (outcome.status === 'rendered') {
       const analysed = analyse(
@@ -384,7 +392,7 @@ export async function runCrawl(
         })),
       )
     }
-    let render: import('@seotools/db').CrawlUrlRender | undefined
+    let render: CrawlUrlRender | undefined
     if (
       rendered &&
       result.kind === 'page' &&
