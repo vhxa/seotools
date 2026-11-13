@@ -91,11 +91,11 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
     page.on('pageerror', (error) => {
       if (finished) return
       result.scriptErrors.count++
-      result.scriptErrors.first.push(
-        oneLine(error instanceof Error ? error.message : String(error)),
-      )
-      result.scriptErrors.first.sort()
-      result.scriptErrors.first.splice(RENDER_LIMITS.scriptErrors)
+      if (result.scriptErrors.first.length < RENDER_LIMITS.scriptErrors) {
+        result.scriptErrors.first.push(
+          oneLine(error instanceof Error ? error.message : String(error)),
+        )
+      }
     })
     const omit = (url: string, reason: RenderOutcome['requests']['omitted'][number]['reason']) => {
       url = url.slice(0, RENDER_LIMITS.urlChars)
@@ -150,18 +150,23 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
         omit(url, decision.action === 'omit' ? decision.reason : 'scheme')
         return abort()
       }
-      const resourceCap = Math.min(
-        RENDER_LIMITS.resourceBytes,
-        RENDER_LIMITS.pageBytes - bytes - reserved,
-      )
-      if (resourceCap <= 0) {
-        omit(url, 'limit')
-        return abort()
-      }
-      reserved += resourceCap
       inFlight++
       lastActivity = Date.now()
+      let resourceCap = 0
       try {
+        while (RENDER_LIMITS.pageBytes - bytes - reserved <= 0 && reserved > 0 && !signal.aborted) {
+          await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        resourceCap = Math.min(
+          RENDER_LIMITS.resourceBytes,
+          RENDER_LIMITS.pageBytes - bytes - reserved,
+        )
+        if (signal.aborted) return abort()
+        if (resourceCap <= 0) {
+          omit(url, 'limit')
+          return abort()
+        }
+        reserved += resourceCap
         const postData = await request.fetchPostData()
         if (postData && Buffer.byteLength(postData) > RENDER_LIMITS.requestBodyBytes) {
           omit(url, 'limit')
@@ -204,7 +209,7 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
           return abort()
         }
         const size = answer.body?.length ?? 0
-        if (bytes + size > RENDER_LIMITS.pageBytes || answer.truncated) {
+        if (size > resourceCap || bytes + size > RENDER_LIMITS.pageBytes || answer.truncated) {
           omit(url, 'limit')
           return abort()
         }
@@ -279,9 +284,18 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
     if (signal.aborted) throw new DOMException('Render stopped', 'AbortError')
     // Evaluate inside the browser; cap UTF-8 bytes there before sending the DOM over CDP.
     try {
-      const dom = (await Promise.race([
-        interrupted,
-        page.evaluate(`(() => {
+      const serialize = async () => {
+        const { frameTree } = await cdp.send('Page.getFrameTree')
+        const { executionContextId } = await cdp.send('Page.createIsolatedWorld', {
+          frameId: frameTree.frame.id,
+          worldName: 'seotools-serialization',
+          grantUniveralAccess: false,
+        })
+        return cdp.send('Runtime.evaluate', {
+          contextId: executionContextId,
+          returnByValue: true,
+          timeout: RENDER_LIMITS.waitMs,
+          expression: `(() => {
         const roots = [];
         const visit = root => { for (const element of root.querySelectorAll('*')) {
           if (element.shadowRoot) { roots.push(element.shadowRoot); visit(element.shadowRoot); }
@@ -293,8 +307,21 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
         const bytes = new TextEncoder().encode(text);
         return { html: new TextDecoder().decode(bytes.slice(0, ${RENDER_LIMITS.domBytes}), { stream: true }),
           truncated: bytes.length > ${RENDER_LIMITS.domBytes} };
-      })()`),
-      ])) as { html: string; truncated: boolean }
+      })()`,
+        })
+      }
+      const serialized = await Promise.race([interrupted, serialize()])
+      const dom: unknown = serialized.result.value
+      if (
+        serialized.exceptionDetails ||
+        !dom ||
+        typeof dom !== 'object' ||
+        !('html' in dom) ||
+        typeof dom.html !== 'string' ||
+        !('truncated' in dom) ||
+        typeof dom.truncated !== 'boolean'
+      )
+        throw new Error('Invalid DOM snapshot')
       result.html = dom.html
       result.truncated = dom.truncated
     } catch {
@@ -311,6 +338,7 @@ export async function renderPage(browser: Browser, input: RenderInput): Promise<
     await context.close().catch(() => {})
     // Every resource uses our abort signal, so all requester waits and requests now stop.
     await Promise.allSettled([...pending])
+    result.scriptErrors.first.sort()
     result.durationMs = Date.now() - started
   }
 }

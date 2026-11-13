@@ -9,6 +9,7 @@ import { createRequester } from '../crawl/requester'
 import { createRenderResourceCache } from './cache'
 import { checkIsolation } from './isolation'
 import { createRenderService } from './service'
+import { RENDER_LIMITS } from './limits'
 import { renderPage } from './page'
 import type { RenderInput } from './types'
 
@@ -179,10 +180,53 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(result.settled).toBe(false)
     expect(Date.now() - start).toBeLessThan(1800)
   })
+  it('bounds requests, diagnostics and script errors', async () => {
+    const body = `<main>bounded</main><script>
+      for(let n=0;n<400;n++) fetch('/poll').catch(()=>{});
+      for(let n=0;n<60;n++) setTimeout(()=>{throw new Error('error '+n+' '+ 'x'.repeat(300))},0);
+    </script>`
+    const result = await render('head', {
+      waitMs: 1500,
+      document: {
+        statusCode: 200,
+        headers: { 'content-type': 'text/html' },
+        body: Buffer.from(body),
+        bytes: body.length,
+        truncated: false,
+        responseTimeMs: 0,
+      },
+    })
+    expect(result.status).toBe('rendered')
+    expect(result.requests.made).toBeLessThanOrEqual(RENDER_LIMITS.requests)
+    expect(result.requests.omittedCount).toBeGreaterThan(50)
+    expect(result.requests.omitted).toHaveLength(RENDER_LIMITS.diagnosticItems)
+    expect(result.scriptErrors.count).toBe(60)
+    expect(result.scriptErrors.first).toHaveLength(RENDER_LIMITS.scriptErrors)
+    expect(result.scriptErrors.first.every((error) => error.length <= 200)).toBe(true)
+  })
+  it('bounds UTF-8 DOM bytes and ignores page overrides of serialization builtins', async () => {
+    const body = `<main>${'é'.repeat(RENDER_LIMITS.domBytes / 2 + 100)}</main><script>Element.prototype.getHTML=()=>'<p>fake</p>';window.TextEncoder=function(){throw Error('fake')}</script>`
+    const result = await render('head', {
+      document: {
+        statusCode: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+        body: Buffer.from(body),
+        bytes: Buffer.byteLength(body),
+        truncated: false,
+        responseTimeMs: 0,
+      },
+    })
+    expect(result.status).toBe('rendered')
+    expect(result.truncated).toBe(true)
+    expect(Buffer.byteLength(result.html)).toBeLessThanOrEqual(RENDER_LIMITS.domBytes)
+    expect(result.html).toContain('<main>é')
+  }, 15_000)
   it('renders the same page identically twenty times, excluding timing', async () => {
     const outcomes = new Set<string>()
     for (let i = 0; i < 20; i++) {
-      const { durationMs: _duration, ...outcome } = await render('shadow')
+      const { durationMs: _duration, ...outcome } = await render('nav', {
+        cache: createRenderResourceCache(),
+      })
       outcomes.add(JSON.stringify(outcome))
     }
     expect(outcomes.size).toBe(1)

@@ -45,6 +45,10 @@ describe('render request policy', () => {
     })
   }
   it('allows GTM, fetch, xhr, styles, documents and OPTIONS preflights', () => {
+    expect(decide('https://site.test/analytics/matomo.php')).toEqual({
+      action: 'omit',
+      reason: 'analytics',
+    })
     expect(decide('https://www.googletagmanager.com/gtm.js?id=GTM-123')).toEqual({
       action: 'fetch',
     })

@@ -2,6 +2,7 @@ import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { Browser } from 'puppeteer-core'
 import type { RenderStatus } from '@seotools/core'
+import { RENDER_LIMITS } from './limits'
 import { checkIsolation } from './isolation'
 import { BrowserUnavailableError } from './types'
 
@@ -25,7 +26,28 @@ export function createBrowserConnection(
         endpoint.hostname = isIP(address) === 6 ? `[${address}]` : address
         // Dynamic import: no Puppeteer runtime is loaded when rendering is disabled.
         const { connect } = await import('puppeteer-core')
-        browser = await connect({ browserURL: endpoint.toString(), protocolTimeout: 35_000 })
+        const pending = connect({
+          browserURL: endpoint.toString(),
+          protocolTimeout: RENDER_LIMITS.protocolMs,
+          wsOptions: { handshakeTimeout: RENDER_LIMITS.connectionMs },
+        })
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          browser = await Promise.race([
+            pending,
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(
+                () => reject(new BrowserUnavailableError('Browser connection timed out')),
+                RENDER_LIMITS.connectionMs,
+              )
+            }),
+          ])
+        } catch (error) {
+          void pending.then((late) => late.disconnect()).catch(() => {})
+          throw error
+        } finally {
+          if (timer) clearTimeout(timer)
+        }
         browser.once('disconnected', () => {
           status = undefined
         })

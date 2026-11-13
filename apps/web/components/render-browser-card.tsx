@@ -26,7 +26,7 @@ export function RenderBrowserCard({ status }: { status: RenderStatus | null }) {
         <CardTitle>{t('title')}</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
-        <p role="status">{t(status?.state ?? 'unknown')}</p>
+        <p>{t(status?.state ?? 'unknown')}</p>
         {status?.version && <p>{t('version', { version: status.version })}</p>}
         {status && (
           <p className="text-sm text-muted-foreground">

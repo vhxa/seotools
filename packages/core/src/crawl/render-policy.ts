@@ -62,6 +62,7 @@ export const RENDER_OMITTED_TYPES = [
   'eventsource',
   'ping',
   'csp-report',
+  'cspviolationreport',
   'manifest',
   'prefetch',
   'other',
@@ -98,7 +99,12 @@ export function renderRequestDecision(input: {
   for (const rule of RENDER_OMITTED_PATHS) {
     if (
       (!('host' in rule) || hostMatches(host, rule.host)) &&
-      url.pathname.toLowerCase().startsWith(rule.path)
+      ('host' in rule
+        ? url.pathname.toLowerCase().startsWith(rule.path)
+        : url.pathname
+            .toLowerCase()
+            .split('/')
+            .some((segment) => segment.startsWith(rule.path.slice(1))))
     ) {
       return { action: 'omit', reason: rule.reason }
     }
