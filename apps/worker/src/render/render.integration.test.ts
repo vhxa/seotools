@@ -476,18 +476,17 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     })
     let crashes = 0
     const kill = async (target: Target) => {
+      if (target.url() !== 'http://site.test/crash') return
       const page = await target.page()
       if (!page) return
-      page.on('domcontentloaded', () => {
-        if (page.url() !== 'http://site.test/crash') return
-        crashes++
-        void page
-          .createCDPSession()
-          .then((cdp) => cdp.send('Page.crash'))
-          .catch(() => {})
-      })
+      crashes++
+      await page
+        .createCDPSession()
+        .then((cdp) => cdp.send('Page.crash'))
+        .catch(() => {})
     }
-    browser.on('targetcreated', kill)
+    // URL change cannot be missed while asynchronously attaching to a new target's page.
+    browser.on('targetchanged', kill)
     try {
       const result = await service.render({
         ...base,
@@ -495,7 +494,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
         document: {
           statusCode: 200,
           headers: { 'content-type': 'text/html' },
-          body: Buffer.from('<main>crash me</main>'),
+          body: Buffer.from('<main>crash me</main><script>fetch("/hang")</script>'),
           bytes: 0,
           truncated: false,
           responseTimeMs: 0,
@@ -505,7 +504,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       expect(result.failure?.code).toBe('crashed')
       expect(crashes).toBe(2)
     } finally {
-      browser.off('targetcreated', kill)
+      browser.off('targetchanged', kill)
       await service.close()
     }
   }, 30_000)

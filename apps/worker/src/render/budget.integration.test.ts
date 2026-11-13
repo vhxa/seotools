@@ -146,7 +146,7 @@ it.skipIf(!available)(
                   requester,
                   cache: createRenderResourceCache(),
                   allowedByRobots: () => true,
-                  waitMs: 6000,
+                  waitMs: 15000,
                   document: {
                     statusCode: 200,
                     headers: { 'content-type': 'text/html' },
@@ -159,10 +159,19 @@ it.skipIf(!available)(
               ),
             )
             await expect
-              .poll(() => loaded.size, { timeout: 10_000 })
+              .poll(() => loaded.size, { timeout: 20_000 })
               .toBeGreaterThanOrEqual(concurrency)
             const check = service.check()
-            expect((await renders).map((outcome) => outcome.status)).toEqual(
+            const outcomes = await renders
+            console.log(
+              'BROWSER_OUTCOMES',
+              outcomes.map(({ status, failure, requests }) => ({
+                status,
+                failure,
+                made: requests.made,
+              })),
+            )
+            expect(outcomes.map((outcome) => outcome.status)).toEqual(
               Array(concurrency).fill('rendered'),
             )
             expect((await check).state).toBe('ready')

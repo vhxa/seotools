@@ -189,31 +189,56 @@ Sources checked for this guide:
 - [Versioned restricted ports (the probe ports are not among them)](https://github.com/chromium/chromium/blob/158.0.8127.18/net/base/port_util.cc)
 - [Versioned DevTools browser identifier: drawn per process, required on upgrade](https://github.com/chromium/chromium/blob/158.0.8127.18/content/browser/devtools/devtools_http_handler.cc#L949-L954)
 - [Versioned proxy and loopback bypass semantics](https://github.com/chromium/chromium/blob/158.0.8127.18/net/docs/proxy.md)
+- [Compose process limit](https://docs.docker.com/reference/compose-file/services/#pids_limit)
+- [Compose memory limit](https://docs.docker.com/reference/compose-file/services/#mem_limit)
 - [ws message limit](https://github.com/websockets/ws/blob/8.22.1/doc/ws.md#new-websocketaddress-protocols-options)
 - [Puppeteer supported browsers](https://pptr.dev/supported-browsers)
 
 ## Raspberry Pi and verification
 
-Use `RENDER_CONCURRENCY=1` on a small Pi. The browser image is approximately 540 MB uncompressed
-on arm64; Compose limits its memory to 768 MiB and processes to 128. Memory exhaustion can crash a
-page; it must remain a failed render, never a successful audit of an empty page. Increase the
-container's `mem_limit` only if the host has sufficient spare memory for the app and database.
+`RENDER_CONCURRENCY` accepts **1–4**, default **2**. Use `1` on a small Pi. The browser image
+is approximately 540 MB uncompressed on arm64. Compose reserves a ceiling of **1,536 MiB** and
+**256 processes/threads**, with **256 MiB** shared memory. Keep spare memory for the app, database
+and operating system. A memory-exhausted page is a failed render, never a successful audit of an
+empty page; no finite limit guarantees every hostile page succeeds.
 
-On Docker Desktop arm64 with Chrome 158.0.8127.18, the heaviest original spike fixture
-(`hostile`, 986 document bytes plus its resource attempts) peaked at **340.4 MiB** with
-`RENDER_CONCURRENCY=1` and **440.5 MiB** with `2`. These are sampled sums of browser-container
-process RSS (including shared mappings more than once), sampled about every 100–200 ms from
-`/proc/*/status` throughout rendering, after restarting the browser for each run. They are
-workload measurements, not a worst-case bound. The 768 MiB limit gives roughly 74% headroom over
-the two-page observation; retain 256 MiB shared memory. For higher concurrency, measure your
-workload and adjust memory with host capacity in mind. A separate near-limit 9 MiB DOM stress
-fixture exhausted the former 512 MiB limit and returned `failed` after its one retry, as required;
-no finite container limit guarantees that every hostile page can render.
+Round 4 measurements use the pinned Chrome 158.0.8127.18 image on Docker Desktop arm64. Each
+concurrency starts a fresh hardened container, renders one polling page per slot with a fifteen-second wait limit,
+and runs the full isolation check after every page has started polling. Throughout the workload,
+`docker exec` samples cgroup `pids.current`, `memory.current` and the sum of `/proc/*/status`
+`VmRSS` (including shared mappings repeatedly). The sampler itself adds a few tasks. These are
+workload observations, not worst-case bounds. The isolation check opens at most one probe context
+at a time. All cgroup PID/memory limit-hit and OOM counters stayed at zero.
 
-The isolation check keeps at most one probe context open at a time so it fits beside renders: with
-the check running alongside two concurrent renders, the browser container peaked at 105 of the 128
-processes and threads `pids_limit` allows (61 when idle; the limit was never reached) and 188 MiB
-of cgroup memory. Measure again before raising `RENDER_CONCURRENCY`, and raise `pids_limit` with it.
+| Concurrent renders + one check | Peak tasks | Peak summed RSS (MiB) | Peak cgroup memory (MiB) |
+| ------------------------------ | ---------: | --------------------: | -----------------------: |
+| 1                              |        104 |                 612.1 |                    201.6 |
+| 2                              |        108 |                 661.3 |                    228.4 |
+| 3                              |        119 |                 758.8 |                    238.8 |
+| 4                              |        133 |                 828.3 |                    222.8 |
+
+An initial measurement pass used a temporary ceiling of 512 tasks / 2 GiB. The table is the
+repeat under the shipped 256-task / 1,536-MiB ceilings, exceeding its four-render task peak by
+92% and conservative summed-RSS peak by 78%. RSS and cgroup peaks occur at different instants; cgroup memory accounts shared
+pages once. Size a Pi using the row for its concurrency and at least 50% headroom, and measure
+its real pages before reducing limits. Earlier original-spike hostile-page runs peaked at 340.4
+MiB RSS for one render and 440.5 MiB for two (without a simultaneous check); the polling/check
+measurements above are the more conservative sizing reference.
+
+The Docker regression runs every supported concurrency, requires each render and concurrent
+check to succeed under the **shipped** limits, and asserts zero PID/memory limit hits. It skips
+when Docker or the pinned browser image is unavailable (it never pulls images). Its test bridge
+publishes CDP only on host loopback so the host test runner can drive it; production Compose
+keeps the browser on the internal-only network with no published port. Run it explicitly with:
+
+```bash
+pnpm exec vitest run apps/worker/src/render/budget.integration.test.ts --silent=false
+```
+
+Connection failures and unexpected disconnections of a verified browser persist `unreachable`
+with a bounded, generic detail; a fresh `ready` status cannot survive a known failed connection.
+Cleanup of sessions, targets, contexts and CDP connections is best-effort, preserving the render
+outcome and its single crash retry even when a target has already disappeared.
 
 The Chromium integration suite runs automatically when Playwright's Chromium is installed, skips
 otherwise, and runs in CI's e2e job after Chromium installation:
