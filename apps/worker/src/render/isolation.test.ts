@@ -70,6 +70,20 @@ describe('isolation verdict', () => {
     )
     expect(unproven).toMatchObject({ url: 'http://b/', answered: false })
   })
+  it('reports the most telling refusal: an answer, then a wrong error, then silence', () => {
+    const outcomes = new Map<string, ProbeOutcome | undefined>([
+      ['ws://[::1]:5432/', undefined],
+      ['ws://127.0.0.1:9223/', { error: 'net::ERR_NAME_NOT_RESOLVED' }],
+      ['ws://127.0.0.1:80/', proxy],
+    ])
+    expect(firstUnproven(outcomes)).toEqual({
+      url: 'ws://127.0.0.1:9223/',
+      reason: 'net::ERR_NAME_NOT_RESOLVED',
+      answered: false,
+    })
+    outcomes.set('ws://[fd00::1]/', { answered: true })
+    expect(firstUnproven(outcomes)).toMatchObject({ url: 'ws://[fd00::1]/', answered: true })
+  })
   it('reports an answer as network access', () => {
     expect(firstUnproven(new Map([['http://a/', { answered: true }]]))).toMatchObject({
       answered: true,

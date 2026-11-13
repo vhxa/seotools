@@ -210,6 +210,11 @@ workload and adjust memory with host capacity in mind. A separate near-limit 9 M
 fixture exhausted the former 512 MiB limit and returned `failed` after its one retry, as required;
 no finite container limit guarantees that every hostile page can render.
 
+The isolation check keeps at most one probe context open at a time so it fits beside renders: with
+the check running alongside two concurrent renders, the browser container peaked at 105 of the 128
+processes and threads `pids_limit` allows (61 when idle; the limit was never reached) and 188 MiB
+of cgroup memory. Measure again before raising `RENDER_CONCURRENCY`, and raise `pids_limit` with it.
+
 The Chromium integration suite runs automatically when Playwright's Chromium is installed, skips
 otherwise, and runs in CI's e2e job after Chromium installation:
 

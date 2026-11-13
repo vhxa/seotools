@@ -76,20 +76,21 @@ export function isolationProbeOrigins(options: {
   return [...new Set(origins)]
 }
 
-/** The first probe that did not fail with the dead-proxy error, if any. */
+/**
+ * A probe that did not fail with the dead-proxy error, if any: an answer first, then another net
+ * error, then a missing outcome (the most telling detail; every one of them is a refusal).
+ */
 export function firstUnproven(
   outcomes: ReadonlyMap<string, ProbeOutcome | undefined>,
 ): { url: string; reason: string; answered: boolean } | undefined {
-  for (const [url, outcome] of [...outcomes].sort(([a], [b]) => a.localeCompare(b, 'en'))) {
-    if (outcome && 'error' in outcome && outcome.error === DEAD_PROXY_ERROR) continue
-    if (outcome && 'answered' in outcome) return { url, reason: 'answered', answered: true }
-    return {
-      url,
-      reason: !outcome || 'timeout' in outcome ? 'no outcome in time' : outcome.error,
-      answered: false,
-    }
-  }
-  return undefined
+  const sorted = [...outcomes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  const answered = sorted.find(([, outcome]) => outcome && 'answered' in outcome)
+  if (answered) return { url: answered[0], reason: 'answered', answered: true }
+  for (const [url, outcome] of sorted)
+    if (outcome && 'error' in outcome && outcome.error !== DEAD_PROXY_ERROR)
+      return { url, reason: outcome.error, answered: false }
+  const missing = sorted.find(([, outcome]) => !outcome || 'timeout' in outcome)
+  return missing ? { url: missing[0], reason: 'no outcome in time', answered: false } : undefined
 }
 
 const netError = (text: string) => /net::ERR_[A-Z0-9_]+/.exec(text)?.[0] ?? text.slice(0, 80)
@@ -176,10 +177,13 @@ function watchProbes(cdp: CDPSession, urls: Map<string, ProbeOutcome | undefined
   )
 }
 
-async function settled(urls: ReadonlyMap<string, ProbeOutcome | undefined>) {
+async function settled(
+  urls: ReadonlyMap<string, ProbeOutcome | undefined>,
+  keys: readonly string[] = [...urls.keys()],
+) {
   // CDP events can trail the page's own promise settlement slightly.
   const deadline = Date.now() + 500
-  while ([...urls.values()].some((outcome) => !outcome) && Date.now() < deadline)
+  while (keys.some((url) => !urls.get(url)) && Date.now() < deadline)
     await new Promise((resolve) => setTimeout(resolve, 10))
 }
 
@@ -250,7 +254,7 @@ async function probeWebSockets(open: () => Promise<ProbePage>, origins: readonly
         batch,
         RENDER_LIMITS.probeTimeoutMs,
       )
-      await settled(new Map(batch.map((url) => [url, urls.get(url)])))
+      await settled(urls, batch)
     } finally {
       await probe.close()
     }
