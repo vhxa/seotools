@@ -21,7 +21,7 @@ import {
   type ParsedRobots,
   type ResolvedConditions,
 } from '@seotools/core'
-import type { Crawl, CrawlUrl, CrawlUrlView, Database } from '@seotools/db'
+import type { Crawl, CrawlUrl, CrawlUrlView, CrawlUrlRender, Database } from '@seotools/db'
 import { parseRobotsSitemaps } from './extract'
 import { findNearDuplicates } from './fingerprint'
 import { emptyPageFacts } from './page-facts'
@@ -100,6 +100,8 @@ export function unavailableAfter(directives: ReadonlySet<string>): Date | null {
 }
 
 export interface AuditedUrl {
+  /** The URL's render observation; never substituted for its served facts. */
+  render?: CrawlUrlRender
   vitals?: VitalMetrics
   url: CrawlUrl
   internal: boolean
@@ -547,6 +549,7 @@ export async function loadSite(
     for (const url of internal) {
       if (!url.contentPage) continue
       const render = renders.get(url.url.urlHash)
+      url.render = render
       // A missing truncation flag in an older render is missing evidence, never proof of a whole page.
       const failedOrMissing = render?.status !== 'rendered' || render.truncated === null
       const truncated = url.url.data?.truncated === true || render?.truncated === true

@@ -351,6 +351,27 @@ export function assessPair(base: CrawlLike, target: CrawlLike): PairAssessment {
  * treated as such: that is the safe default for an issue added later.
  */
 const PAGE_LOCAL_LIST = [
+  'text-only-after-rendering',
+  'title-only-after-rendering',
+  'title-changed-by-javascript',
+  'description-only-after-rendering',
+  'description-changed-by-javascript',
+  'h1-only-after-rendering',
+  'h1-changed-by-javascript',
+  'canonical-only-after-rendering',
+  'canonical-changed-by-javascript',
+  'noindex-only-in-html',
+  'noindex-added-by-javascript',
+  'nofollow-only-in-html',
+  'nofollow-added-by-javascript',
+  'structured-data-only-after-rendering',
+  'hreflang-only-after-rendering',
+  'social-tags-only-after-rendering',
+  'javascript-redirect',
+  'render-resources-blocked-by-robots',
+  'render-failed',
+  'render-script-errors',
+
   'html-entities-as-text',
   'few-html-links',
   'no-response',

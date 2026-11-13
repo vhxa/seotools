@@ -31,6 +31,27 @@ export type IssueEvidenceKind = IssueEvidence['kind']
  * makes up examples. Issues not listed have none.
  */
 export const ISSUE_EVIDENCE = {
+  'text-only-after-rendering': 'values',
+  'title-only-after-rendering': 'values',
+  'title-changed-by-javascript': 'values',
+  'description-only-after-rendering': 'values',
+  'description-changed-by-javascript': 'values',
+  'h1-only-after-rendering': 'values',
+  'h1-changed-by-javascript': 'values',
+  'canonical-only-after-rendering': 'values',
+  'canonical-changed-by-javascript': 'values',
+  'noindex-only-in-html': 'values',
+  'noindex-added-by-javascript': 'values',
+  'nofollow-only-in-html': 'values',
+  'nofollow-added-by-javascript': 'values',
+  'structured-data-only-after-rendering': 'values',
+  'hreflang-only-after-rendering': 'values',
+  'social-tags-only-after-rendering': 'values',
+  'javascript-redirect': 'values',
+  'render-resources-blocked-by-robots': 'values',
+  'render-failed': 'values',
+  'render-script-errors': 'values',
+
   'linked-only-by-javascript': 'related-urls',
   'links-only-after-rendering': 'related-urls',
   'html-entities-as-text': 'values',
@@ -176,7 +197,7 @@ export function parseIssueEvidence(value: unknown): IssueEvidence | null {
       const list = items(
         envelope.data.items,
         z.object({
-          field: z.enum(['title', 'description', 'h1', 'internal-links']),
+          field: z.enum(['title', 'description', 'h1', 'internal-links', 'html', 'rendered']),
           text,
         }),
       )

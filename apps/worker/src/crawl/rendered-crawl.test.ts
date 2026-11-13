@@ -379,10 +379,18 @@ it.each(['failed', 'truncated', 'unsettled', 'served-truncated', 'legacy'] as co
           reasons: ['unobserved'],
         })
         expect(
-          [...comparison.byIssue].filter(([, counts]) => counts.resolved > 0 || counts.fresh > 0),
+          [...comparison.byIssue].filter(
+            ([id, counts]) => id !== 'render-failed' && (counts.resolved > 0 || counts.fresh > 0),
+          ),
         ).toEqual([])
-        expect(comparison.findings).toMatchObject({ fresh: 0, back: 0, resolved: 0 })
-        expect(comparison.important).toEqual([])
+        expect(comparison.findings).toMatchObject({
+          fresh: cause === 'failed' && partial ? 1 : 0,
+          back: 0,
+          resolved: cause === 'failed' && !partial ? 1 : 0,
+        })
+        expect(comparison.important.every((finding) => finding.issue === 'render-failed')).toBe(
+          true,
+        )
         const messages: string[] = []
         await runCrawlAlerts({
           db,
@@ -399,7 +407,9 @@ it.each(['failed', 'truncated', 'unsettled', 'served-truncated', 'legacy'] as co
           }),
         })
         expect(messages).toHaveLength(1)
-        expect(messages[0]).toContain('Findings: 0 new, 0 back, 0 resolved,')
+        expect(messages[0]).toContain(
+          `Findings: ${cause === 'failed' && partial ? 1 : 0} new, 0 back, ${cause === 'failed' && !partial ? 1 : 0} resolved,`,
+        )
       }
     }
   },
@@ -530,5 +540,84 @@ it.each([false, true])(
     }
     expect(findings[1]).toEqual(findings[0])
     expect(findings[2]).toEqual(findings[0])
+  },
+)
+
+it.each(['failed', 'truncated', 'unsettled', 'legacy-values'] as const)(
+  'keeps difference comparisons unverified through a %s render in both directions',
+  async (cause) => {
+    const { RENDER_DIFFERENCE_IDS } = await import('./render-differences')
+    const snapshots = []
+    for (let iteration = 0; iteration < 3; iteration++) {
+      const partial = iteration === 1
+      const crawl = await start()
+      await runCrawl(
+        crawl.id,
+        options({
+          renderService: {
+            check: ready,
+            render: async (input) => {
+              const result = renderedOutcome(input, '<title>Rendered title</title>')
+              // Replace rather than add a second title: the extractor keeps the first one.
+              result.html = result.html.replace(
+                /<title>.*?<\/title>/,
+                '<title>Changed rendered title</title>',
+              )
+              if (partial && input.url === SITE + '/') {
+                if (cause === 'failed')
+                  return {
+                    ...result,
+                    status: 'failed',
+                    failure: { code: 'serialization', message: 'failed' },
+                  }
+                if (cause === 'truncated') result.truncated = true
+                if (cause === 'unsettled') result.settled = false
+              }
+              return result
+            },
+          },
+        }),
+      )
+      if (partial && cause === 'legacy-values') {
+        const url = (await db.crawls.getUrl(crawl.id, hash('/')))!
+        const row = (await db.crawls.renders(crawl.id)).find((row) => row.urlHash === hash('/'))!
+        delete row.data.page
+        await db.crawls.recordResult({
+          crawlId: crawl.id,
+          urlHash: hash('/'),
+          result: url,
+          render: row,
+        })
+        await analyseCrawl(db, crawl.id, await currentAuditConfig(db, domainId))
+      }
+      const stored = (await db.crawls.get(crawl.id))!
+      snapshots.push(stored)
+      const home = await issues(crawl.id, '/')
+      if (partial) {
+        expect(home.filter((id) => RENDER_DIFFERENCE_IDS.some((issue) => issue === id))).toEqual(
+          cause === 'failed' ? ['render-failed'] : [],
+        )
+        expect(stored.auditSnapshot?.unobserved).toEqual(
+          expect.arrayContaining(RENDER_DIFFERENCE_IDS.filter((id) => id !== 'render-failed')),
+        )
+      } else expect(home).toContain('title-changed-by-javascript')
+      expect(stored.auditSnapshot?.unobserved).not.toContain('render-failed')
+      if (iteration > 0) {
+        const comparison = await compareWithPrevious({ db, target: stored, exact: true })
+        expect(comparison.byIssue.get('title-changed-by-javascript')?.unverified).toBeGreaterThan(0)
+        expect(comparison.byIssue.get('title-changed-by-javascript')).toMatchObject({
+          fresh: 0,
+          back: 0,
+          resolved: 0,
+
+          reasons: ['unobserved'],
+        })
+      }
+    }
+    // With the same rendered input but HTML mode, every JavaScript issue is still unknown.
+    const html = snapshots[0]!
+    await analyseCrawl(db, html.id, { ...html.auditSnapshot!, rendering: undefined })
+    // The persisted crawl mode, not a caller's supplied snapshot, decides what was observed.
+    expect((await db.crawls.get(html.id))?.auditSnapshot?.rendering).toBe('rendered')
   },
 )

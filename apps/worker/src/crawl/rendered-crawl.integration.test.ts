@@ -11,6 +11,12 @@ import { createRenderService, type RenderService } from '../render/service'
 import { runCrawl } from './engine'
 import { fakeSite } from './fake-site'
 import { htmlBaseline } from './html-baseline'
+import {
+  DIFFERENCE_FIXTURES,
+  differenceDocuments,
+  type DifferenceId,
+} from './render-difference-fixtures'
+import { renderedOutcome } from './render-fixture'
 import { SITE, page, xml, sitemapOf } from './test-site'
 
 const shellDirectory = chromium
@@ -149,10 +155,42 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
     )
     it('three real JavaScript-menu crawls have identical findings, accepted rows, counts and snapshot', async () => {
       let previous: unknown
+      const differencePages: Record<string, ReturnType<typeof page>> = {}
+      const ids = Object.keys(DIFFERENCE_FIXTURES) as DifferenceId[]
+      for (const id of ids) {
+        const path = `/differences/${id}`
+        const { before, after } = differenceDocuments(id, path)
+        differencePages[`${SITE}${path}`] = {
+          ...page(path),
+          body: Buffer.from(
+            before.replace('</head>', `<script src="${path}.js" defer></script></head>`),
+          ),
+        }
+        let script = `const parsed=new DOMParser().parseFromString(${JSON.stringify(after)},'text/html');document.head.replaceChildren(...parsed.head.childNodes);document.body.replaceChildren(...parsed.body.childNodes);`
+        if (id === 'javascript-redirect') script = `location.href='/redirect-target'`
+        if (id === 'render-script-errors')
+          script = `throw new Error('deterministic script failure')`
+        if (id === 'render-resources-blocked-by-robots')
+          script = `const s=document.createElement('script');s.src='/blocked.js';document.head.append(s)`
+        differencePages[`${SITE}${path}.js`] = {
+          statusCode: 200,
+          headers: { 'content-type': 'application/javascript' },
+          body: Buffer.from(script),
+        }
+      }
       for (let iteration = 0; iteration < 3; iteration++) {
         const site = fakeSite(
           {
-            [`${SITE}/`]: page('/', { links: '', head: '<script src="/menu.js" defer></script>' }),
+            ...differencePages,
+            [`${SITE}/robots.txt`]: {
+              statusCode: 200,
+              headers: { 'content-type': 'text/plain' },
+              body: Buffer.from('User-agent: *\nDisallow: /blocked.js'),
+            },
+            [`${SITE}/`]: page('/', {
+              links: ids.map((id) => `<a href="/differences/${id}">${id}</a>`).join(''),
+              head: '<script src="/menu.js" defer></script>',
+            }),
             [`${SITE}/menu.js`]: {
               statusCode: 200,
               headers: { 'content-type': 'application/javascript' },
@@ -170,20 +208,41 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
           db,
           log: createLogger('test', 'silent'),
           createFetcher: site.createFetcher,
-          renderService: service,
+          renderService: {
+            check: () => service.check(),
+            render: async (input) =>
+              input.url.endsWith('/render-failed')
+                ? {
+                    ...renderedOutcome(input),
+                    status: 'failed',
+                    failure: { code: 'serialization', message: 'deterministic failure' },
+                  }
+                : service.render(input),
+          },
           signal: new AbortController().signal,
           browserMaxWaitMs: 0,
         })
         expect((await db.crawls.get(crawl.id))?.status).toBe('completed')
         const menu = await db.crawls.issuesOf(crawl.id, [crawlUrlHash(`${SITE}/menu`)])
-        expect(menu.map((row) => row.issue)).toContain('linked-only-by-javascript')
+        // Failed/unsettled observations make the site-wide link absence unknown.
+        expect(menu.map((row) => row.issue)).not.toContain('linked-only-by-javascript')
         expect(menu.map((row) => row.issue)).not.toContain('orphan-in-sitemap')
         const home = await db.crawls.issuesOf(crawl.id, [crawlUrlHash(`${SITE}/`)])
-        expect(home.map((row) => row.issue)).toContain('links-only-after-rendering')
+        expect(home.map((row) => row.issue)).not.toContain('links-only-after-rendering')
+        for (const id of ids) {
+          const rows = await db.crawls.issuesOf(crawl.id, [
+            crawlUrlHash(`${SITE}/differences/${id}`),
+          ])
+          const reported = rows.map((row) => row.issue)
+          if (id === 'javascript-redirect') {
+            // The service aborts navigation, retaining an unsettled observation, not a whole page.
+            expect(reported).not.toContain(id)
+          } else expect(reported).toContain(id)
+        }
         const result = await htmlBaseline(db, crawl.id)
         if (previous) expect(JSON.stringify(result)).toBe(JSON.stringify(previous))
         previous = result
       }
-    }, 120000)
+    }, 300000)
   },
 )

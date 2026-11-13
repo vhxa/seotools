@@ -995,7 +995,27 @@
       "html-entities-as-text": "Text containing character references",
       "few-html-links": "Internal links found in the HTML",
       "linked-only-by-javascript": "Pages linking after rendering",
-      "links-only-after-rendering": "Targets found after rendering"
+      "links-only-after-rendering": "Targets found after rendering",
+      "text-only-after-rendering": "HTML and render observation",
+      "title-only-after-rendering": "HTML and render observation",
+      "title-changed-by-javascript": "HTML and render observation",
+      "description-only-after-rendering": "HTML and render observation",
+      "description-changed-by-javascript": "HTML and render observation",
+      "h1-only-after-rendering": "HTML and render observation",
+      "h1-changed-by-javascript": "HTML and render observation",
+      "canonical-only-after-rendering": "HTML and render observation",
+      "canonical-changed-by-javascript": "HTML and render observation",
+      "noindex-only-in-html": "HTML and render observation",
+      "noindex-added-by-javascript": "HTML and render observation",
+      "nofollow-only-in-html": "HTML and render observation",
+      "nofollow-added-by-javascript": "HTML and render observation",
+      "structured-data-only-after-rendering": "HTML and render observation",
+      "hreflang-only-after-rendering": "HTML and render observation",
+      "social-tags-only-after-rendering": "HTML and render observation",
+      "javascript-redirect": "HTML and render observation",
+      "render-resources-blocked-by-robots": "HTML and render observation",
+      "render-failed": "HTML and render observation",
+      "render-script-errors": "HTML and render observation"
     },
     "images": {
       "noSource": "No address (src is missing)",
@@ -1025,7 +1045,9 @@
       "title": "Title",
       "description": "Meta description",
       "h1": "H1",
-      "internal-links": "Internal links"
+      "internal-links": "Internal links",
+      "html": "Served HTML",
+      "rendered": "Rendered page"
     }
   },
   "PageIssues": {
@@ -1592,6 +1614,86 @@
     "links-only-after-rendering": {
       "name": "Links found only after rendering",
       "description": "This page has internal anchor links after rendering that its served HTML does not contain."
+    },
+    "text-only-after-rendering": {
+      "name": "Text appears after rendering",
+      "description": "The rendered page has at least 50 more words than the served HTML, meeting the configured share of rendered words. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "title-only-after-rendering": {
+      "name": "Title appears after rendering",
+      "description": "The HTML has no non-empty title, but the rendered page does. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "title-changed-by-javascript": {
+      "name": "JavaScript changes the title",
+      "description": "The HTML and rendered titles differ after normalising whitespace and case. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "description-only-after-rendering": {
+      "name": "Description appears after rendering",
+      "description": "The HTML has no non-empty meta description, but the rendered page does. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "description-changed-by-javascript": {
+      "name": "JavaScript changes the description",
+      "description": "The HTML and rendered meta descriptions differ after normalising whitespace and case. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "h1-only-after-rendering": {
+      "name": "H1 appears after rendering",
+      "description": "The HTML has no non-empty first H1, but the rendered page does. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "h1-changed-by-javascript": {
+      "name": "JavaScript changes the H1",
+      "description": "The first H1 differs between HTML and the rendered page after normalising whitespace and case. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "canonical-only-after-rendering": {
+      "name": "Canonical appears after rendering",
+      "description": "No HTML canonical is declared before rendering; the rendered page declares one resolved target. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "canonical-changed-by-javascript": {
+      "name": "JavaScript changes the canonical",
+      "description": "The HTML and rendered canonical declarations resolve to different URL identities. Ambiguous targets are not judged. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "noindex-only-in-html": {
+      "name": "noindex only in the HTML",
+      "description": "The HTML meta directives say noindex and the rendered meta directives do not. Search engines may never render HTML that asks not to be indexed. Response headers are not compared here. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "noindex-added-by-javascript": {
+      "name": "JavaScript adds noindex",
+      "description": "Only the rendered meta directives say noindex: the rendered page asks not to be indexed. This finding does not change the recorded indexability, which still reads the served HTML and headers. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "nofollow-only-in-html": {
+      "name": "nofollow only in the HTML",
+      "description": "The HTML meta directives say nofollow and the rendered ones do not. Response headers are not compared here. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "nofollow-added-by-javascript": {
+      "name": "JavaScript adds nofollow",
+      "description": "Only the rendered meta directives ask not to follow links. Response headers are not compared here. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "structured-data-only-after-rendering": {
+      "name": "Structured data appears after rendering",
+      "description": "The HTML has no structured data items, while the rendered page has some. Their presence does not establish validity. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "hreflang-only-after-rendering": {
+      "name": "hreflang appears after rendering",
+      "description": "The HTML declares no hreflang entries and the rendered page declares some. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "social-tags-only-after-rendering": {
+      "name": "Social tags appear after rendering",
+      "description": "The HTML has neither an Open Graph title nor image; both appear after rendering. Social preview crawlers that read only HTML may miss them. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "javascript-redirect": {
+      "name": "JavaScript changes the page URL",
+      "description": "The browser ended at a different URL identity from the served page. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "render-resources-blocked-by-robots": {
+      "name": "Render resources blocked by robots.txt",
+      "description": "At least one resource of the site requested during rendering was blocked by the site’s robots.txt. This does not prove that the page cannot be rendered elsewhere. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "render-failed": {
+      "name": "Rendering failed",
+      "description": "Rendering failed after the available retry handling. Other JavaScript differences are unknown for this page; failure here does not establish how another crawler would render it. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+    },
+    "render-script-errors": {
+      "name": "Uncaught script errors during rendering",
+      "description": "The browser recorded uncaught script errors in a complete, settled render. This does not establish that content is missing. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
     }
   },
   "LinkKinds": {
@@ -2502,6 +2604,10 @@
         "htmlLinksMin": {
           "label": "Fewest internal links in the HTML",
           "unit": "Internal links · 0 disables this check"
+        },
+        "renderedTextSharePct": {
+          "label": "Text added after rendering",
+          "unit": "% of rendered words · at least 50 added words · 0 disables"
         }
       }
     },

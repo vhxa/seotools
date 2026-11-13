@@ -22,6 +22,11 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- Rendered crawls report text, titles, descriptions, H1s, canonical URLs, meta robots directives,
+  structured data, hreflang and social tags added or changed by JavaScript, along with render
+  redirects, robots-blocked resources, failures and uncaught script errors. Only complete, settled
+  observations establish differences; the text share threshold is configurable per domain.
+
 - Rendered crawls run JavaScript on each internal HTML page answering 200, follow links found only
   after rendering, and report pages linked only by JavaScript and pages whose internal links appear
   after rendering. Per-domain settings control the mode, wait limit and omitted hosts.

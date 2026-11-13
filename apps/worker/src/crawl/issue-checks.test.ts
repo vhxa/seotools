@@ -1,3 +1,10 @@
+import {
+  DIFFERENCE_FIXTURES,
+  differenceDocuments,
+  differenceOutcome,
+  type DifferenceId,
+} from './render-difference-fixtures'
+import { RENDER_DIFFERENCE_IDS } from './render-differences'
 import { renderedOutcome } from './render-fixture'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
@@ -97,6 +104,7 @@ function assertGraphReadersClassified(
 const log = createLogger('test', 'silent')
 interface Scenario {
   rendered?: boolean
+  difference?: DifferenceId
   /** Where the issue should be found: a path, or an absolute URL. */
   at: string
   vitals?: Partial<VitalMetrics>
@@ -178,6 +186,22 @@ const shared = (
    ${card ? '<meta name="twitter:card" content="summary_large_image">' : ''}`
 
 const SCENARIOS: Record<PageIssueId, Scenario> = {
+  ...(Object.fromEntries(
+    Object.keys(DIFFERENCE_FIXTURES).map((id) => [
+      id,
+      {
+        rendered: true,
+        difference: id as DifferenceId,
+        at: '/x',
+        pages: {
+          '/x': {
+            ...page('/x'),
+            body: Buffer.from(differenceDocuments(id as DifferenceId).before),
+          },
+        },
+      },
+    ]),
+  ) as unknown as Record<DifferenceId, Scenario>),
   'linked-only-by-javascript': {
     rendered: true,
     notLinked: ['/x'],
@@ -823,7 +847,12 @@ afterEach(async () => {
   await db.close()
 })
 
-async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = [], rendered = false) {
+async function crawl(
+  site: Record<string, Answer>,
+  rules: NewAuditRule[] = [],
+  rendered = false,
+  difference?: DifferenceId,
+) {
   for (const rule of rules) {
     const saved = await db.audit.saveRule({ domainId, rule })
     if (!saved.ok) throw new Error(`rule not saved: ${saved.error}`)
@@ -844,7 +873,9 @@ async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = [], r
     renderService: {
       check: async () => ({ state: 'ready', checkedAt: new Date().toISOString() }),
       render: async (input) =>
-        renderedOutcome(input, input.url === `${SITE}/` ? '<a href="/x">JS menu</a>' : ''),
+        difference && input.url === `${SITE}/x`
+          ? differenceOutcome(difference, input)
+          : renderedOutcome(input, input.url === `${SITE}/` ? '<a href="/x">JS menu</a>' : ''),
     },
   })
   return started.id
@@ -904,7 +935,12 @@ describe('each issue', () => {
     PAGE_ISSUE_IDS.filter((id) => id !== 'sitemap-too-big' && id !== 'indexed-not-in-sitemap'),
   )('finds %s', async (id) => {
     const scenario = SCENARIOS[id]
-    const crawlId = await crawl(websiteOf(scenario), scenario.rules, scenario.rendered)
+    const crawlId = await crawl(
+      websiteOf(scenario),
+      scenario.rules,
+      scenario.rendered,
+      scenario.difference,
+    )
     if (scenario.vitals) {
       await db.vitals.saveUrl({
         ...emptyVitals(),
@@ -922,14 +958,22 @@ describe('each issue', () => {
     if (id in htmlBeforeRendering) {
       const actual = (await htmlBaseline(db, crawlId)) as { snapshot: { unobserved: string[] } }
       expect(actual.snapshot.unobserved).toEqual(
-        expect.arrayContaining(['linked-only-by-javascript', 'links-only-after-rendering']),
+        expect.arrayContaining([
+          ...RENDER_DIFFERENCE_IDS,
+          'linked-only-by-javascript',
+          'links-only-after-rendering',
+        ]),
       )
       // Decision 4: a crawl with a truncated served page also lists `few-html-links`; none here.
       const truncated = (
         await db.crawls.listUrls({ crawlId, view: 'all', limit: 10000, offset: 0 })
       ).some((url) => url.data?.truncated === true)
       expect(actual.snapshot.unobserved.includes('few-html-links')).toBe(truncated)
-      const added = ['linked-only-by-javascript', 'links-only-after-rendering']
+      const added: string[] = [
+        ...RENDER_DIFFERENCE_IDS,
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ]
       if (truncated) added.push('few-html-links')
       actual.snapshot.unobserved = actual.snapshot.unobserved.filter(
         (issue) => !added.includes(issue),
@@ -1101,6 +1145,7 @@ describe('what a crawl did not look for', () => {
     expect(snapshot?.unobserved).toEqual(
       [
         ...NEW_FACT_ISSUES,
+        ...RENDER_DIFFERENCE_IDS,
         'cls-poor',
         'inp-poor',
         'lcp-poor',
@@ -1114,6 +1159,7 @@ describe('what a crawl did not look for', () => {
     expect((await db.crawls.get(crawlId))?.auditSnapshot?.unobserved).toEqual(
       [
         ...NEW_FACT_ISSUES,
+        ...RENDER_DIFFERENCE_IDS,
         'cls-poor',
         'inp-poor',
         'lcp-poor',
@@ -2099,4 +2145,108 @@ it('reanalyses legacy text and link data without needing newer optional facts', 
   const snapshot = (await db.crawls.get(id))!.auditSnapshot!
   expect(snapshot.unobserved).not.toContain('html-entities-as-text')
   expect(snapshot.unobserved).not.toContain('few-html-links')
+})
+
+describe('HTML/render differences', () => {
+  it.each(Object.keys(DIFFERENCE_FIXTURES) as DifferenceId[])(
+    '%s stays silent for unchanged values, whitespace/case noise and incomplete observations',
+    async (id) => {
+      const crawlId = await crawl(websiteOf(SCENARIOS[id]), [], true, id)
+      const stored = (await db.crawls.get(crawlId))!
+      const site = await loadSite(db, stored, stored.auditSnapshot!)
+      const url = site.get(`${SITE}/x`)!
+      const original = url.render!
+      for (const render of [
+        undefined,
+        { ...original, status: 'failed' as const },
+        { ...original, settled: false },
+        { ...original, truncated: true },
+        { ...original, truncated: null },
+        { ...original, data: { ...original.data, page: undefined } },
+      ]) {
+        url.render = render
+        if (id === 'render-failed') continue
+        expect(CHECKS[id](url, site)).toBe(false)
+      }
+      // Equal facts, with different whitespace/case in every textual value, cannot be a change.
+      const noise = (value: string | null | undefined) =>
+        value ? ` \n ${value.toUpperCase().replaceAll(' ', ' \t ')}  ` : null
+      const same = {
+        ...original,
+        status: 'rendered' as const,
+        settled: true,
+        truncated: false,
+        finalUrl: url.url.url + '#fragment',
+        failure: null,
+        data: {
+          facts: structuredClone(url.facts),
+          page: {
+            title: noise(url.url.title),
+            description: noise(url.url.data?.description),
+            h1: noise(url.url.data?.h1?.[0]),
+            metaRobots: noise(url.url.metaRobots),
+            botRobots: url.url.data?.botRobots ?? {},
+            hreflang: url.url.data?.hreflang ?? [],
+          },
+          requests: { blockedByRobotsCount: 0 },
+          scriptErrors: { count: 0, first: [] },
+        },
+      }
+      url.render = same
+      expect(CHECKS[id](url, site)).toBe(false)
+      // A truncated served response is equally unobservable, even with a complete rendered result.
+      url.render = original
+      url.url.data = { ...url.url.data, truncated: true }
+      if (id !== 'render-failed') expect(CHECKS[id](url, site)).toBe(false)
+      const html = { ...site, config: { ...site.config, rendering: undefined } }
+      expect(CHECKS[id](url, html)).toBe(false)
+    },
+  )
+
+  it('uses the configured text share, its disabling value, and the 50-word floor', async () => {
+    const id = await crawl(
+      websiteOf(SCENARIOS['text-only-after-rendering']),
+      [],
+      true,
+      'text-only-after-rendering',
+    )
+    const stored = (await db.crawls.get(id))!
+    const site = await loadSite(db, stored, stored.auditSnapshot!)
+    const url = site.get(`${SITE}/x`)!
+    const test = (html: number, rendered: number, share: number) => {
+      url.facts!.words = html
+      url.render!.data.facts!.words = rendered
+      site.config = { ...site.config, thresholds: { renderedTextSharePct: share } }
+      return CHECKS['text-only-after-rendering'](url, site)
+    }
+    expect(test(70, 100, 30)).toBe(false) // share alone is insufficient
+    expect(test(350, 500, 30)).not.toBe(false) // exact boundary
+    expect(test(351, 500, 30)).toBe(false)
+    expect(test(350, 500, 31)).toBe(false)
+    expect(test(0, 100, 0)).toBe(false)
+  })
+
+  it('normalises canonical/redirect identity and ignores response-header robots directives', async () => {
+    await db.crawls.saveIgnoredParameters(domainId, ['noise'])
+    const id = await crawl(
+      websiteOf(SCENARIOS['canonical-changed-by-javascript']),
+      [],
+      true,
+      'canonical-changed-by-javascript',
+    )
+    const stored = (await db.crawls.get(id))!
+    const site = await loadSite(db, stored, stored.auditSnapshot!)
+    const url = site.get(`${SITE}/x`)!
+    url.render!.data.facts!.canonicals = [
+      { ...url.facts!.canonicals[0]!, url: `${SITE}/x?noise=1#fragment` },
+    ]
+    url.render!.finalUrl = `${SITE}/x?noise=2#fragment`
+    expect(CHECKS['canonical-changed-by-javascript'](url, site)).toBe(false)
+    expect(CHECKS['javascript-redirect'](url, site)).toBe(false)
+    url.url.xRobotsTag = 'noindex, nofollow'
+    expect(CHECKS['noindex-only-in-html'](url, site)).toBe(false)
+    expect(CHECKS['nofollow-only-in-html'](url, site)).toBe(false)
+    url.render!.data.facts!.canonicals.push({ ...url.facts!.canonicals[0]!, url: `${SITE}/other` })
+    expect(CHECKS['canonical-changed-by-javascript'](url, site)).toBe(false)
+  })
 })

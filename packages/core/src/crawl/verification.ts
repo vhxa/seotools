@@ -45,6 +45,27 @@ const U = 'url'
 const S = 'site'
 
 const SCOPE: Record<PageIssueId, VerificationScope> = {
+  'text-only-after-rendering': S,
+  'title-only-after-rendering': S,
+  'title-changed-by-javascript': S,
+  'description-only-after-rendering': S,
+  'description-changed-by-javascript': S,
+  'h1-only-after-rendering': S,
+  'h1-changed-by-javascript': S,
+  'canonical-only-after-rendering': S,
+  'canonical-changed-by-javascript': S,
+  'noindex-only-in-html': S,
+  'noindex-added-by-javascript': S,
+  'nofollow-only-in-html': S,
+  'nofollow-added-by-javascript': S,
+  'structured-data-only-after-rendering': S,
+  'hreflang-only-after-rendering': S,
+  'social-tags-only-after-rendering': S,
+  'javascript-redirect': S,
+  'render-resources-blocked-by-robots': S,
+  'render-failed': S,
+  'render-script-errors': S,
+
   'linked-only-by-javascript': S,
   'links-only-after-rendering': S,
   'lcp-poor': S,

@@ -355,6 +355,15 @@ export interface CrawlUrlRender {
   failure: string | null
   data: {
     facts: CrawlPageFacts | null
+    /** Absent on older render rows: these extracted values were not retained. */
+    page?: {
+      title: string | null
+      description: string | null
+      h1: string | null
+      metaRobots: string | null
+      botRobots: Record<string, string>
+      hreflang: NonNullable<CrawlPageData['hreflang']>
+    }
     requests: unknown
     scriptErrors: { count: number; first: string[] }
   }

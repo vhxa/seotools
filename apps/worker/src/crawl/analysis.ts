@@ -1,3 +1,4 @@
+import { RENDER_DIFFERENCE_IDS } from './render-differences'
 import {
   EMPTY_AUDIT_SNAPSHOT,
   ISSUE_CATALOG_VERSION,
@@ -165,10 +166,30 @@ export async function analyseCrawl(
   if (site.urls.some((url) => url.internal && url.contentPage && url.url.data?.truncated === true))
     unobserved.push(...TRUNCATION_SKIPPING_ISSUES)
   if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {
-    unobserved.push(...PAGE_ISSUES_IDS_FOR_RENDERING)
+    unobserved.push(
+      ...PAGE_ISSUES_IDS_FOR_RENDERING.filter(
+        (id) => crawl.rendering?.mode !== 'rendered' || id !== 'render-failed',
+      ),
+    )
   }
   if (crawl.rendering?.mode === 'rendered' && site.rendersUnobserved > 0)
     unobserved.push(...RENDERED_GRAPH_ISSUES)
+  if (crawl.rendering?.mode === 'rendered') {
+    for (const url of site.urls) {
+      if (!url.internal || !url.contentPage) continue
+      // Legacy observations lack extracted values; missing optional rendered facts are unknown too.
+      for (const issue of RENDER_DIFFERENCE_IDS) {
+        if (issue === 'render-failed') continue
+        if (
+          !url.render?.data.page ||
+          !url.render.data.facts ||
+          (issue === 'social-tags-only-after-rendering' &&
+            (!url.facts?.social || !url.render.data.facts.social))
+        )
+          unobserved.push(issue)
+      }
+    }
+  }
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,

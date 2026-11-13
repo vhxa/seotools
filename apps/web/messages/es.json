@@ -995,7 +995,27 @@
       "html-entities-as-text": "Texto con referencias de caracteres",
       "few-html-links": "Enlaces internos encontrados en el HTML",
       "linked-only-by-javascript": "Páginas que enlazan tras el renderizado",
-      "links-only-after-rendering": "Destinos encontrados tras el renderizado"
+      "links-only-after-rendering": "Destinos encontrados tras el renderizado",
+      "text-only-after-rendering": "HTML y observación del renderizado",
+      "title-only-after-rendering": "HTML y observación del renderizado",
+      "title-changed-by-javascript": "HTML y observación del renderizado",
+      "description-only-after-rendering": "HTML y observación del renderizado",
+      "description-changed-by-javascript": "HTML y observación del renderizado",
+      "h1-only-after-rendering": "HTML y observación del renderizado",
+      "h1-changed-by-javascript": "HTML y observación del renderizado",
+      "canonical-only-after-rendering": "HTML y observación del renderizado",
+      "canonical-changed-by-javascript": "HTML y observación del renderizado",
+      "noindex-only-in-html": "HTML y observación del renderizado",
+      "noindex-added-by-javascript": "HTML y observación del renderizado",
+      "nofollow-only-in-html": "HTML y observación del renderizado",
+      "nofollow-added-by-javascript": "HTML y observación del renderizado",
+      "structured-data-only-after-rendering": "HTML y observación del renderizado",
+      "hreflang-only-after-rendering": "HTML y observación del renderizado",
+      "social-tags-only-after-rendering": "HTML y observación del renderizado",
+      "javascript-redirect": "HTML y observación del renderizado",
+      "render-resources-blocked-by-robots": "HTML y observación del renderizado",
+      "render-failed": "HTML y observación del renderizado",
+      "render-script-errors": "HTML y observación del renderizado"
     },
     "images": {
       "noSource": "Sin dirección (falta src)",
@@ -1025,7 +1045,9 @@
       "title": "Título",
       "description": "Metadescripción",
       "h1": "H1",
-      "internal-links": "Enlaces internos"
+      "internal-links": "Enlaces internos",
+      "html": "HTML recibido",
+      "rendered": "Página renderizada"
     }
   },
   "PageIssues": {
@@ -1592,6 +1614,86 @@
     "links-only-after-rendering": {
       "name": "Enlaces que aparecen al ejecutar JavaScript",
       "description": "Esta página tiene enlaces internos después del renderizado que no figuran en el HTML recibido."
+    },
+    "text-only-after-rendering": {
+      "name": "Texto que aparece tras renderizar",
+      "description": "La página renderizada tiene al menos 50 palabras más que el HTML recibido y alcanza el porcentaje configurado del texto renderizado. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "title-only-after-rendering": {
+      "name": "Título que aparece tras renderizar",
+      "description": "El HTML no tiene un título con contenido, pero la página renderizada sí. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "title-changed-by-javascript": {
+      "name": "JavaScript cambia el título",
+      "description": "El título del HTML difiere del renderizado tras normalizar espacios y mayúsculas. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "description-only-after-rendering": {
+      "name": "Descripción que aparece tras renderizar",
+      "description": "El HTML no tiene una metadescripción con contenido, pero la página renderizada sí. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "description-changed-by-javascript": {
+      "name": "JavaScript cambia la descripción",
+      "description": "La metadescripción del HTML difiere de la renderizada tras normalizar espacios y mayúsculas. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "h1-only-after-rendering": {
+      "name": "H1 que aparece tras renderizar",
+      "description": "El HTML no tiene un primer H1 con contenido, pero la página renderizada sí. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "h1-changed-by-javascript": {
+      "name": "JavaScript cambia el H1",
+      "description": "El primer H1 del HTML difiere del renderizado tras normalizar espacios y mayúsculas. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "canonical-only-after-rendering": {
+      "name": "Canonical que aparece tras renderizar",
+      "description": "El HTML no declara una canonical; la página renderizada sí declara un destino resuelto. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "canonical-changed-by-javascript": {
+      "name": "JavaScript cambia la canonical",
+      "description": "Las canonical del HTML y de la página renderizada apuntan a URL distintas, teniendo en cuenta su identidad. No se evalúan destinos ambiguos. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "noindex-only-in-html": {
+      "name": "noindex solo en el HTML",
+      "description": "Las directivas meta del HTML indican noindex y las renderizadas no. Es posible que los buscadores no lleguen a renderizar un HTML que pide no indexarse. Esta comprobación no compara las cabeceras HTTP. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "noindex-added-by-javascript": {
+      "name": "JavaScript añade noindex",
+      "description": "Solo las directivas meta renderizadas indican noindex: la página renderizada pide no indexarse. Este hallazgo no cambia la indexabilidad registrada, que sigue basándose en el HTML y las cabeceras recibidos. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "nofollow-only-in-html": {
+      "name": "nofollow solo en el HTML",
+      "description": "Las directivas meta del HTML indican nofollow y las renderizadas no. Esta comprobación no compara las cabeceras HTTP. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "nofollow-added-by-javascript": {
+      "name": "JavaScript añade nofollow",
+      "description": "Solo las directivas meta renderizadas piden no seguir los enlaces. Esta comprobación no compara las cabeceras HTTP. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "structured-data-only-after-rendering": {
+      "name": "Datos estructurados que aparecen tras renderizar",
+      "description": "El HTML no contiene elementos de datos estructurados y la página renderizada sí. Su presencia no garantiza que sean válidos. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "hreflang-only-after-rendering": {
+      "name": "hreflang que aparece tras renderizar",
+      "description": "El HTML no declara ninguna entrada hreflang y la página renderizada sí. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "social-tags-only-after-rendering": {
+      "name": "Etiquetas sociales que aparecen tras renderizar",
+      "description": "El HTML no tiene ni título ni imagen de Open Graph; ambos aparecen tras renderizar. Los rastreadores de vistas previas que solo leen HTML pueden no encontrarlos. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "javascript-redirect": {
+      "name": "JavaScript cambia la URL de la página",
+      "description": "El navegador terminó en una URL distinta de la página recibida, teniendo en cuenta su identidad. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "render-resources-blocked-by-robots": {
+      "name": "Recursos de renderizado bloqueados por robots.txt",
+      "description": "El robots.txt del sitio bloqueó al menos un recurso del propio sitio solicitado durante el renderizado. Esto no demuestra que la página no pueda renderizarse en otro entorno. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "render-failed": {
+      "name": "Fallo de renderizado",
+      "description": "El renderizado falló tras gestionar los reintentos disponibles. Las demás diferencias de JavaScript de esta página son desconocidas; este fallo no demuestra cómo la renderizaría otro rastreador. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+    },
+    "render-script-errors": {
+      "name": "Errores de JavaScript no capturados al renderizar",
+      "description": "El navegador registró errores de JavaScript no capturados en un renderizado completo y estabilizado. Esto no demuestra que falte contenido. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
     }
   },
   "LinkKinds": {
@@ -2502,6 +2604,10 @@
         "htmlLinksMin": {
           "label": "Mínimo de enlaces internos en el HTML",
           "unit": "Enlaces internos · 0 desactiva esta comprobación"
+        },
+        "renderedTextSharePct": {
+          "label": "Texto añadido al renderizar",
+          "unit": "% del texto renderizado · al menos 50 palabras añadidas · 0 desactiva"
         }
       }
     },
