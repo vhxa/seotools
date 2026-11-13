@@ -94,6 +94,13 @@ Permissions and downloads are denied; dialogs dismissed; popups and worker targe
 scrolling or other simulated interaction. Open shadow roots are included in the DOM snapshot.
 Client redirects record the target and stop; they never audit the target's content here.
 
+Determinism means two renders of the same served document with the same resources give the
+same outcome (excluding duration), except output depending on the real clock, `crypto` randomness
+or answers that change between requests. `Math.random()` uses a PRNG seeded from the page URL,
+installed before document scripts in every frame, including cross-site out-of-process frames.
+`Date.now()` remains real so pages can display dates. Fresh contexts and sorted diagnostics
+complement that contract; they cannot make a changing API answer deterministic.
+
 The default wait is five seconds (at most thirty). A loaded page with no worker request in flight
 for 500 ms is settled; reaching the wait limit gives a rendered, unsettled snapshot. Failure to
 load has an additional 25-second hard cap; crashes/disconnections are retried only once.

@@ -1,3 +1,4 @@
+import type { Socket, AddressInfo } from 'node:net'
 import { Resolver } from 'node:dns/promises'
 import { createSocket } from 'node:dgram'
 import { createServer } from 'node:http'
@@ -31,23 +32,26 @@ it('cancels a never-answering DNS resolver within the connection deadline', asyn
 })
 
 it.each(['discovery', 'handshake'])('cancels never-answering %s sockets', async (stage) => {
-  const sockets = new Set<import('node:net').Socket>()
+  const sockets = new Set<Socket>()
   const server = createServer((_request, response) => {
     if (stage === 'handshake')
       response.end(
         JSON.stringify({
-          webSocketDebuggerUrl: `ws://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}/devtools`,
+          webSocketDebuggerUrl: `ws://127.0.0.1:${(server.address() as AddressInfo).port}/devtools`,
         }),
       )
   })
-  server.on('upgrade', (_request, socket) => { socket.resume(); socket.on('end', () => socket.end()) })
+  server.on('upgrade', (_request, socket) => {
+    socket.resume()
+    socket.on('end', () => socket.end())
+  })
   server.on('connection', (socket) => {
     sockets.add(socket)
     socket.on('close', () => sockets.delete(socket))
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   try {
-    const address = server.address() as import('node:net').AddressInfo
+    const address = server.address() as AddressInfo
     const started = Date.now()
     await expect(
       connectBrowser(`http://127.0.0.1:${address.port}`, { timeoutMs: 100 }),

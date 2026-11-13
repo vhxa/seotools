@@ -1,6 +1,7 @@
 import { isInternalUrl, renderRequestDecision } from '@seotools/core'
 import type { Browser, BrowserContext, HTTPRequest } from 'puppeteer-core'
 import { FetchError } from '../crawl/fetcher'
+import { seedPageRandom } from './determinism'
 import { renderRequestHeaders, renderResponseHeaders } from './headers'
 import { addSample, oneLine, RENDER_LIMITS } from './limits'
 import { RenderInterruptedError, type RenderInput, type RenderOutcome } from './types'
@@ -69,6 +70,7 @@ export async function renderPage(
         const session = await target.createCDPSession()
         try {
           const { targetInfo } = await session.send('Target.getTargetInfo')
+          if (targetInfo.type === 'iframe') return
           await cdp.send('Target.closeTarget', { targetId: targetInfo.targetId })
         } finally {
           await session.detach().catch(() => {})
@@ -83,6 +85,7 @@ export async function renderPage(
       deviceScaleFactor: 1,
     })
     await page.setUserAgent({ userAgent: input.userAgent })
+    await page.evaluateOnNewDocument(seedPageRandom, input.url)
     await page.setBypassServiceWorker(true)
     await page.setCacheEnabled(false)
     // Dedicated workers are page events and cannot be closed with Target.closeTarget.

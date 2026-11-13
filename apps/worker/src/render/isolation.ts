@@ -1,4 +1,4 @@
-import { createServer } from 'node:net'
+import { createServer, type Socket } from 'node:net'
 import { createSocket } from 'node:dgram'
 import type { Browser } from 'puppeteer-core'
 import type { RenderStatus } from '@seotools/core'
@@ -25,7 +25,7 @@ export async function checkIsolation(
   const major = Number(/(?:Chrome|Chromium)\/(\d+)/.exec(version)?.[1])
   if (!major || major < MIN_CHROME_MAJOR) return { state: 'too-old', version, checkedAt }
   let received = false
-  const sockets = new Set<import('node:net').Socket>()
+  const sockets = new Set<Socket>()
   const tcp = createServer((socket) => {
     sockets.add(socket)
     socket.on('close', () => sockets.delete(socket))
@@ -62,7 +62,10 @@ export async function checkIsolation(
     await page.setBypassCSP(true)
     const cdp = await page.createCDPSession()
     await cdp.send('Network.enable')
-    await cdp.send('Browser.grantPermissions', { browserContextId: context.id, permissions: ['localNetwork', 'loopbackNetwork', 'localNetworkAccess'] })
+    await cdp.send('Browser.grantPermissions', {
+      browserContextId: context.id,
+      permissions: ['localNetwork', 'loopbackNetwork', 'localNetworkAccess'],
+    })
     const failures: string[] = []
     const waitFailure = async () => {
       const deadline = Date.now() + RENDER_LIMITS.probeTimeoutMs
@@ -78,7 +81,9 @@ export async function checkIsolation(
     const literal = (ip: string) => (ip.includes(':') ? `[${ip}]` : ip)
     const locals = [...new Set([localAddress, '127.0.0.1'])]
     // A data document supplies a document/loader for Network failure events.
-    await page.goto('http://seotools-isolation.invalid', { timeout: RENDER_LIMITS.probeTimeoutMs }).catch(() => {})
+    await page
+      .goto('http://seotools-isolation.invalid', { timeout: RENDER_LIMITS.probeTimeoutMs })
+      .catch(() => {})
     failures.length = 0
     const urls = [
       ...locals.map((ip) => `http://${literal(ip)}:${address.port}/canary`),

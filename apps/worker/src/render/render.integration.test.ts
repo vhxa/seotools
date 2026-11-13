@@ -27,6 +27,10 @@ const executable = existsSync(shellDirectory)
 const executablePath = typeof executable === 'string' ? join(shellDirectory, executable) : ''
 const available = !!executablePath && existsSync(executablePath)
 const site: Record<string, Answer> = {
+  'http://frames.other.test/random': {
+    headers: { 'content-type': 'text/html' },
+    body: Buffer.from(`<script>parent.postMessage({ random: Math.random() },'*')</script>`),
+  },
   'http://site.test/nav.js': {
     headers: { 'content-type': 'application/javascript' },
     body: Buffer.from(
@@ -86,6 +90,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       args: [
         '--remote-debugging-port=0',
         '--no-sandbox',
+        '--site-per-process',
         '--proxy-server=http://127.0.0.1:9',
         '--proxy-bypass-list=<-loopback>',
         '--host-resolver-rules=MAP * ~NOTFOUND',
@@ -393,6 +398,51 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(Buffer.byteLength(result.html)).toBeLessThanOrEqual(RENDER_LIMITS.domBytes)
     expect(result.html).toContain('<main>é')
   }, 15_000)
+  it('seeds Math.random at document start in the main frame and cross-site OOPIF', async () => {
+    let oopifs = 0
+    const observe = async (target: Target) => {
+      const session = await target.createCDPSession().catch(() => undefined)
+      if (!session) return
+      try {
+        const { targetInfo } = await session.send('Target.getTargetInfo')
+        if (targetInfo.type === 'iframe') oopifs++
+      } finally {
+        await session.detach().catch(() => {})
+      }
+    }
+    browser.on('targetcreated', observe)
+    const body = `<main></main><script>
+      const first = Math.random();
+      document.querySelector('main').dataset.random = first;
+      addEventListener('message', event => { document.querySelector('main').dataset.frame = event.data.random });
+    </script><iframe src="http://frames.other.test/random"></iframe>`
+    try {
+      const first = await render('head', { document: baseDocument(body) })
+      const second = await render('head', { document: baseDocument(body) })
+      expect(first.html).toBe(second.html)
+      const mainRandom = /data-random="([^"]+)"/.exec(first.html)?.[1]
+      expect(mainRandom).toBeDefined()
+      expect(first.html).toContain(`data-frame="${mainRandom}"`)
+      expect(oopifs).toBeGreaterThanOrEqual(2)
+      const different = await render('head', {
+        url: 'http://site.test/different',
+        document: baseDocument(body),
+      })
+      expect(/data-random="([^"]+)"/.exec(different.html)?.[1]).not.toBe(mainRandom)
+    } finally {
+      browser.off('targetcreated', observe)
+    }
+  })
+  it('retains Date.now as a documented real-clock exception', async () => {
+    const body = `<main></main><script>document.querySelector('main').textContent=Date.now()</script>`
+    const start = Date.now()
+    const first = await render('head', { document: baseDocument(body) })
+    const second = await render('head', { document: baseDocument(body) })
+    const timestamp = Number(/<main>([0-9]+)<\/main>/.exec(first.html)?.[1])
+    expect(timestamp).toBeGreaterThanOrEqual(start)
+    expect(timestamp).toBeLessThanOrEqual(Date.now())
+    expect(first.html).not.toBe(second.html)
+  })
   it('renders the same page identically twenty times, excluding timing', async () => {
     const outcomes = new Set<string>()
     for (let i = 0; i < 20; i++) {
