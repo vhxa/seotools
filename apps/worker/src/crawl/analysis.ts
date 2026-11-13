@@ -175,14 +175,21 @@ export async function analyseCrawl(
   if (crawl.rendering?.mode === 'rendered' && site.rendersUnobserved > 0)
     unobserved.push(...RENDERED_GRAPH_ISSUES)
   if (crawl.rendering?.mode === 'rendered') {
-    // Legacy rows did not retain the extracted values used by the new difference checks.
+    // Legacy rows lack extracted values; redirected rows deliberately abandon them.
+    // Neither can establish DOM differences, but navigation needs only the final URL.
     if (
       site.urls.some(
         (url) =>
-          url.internal && url.contentPage && (!url.render?.data.page || !url.render.data.facts),
+          url.internal &&
+          url.contentPage &&
+          (!url.render?.data.page || !url.render.data.facts || url.render.data.redirected === true),
       )
     ) {
-      unobserved.push(...RENDER_DIFFERENCE_IDS.filter((issue) => issue !== 'render-failed'))
+      unobserved.push(
+        ...RENDER_DIFFERENCE_IDS.filter(
+          (issue) => issue !== 'render-failed' && issue !== 'javascript-redirect',
+        ),
+      )
     } else if (
       site.urls.some(
         (url) =>

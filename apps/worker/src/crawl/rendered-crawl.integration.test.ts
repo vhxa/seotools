@@ -153,6 +153,85 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
       },
       60000,
     )
+    it('three redirecting crawls stay complete, preserve orphans and ignore the abandoned DOM', async () => {
+      let previous: unknown
+      let baselineOrphans: string[] = []
+      for (let iteration = -1; iteration < 3; iteration++) {
+        const fake = fakeSite(
+          {
+            [`${SITE}/`]: page('/', { links: '<a href="/redirect">Redirect</a>' }),
+            [`${SITE}/redirect`]: page('/redirect', {
+              links: '<a href="/html-link">HTML link</a>',
+              head: '<script src="/redirect.js" defer></script>',
+            }),
+            [`${SITE}/redirect.js`]: {
+              statusCode: 200,
+              headers: { 'content-type': 'application/javascript' },
+              body: Buffer.from(
+                iteration === -1
+                  ? ''
+                  : `
+              document.title='Abandoned title';
+              document.body.innerHTML+='<a href="/orphan">Abandoned link</a><a href="/phantom">Phantom</a>';
+              location.href='/target';
+            `,
+              ),
+            },
+            [`${SITE}/html-link`]: page('/html-link'),
+            [`${SITE}/orphan`]: page('/orphan'),
+            [`${SITE}/sitemap.xml`]: xml(sitemapOf(['/orphan'])),
+          },
+          0,
+        )
+        const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+        await runCrawl(crawl.id, {
+          db,
+          log: createLogger('test', 'silent'),
+          createFetcher: fake.createFetcher,
+          renderService: service,
+          signal: new AbortController().signal,
+        })
+        const stored = (await db.crawls.get(crawl.id))!
+        expect(stored.status).toBe('completed')
+        expect(stored.auditSnapshot?.rendersUnobserved).toBe(0)
+        expect(stored.auditSnapshot?.renderCoverage).toEqual({
+          failedOrMissing: 0,
+          truncated: 0,
+          unsettled: 0,
+        })
+        expect(stored.auditSnapshot?.unobserved).not.toContain('orphan-in-sitemap')
+        expect(stored.auditSnapshot?.unobserved).not.toContain('javascript-redirect')
+        const orphan = (await db.crawls.issuesOf(crawl.id, [crawlUrlHash(`${SITE}/orphan`)])).map(
+          (row) => row.issue,
+        )
+        if (iteration === -1) baselineOrphans = orphan
+        expect(orphan).toEqual(baselineOrphans)
+        expect(orphan).toContain('orphan-in-sitemap')
+        expect(fake.requests).toContain(`${SITE}/html-link`)
+        expect(fake.requests).not.toContain(`${SITE}/phantom`)
+        expect(fake.requests).not.toContain(`${SITE}/target`)
+        if (iteration === -1) continue
+        const hash = crawlUrlHash(`${SITE}/redirect`)
+        const render = (await db.crawls.renders(crawl.id)).find((row) => row.urlHash === hash)!
+        expect(render).toMatchObject({
+          status: 'rendered',
+          settled: false,
+          truncated: false,
+          finalUrl: `${SITE}/target`,
+          data: { redirected: true, facts: null },
+        })
+        expect(render.data.page).toBeUndefined()
+        const links = await db.crawls.linksFrom(crawl.id, [hash])
+        expect(links.some((row) => row.rendered === 1)).toBe(false)
+        const findings = await db.crawls.issuesOf(crawl.id, [hash])
+        expect(findings.map((row) => row.issue)).toContain('javascript-redirect')
+        expect(findings.map((row) => row.issue)).not.toContain('title-changed-by-javascript')
+        expect(stored.auditSnapshot?.unobserved).toContain('title-changed-by-javascript')
+        const result = await htmlBaseline(db, crawl.id)
+        if (previous) expect(JSON.stringify(result)).toBe(JSON.stringify(previous))
+        previous = result
+      }
+    }, 120000)
     it('three real JavaScript-menu crawls have identical findings, accepted rows, counts and snapshot', async () => {
       let previous: unknown
       const differencePages: Record<string, ReturnType<typeof page>> = {}
@@ -234,10 +313,7 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
             crawlUrlHash(`${SITE}/differences/${id}`),
           ])
           const reported = rows.map((row) => row.issue)
-          if (id === 'javascript-redirect') {
-            // The service aborts navigation, retaining an unsettled observation, not a whole page.
-            expect(reported).not.toContain(id)
-          } else expect(reported).toContain(id)
+          expect(reported).toContain(id)
         }
         const result = await htmlBaseline(db, crawl.id)
         if (previous) expect(JSON.stringify(result)).toBe(JSON.stringify(previous))

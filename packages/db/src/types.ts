@@ -355,6 +355,8 @@ export interface CrawlUrlRender {
   failure: string | null
   data: {
     facts: CrawlPageFacts | null
+    /** Absent on older rows. A redirect observes the target, not the abandoned DOM. */
+    redirected?: boolean
     /** Absent on older render rows: these extracted values were not retained. */
     page?: {
       title: string | null

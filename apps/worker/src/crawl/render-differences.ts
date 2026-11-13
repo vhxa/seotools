@@ -17,19 +17,24 @@ export const RENDER_DIFFERENCE_IDS = PAGE_ISSUE_IDS.filter(
     id !== 'links-only-after-rendering',
 )
 
-/** Both sources must be whole. A missing legacy flag or extracted value proves nothing. */
-function complete(url: AuditedUrl, site: Site) {
+/** Redirects completely observe navigation, but say nothing about the abandoned DOM. */
+function completeRender(url: AuditedUrl, site: Site) {
   const render = url.render
   return site.config.rendering === 'rendered' &&
     url.internal &&
     url.contentPage &&
-    url.facts &&
     url.url.data?.truncated !== true &&
     render?.status === 'rendered' &&
-    render.settled &&
-    render.truncated === false &&
-    render.data.facts &&
-    render.data.page
+    (render.settled || render.data.redirected === true) &&
+    render.truncated === false
+    ? render
+    : null
+}
+
+/** Both sources must be whole. A missing legacy flag or extracted value proves nothing. */
+function complete(url: AuditedUrl, site: Site) {
+  const render = completeRender(url, site)
+  return render && !render.data.redirected && url.facts && render.data.facts && render.data.page
     ? { render, html: url.facts, rendered: render.data.facts, page: render.data.page }
     : null
 }
@@ -158,12 +163,14 @@ export function renderDifferenceChecks(figures: (site: Site) => AuditThresholds)
         !!rendered.social.image &&
         evidence('', `${rendered.social.title}; ${rendered.social.image}`),
     ),
-    'javascript-redirect': onComplete((url, { render }, site) => {
+    'javascript-redirect': ((url, site) => {
+      const render = completeRender(url, site)
+      if (!render) return false
       const before = normalizeCrawlUrl(url.url.url)
       const after = normalizeCrawlUrl(render.finalUrl)
       const identity = site.identity ?? ((value: string) => value)
       return !!before && !!after && identity(before) !== identity(after) && evidence(before, after)
-    }),
+    }) satisfies Check,
     'render-resources-blocked-by-robots': onComplete((_, { render }) => {
       const requests = render.data.requests
       const count =

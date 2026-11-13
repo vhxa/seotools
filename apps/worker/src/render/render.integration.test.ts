@@ -246,7 +246,33 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(result.status).toBe('rendered')
     expect(result.finalUrl).toBe('http://site.test/target')
     expect(result.requests.made).toBe(0)
+    expect(result.redirected).toBe(true)
+    expect(result.settled).toBe(false)
+    expect(result.html).toBe('')
   })
+  it('keeps fragment-only changes as settled DOM observations', async () => {
+    const result = await render('head', {
+      document: baseDocument('<title>Fragment</title><script>location.hash="part"</script>'),
+    })
+    expect(result.status).toBe('rendered')
+    expect(result.redirected).toBe(false)
+    expect(result.settled).toBe(true)
+    expect(result.html).toContain('<title>Fragment</title>')
+    expect(result.requests.omitted.some((item) => item.reason === 'redirect')).toBe(false)
+  })
+  it.each(['location.reload()', 'location.href="?noise=1"'])(
+    'does not claim a redirect for a navigation to the same identity: %s',
+    async (script) => {
+      const result = await render('head', {
+        host: 'site.test',
+        ignoredParameters: ['noise'],
+        document: baseDocument(`<title>Same identity</title><script>${script}</script>`),
+      })
+      expect(result.redirected).toBe(false)
+      expect(result.status).toBe('failed')
+      expect(result.failure?.code).toBe('navigation')
+    },
+  )
   it('refuses private literals, localhost and the application port, and omits measurement and experiments', async () => {
     const result = await render('hostile')
     expect(result.requests.refused).toEqual([

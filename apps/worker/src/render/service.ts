@@ -56,6 +56,7 @@ export function createRenderService(options: {
               status: 'failed',
               failure: { code: 'crashed', message: 'The browser or page crashed twice.' },
               settled: false,
+              redirected: false,
               finalUrl: input.url,
               html: '',
               truncated: false,

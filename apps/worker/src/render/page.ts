@@ -1,4 +1,9 @@
-import { isInternalUrl, renderRequestDecision } from '@seotools/core'
+import {
+  isInternalUrl,
+  normalizeCrawlUrl,
+  renderRequestDecision,
+  stripIgnoredParameters,
+} from '@seotools/core'
 import type { Browser, BrowserContext, HTTPRequest } from 'puppeteer-core'
 import { FetchError } from '../crawl/fetcher'
 import { bestEffort } from './cleanup'
@@ -20,6 +25,7 @@ export async function renderPage(
   const result: RenderOutcome = {
     status: 'rendered',
     settled: false,
+    redirected: false,
     finalUrl: input.url,
     html: '',
     truncated: false,
@@ -50,7 +56,12 @@ export async function renderPage(
   let resourceQueue = Promise.resolve()
   let requestBodyBytes = 0
   let supplied = false
-  let redirected = false
+  const identity = (value: string) => {
+    const normalized = normalizeCrawlUrl(value)
+    return (
+      normalized && stripIgnoredParameters(normalized, input.ignoredParameters ?? [], input.host)
+    )
+  }
   const pending = new Set<Promise<void>>()
   const fail = (code: NonNullable<RenderOutcome['failure']>['code'], message: string) => {
     result.status = 'failed'
@@ -123,7 +134,7 @@ export async function renderPage(
     const handle = async (request: HTTPRequest) => {
       const url = request.url()
       const abort = () => request.abort('blockedbyclient').catch(() => {})
-      if (finished || signal.aborted) return abort()
+      if (finished || signal.aborted || result.redirected) return abort()
       requested++
       if (requested > RENDER_LIMITS.requests || bytes >= RENDER_LIMITS.pageBytes) {
         omit(url, 'limit')
@@ -139,8 +150,11 @@ export async function renderPage(
           })
         }
         // Keep the original document. The target is recorded, never fetched or rendered here.
-        redirected = true
+        const target = identity(url)
+        result.redirected = !!target && target !== identity(input.url)
         result.finalUrl = url
+        if (!result.redirected)
+          fail('navigation', 'The document navigated to the same URL identity.')
         omit(url, 'redirect')
         return abort()
       }
@@ -232,7 +246,7 @@ export async function renderPage(
             })
           },
         )
-        if (finished || signal.aborted) return abort()
+        if (finished || signal.aborted || result.redirected) return abort()
         if (cached) result.requests.cached++
         if (answer instanceof FetchError) {
           if (answer.code === 'BODY_LIMIT') {
@@ -307,7 +321,7 @@ export async function renderPage(
         }),
       ])
     } catch (error) {
-      if (!redirected)
+      if (!result.redirected)
         fail(
           error instanceof Error && error.name === 'TimeoutError' ? 'load-timeout' : 'navigation',
           'The document did not finish loading.',
@@ -318,7 +332,7 @@ export async function renderPage(
     const deadline = started + waitMs
     while (
       result.status === 'rendered' &&
-      !redirected &&
+      !result.redirected &&
       Date.now() < deadline &&
       !signal.aborted
     ) {
@@ -330,6 +344,8 @@ export async function renderPage(
       if (crashed || !browser.connected) throw new RenderInterruptedError('Browser or page crashed')
     }
     if (signal.aborted) throw new DOMException('Render stopped', 'AbortError')
+    // A redirect is a complete observation of navigation, not of the abandoned DOM.
+    if (result.redirected) return result
     // Evaluate inside the browser; cap UTF-8 bytes there before sending the DOM over CDP.
     try {
       const serialize = async () => {
@@ -374,7 +390,12 @@ export async function renderPage(
       result.truncated = dom.truncated
     } catch {
       if (crashed || !browser.connected) throw new RenderInterruptedError('Browser or page crashed')
-      fail('serialization', 'The document could not be serialized.')
+      if (!result.redirected) fail('serialization', 'The document could not be serialized.')
+    }
+    if (result.redirected) {
+      result.html = ''
+      result.truncated = false
+      result.settled = false
     }
     return result
   } catch (error) {

@@ -28,7 +28,8 @@ Raspberry Pi to a VPS.
   content…) per domain.
 - **HTML/render differences**: rendered crawls report text, metadata, directives and declarations
   added or changed by JavaScript, render redirects, blocked resources, failures and script errors.
-  Partial renders keep differences unknown.
+  Client redirects preserve graph completeness and leave their abandoned content unknown; partial
+  renders keep differences unknown.
 - **Finding states and changes**: mark findings in progress or dismiss them for one URL or a whole
   domain, with a note and attribution. Dismissals stay separate from fixes and rule acceptances.
   Filter findings, spot template-wide problems, inspect current site files and crawl differences,

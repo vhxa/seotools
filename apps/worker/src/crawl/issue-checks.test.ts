@@ -2196,14 +2196,21 @@ describe('HTML/render differences', () => {
       for (const render of [
         undefined,
         { ...original, status: 'failed' as const },
-        { ...original, settled: false },
+        { ...original, settled: false, data: { ...original.data, redirected: false } },
         { ...original, truncated: true },
         { ...original, truncated: null },
         { ...original, data: { ...original.data, page: undefined } },
       ]) {
         url.render = render
         if (id === 'render-failed') continue
-        expect(CHECKS[id](url, site)).toBe(false)
+        if (
+          id === 'javascript-redirect' &&
+          render?.data.page === undefined &&
+          render?.data.redirected
+        ) {
+          // Navigation is observed without extracted values from the abandoned DOM.
+          expect(CHECKS[id](url, site)).not.toBe(false)
+        } else expect(CHECKS[id](url, site)).toBe(false)
       }
       // Equal facts, with different whitespace/case in every textual value, cannot be a change.
       const noise = (value: string | null | undefined) =>

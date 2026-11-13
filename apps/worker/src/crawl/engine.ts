@@ -298,6 +298,7 @@ export async function runCrawl(
       options.renderService!.render({
         url: item.url,
         host,
+        ignoredParameters: crawl!.ignoredParameters,
         document: response,
         userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
         requester,
@@ -315,7 +316,7 @@ export async function runCrawl(
     let facts: CrawlPageFacts | null = null
     let page: CrawlUrlRender['data']['page']
     let found: Discovered = { urls: [], links: [] }
-    if (outcome.status === 'rendered') {
+    if (outcome.status === 'rendered' && !outcome.redirected) {
       const analysed = analyse(
         item,
         {

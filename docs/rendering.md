@@ -18,9 +18,12 @@ unsettled pages have no difference findings; a failed page can have `render-fail
 with incomplete observations remain unverified. Earlier render rows without the extracted values
 stay unknown for the new checks, and HTML crawls leave every JavaScript finding unknown.
 
-Client redirects are recorded but stop the render before it settles. Their difference findings,
-including `javascript-redirect`, therefore remain unknown under the completeness rule. A complete,
-settled observation with a different final URL can raise that check. A rendered `noindex` finding
+A main-frame navigation to another URL identity stops the render and records `redirected: true`
+and its target. This is a complete observation of a redirect, even though `settled` remains false
+(network quiet was not observed). It raises `javascript-redirect`, contributes no rendered-only
+links, and leaves the abandoned DOM's other differences unknown in comparisons. The served HTML's
+links still count. Fragment-only changes are same-document updates, not redirects; a stopped
+reload or navigation changing only ignored parameters is not a redirect and stays failed/unknown. A rendered `noindex` finding
 does not change indexability in this release: indexability still reads the served HTML and headers.
 
 Rendered crawls render internal HTML pages answering exactly 200, using the already fetched
@@ -29,8 +32,8 @@ found only after rendering are followed as ordinary crawl links. Failed pages ca
 once more after the site drain, serially, while their served bodies fit an in-memory limit of
 200 pages and 64 MiB. Committed failures remain failed after a worker restart; done URLs are
 never rendered twice on resume. Per-URL render facts and diagnostics are pruned with the URL
-results; HTML is never stored. A page whose render failed, is missing, did not settle or was
-cut at the size limit (or whose served HTML was) makes link absence unknown for the whole crawl:
+results; HTML is never stored. A page whose render failed, is missing, neither settled nor
+redirected, or was cut at the size limit (or whose served HTML was) makes link absence unknown for the whole crawl:
 link-dependent findings are then not claimed, and comparisons treat them as unverified.
 
 An unavailable browser pauses the crawl for up to ten minutes total, polling every 30 seconds.

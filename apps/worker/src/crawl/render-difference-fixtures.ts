@@ -37,7 +37,12 @@ export const DIFFERENCE_FIXTURES = {
   },
   'social-tags-only-after-rendering': { before: { social: null } },
   'javascript-redirect': {
-    outcome: (outcome) => ({ ...outcome, finalUrl: 'https://example.com/target' }),
+    outcome: (outcome) => ({
+      ...outcome,
+      settled: false,
+      redirected: true,
+      finalUrl: 'https://example.com/target',
+    }),
   },
   'render-resources-blocked-by-robots': {
     outcome: (outcome) => ({

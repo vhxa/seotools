@@ -149,6 +149,11 @@ export function renderObservation(
     finalUrl: outcome.finalUrl,
     durationMs: outcome.durationMs,
     failure: outcome.failure?.code ?? null,
-    data: { facts, requests: outcome.requests, scriptErrors: outcome.scriptErrors },
+    data: {
+      facts,
+      redirected: outcome.redirected,
+      requests: outcome.requests,
+      scriptErrors: outcome.scriptErrors,
+    },
   }
 }

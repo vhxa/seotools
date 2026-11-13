@@ -137,6 +137,7 @@ export function describeDatabaseContract(
         failure: null,
         data: {
           facts: null,
+          redirected: true,
           requests: {},
           scriptErrors: { count: 0, first: [] },
           page: {

@@ -543,7 +543,7 @@ it.each([false, true])(
   },
 )
 
-it.each(['failed', 'truncated', 'unsettled', 'legacy-values'] as const)(
+it.each(['failed', 'truncated', 'unsettled', 'legacy-values', 'redirected'] as const)(
   'keeps difference comparisons unverified through a %s render in both directions',
   async (cause) => {
     const { RENDER_DIFFERENCE_IDS } = await import('./render-differences')
@@ -572,6 +572,11 @@ it.each(['failed', 'truncated', 'unsettled', 'legacy-values'] as const)(
                   }
                 if (cause === 'truncated') result.truncated = true
                 if (cause === 'unsettled') result.settled = false
+                if (cause === 'redirected') {
+                  result.redirected = true
+                  result.settled = false
+                  result.finalUrl = SITE + '/target'
+                }
               }
               return result
             },
@@ -595,13 +600,29 @@ it.each(['failed', 'truncated', 'unsettled', 'legacy-values'] as const)(
       const home = await issues(crawl.id, '/')
       if (partial) {
         expect(home.filter((id) => RENDER_DIFFERENCE_IDS.some((issue) => issue === id))).toEqual(
-          cause === 'failed' ? ['render-failed'] : [],
+          cause === 'failed'
+            ? ['render-failed']
+            : cause === 'redirected'
+              ? ['javascript-redirect']
+              : [],
         )
         expect(stored.auditSnapshot?.unobserved).toEqual(
-          expect.arrayContaining(RENDER_DIFFERENCE_IDS.filter((id) => id !== 'render-failed')),
+          expect.arrayContaining(
+            RENDER_DIFFERENCE_IDS.filter(
+              (id) =>
+                id !== 'render-failed' &&
+                (id !== 'javascript-redirect' ||
+                  (cause !== 'redirected' && cause !== 'legacy-values')),
+            ),
+          ),
         )
       } else expect(home).toContain('title-changed-by-javascript')
       expect(stored.auditSnapshot?.unobserved).not.toContain('render-failed')
+      if (partial && cause === 'redirected') {
+        expect(stored.auditSnapshot?.rendersUnobserved).toBe(0)
+        expect(stored.auditSnapshot?.unobserved).not.toContain('javascript-redirect')
+        expect(stored.auditSnapshot?.unobserved).not.toContain('orphan-in-sitemap')
+      }
       if (iteration > 0) {
         const comparison = await compareWithPrevious({ db, target: stored, exact: true })
         expect(comparison.byIssue.get('title-changed-by-javascript')?.unverified).toBeGreaterThan(0)
