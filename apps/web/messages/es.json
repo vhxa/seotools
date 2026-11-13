@@ -3802,6 +3802,7 @@
     "ready": "Listo. La comprobación de aislamiento ha sido satisfactoria.",
     "unreachable": "El worker no puede conectarse al navegador o comprobarlo.",
     "has-network": "Conexión rechazada: el navegador puede acceder a la red por su cuenta. Consulta la guía.",
+    "unsafe-configuration": "Conexión rechazada: la comprobación no ha podido demostrar que todo el tráfico propio del navegador vaya al proxy de bloqueo. Inícialo con las opciones de la guía y sin excepciones de proxy.",
     "too-old": "Conexión rechazada: la versión del navegador es demasiado antigua. Actualiza su imagen.",
     "unknown": "Se desconoce el estado del navegador. El worker no ha comunicado ninguna comprobación reciente.",
     "version": "Versión: {version}",

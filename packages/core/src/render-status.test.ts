@@ -10,7 +10,14 @@ const status = {
 }
 describe('render browser contract', () => {
   it('accepts the states and rejects malformed, future and stale observations', () => {
-    for (const state of ['ready', 'not-configured', 'unreachable', 'has-network', 'too-old'])
+    for (const state of [
+      'ready',
+      'not-configured',
+      'unreachable',
+      'has-network',
+      'unsafe-configuration',
+      'too-old',
+    ])
       expect(readRenderStatus({ ...status, state }, now)?.state).toBe(state)
     for (const bad of [
       null,

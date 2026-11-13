@@ -3802,6 +3802,7 @@
     "ready": "Ready. The isolation check passed.",
     "unreachable": "The worker cannot connect to or check the browser.",
     "has-network": "Refused: the browser can reach the network by itself. See the guide.",
+    "unsafe-configuration": "Refused: the check could not prove that all of the browser's own traffic goes to the blocking proxy. Start it with the flags in the guide, without proxy exceptions.",
     "too-old": "Refused: the browser version is too old. Update the browser image.",
     "unknown": "Browser status is unknown. The worker has not reported a recent check.",
     "version": "Version: {version}",

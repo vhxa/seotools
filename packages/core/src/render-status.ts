@@ -3,7 +3,14 @@ import { z } from './zod'
 export const RENDER_STATUS_KEY = 'render.browser-status'
 export const RENDER_STATUS_STALE_MS = 15 * 60_000
 export const renderStatusSchema = z.object({
-  state: z.enum(['not-configured', 'ready', 'unreachable', 'has-network', 'too-old']),
+  state: z.enum([
+    'not-configured',
+    'ready',
+    'unreachable',
+    'has-network',
+    'unsafe-configuration',
+    'too-old',
+  ]),
   version: z.string().max(100).optional(),
   checkedAt: z.string().datetime(),
   detail: z.string().max(200).optional(),
