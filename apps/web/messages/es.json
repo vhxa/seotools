@@ -3948,14 +3948,14 @@
     "html": "Evaluado sobre el HTML recibido",
     "exceptions": "Los diagnósticos de respuesta y código fuente, los campos originales y la vista previa social usan la respuesta recibida.",
     "unknown": "No se pueden determinar los hallazgos del documento.",
-    "partlyUnknown": "Algunos hallazgos del documento no se pueden determinar.",
+    "partlyUnknown": "Algunos hallazgos no se pueden determinar.",
     "failed": "Falló la renderización.",
     "redirected": "Se observó una redirección y no se terminó de observar el documento de origen.",
     "truncated": "El documento recibido o renderizado quedó incompleto.",
     "unsettled": "La página no se estabilizó durante el tiempo de observación.",
     "missing": "No se guardó una observación completa del documento.",
     "coverage": "{complete, number} documentos completos; {redirected, number} redirecciones; {unobserved, number} documentos sin observar.",
-    "dependencies": "A algunas comprobaciones les faltan datos guardados u observaciones completas de otras páginas.",
-    "unknownCount": "No se pudieron verificar {count, number} comprobaciones del documento."
+    "dependencies": "Algunas comprobaciones dependen de una canónica, de datos guardados o de otras páginas que no se observaron por completo, o de un hallazgo que no se pudo evaluar.",
+    "unknownCount": "No se pudieron verificar {count, number} comprobaciones."
   }
 }

@@ -3948,14 +3948,14 @@
     "html": "Judged on the served HTML",
     "exceptions": "Response and source diagnostics, raw fields and the share preview use the served response.",
     "unknown": "Document findings unknown.",
-    "partlyUnknown": "Some document findings are unknown.",
+    "partlyUnknown": "Some findings are unknown.",
     "failed": "Rendering failed.",
     "redirected": "Redirect observed; the source document was abandoned.",
     "truncated": "The served or rendered document was truncated.",
     "unsettled": "The page did not settle within the observation window.",
     "missing": "A complete document observation was not stored.",
     "coverage": "{complete, number} complete documents; {redirected, number} redirects; {unobserved, number} unobserved documents.",
-    "dependencies": "Some checks lack stored inputs or complete observations of other pages.",
-    "unknownCount": "{count, number} document checks could not be verified."
+    "dependencies": "Some checks depend on a canonical, stored inputs or other pages that were not completely observed, or on a finding that could not be judged.",
+    "unknownCount": "{count, number} checks could not be verified."
   }
 }

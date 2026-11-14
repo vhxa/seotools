@@ -41,13 +41,23 @@ and its target. This is a complete observation of a redirect, even though `settl
 links, and leaves the abandoned DOM's other differences unknown in comparisons. The served HTML's
 links still count. Fragment-only changes are same-document updates, not redirects; a stopped
 reload or navigation changing only ignored parameters is not a redirect and stays failed/unknown. A served meta or header noindex persists even if JavaScript removes it; a rendered noindex adds
-that restriction. Other directives, including nofollow, use rendered meta and unchanged headers.
+that restriction. Other directives, including nofollow, use rendered meta and unchanged headers;
+a page JavaScript redirects keeps the nofollow of its served meta and headers, since its served
+links still count.
 Conflicts concern simultaneously applicable tokens, not old meta replaced by JavaScript.
 Rendered canonicals replace served document declarations, with unchanged Link-header fallback;
-conflicting or unresolved targets leave canonical conditions unknown. Proven blockers establish
-non-indexability; only a complete, conclusively blocker-free document establishes indexability.
-Rules, conditions and explicit expectations use these same observations, and unknown never
-satisfies or violates a requirement. Relation acceptances require a completely known blocker set.
+conflicting or unresolved targets leave the canonical, and with it the page's indexability,
+unknown. Every check that reads them for that page (canonical conditions, `canonical-broken`,
+`canonical-redirect`, sitemap and expectation checks, what links say of a page expected out) is
+then unknown for it; the analysis records which while it runs the checks, so no list is kept by
+hand. Checks that read other pages (duplicates, canonical and hreflang targets) become unknown for
+the whole crawl. Proven blockers establish non-indexability; only a complete, conclusively
+blocker-free document establishes indexability. Rules, conditions and explicit expectations use
+these same observations, and unknown never satisfies or violates a requirement. Relation
+acceptances require a completely known blocker set. A finding the audit rules drop because of
+another one is unknown when that other one is: with an explicit indexable rule,
+`expected-indexable-blocked` takes the place of `robots-blocked`, so on a page whose document is
+incomplete `robots-blocked` is unknown too, in comparisons, alerts and rechecks.
 
 Rendered crawls render internal HTML pages answering exactly 200, using the already fetched
 document. Other 2xx pages keep their served response and unknown document findings. Links
