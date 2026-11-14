@@ -649,7 +649,10 @@ export async function loadSite(
     documentUnobserved: config.documentBasis
       ? new Set([
           ...internal.flatMap((url) =>
-            url.documentObservation && url.documentObservation !== 'complete'
+            // An unknown canonical leaves the URL's indexability unknown, which other pages read
+            // too (duplicate groups, canonical and hreflang targets).
+            (url.documentObservation && url.documentObservation !== 'complete') ||
+            url.canonicalKnown === false
               ? PAGE_ISSUE_IDS.filter(
                   (id) => ISSUE_BASIS[id] === 'document' && !isPageLocalIssue(id),
                 )

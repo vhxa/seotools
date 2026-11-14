@@ -19,6 +19,7 @@ import {
   CHECKS,
   applyFindingDismissals,
   applyAuditPolicyKeeping,
+  dependentUnknowns,
   type Finding,
 } from './issue-checks'
 import { SiteContextError } from './site-context'
@@ -240,6 +241,14 @@ export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): V
     }
   }
 
+  // What the policy would have dropped because of an issue the recheck cannot settle is not known
+  // either: an HTML-only recheck of a rendered crawl cannot say whether `expected-indexable-blocked`
+  // would have taken the place of `robots-blocked`.
+  for (const issue of dependentUnknowns(url, new Set(unchecked))) {
+    if (!unchecked.includes(issue)) unchecked.push(issue)
+    const index = found.findIndex((finding) => finding.issue === issue)
+    if (index >= 0) found.splice(index, 1)
+  }
   if (context.renderedBase) url.documentObservation = 'unobserved'
   const policy = applyAuditPolicyKeeping(url, found)
   const { found: kept, accepted } = applyFindingDismissals(url, site, policy.kept, policy.accepted)

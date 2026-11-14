@@ -39,7 +39,12 @@ export function selectDocument(
     url.url.xRobotsTag,
   ])
   url.noindex = url.served.noindex || url.directives.has('noindex') || url.directives.has('none')
-  url.nofollow = url.directives.has('nofollow') || url.directives.has('none')
+  // A JavaScript redirect abandons its rendered DOM, but the links its served HTML has stay in the
+  // graph, and so does what its served meta robots says of them.
+  url.nofollow =
+    url.directives.has('nofollow') ||
+    url.directives.has('none') ||
+    (url.documentObservation === 'redirected' && url.served.nofollow)
   const targets = new Set(
     facts?.canonicals.flatMap((entry) => (entry.url ? [identity(entry.url)] : [])) ?? [],
   )
@@ -83,13 +88,6 @@ export function selectDocument(
     url.documentUnobserved.push('no-outgoing-links', 'internal-nofollow-links', 'resources-broken')
   else if (complete && !render.data.documentLinks?.embedsComplete)
     url.documentUnobserved.push('resources-broken')
-  if (!url.canonicalKnown)
-    url.documentUnobserved.push(
-      'canonical-required-missing',
-      'canonical-forbidden-present',
-      'canonical-not-indexable',
-      'hreflang-no-return',
-      'hreflang-noindex',
-      'hreflang-non-canonical',
-    )
+  // What an unknown canonical leaves unknown is derived from the checks themselves, once the site
+  // is read (`unknownIssuesOf`), and crawl-wide for what reads other pages (`loadSite`).
 }

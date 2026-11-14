@@ -548,10 +548,13 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   if (url.participation === null) return unknown('participation')
   if (url.dismissed?.has(issue)) return unknown('dismissed')
   // A crawl that never recorded what the check reads cannot say the URL does not have the issue.
+  // A rendered-basis analysis also lists, per URL, what its document left unknown and the findings
+  // that depend on those (`documentUnobserved`), whatever their basis.
   if (
-    issueBasisOf(issue) === 'document' &&
-    (url.documentUnobserved?.includes(issue) ||
-      (url.documentObservation && url.documentObservation !== 'complete'))
+    url.documentUnobserved?.includes(issue) ||
+    (issueBasisOf(issue) === 'document' &&
+      url.documentObservation &&
+      url.documentObservation !== 'complete')
   )
     return unknown('unobserved')
   if (crawl.unobserved?.has(issue)) return unknown('unobserved')
@@ -720,14 +723,14 @@ export function classifyFinding(
     if (a.presence === 'absent') {
       const why = incomparable(issue, a.basis, b.basis)
       if (why) return change('unverified', 'target', [why])
-      const before = (input.earlier ?? []).some((evidence) => {
-        const previous = observe(issue, evidence)
-        return (
-          previous.presence === 'present' &&
-          incomparable(issue, previous.basis, a.basis) === null &&
-          incomparable(issue, previous.basis, b.basis) === null
-        )
-      })
+      // An earlier crawl judged on another basis says nothing about this one; a URL it could not
+      // judge is not `present` there.
+      const before = (input.earlier ?? []).some(
+        (evidence) =>
+          observe(issue, evidence).presence === 'present' &&
+          !basisChanged(issue, evidence.crawl, input.base.crawl) &&
+          !basisChanged(issue, evidence.crawl, input.target.crawl),
+      )
       return change(before ? 'reappeared' : 'new', 'target')
     }
     // The earlier crawl cannot say.

@@ -1058,8 +1058,9 @@ export function detectFindings(
   site: Site,
 ): { found: Finding[]; accepted: AcceptedFinding[] } {
   const found: Finding[] = []
+  const unknown = unknownIssuesOf(url, site)
   for (const issue of PAGE_ISSUE_IDS) {
-    if (ISSUE_BASIS[issue] === 'document' && url.documentUnobserved?.includes(issue)) continue
+    if (unknown.has(issue)) continue
     const subject =
       ISSUE_BASIS[issue] === 'html' || ISSUE_BASIS[issue] === 'response' ? (url.served ?? url) : url
     const result = CHECKS[issue](subject, site)
@@ -1077,12 +1078,101 @@ export function detectFindings(
     }
   }
   const { kept, accepted } = auditPolicy(url, found)
-  return applyFindingDismissals(url, site, kept, [
-    ...accepted,
-    ...acceptedRelations(url, site).filter(
-      ({ issue }) => ISSUE_BASIS[issue] !== 'document' || !url.documentUnobserved?.includes(issue),
-    ),
-  ])
+  return applyFindingDismissals(
+    url,
+    site,
+    kept,
+    [...accepted, ...acceptedRelations(url, site)].filter(({ issue }) => !unknown.has(issue)),
+  )
+}
+
+/**
+ * The findings whose presence the audit policy decides from another issue's result, and which are
+ * therefore unknown when that issue is: an explicit expectation of being indexable reports the
+ * blockers it names in `expected-indexable-blocked` and drops their generic findings
+ * (`INDEXING_FINDING_OF`), so when that finding cannot be judged, nobody can tell whether the
+ * generic ones would have been dropped. A generic finding a stated condition replaces (`GENERIC_OF`)
+ * does not depend on it: the rule alone decides that. Exclusions, other expectations and dismissals
+ * depend only on rules, never on another finding.
+ */
+export function dependentUnknowns(
+  url: Pick<AuditedUrl, 'excluded' | 'intent' | 'intentRule' | 'conditions'>,
+  unknown: ReadonlySet<string>,
+): PageIssueId[] {
+  if (url.excluded || url.intent !== 'indexable' || url.intentRule === null) return []
+  if (!unknown.has('expected-indexable-blocked')) return []
+  return Object.entries(INDEXING_FINDING_OF).flatMap(([condition, issue]) => {
+    const requirement = url.conditions[condition as AuditCondition].requirement
+    return requirement === 'allowed' || requirement === 'required' ? [] : [issue]
+  })
+}
+
+/** What a URL's selected canonical decides: a check reading any of these reads the canonical. */
+const CANONICAL_FIELDS: ReadonlySet<PropertyKey> = new Set([
+  'canonicalised',
+  'canonicalKnown',
+  'blockersKnown',
+  'indexability',
+  'indexable',
+])
+
+/**
+ * Whether judging `issue` on `url` reads the URL's selected canonical, directly or through its
+ * indexability (which a canonical elsewhere blocks). Recorded while the check runs, so that no list
+ * has to be kept by hand: a check that returns before reading it does not depend on it.
+ */
+function readsCanonical(issue: PageIssueId, url: AuditedUrl, site: Site): boolean {
+  let read = false
+  const address = new Proxy(url.url, {
+    get(target, key, receiver) {
+      if (key === 'canonical') read = true
+      return Reflect.get(target, key, receiver) as unknown
+    },
+  })
+  const subject = new Proxy(url, {
+    get(target, key, receiver) {
+      if (key === 'url') return address
+      if (CANONICAL_FIELDS.has(key)) read = true
+      return Reflect.get(target, key, receiver) as unknown
+    },
+  })
+  try {
+    CHECKS[issue](subject, site)
+  } catch {
+    return true
+  }
+  return read
+}
+
+const unknownIssues = new WeakMap<AuditedUrl, ReadonlySet<string>>()
+const NONE: ReadonlySet<string> = new Set()
+
+/**
+ * The issues a URL of a rendered-basis analysis cannot be judged on in this crawl: those its
+ * incomplete document leaves without input (`documentUnobserved` from `selectDocument`), every
+ * document or graph check that reads its canonical or blockers when they are unknown (conflicting
+ * or unresolved canonical declarations, an incomplete document), and the findings the audit policy
+ * decides from one of those (`dependentUnknowns`). It has no finding and no accepted row for them,
+ * and the list is stored with its audit state, so comparisons, alerts and rechecks read them as
+ * unknown for this URL. HTML analyses have none: `documentObservation` is only set by
+ * `selectDocument`.
+ */
+export function unknownIssuesOf(url: AuditedUrl, site: Site): ReadonlySet<string> {
+  if (!url.documentObservation) return NONE
+  const cached = unknownIssues.get(url)
+  if (cached) return cached
+  const unknown = new Set<string>(url.documentUnobserved)
+  if (url.blockersKnown === false) {
+    for (const issue of PAGE_ISSUE_IDS) {
+      const basis = ISSUE_BASIS[issue]
+      if (basis !== 'document' && basis !== 'graph') continue
+      if (!unknown.has(issue) && readsCanonical(issue, url, site)) unknown.add(issue)
+    }
+  }
+  for (const issue of dependentUnknowns(url, unknown)) unknown.add(issue)
+  url.documentUnobserved = PAGE_ISSUE_IDS.filter((issue) => unknown.has(issue))
+  unknownIssues.set(url, unknown)
+  return unknown
 }
 
 const dismissalIndexes = new WeakMap<AuditSnapshot, ReadonlyMap<string, FindingDismissal>>()

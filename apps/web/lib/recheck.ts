@@ -68,7 +68,8 @@ export interface RecheckView {
 export function viewRecheck(input: {
   verified: VerifiedUrl | null
   crawl: {
-    rendering?: { mode: 'html' | 'rendered' } | null
+    /** Required: an HTML-only recheck never settles a rendered crawl's document findings. */
+    rendering: { mode: 'html' | 'rendered' } | null
     auditVersion: number | null
     pagesByWorstIssue: unknown
     auditSnapshot?: { unobserved?: string[] | undefined } | null
