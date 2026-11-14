@@ -400,5 +400,78 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
         previous = result
       }
     }, 300000)
+    it('three real DOM audits use rendered document values and exact removals while preserving served diagnostics', async () => {
+      let previous: unknown
+      for (let iteration = 0; iteration < 3; iteration++) {
+        const after = page('/a', {
+          title: 'A complete rendered title long enough for the audit',
+          canonical: '/target',
+          head: '<meta name="robots" content="noindex"><link rel="alternate" hreflang="en" href="/a">',
+          links: '',
+        }).body!.toString()
+        const script = `const parsed=new DOMParser().parseFromString(${JSON.stringify(after)},'text/html');document.head.replaceChildren(...parsed.head.childNodes);document.body.replaceChildren(...parsed.body.childNodes);`
+        const fake = fakeSite(
+          {
+            [`${SITE}/`]: page('/', { links: '<a href="/a">A</a>' }),
+            [`${SITE}/a`]: page('/a', {
+              title: 'X',
+              description: null,
+              h1: null,
+              canonical: null,
+              social: null,
+              head: '<script src="/audit.js" defer></script>',
+              links: '<a href="/target" rel="nofollow">Target</a><img src="/missing.png">',
+            }),
+            [`${SITE}/target`]: page('/target'),
+            [`${SITE}/missing.png`]: { statusCode: 404, headers: {}, body: Buffer.from('missing') },
+            [`${SITE}/audit.js`]: {
+              statusCode: 200,
+              headers: { 'content-type': 'application/javascript' },
+              body: Buffer.from(script),
+            },
+          },
+          0,
+        )
+        const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+        await runCrawl(crawl.id, {
+          db,
+          log: createLogger('test', 'silent'),
+          createFetcher: fake.createFetcher,
+          renderService: service,
+          signal: new AbortController().signal,
+        })
+        const hash = crawlUrlHash(`${SITE}/a`)
+        const found = (await db.crawls.issuesOf(crawl.id, [hash])).map((row) => row.issue)
+        expect(found).toEqual(
+          expect.arrayContaining([
+            'noindex',
+            'no-outgoing-links',
+            'title-changed-by-javascript',
+            'description-only-after-rendering',
+            'h1-only-after-rendering',
+            'canonical-only-after-rendering',
+            'noindex-added-by-javascript',
+            'og-missing',
+          ]),
+        )
+        for (const id of [
+          'title-too-short',
+          'description-missing',
+          'h1-missing',
+          'resources-broken',
+          'internal-nofollow-links',
+        ])
+          expect(found).not.toContain(id)
+        expect((await db.crawls.auditOf(crawl.id, [hash]))[0]).toMatchObject({
+          documentObservation: 'complete',
+          indexability: 'not-indexable',
+          blockers: ['noindex', 'canonical'],
+        })
+        expect((await db.crawls.getUrl(crawl.id, hash))?.title).toBe('X')
+        const result = await htmlBaseline(db, crawl.id)
+        if (previous) expect(JSON.stringify(result)).toBe(JSON.stringify(previous))
+        previous = result
+      }
+    }, 120000)
   },
 )

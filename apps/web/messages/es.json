@@ -389,7 +389,8 @@
         "badge": "Necesita un rastreo completo"
       },
       "checkedScope": "Comprobado de nuevo: la respuesta HTTP, los datos de página, robots.txt y las comprobaciones que dependen solo de esta URL. Los enlaces de otras páginas, los duplicados y la presencia en sitemaps siguen requiriendo un rastreo completo.",
-      "evidenceNote": "Los campos de respuesta de arriba y los detalles registrados debajo proceden de esta reverificación. Aquí no se reutilizan muestras de evidencia del rastreo completo."
+      "evidenceNote": "Los campos de respuesta de arriba y los detalles registrados debajo proceden de esta reverificación. Aquí no se reutilizan muestras de evidencia del rastreo completo.",
+      "htmlOnly": "Esta revisión lee el HTML recibido. Para revisar los hallazgos del documento renderizado hace falta un rastreo completo."
     },
     "results": {
       "metaTitle": "Recomprobación · {host} · seotools",
@@ -412,7 +413,7 @@
         "appeared": "Nuevos",
         "pending": "Pendientes de un rastreo completo"
       },
-      "scope": "Comparado con el último rastreo completo del que se eligieron las URLs, que una recomprobación no cambia. Los hallazgos que dependen de otras páginas o de enlaces se cuentan como pendientes: solo un rastreo completo dice si siguen ahí.",
+      "scope": "Comparado con el último rastreo completo del que se eligieron las URLs, que una recomprobación no cambia. Los hallazgos que dependen de otras páginas o de enlaces se cuentan como pendientes: solo un rastreo completo dice si siguen ahí. Los hallazgos del documento de un rastreo renderizado también necesitan un rastreo completo; esta revisión solo lee el HTML recibido.",
       "notComparable": "Algunas URLs no se compararon con el rastreo: se analizó con otras reglas de auditoría, o no se analizó.",
       "stale": "Las reglas de auditoría cambiaron después de recomprobar algunas de estas. Vuelve a comprobarlas para aplicar las reglas actuales.",
       "columns": {
@@ -1657,7 +1658,7 @@
     },
     "noindex-added-by-javascript": {
       "name": "JavaScript añade noindex",
-      "description": "Solo las directivas meta renderizadas indican noindex: la página renderizada pide no indexarse. Este hallazgo no cambia la indexabilidad registrada, que sigue basándose en el HTML y las cabeceras recibidos. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+      "description": "Solo las directivas meta renderizadas indican noindex: la página renderizada pide no indexarse. En un rastreo renderizado, esto también impide considerarla indexable. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
     },
     "nofollow-only-in-html": {
       "name": "nofollow solo en el HTML",
@@ -1740,7 +1741,7 @@
         "headless": "Renderizado"
       },
       "unavailable": "Renderizado no disponible: {reason}",
-      "comparison": "El próximo rastreo no será comparable con los anteriores para los hallazgos que dependen de enlaces.",
+      "comparison": "Los hallazgos sobre la respuesta del servidor (códigos de estado, redirecciones, tiempo de respuesta…) se compararán con los rastreos anteriores como siempre. Los hallazgos sobre el contenido de cada página, sobre qué páginas enlazan a cuáles y los de JavaScript aparecerán como no comparables, nunca como nuevos ni corregidos.",
       "wait": "Límite de espera del renderizado (ms)",
       "waitHint": "Entre 1000 y 30000 milisegundos; 5000 por defecto.",
       "omitted": "Hosts adicionales que omitir",
@@ -2856,8 +2857,9 @@
       "incomplete": "un rastreo se detuvo en su límite de URL y este hallazgo depende de otras páginas",
       "catalog": "los catálogos de problemas difieren",
       "audit": "la configuración de auditoría o la expectativa de la URL difieren",
-      "unobserved": "un rastreo no registró lo que esta comprobación necesita: compara con rastreos hechos después de la actualización",
-      "dismissed": "Una persona descartó este hallazgo."
+      "unobserved": "un rastreo no pudo observar por completo los datos que necesita esta comprobación",
+      "dismissed": "Una persona descartó este hallazgo.",
+      "basis": "un rastreo leyó el HTML recibido y el otro la página renderizada: solo se pueden comparar los hallazgos sobre la respuesta del servidor"
     },
     "notes": {
       "pruned": {
@@ -2903,6 +2905,10 @@
       "ignoredParameters": {
         "title": "Han cambiado los parámetros ignorados",
         "description": "Las URL añadidas o no vistas pueden reflejar cambios en los parámetros ignorados. Los resúmenes de cambios por problema no se verifican porque cambió la identidad de las URL."
+      },
+      "basis": {
+        "title": "Bases de observación distintas",
+        "description": "Un rastreo leyó el HTML recibido y el otro la página renderizada. Los hallazgos sobre la respuesta del servidor se comparan como siempre; los del contenido de cada página, los de qué páginas enlazan a cuáles y los de JavaScript aparecen como no comparables, nunca como nuevos ni corregidos."
       }
     },
     "rowsShown": "{shown, number} de {matching, number} URLs mostradas",
@@ -2979,7 +2985,7 @@
       },
       "unlinked": {
         "label": "Sin enlaces internos",
-        "default": "Por defecto, una página incluida en un sitemap sin enlaces internos encontrados en el HTML rastreado genera un hallazgo de URL solo en el sitemap. No se ven los enlaces creados con JavaScript.",
+        "default": "Por defecto, una página incluida en un sitemap sin enlaces internos observados en las páginas rastreadas genera un hallazgo de URL solo en sitemap. Los rastreos renderizados incluyen los enlaces que aparecen tras ejecutar JavaScript.",
         "help": {
           "required": "Se genera un hallazgo si un enlace interno apunta a esta URL. La ausencia de enlaces solo se confirma con un rastreo completo finalizado.",
           "allowed": "La página puede recibir enlaces internos o no: se acepta el hallazgo de URL solo en el sitemap. Los enlaces desde páginas con nofollow o noindex se evalúan por separado.",
@@ -3936,5 +3942,20 @@
     "check": "Comprobar ahora",
     "checking": "Encolando comprobación…",
     "hint": "El worker realiza esta comprobación en segundo plano. Recarga la página para ver el resultado."
+  },
+  "AuditBasis": {
+    "rendered": "Evaluado sobre la página renderizada",
+    "html": "Evaluado sobre el HTML recibido",
+    "exceptions": "Los diagnósticos de respuesta y código fuente, los campos originales y la vista previa social usan la respuesta recibida.",
+    "unknown": "No se pueden determinar los hallazgos del documento.",
+    "partlyUnknown": "Algunos hallazgos no se pueden determinar.",
+    "failed": "Falló la renderización.",
+    "redirected": "Se observó una redirección y no se terminó de observar el documento de origen.",
+    "truncated": "El documento recibido o renderizado quedó incompleto.",
+    "unsettled": "La página no se estabilizó durante el tiempo de observación.",
+    "missing": "No se guardó una observación completa del documento.",
+    "coverage": "{complete, number} documentos completos; {redirected, number} redirecciones; {unobserved, number} documentos sin observar.",
+    "dependencies": "Algunas comprobaciones dependen de una canónica, de datos guardados o de otras páginas que no se observaron por completo, o de un hallazgo que no se pudo evaluar.",
+    "unknownCount": "No se pudieron verificar {count, number} comprobaciones."
   }
 }

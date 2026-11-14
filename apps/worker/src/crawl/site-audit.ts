@@ -1,6 +1,10 @@
+import { selectDocument } from './document-basis'
 import type { VitalMetrics } from '@seotools/core'
 import {
   assessIndexability,
+  ISSUE_BASIS,
+  PAGE_ISSUE_IDS,
+  isPageLocalIssue,
   compileAuditSnapshot,
   crawlFileKindOf,
   defaultResolution,
@@ -100,6 +104,12 @@ export function unavailableAfter(directives: ReadonlySet<string>): Date | null {
 }
 
 export interface AuditedUrl {
+  /** Immutable served projection, for explicit HTML/response checks. */
+  served?: AuditedUrl
+  documentObservation?: 'complete' | 'redirected' | 'unobserved'
+  documentUnobserved?: string[]
+  blockersKnown?: boolean
+  canonicalKnown?: boolean
   /** The URL's render observation; never substituted for its served facts. */
   render?: CrawlUrlRender
   vitals?: VitalMetrics
@@ -212,6 +222,7 @@ export interface Site {
   sitemapCoverage: SitemapCoverage
   /** A completed crawl was not cut at its URL limit. */
   htmlLinksComplete: boolean
+  documentUnobserved?: ReadonlySet<string>
   rendersUnobserved: number
   renderCoverage: NonNullable<AuditSnapshot['renderCoverage']>
   linksComplete: boolean
@@ -465,6 +476,9 @@ export async function loadSite(
 
   const renders = new Map((await db.crawls.renders(crawl.id)).map((row) => [row.urlHash, row]))
   const internal = urls.filter((url) => url.internal)
+  if (crawl.rendering?.mode === 'rendered') {
+    for (const url of internal) selectDocument(url, renders.get(url.url.urlHash), identity)
+  }
   // Links of the `sitemap` type from a sitemap parsed before the crawl told a listing from a mention,
   // by the URL they point at, and the URLs a sitemap declared as an alternate: only the ones in both
   // cannot be told apart, and they are settled once every alternate is known.
@@ -545,6 +559,50 @@ export async function loadSite(
     else target.sitemaps += count
   }
   measureClickDepth(internal, byHash, identity)
+  // The served projection was taken before the site was read: give it every site-wide count (links,
+  // sitemaps, click depth), so response and HTML checks never read a count that was not computed.
+  // The outgoing counts and failed embeds kept here are the HTML ones.
+  for (const url of internal) {
+    if (!url.served) continue
+    Object.assign(url.served, {
+      linksIn: url.linksIn,
+      htmlAnchorsIn: url.htmlAnchorsIn,
+      htmlInternalAnchorsOut: url.htmlInternalAnchorsOut,
+      renderedAnchorsFrom: url.renderedAnchorsFrom,
+      renderedLinksTo: url.renderedLinksTo,
+      renderedAnchorsOut: url.renderedAnchorsOut,
+      anchorsIn: url.anchorsIn,
+      followedAnchorsIn: url.followedAnchorsIn,
+      anchorsFromIndexable: url.anchorsFromIndexable,
+      sitemaps: url.sitemaps,
+      sitemapsAmbiguous: url.sitemapsAmbiguous,
+      internalAnchorsOut: url.internalAnchorsOut,
+      nofollowAnchorsOut: url.nofollowAnchorsOut,
+      linksTo: url.linksTo,
+      failedEmbeds: url.failedEmbeds,
+      clickDepth: url.clickDepth,
+      hreflang: [
+        ...(url.served.url.data?.hreflang ?? []),
+        ...url.hreflang.filter((entry) => entry.source === 'sitemap'),
+      ],
+    } satisfies Partial<AuditedUrl>)
+  }
+  if (crawl.rendering?.mode === 'rendered') {
+    for (const url of internal) {
+      const summary = url.render?.data.documentLinks
+      if (url.documentObservation !== 'complete' || !summary) continue
+      url.internalAnchorsOut = summary.internal
+      url.nofollowAnchorsOut = summary.nofollow
+      url.failedEmbeds = { total: 0, sample: [] }
+      for (const address of summary.embeds) {
+        const target = byHash.get(crawlUrlHash(identity(address)))
+        if (!embedFailed(target)) continue
+        url.failedEmbeds.total++
+        if (url.failedEmbeds.sample.length < MAX_EVIDENCE_ITEMS)
+          url.failedEmbeds.sample.push(target)
+      }
+    }
+  }
   let rendersUnobserved = 0
   const renderCoverage = { failedOrMissing: 0, truncated: 0, unsettled: 0 }
   if (crawl.rendering?.mode === 'rendered') {
@@ -567,7 +625,14 @@ export async function loadSite(
   // What pages are compared against each other: the audited ones that can be indexed. A page left
   // out of the audit stays in the site (links, canonicals, hreflang, redirects see it as it is) but
   // is not a copy of anything an audited page should answer for.
-  const indexable = urls.filter((url) => url.indexable && !url.excluded && url.facts)
+  const indexable = urls.filter(
+    (url) =>
+      url.indexable &&
+      !url.excluded &&
+      url.facts &&
+      url.documentObservation !== 'unobserved' &&
+      url.documentObservation !== 'redirected',
+  )
   const comparableTexts = indexable.flatMap((url) => {
     const simhash = url.facts?.textSimhash
     return simhash ? [{ url, simhash, group: url.facts?.textHash ?? null }] : []
@@ -581,6 +646,36 @@ export async function loadSite(
     answered: urls.some((url) => url.contentPage),
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
     htmlLinksComplete: crawl.status === 'completed',
+    documentUnobserved: config.documentBasis
+      ? new Set([
+          ...internal.flatMap((url) =>
+            // An unknown canonical leaves the URL's indexability unknown, which other pages read
+            // too (duplicate groups, canonical and hreflang targets).
+            (url.documentObservation && url.documentObservation !== 'complete') ||
+            url.canonicalKnown === false
+              ? PAGE_ISSUE_IDS.filter(
+                  (id) => ISSUE_BASIS[id] === 'document' && !isPageLocalIssue(id),
+                )
+              : (url.documentUnobserved?.filter((id) => !isPageLocalIssue(id)) ?? []),
+          ),
+          // Graph checks that read another URL's document state. Whether a target is canonicalised
+          // is unknown for any page without a complete document, a JavaScript redirect included
+          // (it has no document). A JavaScript redirect is a proven blocker for the indexability
+          // of a source, and keeps its served nofollow (`selectDocument`); an unobserved source
+          // leaves both unknown.
+          ...(internal.some((url) => url.blockersKnown === false)
+            ? ['links-to-canonicalised']
+            : []),
+          ...(internal.some(
+            (url) => url.blockersKnown === false && url.documentObservation !== 'redirected',
+          )
+            ? ['only-noindex-inlinks']
+            : []),
+          ...(internal.some((url) => url.documentObservation === 'unobserved')
+            ? ['only-nofollow-inlinks']
+            : []),
+        ])
+      : undefined,
     rendersUnobserved,
     renderCoverage,
     linksComplete: crawl.status === 'completed' && rendersUnobserved === 0,

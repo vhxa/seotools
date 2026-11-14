@@ -2209,6 +2209,15 @@ export function createSqliteDatabase(options: {
           .all()
       },
 
+      async renderOf(crawlId, urlHash) {
+        const rows = db
+          .select()
+          .from(crawlUrlRenders)
+          .where(and(eq(crawlUrlRenders.crawlId, crawlId), eq(crawlUrlRenders.urlHash, urlHash)))
+          .all()
+        const row = rows[0]
+        return row ? { ...row, data: JSON.parse(row.data) as CrawlUrlRender['data'] } : null
+      },
       async renders(crawlId) {
         const rows = db
           .select()

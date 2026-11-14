@@ -138,9 +138,16 @@ export function describeDatabaseContract(
         data: {
           facts: null,
           redirected: true,
+          documentLinks: {
+            internal: 2,
+            nofollow: 1,
+            embeds: ['https://example.com/a.js'],
+            embedsComplete: true,
+          },
           requests: {},
           scriptErrors: { count: 0, first: [] },
           page: {
+            canonical: 'https://example.com/canonical',
             title: 'Rendered title',
             description: 'Rendered description',
             h1: 'Rendered heading',
@@ -169,6 +176,8 @@ export function describeDatabaseContract(
       })
       expect((await db.crawls.getUrl(crawl.id, urlHash))?.state).toBe('done')
       expect(await db.crawls.renders(crawl.id)).toMatchObject([render])
+      expect(await db.crawls.renderOf(crawl.id, urlHash)).toMatchObject(render)
+      expect(await db.crawls.renderOf(crawl.id, 'missing')).toBeNull()
       expect(await db.crawls.linksFrom(crawl.id, [urlHash])).toMatchObject([{ rendered: 1 }])
       await db.crawls.saveBrowserWait(crawl.id, 30000)
       expect((await db.crawls.get(crawl.id))?.browserWaitMs).toBe(30000)
@@ -4352,6 +4361,46 @@ export function describeDatabaseContract(
           await db.crawls.finish(crawl.id, { status: 'completed' })
           return { domainId, crawlId: crawl.id, version, catalog: extra.catalog ?? 'v1' }
         }
+
+        it('retains per-URL document uncertainty in audit rows and compact history without changing legacy rows', async () => {
+          const crawl = await analysedCrawl(1)
+          const uncertain = state({
+            urlHash: hashOf('/cart'),
+            indexability: 'unknown',
+            documentObservation: 'unobserved',
+            documentUnobserved: ['title-missing', 'h1-missing'],
+          })
+          await saveIssues({
+            crawlId: crawl.crawlId,
+            issues: [],
+            pages: none,
+            withType: none,
+            catalog: 'v1',
+            audit: {
+              snapshot: {
+                version: 1,
+                rules: [],
+                rendering: 'rendered',
+                documentBasis: 'rendered-v1',
+                documentCoverage: { complete: 1, redirected: 0, unobserved: 1, legacyMissing: 0 },
+              },
+              urls: [uncertain, state({ urlHash: hashOf('/') })],
+            },
+          })
+          expect(await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart')])).toEqual([uncertain])
+          expect((await db.crawls.auditOf(crawl.crawlId, [hashOf('/')]))[0]).not.toHaveProperty(
+            'documentObservation',
+          )
+          const next = await startCrawl(crawl.domainId)
+          await db.crawls.finish(next.id, { status: 'completed' })
+          await db.crawls.prune({ domainId: crawl.domainId, type: 'full', keep: 1 })
+          const history = await db.crawls.urlHistory({
+            domainId: crawl.domainId,
+            crawlIds: [crawl.crawlId],
+            urlHashes: [hashOf('/cart')],
+          })
+          expect(history[0]?.audit).toMatchObject(uncertain)
+        })
 
         const save = (
           crawl: { crawlId: string; version: number; catalog: string },

@@ -1,5 +1,6 @@
 import {
   URL_SCOPED_ISSUES,
+  canSettleIssue,
   compileAuditSnapshot,
   crawlUrlHash,
   isInternalUrl,
@@ -18,6 +19,7 @@ import {
   CHECKS,
   applyFindingDismissals,
   applyAuditPolicyKeeping,
+  dependentUnknowns,
   type Finding,
 } from './issue-checks'
 import { SiteContextError } from './site-context'
@@ -83,6 +85,7 @@ function siteOfARecheck(input: { now: Date; config: AuditSnapshot; answered: boo
 
 /** What a recheck has besides the URLs themselves. */
 export interface RecheckContext {
+  renderedBase?: boolean
   identity?: (url: string) => string
   host: string
   now: Date
@@ -99,6 +102,7 @@ export interface RecheckContext {
 }
 
 export function recheckContext(input: {
+  renderedBase?: boolean
   ignoredParameters?: readonly string[]
   host: string
   now: Date
@@ -116,6 +120,7 @@ export function recheckContext(input: {
   }
   return {
     identity: (url) => stripIgnoredParameters(url, input.ignoredParameters ?? [], input.host),
+    renderedBase: input.renderedBase,
     host: input.host,
     now: input.now,
     config: input.config,
@@ -218,6 +223,10 @@ export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): V
   const found: Finding[] = []
   const unchecked: PageIssueId[] = []
   for (const issue of URL_SCOPED_ISSUES) {
+    if (!canSettleIssue(issue, context.renderedBase)) {
+      unchecked.push(issue)
+      continue
+    }
     try {
       const result = CHECKS[issue](url, site)
       if (result === true) found.push({ issue })
@@ -232,6 +241,15 @@ export function evaluateRecheck(input: RecheckedUrl, context: RecheckContext): V
     }
   }
 
+  // What the policy would have dropped because of an issue the recheck cannot settle is not known
+  // either: an HTML-only recheck of a rendered crawl cannot say whether `expected-indexable-blocked`
+  // would have taken the place of `robots-blocked`.
+  for (const issue of dependentUnknowns(url, new Set(unchecked))) {
+    if (!unchecked.includes(issue)) unchecked.push(issue)
+    const index = found.findIndex((finding) => finding.issue === issue)
+    if (index >= 0) found.splice(index, 1)
+  }
+  if (context.renderedBase) url.documentObservation = 'unobserved'
   const policy = applyAuditPolicyKeeping(url, found)
   const { found: kept, accepted } = applyFindingDismissals(url, site, policy.kept, policy.accepted)
   return {

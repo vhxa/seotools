@@ -66,11 +66,12 @@ export default async function RecheckPage({
       verified: url.state === 'done' ? url : null,
       crawl: comparable
         ? {
+            rendering: comparable.rendering,
             auditVersion: comparable.auditVersion,
             pagesByWorstIssue: comparable.pagesByWorstIssue,
             auditSnapshot: comparable.auditSnapshot,
           }
-        : { auditVersion: null, pagesByWorstIssue: null },
+        : { rendering: null, auditVersion: null, pagesByWorstIssue: null },
       crawledAt: null,
       crawlIssues: crawlIssues.filter((found) => found.urlHash === url.urlHash).map((f) => f.issue),
       configVersion: config.version,

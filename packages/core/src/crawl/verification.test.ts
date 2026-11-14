@@ -1,3 +1,4 @@
+import { ISSUE_BASIS } from './basis'
 import { describe, expect, it } from 'vitest'
 import { PAGE_ISSUE_IDS } from './issues'
 import {
@@ -140,4 +141,22 @@ describe('verificationIsCurrent', () => {
     expect(verificationIsCurrent({ auditVersion: 2 }, 3)).toBe(false)
     expect(verificationIsCurrent({ auditVersion: null }, 0)).toBe(false)
   })
+})
+
+it('never settles document issues of a rendered base, including legacy recheck outcomes', () => {
+  for (const issue of PAGE_ISSUE_IDS.filter((id) => ISSUE_BASIS[id] === 'document')) {
+    for (const recheck of [[], [issue]]) {
+      const result = compareWithCrawl({
+        renderedBase: true,
+        crawl: [issue],
+        recheck,
+        accepted: [issue],
+      })
+      expect(result.fixed).toEqual([])
+      expect(result.appeared).toEqual([])
+      expect(result.remaining).toEqual([])
+      expect(result.nowAccepted).toEqual([])
+      expect(result.pendingFullCrawl).toEqual([issue])
+    }
+  }
 })

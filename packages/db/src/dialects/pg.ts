@@ -2150,6 +2150,14 @@ export function createPgDatabase(options: {
           .where(eq(crawlUrls.crawlId, crawlId))
       },
 
+      async renderOf(crawlId, urlHash) {
+        const rows = await db
+          .select()
+          .from(crawlUrlRenders)
+          .where(and(eq(crawlUrlRenders.crawlId, crawlId), eq(crawlUrlRenders.urlHash, urlHash)))
+        const row = rows[0]
+        return row ? { ...row, data: JSON.parse(row.data) as CrawlUrlRender['data'] } : null
+      },
       async renders(crawlId) {
         const rows = await db
           .select()

@@ -472,7 +472,7 @@ it.each(['failed', 'truncated', 'unsettled'] as const)(
       ).toEqual([])
     }
     // Prove the fixtures would reproduce all three errors without the coverage guard.
-    const unchecked = { ...site, rendersUnobserved: 0 }
+    const unchecked = { ...site, rendersUnobserved: 0, documentUnobserved: new Set<string>() }
     expect(
       detectFindings(site.get(`${SITE}/nofollow`)!, unchecked).found.map(({ issue }) => issue),
     ).toContain('only-nofollow-inlinks')
@@ -489,7 +489,7 @@ it.each(['failed', 'truncated', 'unsettled'] as const)(
 )
 
 it.each([false, true])(
-  'keeps resources-broken identical across a twice-failed home render (HTML embed=%s)',
+  'keeps resources-broken unverified across a twice-failed home render (HTML embed=%s)',
   async (htmlEmbed) => {
     const data = {
       ...siteData,
@@ -522,7 +522,7 @@ it.each([false, true])(
       const rows = (await db.crawls.issuesOf(crawl.id, [hash('/')]))
         .filter((row) => row.issue === 'resources-broken')
         .map(({ issue, details }) => ({ issue, details }))
-      expect(rows).toHaveLength(htmlEmbed ? 1 : 0)
+      expect(rows).toHaveLength(partial ? 0 : 1)
       findings.push(rows)
       const links = await db.crawls.linksFrom(crawl.id, [hash('/')])
       expect(
@@ -538,7 +538,7 @@ it.each([false, true])(
       expect(changes?.back ?? 0).toBe(0)
       expect(changes?.resolved ?? 0).toBe(0)
     }
-    expect(findings[1]).toEqual(findings[0])
+    expect(findings[1]).toEqual([])
     expect(findings[2]).toEqual(findings[0])
   },
 )

@@ -3,6 +3,7 @@ import { auditResultsState, type AuditResultsState } from '@seotools/core/crawl/
 import type {
   Crawl,
   CrawlUrl,
+  CrawlUrlRender,
   CrawlUrlAudit,
   CrawlUrlAcceptedIssue,
   CrawlUrlIssue,
@@ -26,6 +27,7 @@ const MAX_ACCEPTED_ELSEWHERE = 10
 
 export interface UrlDetailData {
   findingStates?: FindingStateRecord[]
+  render: CrawlUrlRender | null
   automaticCheck: boolean
   crawl: Crawl
   url: CrawlUrl
@@ -104,6 +106,7 @@ export async function loadUrlDetail(input: {
   const url = await db.crawls.getUrl(crawl.id, urlHash)
   if (!url) return null
   const [
+    render,
     issues,
     accepted,
     acceptedElsewhere,
@@ -117,6 +120,7 @@ export async function loadUrlDetail(input: {
     activeRecheck,
     owner,
   ] = await Promise.all([
+    db.crawls.renderOf(crawl.id, urlHash),
     db.crawls.issuesOf(crawl.id, [urlHash]),
     db.crawls.acceptedOf(crawl.id, [urlHash]),
     db.crawls.acceptedBecauseOf(crawl.id, urlHash, { limit: MAX_ACCEPTED_ELSEWHERE }),
@@ -154,6 +158,7 @@ export async function loadUrlDetail(input: {
     automaticCheck: (await automaticFileChecks(db.crawls, crawl.id, [url])).has(urlHash),
     crawl,
     url,
+    render,
     issues,
     accepted,
     acceptedElsewhere,

@@ -6,8 +6,24 @@ its ordinary outbound network. Rendering is disabled unless `RENDER_BROWSER_URL`
 Choose HTML or Rendered in **Domain settings → Crawling**. New domains choose Rendered only
 when the browser status is ready and fresh; existing domains keep HTML. Each crawl snapshots
 its mode, wait limit (default 5000 ms, range 1000–30000) and omitted host suffixes (up to 50).
-Changing the mode makes link-dependent findings incomparable with earlier crawls in the other
-mode. Existing page checks continue to read the served HTML.
+Document-dependent checks read the rendered page, including title, headings, description,
+structured data, directives, canonical, hreflang and exact outgoing references. Response facts
+(status, headers, robots.txt, sitemaps, timing and vitals) remain unchanged. Source diagnostics,
+HTML link counts, encoding/placement/structure checks and social previews read served HTML.
+The explicit per-check table is `ISSUE_BASIS` in `packages/core/src/crawl/basis.ts`.
+
+A complete document requires whole served HTML, a whole settled nonredirect render, and stored
+extracted values. Failed, truncated, unsettled, missing/legacy and unrendered other-2xx documents
+are unknown, never judged on an HTML fallback. Crawl stamps and URL details state the analysed
+basis and separate document coverage from navigation coverage. Page-local document uncertainty
+applies only to that URL; duplicates, canonical/hreflang targets and other checks involving other
+pages remain unverified crawl-wide. Graph absence retains its crawl-wide completeness rule.
+Between an HTML crawl and a rendered crawl only findings about the server's answer (status,
+redirects, timing, headers, robots.txt, sitemaps, vitals) are compared. Document, link and
+served-source findings, including JavaScript ones, are unverified, even if page-local or reported
+by both, and never a fresh/back alert. Complete rendered documents compare normally.
+An HTML-only recheck cannot settle a rendered crawl's document findings; a full crawl is needed.
+This uses the stored base crawl, even if domain settings later change.
 
 The JavaScript findings compare the served and rendered word counts, title, description, first H1,
 canonical, meta robots directives, structured data, hreflang and social tags. They also report
@@ -24,11 +40,27 @@ and its target. This is a complete observation of a redirect, even though `settl
 `refresh-redirect` instead), contributes no rendered-only
 links, and leaves the abandoned DOM's other differences unknown in comparisons. The served HTML's
 links still count. Fragment-only changes are same-document updates, not redirects; a stopped
-reload or navigation changing only ignored parameters is not a redirect and stays failed/unknown. A rendered `noindex` finding
-does not change indexability in this release: indexability still reads the served HTML and headers.
+reload or navigation changing only ignored parameters is not a redirect and stays failed/unknown. A served meta or header noindex persists even if JavaScript removes it; a rendered noindex adds
+that restriction. Other directives, including nofollow, use rendered meta and unchanged headers;
+a page JavaScript redirects keeps the nofollow of its served meta and headers, since its served
+links still count.
+Conflicts concern simultaneously applicable tokens, not old meta replaced by JavaScript.
+Rendered canonicals replace served document declarations, with unchanged Link-header fallback;
+conflicting or unresolved targets leave the canonical, and with it the page's indexability,
+unknown. Every check that reads them for that page (canonical conditions, `canonical-broken`,
+`canonical-redirect`, sitemap and expectation checks, what links say of a page expected out) is
+then unknown for it; the analysis records which while it runs the checks, so no list is kept by
+hand. Checks that read other pages (duplicates, canonical and hreflang targets) become unknown for
+the whole crawl. Proven blockers establish non-indexability; only a complete, conclusively
+blocker-free document establishes indexability. Rules, conditions and explicit expectations use
+these same observations, and unknown never satisfies or violates a requirement. Relation
+acceptances require a completely known blocker set. A finding the audit rules drop because of
+another one is unknown when that other one is: with an explicit indexable rule,
+`expected-indexable-blocked` takes the place of `robots-blocked`, so on a page whose document is
+incomplete `robots-blocked` is unknown too, in comparisons, alerts and rechecks.
 
 Rendered crawls render internal HTML pages answering exactly 200, using the already fetched
-document. Other 2xx pages keep their served results and an unknown render observation. Links
+document. Other 2xx pages keep their served response and unknown document findings. Links
 found only after rendering are followed as ordinary crawl links. Failed pages can be rendered
 once more after the site drain, serially, while their served bodies fit an in-memory limit of
 200 pages and 64 MiB. Committed failures remain failed after a worker restart; done URLs are

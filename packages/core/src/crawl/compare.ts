@@ -1,3 +1,4 @@
+import { issueBasisOf } from './basis'
 /**
  * Reading several retained full crawls of a domain side by side: what each one saw of a URL, what
  * changed between two of them, and which of those changes the evidence lets us call by name.
@@ -156,7 +157,12 @@ export function auditScopeKey(snapshot: AuditSnapshot): string {
     semantics: meaningOf(snapshot),
     languages: canonicalLanguages(snapshot.languages ?? NO_LANGUAGES),
     rules,
-    ...(snapshot.rendering === 'rendered' ? { rendering: 'rendered' } : {}),
+    ...(snapshot.rendering === 'rendered'
+      ? {
+          rendering: 'rendered',
+          ...(snapshot.documentBasis ? { documentBasis: snapshot.documentBasis } : {}),
+        }
+      : {}),
     // Absent when the defaults applied, so that a key from before thresholds existed is the same.
     ...(Object.keys(thresholds).length > 0 ? { thresholds } : {}),
   })
@@ -199,6 +205,8 @@ export function crawlAuditScope(crawl: CrawlLike): string | null {
 
 /** What a crawl can vouch for when its findings are compared with those of another. */
 export interface CrawlFacts {
+  documentBasis?: 'rendered-v1'
+  graphBasis?: 'rendered'
   identity?: string
   /** Its full results per URL are still stored: links, evidence, everything a comparison reads. */
   retained: boolean
@@ -229,6 +237,8 @@ export interface CrawlFacts {
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
   return {
+    documentBasis: crawl.auditSnapshot?.documentBasis,
+    graphBasis: crawl.auditSnapshot?.rendering,
     identity: JSON.stringify([...new Set(crawl.ignoredParameters ?? [])].sort()),
     retained: !crawl.pruned,
     observable: keepsUrlHistory(crawl),
@@ -269,6 +279,7 @@ export type PairSide = 'base' | 'target'
 export const PAIR_NOTES = [
   'pruned',
   'ignoredParameters',
+  'basis',
   'unanalysed',
   'legacy',
   'catalog',
@@ -330,6 +341,8 @@ export function assessPair(base: CrawlLike, target: CrawlLike): PairAssessment {
       sides((f) => !f.perUrlAudit),
     )
     const { base: b, target: t } = facts
+    if (b.documentBasis !== t.documentBasis || b.graphBasis !== t.graphBasis)
+      add('basis', ['base', 'target'])
     if (b.catalog === null || t.catalog === null || b.catalog !== t.catalog) {
       add('catalog', ['base', 'target'])
     }
@@ -478,9 +491,12 @@ export type UnknownReason =
   | 'catalog'
   | 'audit'
   | 'unobserved'
+  | 'basis'
 
 /** What one crawl says about a URL, for the findings it reports. */
 export interface UrlEvidence {
+  documentObservation?: 'complete' | 'redirected' | 'unobserved'
+  documentUnobserved?: readonly string[]
   /** The crawl requested it (and so has its answer). */
   requested: boolean
   /** `null`: the analysis did not keep it. */
@@ -503,6 +519,8 @@ export interface Evidence {
 
 /** What has to be the same for two observations to be compared. */
 interface Basis {
+  documentBasis?: 'rendered-v1'
+  graphBasis?: 'rendered'
   identity?: string
   catalog: string | null
   intent: string
@@ -530,6 +548,15 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   if (url.participation === null) return unknown('participation')
   if (url.dismissed?.has(issue)) return unknown('dismissed')
   // A crawl that never recorded what the check reads cannot say the URL does not have the issue.
+  // A rendered-basis analysis also lists, per URL, what its document left unknown and the findings
+  // that depend on those (`documentUnobserved`), whatever their basis.
+  if (
+    url.documentUnobserved?.includes(issue) ||
+    (issueBasisOf(issue) === 'document' &&
+      url.documentObservation &&
+      url.documentObservation !== 'complete')
+  )
+    return unknown('unobserved')
   if (crawl.unobserved?.has(issue)) return unknown('unobserved')
   // An incomplete crawl lacks pages that others link from, copy or point to: it can report what is
   // not there, and miss what is.
@@ -537,6 +564,8 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   return {
     presence: url.issues.has(issue) ? 'present' : 'absent',
     basis: {
+      documentBasis: crawl.documentBasis,
+      graphBasis: crawl.graphBasis,
       identity: crawl.identity,
       catalog: crawl.catalog,
       intent: url.intent ?? 'unknown',
@@ -549,6 +578,7 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
 
 /** Why two observations cannot be set against each other, or `null` when they can. */
 function incomparable(issue: string, a: Basis, b: Basis): UnknownReason | null {
+  if (basisChanged(issue, a, b)) return 'basis'
   if ((a.identity ?? '[]') !== (b.identity ?? '[]')) return 'audit'
   if (a.catalog === null || b.catalog === null || a.catalog !== b.catalog) return 'catalog'
   // What the URL is expected to be, and what rules ask of its conditions, change which findings it
@@ -628,7 +658,35 @@ export function classifyFinding(
     reasons: UnknownReason[] = [],
   ): FindingChange => ({ issue, kind, reportedBy, reasons })
 
-  if (a.presence === 'unknown' && b.presence === 'unknown') return null
+  // Policy decisions remain identifiable even when the observation mode also changed.
+  if (a.presence === 'present' && b.presence === 'unknown' && b.reason === 'dismissed')
+    return change('dismissed', 'base')
+  if (a.presence === 'present' && b.presence === 'unknown' && b.reason === 'excluded')
+    return change('excluded', 'base')
+  if (b.presence === 'present' && a.presence === 'unknown' && a.reason === 'excluded')
+    return change('audited', 'target')
+  const reported = (evidence: Evidence) =>
+    evidence.url?.participation !== 'excluded' &&
+    !evidence.url?.dismissed?.has(issue) &&
+    evidence.url?.issues.has(issue)
+  const baseReported = reported(input.base)
+  const targetReported = reported(input.target)
+  const reportedBy = baseReported ? (targetReported ? 'both' : 'base') : 'target'
+  if (basisChanged(issue, input.base.crawl, input.target.crawl) && (baseReported || targetReported))
+    return change('unverified', reportedBy, ['basis'])
+  if (a.presence === 'unknown' && b.presence === 'unknown') {
+    // Crawl-wide uncertainty must not hide observed document/graph findings on complete URLs.
+    if (
+      (baseReported || targetReported) &&
+      (a.reason === 'unobserved' || b.reason === 'unobserved') &&
+      ((issueBasisOf(issue) === 'document' &&
+        (input.base.crawl.documentBasis || input.target.crawl.documentBasis)) ||
+        (issueBasisOf(issue) === 'graph' &&
+          (input.base.crawl.graphBasis || input.target.crawl.graphBasis)))
+    )
+      return change('unverified', reportedBy, [...new Set([a.reason, b.reason])])
+    return null
+  }
 
   if (a.presence === 'present' && b.presence === 'present') {
     // Reported by both. It only "reappeared" if a crawl in between could have reported it and did
@@ -665,8 +723,13 @@ export function classifyFinding(
     if (a.presence === 'absent') {
       const why = incomparable(issue, a.basis, b.basis)
       if (why) return change('unverified', 'target', [why])
+      // An earlier crawl judged on another basis says nothing about this one; a URL it could not
+      // judge is not `present` there.
       const before = (input.earlier ?? []).some(
-        (evidence) => observe(issue, evidence).presence === 'present',
+        (evidence) =>
+          observe(issue, evidence).presence === 'present' &&
+          !basisChanged(issue, evidence.crawl, input.base.crawl) &&
+          !basisChanged(issue, evidence.crawl, input.target.crawl),
       )
       return change(before ? 'reappeared' : 'new', 'target')
     }
@@ -759,12 +822,16 @@ export interface TraceLike {
     participation: AuditParticipation
     intent: RecordedIntent
     conditions: ConditionStates
+    documentObservation?: 'complete' | 'redirected' | 'unobserved'
+    documentUnobserved?: readonly string[]
   } | null
 }
 
 /** What a trace says about a URL, in the terms findings are judged by. */
 export function urlEvidenceOf(trace: TraceLike): UrlEvidence {
   return {
+    documentObservation: trace.audit?.documentObservation,
+    documentUnobserved: trace.audit?.documentUnobserved,
     requested: trace.snapshot.state === 'done',
     participation: trace.audit?.participation ?? null,
     intent: trace.audit?.intent ?? null,
@@ -826,8 +893,24 @@ export function findingChangesBetween(
 export function issuePairReasons(notes: readonly PairNoteCode[], issue: string): UnknownReason[] {
   return notes.flatMap((note): UnknownReason[] => {
     // Changed identity can coalesce URLs and alter both page-local and site-wide findings.
+    if (note === 'basis') return issueBasisOf(issue) === 'response' ? [] : ['basis']
     if (note === 'ignoredParameters') return ['audit']
     if ((note === 'audit' || note === 'incomplete') && isPageLocalIssue(issue)) return []
     return [note === 'legacy' ? 'participation' : note]
   })
+}
+
+function basisChanged(
+  issue: string,
+  a: Pick<CrawlFacts, 'documentBasis' | 'graphBasis'>,
+  b: Pick<CrawlFacts, 'documentBasis' | 'graphBasis'>,
+) {
+  const basis = issueBasisOf(issue)
+  // Served-source findings read the same HTML in both modes, but a rendered crawl reaches other
+  // pages and the interface promises that only response findings compare across modes.
+  return basis === 'document'
+    ? a.documentBasis !== b.documentBasis
+    : basis === 'graph' || basis === 'html'
+      ? a.graphBasis !== b.graphBasis
+      : false
 }

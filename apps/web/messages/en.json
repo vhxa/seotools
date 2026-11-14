@@ -389,7 +389,8 @@
         "badge": "Needs a full crawl"
       },
       "checkedScope": "Checked again: the HTTP response, page data, robots.txt and checks that depend only on this URL. Links from other pages, duplicates and sitemap membership still require a full crawl.",
-      "evidenceNote": "The response fields above and the recorded details below are from this recheck. Evidence samples from the full crawl are not reused here."
+      "evidenceNote": "The response fields above and the recorded details below are from this recheck. Evidence samples from the full crawl are not reused here.",
+      "htmlOnly": "This recheck reads served HTML. Rendered document findings require a full crawl."
     },
     "results": {
       "metaTitle": "Recheck · {host} · seotools",
@@ -412,7 +413,7 @@
         "appeared": "New",
         "pending": "Waiting for a full crawl"
       },
-      "scope": "Compared with the last full crawl the URLs were picked from, which a recheck does not change. Findings that depend on other pages or on links are counted as waiting: only a full crawl says whether they remain.",
+      "scope": "Compared with the last full crawl the URLs were picked from, which a recheck does not change. Findings that depend on other pages or on links are counted as waiting: only a full crawl says whether they remain. Document findings from a rendered base also require a full crawl; this recheck only reads served HTML.",
       "notComparable": "Some URLs were not compared with the crawl: it was analysed under other audit rules, or not analysed.",
       "stale": "The audit rules changed after some of these were rechecked. Recheck them again to apply the current rules.",
       "columns": {
@@ -1657,7 +1658,7 @@
     },
     "noindex-added-by-javascript": {
       "name": "JavaScript adds noindex",
-      "description": "Only the rendered meta directives say noindex: the rendered page asks not to be indexed. This finding does not change the recorded indexability, which still reads the served HTML and headers. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
+      "description": "Only the rendered meta directives say noindex: the rendered page asks not to be indexed. In a rendered crawl this also blocks recorded indexability. Search engines that render see the rendered page; many crawlers, including those of several AI assistants, read only the HTML."
     },
     "nofollow-only-in-html": {
       "name": "nofollow only in the HTML",
@@ -1740,7 +1741,7 @@
         "headless": "Rendered"
       },
       "unavailable": "Rendered mode unavailable: {reason}",
-      "comparison": "The next crawl will not be comparable with earlier ones for findings that depend on links.",
+      "comparison": "Findings about the server's answer (status codes, redirects, response time…) will be compared with earlier crawls as usual. Findings about each page's content, about which pages link to which, and JavaScript findings will show as not comparable, never as new or fixed.",
       "wait": "Render wait limit (ms)",
       "waitHint": "From 1000 to 30000 milliseconds; default 5000.",
       "omitted": "Additional omitted hosts",
@@ -2856,8 +2857,9 @@
       "incomplete": "a crawl stopped at its URL limit and this finding depends on other pages",
       "catalog": "the issue catalogs differ",
       "audit": "the audit configuration or the expectation for the URL differs",
-      "unobserved": "a crawl did not record what this check needs: compare with crawls made after the update",
-      "dismissed": "A person dismissed this finding."
+      "unobserved": "a crawl could not completely observe the input this check needs",
+      "dismissed": "A person dismissed this finding.",
+      "basis": "one crawl read the served HTML and the other the rendered page: only findings about the server's answer can be compared"
     },
     "notes": {
       "pruned": {
@@ -2903,6 +2905,10 @@
       "ignoredParameters": {
         "title": "Ignored query parameters changed",
         "description": "Added and not seen URLs may reflect changed ignored parameters. Per-issue change summaries are unverified because URL identity changed."
+      },
+      "basis": {
+        "title": "Different observation bases",
+        "description": "One crawl read the served HTML and the other the rendered page. Findings about the server's answer are compared as usual; findings about each page's content, about which pages link to which, and JavaScript findings show as not comparable, never as new or fixed."
       }
     },
     "rowsShown": "{shown, number} of {matching, number} URLs shown",
@@ -2979,7 +2985,7 @@
       },
       "unlinked": {
         "label": "No internal links",
-        "default": "By default, a page listed in a sitemap with no internal link found in the crawled HTML gets a sitemap-only finding. JavaScript-built links are not seen.",
+        "default": "By default, a page listed in a sitemap with no internal link found in the crawled pages gets a sitemap-only finding. Rendered crawls include links found after JavaScript.",
         "help": {
           "required": "A finding is raised when an internal anchor links to this URL. Absence of links is confirmed only by a completed full crawl.",
           "allowed": "The page may have internal links or none: its sitemap-only finding is accepted. Links from nofollow or noindex pages are judged separately.",
@@ -3936,5 +3942,20 @@
     "check": "Check now",
     "checking": "Queueing check…",
     "hint": "The worker runs this check in the background. Refresh this page to see the result."
+  },
+  "AuditBasis": {
+    "rendered": "Judged on the rendered page",
+    "html": "Judged on the served HTML",
+    "exceptions": "Response and source diagnostics, raw fields and the share preview use the served response.",
+    "unknown": "Document findings unknown.",
+    "partlyUnknown": "Some findings are unknown.",
+    "failed": "Rendering failed.",
+    "redirected": "Redirect observed; the source document was abandoned.",
+    "truncated": "The served or rendered document was truncated.",
+    "unsettled": "The page did not settle within the observation window.",
+    "missing": "A complete document observation was not stored.",
+    "coverage": "{complete, number} complete documents; {redirected, number} redirects; {unobserved, number} unobserved documents.",
+    "dependencies": "Some checks depend on a canonical, stored inputs or other pages that were not completely observed, or on a finding that could not be judged.",
+    "unknownCount": "{count, number} checks could not be verified."
   }
 }

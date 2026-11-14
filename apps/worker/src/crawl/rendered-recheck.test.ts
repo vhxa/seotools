@@ -11,7 +11,7 @@ import { renderedOutcome } from './render-fixture'
 import { SITE, page } from './test-site'
 import { runVerification } from './verification'
 
-/** URL-scoped findings always describe served HTML, including in rendered crawls. */
+/** Rendered document findings are never settled by an HTML-only recheck. */
 it('does not report an unchanged rendered page as changed after an HTML-only recheck', async () => {
   const db = await createTestDatabase()
   try {
@@ -74,14 +74,19 @@ it('does not report an unchanged rendered page as changed after an HTML-only rec
       })
     expect(urlFindings(combined)).toEqual(urlFindings(htmlOnly))
     const home = combined.get(`${SITE}/`)!
-    expect(home.internalAnchorsOut).toBe(0)
-    expect(home.nofollowAnchorsOut).toBe(0)
+    expect(home.internalAnchorsOut).toBe(2)
+    expect(home.nofollowAnchorsOut).toBe(1)
     expect(home.linksTo).toHaveLength(2)
     expect(combined.get(`${SITE}/menu`)?.followedAnchorsIn).toBe(0)
     expect(combined.get(`${SITE}/followed`)?.followedAnchorsIn).toBe(1)
     expect(combined.get(`${SITE}/followed`)?.clickDepth).toBe(1)
     const urlHash = crawlUrlHash(`${SITE}/`)
     const before = (await db.crawls.issuesOf(crawl.id, [urlHash])).map((row) => row.issue)
+    // Current domain settings cannot change the base crawl's document basis.
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      renderingMode: 'http',
+    })
     const verification = (await db.verifications.start({
       domainId,
       baseCrawlId: crawl.id,
@@ -90,6 +95,7 @@ it('does not report an unchanged rendered page as changed after an HTML-only rec
     await runVerification(verification.id, { db, log, signal, createFetcher: site.createFetcher })
     const verified = (await db.verifications.urlsOf(verification.id))[0]!
     const comparison = compareWithCrawl({
+      renderedBase: true,
       crawl: before,
       recheck: verified.outcome!.findings.map((finding) => finding.issue),
       unchecked: verified.outcome!.unchecked,

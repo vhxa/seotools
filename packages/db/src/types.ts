@@ -359,12 +359,19 @@ export interface CrawlUrlRender {
     redirected?: boolean
     /** Absent on older render rows: these extracted values were not retained. */
     page?: {
+      canonical?: string | null
       title: string | null
       description: string | null
       h1: string | null
       metaRobots: string | null
       botRobots: Record<string, string>
       hreflang: NonNullable<CrawlPageData['hreflang']>
+    }
+    documentLinks?: {
+      internal: number
+      nofollow: number
+      embeds: string[]
+      embedsComplete: boolean
     }
     requests: unknown
     scriptErrors: { count: number; first: string[] }
@@ -761,6 +768,7 @@ export interface CrawlRepository {
   ): Promise<{ urlHash: string; scope: CrawlUrlScope; seq: number | null }[]>
   /** Stores what a request returned along with the URLs and links found in it, atomically. */
   renders(crawlId: string): Promise<CrawlUrlRender[]>
+  renderOf(crawlId: string, urlHash: string): Promise<CrawlUrlRender | null>
   saveBrowserWait(crawlId: string, milliseconds: number): Promise<void>
   recordResult(input: {
     render?: CrawlUrlRender
