@@ -8,31 +8,35 @@ Raspberry Pi to a VPS.
 
 ## What it does
 
-- **Renders JavaScript when enabled** with an isolated optional browser, follows menu links absent
-  from served HTML, and reports JavaScript-only links. Choose HTML or Rendered in domain crawl
-  settings; new domains use Rendered only when the browser is ready. Document checks then judge the
-  rendered page; response/source diagnostics and share previews keep the served HTML. Incomplete
-  documents stay unknown, and HTML-only rechecks cannot settle rendered document findings. Each URL shows what rendering observed, and what it could not. See [rendering](docs/rendering.md).
 - **Crawls whole sites** from the home page, sitemaps and every link, including what `robots.txt`
   blocks (auditing it is the point), with per-domain scope, depth, rate limits, request headers and
   Basic Auth for staging sites and lists of URLs. The Crawls area brings runs, comparison and
   rechecks together; schedules, in your time zone, live in Settings → Schedules.
+- **Optional JavaScript rendering** in a browser container with no network of its own: every
+  request goes through the crawler, and a safety check refuses a browser whose own traffic is not
+  blocked. Choose HTML or Rendered per domain; nothing changes until a browser is connected, and new
+  domains use Rendered only when it is ready. Rendered crawls follow links that only exist after
+  JavaScript and judge document checks on the rendered page, while response and source diagnostics
+  and share previews keep the served HTML. They report what JavaScript adds or changes (text,
+  titles, descriptions, headings, canonicals, directives, structured data, hreflang and social
+  tags), pages linked only by JavaScript, client redirects, blocked resources, failed renders and
+  script errors. Pages that were not observed completely stay unknown, HTML and rendered results
+  are never mixed in comparisons, and HTML-only rechecks cannot settle rendered document findings.
+  Each URL shows what rendering observed and what it could not; see the
+  [setup guide](docs/rendering.md).
 - **161 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
-  references, and page quality (titles, descriptions, headings, content, images, structured data
+  references, page quality (titles, descriptions, headings, content, images, structured data
   against Google's rich result requirements, Open Graph and Twitter tags, accessibility, security
-  and HTML), including entities shown as text and very few internal links in the served HTML. Findings explain why they matter and show the evidence. Each URL has a search-result
-  and share-card preview; a later recheck refreshes it while keeping the crawl's preview available.
+  and HTML, including entities shown as text and very few internal links in the served HTML) and,
+  in rendered crawls, what JavaScript changes. Findings explain why they matter and show the
+  evidence. Each URL has a search-result and share-card preview; a later recheck refreshes it while
+  keeping the crawl's preview available.
 - **Your own rules**: declare which URLs should be indexed, require or forbid directives, sitemap
   membership, a canonical to another URL or the absence of internal links, and leave URLs out of
   the audit. One rule can cover several paths and start from a template. Compact controls show
   every condition and what an unstated one inherits; crawl comparisons say whether their rules
   match. Expected findings appear as accepted. Set conventional thresholds (title length, thin
   content…) per domain.
-- **HTML/render differences**: rendered crawls report text, metadata, directives and declarations
-  added or changed by JavaScript, render redirects, blocked resources, failures and script errors.
-  Client redirects preserve graph completeness and leave their abandoned content unknown; partial
-  renders keep differences unknown. Rendering keeps the crawler’s document encoding; declared
-  meta-refresh redirects stay with the existing refresh finding.
 - **Finding states and changes**: mark findings in progress or dismiss them for one URL or a whole
   domain, with a note and attribution. Dismissals stay separate from fixes and rule acceptances.
   Filter findings, spot template-wide problems, inspect current site files and crawl differences,
@@ -52,10 +56,6 @@ Raspberry Pi to a VPS.
 - **Opt-in email alerts** for changes between crawls and Core Web Vitals regressions after full
   crawls. Daily site-file, availability and certificate checks record incidents, show open ones on
   the dashboard and keep a 30-day history in Issues; they are not an uptime monitor.
-- **Optional JavaScript rendering**: crawls can run each page in a browser container that has no
-  network of its own (every request goes through the crawler), report links and pages that only
-  exist after JavaScript, and never mix rendered and HTML results in comparisons;
-  [setup guide](docs/rendering.md).
 - **Custom extraction** of values with CSS selectors.
 - **Portfolio and structure**: see every domain by company with its last crawl, figures and trend,
   and explore a domain by directory with pages, errors and findings. Star a favourite domain to
