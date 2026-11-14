@@ -549,6 +549,46 @@ describe('classifyFinding', () => {
       ).toBe('new')
     })
 
+    it('keeps the HTML rule: an earlier crawl that reported it counts, even under other rules or catalog', () => {
+      // HTML crawls behave as before rendered bases existed: only presence is asked of the crawl
+      // before, never that its rules, catalog or intent match.
+      for (const earlier of [
+        seen([issue], {}, facts({ catalog: 'other' })),
+        seen([issue], { intent: 'not-indexable' }),
+        seen([issue], { conditions: 'noindex:allowed' }),
+        seen([issue], {}, facts({ scope: 'other-scope' })),
+      ])
+        expect(classify(seen([]), seen([issue]), { earlier: [earlier] })?.kind).toBe('reappeared')
+    })
+
+    it('does not count an earlier crawl judged on another basis', () => {
+      const rendered = facts({ documentBasis: 'rendered-v1', graphBasis: 'rendered' })
+      const page = 'title-missing'
+      // HTML earlier, two rendered crawls: the HTML judgement says nothing of the rendered page.
+      expect(
+        classifyFinding(page, {
+          base: seen([], {}, rendered),
+          target: seen([page], {}, rendered),
+          earlier: [seen([page])],
+        })?.kind,
+      ).toBe('new')
+      expect(
+        classifyFinding(page, {
+          base: seen([], {}, rendered),
+          target: seen([page], {}, rendered),
+          earlier: [seen([page], {}, rendered)],
+        })?.kind,
+      ).toBe('reappeared')
+      // A response finding reads the same answer in both modes.
+      expect(
+        classifyFinding('server-error', {
+          base: seen([], {}, rendered),
+          target: seen(['server-error'], {}, rendered),
+          earlier: [seen(['server-error'])],
+        })?.kind,
+      ).toBe('reappeared')
+    })
+
     it('needs a crawl in between that could have reported it and did not', () => {
       expect(classify(seen([issue]), seen([issue]), { between: [seen([])] })?.kind).toBe(
         'reappeared',
