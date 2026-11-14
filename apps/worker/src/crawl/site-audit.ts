@@ -558,17 +558,34 @@ export async function loadSite(
     if (alternates.has(target.url.urlHash)) target.sitemapsAmbiguous += count
     else target.sitemaps += count
   }
+  measureClickDepth(internal, byHash, identity)
+  // The served projection was taken before the site was read: give it every site-wide count (links,
+  // sitemaps, click depth), so response and HTML checks never read a count that was not computed.
+  // The outgoing counts and failed embeds kept here are the HTML ones.
   for (const url of internal) {
-    if (url.served)
-      Object.assign(url.served, {
-        internalAnchorsOut: url.internalAnchorsOut,
-        htmlInternalAnchorsOut: url.htmlInternalAnchorsOut,
-        nofollowAnchorsOut: url.nofollowAnchorsOut,
-        hreflang: [
-          ...(url.served.url.data?.hreflang ?? []),
-          ...url.hreflang.filter((entry) => entry.source === 'sitemap'),
-        ],
-      })
+    if (!url.served) continue
+    Object.assign(url.served, {
+      linksIn: url.linksIn,
+      htmlAnchorsIn: url.htmlAnchorsIn,
+      htmlInternalAnchorsOut: url.htmlInternalAnchorsOut,
+      renderedAnchorsFrom: url.renderedAnchorsFrom,
+      renderedLinksTo: url.renderedLinksTo,
+      renderedAnchorsOut: url.renderedAnchorsOut,
+      anchorsIn: url.anchorsIn,
+      followedAnchorsIn: url.followedAnchorsIn,
+      anchorsFromIndexable: url.anchorsFromIndexable,
+      sitemaps: url.sitemaps,
+      sitemapsAmbiguous: url.sitemapsAmbiguous,
+      internalAnchorsOut: url.internalAnchorsOut,
+      nofollowAnchorsOut: url.nofollowAnchorsOut,
+      linksTo: url.linksTo,
+      failedEmbeds: url.failedEmbeds,
+      clickDepth: url.clickDepth,
+      hreflang: [
+        ...(url.served.url.data?.hreflang ?? []),
+        ...url.hreflang.filter((entry) => entry.source === 'sitemap'),
+      ],
+    } satisfies Partial<AuditedUrl>)
   }
   if (crawl.rendering?.mode === 'rendered') {
     for (const url of internal) {
@@ -586,7 +603,6 @@ export async function loadSite(
       }
     }
   }
-  measureClickDepth(internal, byHash, identity)
   let rendersUnobserved = 0
   const renderCoverage = { failedOrMissing: 0, truncated: 0, unsettled: 0 }
   if (crawl.rendering?.mode === 'rendered') {

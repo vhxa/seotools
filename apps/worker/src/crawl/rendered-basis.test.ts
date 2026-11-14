@@ -418,3 +418,31 @@ it('keeps HTML findings, accepted rows, counts, audit state and scope byte-ident
   ).toString()
   expect(JSON.stringify(await captureHtmlBasisBaseline())).toBe(expected)
 })
+
+it.each(['required', 'forbidden'] as const)(
+  'judges response checks on the served projection with the whole site graph (sitemap %s)',
+  async (requirement) => {
+    await db.audit.saveRule({
+      domainId,
+      rule: {
+        dimension: 'sitemap',
+        value: requirement,
+        selector: { kind: 'path', path: '/a', query: { mode: 'any' }, scope: 'literal' },
+        reason: null,
+        enabled: true,
+      },
+    })
+    const result = await crawl({
+      [`${SITE}/`]: page('/', { links: '<a href="/a">A</a>' }),
+      [`${SITE}/a`]: page('/a'),
+      [`${SITE}/sitemap.xml`]: xml(sitemapOf(['/', '/a'])),
+    })
+    const found = await ids(result, '/a')
+    if (requirement === 'required') expect(found).not.toContain('sitemap-required-missing')
+    else expect(found).toContain('sitemap-forbidden-present')
+    const site = await loadSite(db, result, result.auditSnapshot!)
+    const a = site.get(`${SITE}/a`)!
+    for (const key of ['sitemaps', 'linksIn', 'anchorsIn', 'clickDepth'] as const)
+      expect(a.served![key], key).toEqual(a[key])
+  },
+)
