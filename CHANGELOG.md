@@ -42,8 +42,9 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - Rendered crawls judge document findings, indexability and rules on the completely observed
   rendered page. Served noindex restrictions persist; response and source diagnostics and social
-  previews keep the served response. Incomplete documents stay unknown per URL for page-local
-  checks and crawl-wide for checks involving other pages. Between an HTML and a rendered crawl
+  previews keep the served response. An incomplete document or a conflicting canonical leaves
+  the checks that read it, and the findings that depend on them, unknown for that URL (and
+  crawl-wide for checks involving other pages). Between an HTML and a rendered crawl
   only findings about the server's answer are compared; the others are unverified, never new or
   fixed, and HTML-only rechecks cannot settle rendered document findings.
 
