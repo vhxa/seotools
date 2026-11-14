@@ -53,7 +53,6 @@ which moves the entries of `[Unreleased]` into the new version.
   crawl-wide for checks involving other pages). Between an HTML and a rendered crawl
   only findings about the server's answer are compared; the others are unverified, never new or
   fixed, and HTML-only rechecks cannot settle rendered document findings.
-
 - Sitemap orphan findings describe the links observed in either HTML or rendered crawls. Rendered
   crawls pause when the browser is unavailable and fail after their recovery allowance, without
   falling back to HTML. In a rendered crawl, a page that was neither rendered whole and settled nor
@@ -66,10 +65,17 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Upgrade notes
 
-This update adds forward-only database migrations for render settings, crawl snapshots and
-per-URL observations. Going back to an earlier image requires restoring the pre-update backup.
-Earlier retained crawls are analysed again from stored observations; JavaScript findings remain
-unknown for crawls that did not render.
+- Two forward-only database migrations, `0034_rendered_crawls` and `0035_render_truncation`, add
+  render settings, crawl snapshots and per-URL render observations. Take a backup before updating:
+  going back requires restoring that backup together with the previous image, which refuses to
+  start on the upgraded database.
+- Nothing changes for an installation that does not connect a browser. Updating the image,
+  including `latest`, keeps every domain on HTML; rendering is offered only once a browser is
+  connected and passes its safety check.
+- Earlier retained crawls are analysed again from stored observations after the update;
+  JavaScript findings remain unknown for crawls that did not render.
+- To add the optional browser, follow [the rendering guide](docs/rendering.md) (the `rendering`
+  Compose profile and `RENDER_BROWSER_URL`).
 
 ## [0.5.0] - 2026-11-12
 
