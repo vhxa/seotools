@@ -2,7 +2,6 @@ import { RENDER_DIFFERENCE_IDS, unobservedCanonicalDifferences } from './render-
 import {
   EMPTY_AUDIT_SNAPSHOT,
   ISSUE_BASIS,
-  isPageLocalIssue,
   ISSUE_CATALOG_VERSION,
   PAGE_ISSUES,
   PAGE_ISSUE_IDS,

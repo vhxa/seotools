@@ -413,7 +413,7 @@
         "appeared": "Nuevos",
         "pending": "Pendientes de un rastreo completo"
       },
-      "scope": "Comparado con el último rastreo completo del que se eligieron las URLs, que una recomprobación no cambia. Los hallazgos que dependen de otras páginas o de enlaces se cuentan como pendientes: solo un rastreo completo dice si siguen ahí.",
+      "scope": "Comparado con el último rastreo completo del que se eligieron las URLs, que una recomprobación no cambia. Los hallazgos que dependen de otras páginas o de enlaces se cuentan como pendientes: solo un rastreo completo dice si siguen ahí. Los hallazgos del documento de un rastreo renderizado también necesitan un rastreo completo; esta revisión solo lee el HTML recibido.",
       "notComparable": "Algunas URLs no se compararon con el rastreo: se analizó con otras reglas de auditoría, o no se analizó.",
       "stale": "Las reglas de auditoría cambiaron después de recomprobar algunas de estas. Vuelve a comprobarlas para aplicar las reglas actuales.",
       "columns": {
@@ -1658,7 +1658,7 @@
     },
     "noindex-added-by-javascript": {
       "name": "JavaScript añade noindex",
-      "description": "Solo las directivas meta renderizadas indican noindex: la página renderizada pide no indexarse. Este hallazgo no cambia la indexabilidad registrada, que sigue basándose en el HTML y las cabeceras recibidos. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
+      "description": "Solo las directivas meta renderizadas indican noindex: la página renderizada pide no indexarse. En un rastreo renderizado, esto también impide considerarla indexable. Los buscadores que renderizan ven la página renderizada; muchos rastreadores, entre ellos los de varios asistentes de IA, solo leen el HTML."
     },
     "nofollow-only-in-html": {
       "name": "nofollow solo en el HTML",
@@ -1735,13 +1735,13 @@
     "description": "Cómo se comportan los rastreos de {host}. Los cambios se aplican desde el siguiente rastreo.",
     "rendering": {
       "label": "Renderizado de páginas",
-      "hint": "El renderizado ejecuta JavaScript para descubrir más enlaces.",
+      "hint": "La renderización ejecuta JavaScript para descubrir enlaces y evaluar el documento renderizado.",
       "modes": {
         "http": "HTML",
         "headless": "Renderizado"
       },
       "unavailable": "Renderizado no disponible: {reason}",
-      "comparison": "El próximo rastreo no será comparable con los anteriores para los hallazgos que dependen de enlaces.",
+      "comparison": "Si cambia el modo de renderización, el próximo rastreo no será comparable con los anteriores para los hallazgos del documento y de los enlaces.",
       "wait": "Límite de espera del renderizado (ms)",
       "waitHint": "Entre 1000 y 30000 milisegundos; 5000 por defecto.",
       "omitted": "Hosts adicionales que omitir",
@@ -2985,7 +2985,7 @@
       },
       "unlinked": {
         "label": "Sin enlaces internos",
-        "default": "Por defecto, una página incluida en un sitemap sin enlaces internos encontrados en el HTML rastreado genera un hallazgo de URL solo en el sitemap. No se ven los enlaces creados con JavaScript.",
+        "default": "Por defecto, una página incluida en un sitemap sin enlaces internos observados en las páginas rastreadas genera un hallazgo de URL solo en sitemap. Los rastreos renderizados incluyen los enlaces que aparecen tras ejecutar JavaScript.",
         "help": {
           "required": "Se genera un hallazgo si un enlace interno apunta a esta URL. La ausencia de enlaces solo se confirma con un rastreo completo finalizado.",
           "allowed": "La página puede recibir enlaces internos o no: se acepta el hallazgo de URL solo en el sitemap. Los enlaces desde páginas con nofollow o noindex se evalúan por separado.",

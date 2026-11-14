@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
+import { captureHtmlBasisBaseline } from './html-rendered-basis.baseline'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import {
   createLogger,
@@ -406,4 +409,12 @@ it('does not infer missing hreflang returns or duplicate eligibility from incomp
   expect(await ids(result, '/a')).not.toContain('hreflang-no-return')
   const site = await loadSite(db, result, result.auditSnapshot!)
   expect([...site.titles.values()].flat().some((url) => url.url.url.endsWith('/b'))).toBe(false)
+})
+
+// Captured from origin/feat/0.6.0 at 78ec808, preserving the earlier 139-scenario baseline too.
+it('keeps HTML findings, accepted rows, counts, audit state and scope byte-identical to the WP6 base', async () => {
+  const expected = gunzipSync(
+    readFileSync(new URL('./html-rendered-basis.json.gz', import.meta.url)),
+  ).toString()
+  expect(JSON.stringify(await captureHtmlBasisBaseline())).toBe(expected)
 })

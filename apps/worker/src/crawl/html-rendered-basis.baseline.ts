@@ -68,7 +68,7 @@ export async function captureHtmlBasisBaseline() {
       createFetcher: fakeSite(data, 0).createFetcher,
       signal: new AbortController().signal,
     })
-    return htmlBaseline(db, crawl.id)
+    return await htmlBaseline(db, crawl.id)
   } finally {
     await db.close()
   }

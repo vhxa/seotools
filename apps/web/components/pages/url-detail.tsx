@@ -1,4 +1,3 @@
-import { issueBasisOf } from '@seotools/core/crawl/basis'
 import { FindingStatesList } from '@/components/audit/finding-states-list'
 import { FindingStateActions } from '@/components/audit/finding-state-actions'
 import { VitalsValues } from './vitals-values'
@@ -34,7 +33,7 @@ import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { groupDetailFindings } from '@/lib/url-detail-findings'
+import { documentFindingsState, groupDetailFindings } from '@/lib/url-detail-findings'
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { sharePreview } from '@/lib/share-preview'
 import { formatBytes } from '@/lib/format'
@@ -90,27 +89,15 @@ export async function UrlDetail({
   ])
   const basis = await getTranslations('AuditBasis')
   const { url, crawl, audit } = data
-  const renderedBasis = crawl.auditSnapshot?.documentBasis === 'rendered-v1'
-  const unknownDocumentChecks = new Set([
-    ...(audit?.documentUnobserved ?? []),
-    ...(crawl.auditSnapshot?.unobserved ?? []).filter((id) => issueBasisOf(id) === 'document'),
-  ])
-  const documentUnknown =
-    renderedBasis &&
-    isPageUrl(data) &&
-    (audit?.documentObservation !== 'complete' || unknownDocumentChecks.size > 0)
-  const renderReason =
-    audit?.documentObservation === 'complete'
-      ? 'dependencies'
-      : data.render?.status === 'failed'
-        ? 'failed'
-        : data.render?.data.redirected
-          ? 'redirected'
-          : url.data?.truncated || data.render?.truncated
-            ? 'truncated'
-            : data.render?.status === 'rendered' && !data.render.settled
-              ? 'unsettled'
-              : 'missing'
+  const documentState = documentFindingsState({
+    documentBasis: crawl.auditSnapshot?.documentBasis,
+    observation: audit?.documentObservation,
+    unobserved: audit?.documentUnobserved,
+    crawlUnobserved: crawl.auditSnapshot?.unobserved,
+    page: isPageUrl(data),
+    servedTruncated: url.data?.truncated,
+    render: data.render,
+  })
   const findingGroups = groupDetailFindings(data.issues)
   const findingsId = `url-findings-${crawl.id}-${url.urlHash}`
   const isPage = url.kind === 'page'
@@ -160,12 +147,12 @@ export async function UrlDetail({
 
       {crawl.pagesByWorstIssue !== null && (
         <div className="grid gap-1 text-sm text-muted-foreground">
-          <p>{basis(renderedBasis ? 'rendered' : 'html')}</p>
+          <p>{basis(documentState.rendered ? 'rendered' : 'html')}</p>
           <p>{basis('exceptions')}</p>
-          {documentUnknown && (
+          {documentState.unknown && (
             <p role="status">
-              {basis('unknown')} {basis(renderReason)}{' '}
-              {basis('unknownCount', { count: unknownDocumentChecks.size })}
+              {basis('unknown')} {basis(documentState.reason)}{' '}
+              {basis('unknownCount', { count: documentState.count })}
             </p>
           )}
         </div>
@@ -363,7 +350,7 @@ export async function UrlDetail({
               <p className="text-sm text-muted-foreground">{t('excludedFindings')}</p>
             ) : data.issues.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {documentUnknown
+                {documentState.unknown
                   ? basis('unknown')
                   : data.accepted.length > 0
                     ? t('noPendingIssues')

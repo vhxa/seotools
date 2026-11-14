@@ -655,16 +655,35 @@ export function classifyFinding(
     reasons: UnknownReason[] = [],
   ): FindingChange => ({ issue, kind, reportedBy, reasons })
 
-  if (
-    basisChanged(issue, input.base.crawl, input.target.crawl) &&
-    (a.presence === 'present' || b.presence === 'present')
-  )
-    return change(
-      'unverified',
-      a.presence === 'present' ? (b.presence === 'present' ? 'both' : 'base') : 'target',
-      ['basis'],
+  // Policy decisions remain identifiable even when the observation mode also changed.
+  if (a.presence === 'present' && b.presence === 'unknown' && b.reason === 'dismissed')
+    return change('dismissed', 'base')
+  if (a.presence === 'present' && b.presence === 'unknown' && b.reason === 'excluded')
+    return change('excluded', 'base')
+  if (b.presence === 'present' && a.presence === 'unknown' && a.reason === 'excluded')
+    return change('audited', 'target')
+  const reported = (evidence: Evidence) =>
+    evidence.url?.participation !== 'excluded' &&
+    !evidence.url?.dismissed?.has(issue) &&
+    evidence.url?.issues.has(issue)
+  const baseReported = reported(input.base)
+  const targetReported = reported(input.target)
+  const reportedBy = baseReported ? (targetReported ? 'both' : 'base') : 'target'
+  if (basisChanged(issue, input.base.crawl, input.target.crawl) && (baseReported || targetReported))
+    return change('unverified', reportedBy, ['basis'])
+  if (a.presence === 'unknown' && b.presence === 'unknown') {
+    // Crawl-wide uncertainty must not hide observed document/graph findings on complete URLs.
+    if (
+      (baseReported || targetReported) &&
+      (a.reason === 'unobserved' || b.reason === 'unobserved') &&
+      ((issueBasisOf(issue) === 'document' &&
+        (input.base.crawl.documentBasis || input.target.crawl.documentBasis)) ||
+        (issueBasisOf(issue) === 'graph' &&
+          (input.base.crawl.graphBasis || input.target.crawl.graphBasis)))
     )
-  if (a.presence === 'unknown' && b.presence === 'unknown') return null
+      return change('unverified', reportedBy, [...new Set([a.reason, b.reason])])
+    return null
+  }
 
   if (a.presence === 'present' && b.presence === 'present') {
     // Reported by both. It only "reappeared" if a crawl in between could have reported it and did

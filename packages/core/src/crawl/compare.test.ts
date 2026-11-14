@@ -1055,3 +1055,30 @@ it('keeps document uncertainty URL-local and refuses unknown or cross-basis hist
     kind: 'new',
   })
 })
+
+it('retains cross-basis and crawl-wide unknown rows even when both crawls report a finding', () => {
+  const legacy = facts({ unobserved: new Set(['title-duplicate']) })
+  const rendered = facts({
+    documentBasis: 'rendered-v1',
+    graphBasis: 'rendered',
+    unobserved: new Set(['title-duplicate']),
+  })
+  expect(
+    classifyFinding('title-duplicate', {
+      base: seen(['title-duplicate'], {}, legacy),
+      target: seen(['title-duplicate'], {}, rendered),
+    }),
+  ).toMatchObject({ kind: 'unverified', reportedBy: 'both', reasons: ['basis'] })
+  expect(
+    classifyFinding('title-duplicate', {
+      base: seen(['title-duplicate'], {}, rendered),
+      target: seen(['title-duplicate'], {}, rendered),
+    }),
+  ).toMatchObject({ kind: 'unverified', reportedBy: 'both', reasons: ['unobserved'] })
+  expect(
+    classifyFinding('title-missing', {
+      base: seen(['title-missing']),
+      target: seen([], { participation: 'excluded' }, rendered),
+    }),
+  ).toMatchObject({ kind: 'excluded' })
+})
