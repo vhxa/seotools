@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
-import { captureHtmlBasisBaseline } from './html-rendered-basis.baseline'
+import {
+  captureHtmlBasisBaseline,
+  captureHtmlComparisonBaseline,
+} from './html-rendered-basis.baseline'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import {
   createLogger,
@@ -431,6 +434,14 @@ it('keeps HTML findings, accepted rows, counts, audit state and scope byte-ident
     readFileSync(new URL('./html-rendered-basis.json.gz', import.meta.url)),
   ).toString()
   expect(JSON.stringify(await captureHtmlBasisBaseline())).toBe(expected)
+})
+
+// Captured from origin/feat/0.6.0 at 78ec808: every comparison and alert between HTML crawls.
+it('keeps comparisons and alerts between HTML crawls byte-identical to the WP6 base', async () => {
+  const expected = gunzipSync(
+    readFileSync(new URL('./html-comparison-basis.json.gz', import.meta.url)),
+  ).toString()
+  expect(JSON.stringify(await captureHtmlComparisonBaseline())).toBe(expected)
 })
 
 it.each(['required', 'forbidden'] as const)(
