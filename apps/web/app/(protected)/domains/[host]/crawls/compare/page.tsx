@@ -11,6 +11,8 @@ import { CompareTable } from '@/components/history/compare-table'
 import { sameRulesOf } from '@/lib/rules-state'
 import { crawlConfigVersion, crawlMoment, CrawlStamp } from '@/components/history/crawl-stamp'
 import { PairNotes } from '@/components/history/pair-notes'
+import { RenderingPairNote } from '@/components/history/rendering-pair-note'
+import { isRenderedCrawl } from '@/lib/rendering'
 import { PairPicker } from '@/components/history/pair-picker'
 import { IssueLabel } from '@/components/pages/issue-mark'
 import { Pagination } from '@/components/pagination'
@@ -208,7 +210,13 @@ export default async function ComparePage({
         </p>
       )}
 
-      <PairNotes assessment={assessment} />
+      <RenderingPairNote earlier={isRenderedCrawl(base)} later={isRenderedCrawl(target)} />
+      <PairNotes
+        assessment={assessment}
+        renderingExplainsAudit={
+          sameRules === true && isRenderedCrawl(base) !== isRenderedCrawl(target)
+        }
+      />
 
       <Card>
         <CardHeader>

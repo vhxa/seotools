@@ -93,6 +93,8 @@ export async function ListStatus({
         return tFilters(`intent.${query.intent!}`)
       case 'rule':
         return ''
+      case 'rendering':
+        return tFilters(`rendering.${query.rendering!}`)
     }
   }
 

@@ -10,9 +10,22 @@ const sidesOf = (note: PairNote) => (note.sides.length === 2 ? 'both' : (note.si
  * at its URL limit, a different audit configuration or issue catalog. Each one is said out loud, next
  * to the results it affects, and the labels of the page are chosen to match (see `classifyFinding`).
  */
-export function PairNotes({ assessment }: { assessment: PairAssessment }) {
+export function PairNotes({
+  assessment,
+  renderingExplainsAudit = false,
+}: {
+  assessment: PairAssessment
+  /**
+   * The two crawls read the pages in different ways and were analysed with the same rules: the
+   * different configuration the assessment sees is that, which `RenderingPairNote` already says.
+   */
+  renderingExplainsAudit?: boolean
+}) {
   const t = useTranslations('CrawlCompare.notes')
-  if (assessment.notes.length === 0) return null
+  const notes = assessment.notes.filter(
+    (note) => !(renderingExplainsAudit && note.code === 'audit'),
+  )
+  if (notes.length === 0) return null
 
   const title = (note: PairNote) => {
     const sides = sidesOf(note)
@@ -38,7 +51,7 @@ export function PairNotes({ assessment }: { assessment: PairAssessment }) {
 
   return (
     <div className="grid gap-2">
-      {assessment.notes.map((note) => {
+      {notes.map((note) => {
         // A crawl without results or findings leaves less to compare; the rest only qualify it.
         const blocking = note.code === 'pruned' || note.code === 'unanalysed'
         const Icon = blocking ? CircleAlertIcon : InfoIcon

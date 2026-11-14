@@ -68,7 +68,9 @@ import {
   ParticipationBadge,
   RuleOrigin,
 } from '@/components/audit/state-badges'
+import { RenderStateBadge } from '@/components/crawl/render-state-badge'
 import { StatusCell } from '@/components/crawl/status-cell'
+import type { RenderState } from '@seotools/core/crawl/render-state'
 import { ISSUE_TYPE_STYLES, IssueDetails, useIssueLabel } from '@/components/pages/issue-mark'
 import { ExportMenu } from '@/components/pages/export-menu'
 import { TableFilters } from '@/components/pages/table-filters'
@@ -140,6 +142,8 @@ export interface PageRow {
   /** What the crawl saw of whether it can be indexed; `null` as above. */
   indexability: IndexabilityState | null
   blockers: string[]
+  /** What the crawl's rendering observed of it; `null`: the crawl has no render for it. */
+  render: RenderState | null
 }
 
 const features = tableFeatures({ rowSelectionFeature, columnVisibilityFeature })
@@ -161,6 +165,7 @@ const columns = helper.columns([
   helper.display({ id: 'audit' }),
   helper.display({ id: 'intent' }),
   helper.display({ id: 'indexability' }),
+  helper.display({ id: 'rendering' }),
   helper.display({ id: 'origin' }),
   helper.display({ id: 'depth' }),
   helper.display({ id: 'responseTime' }),
@@ -200,6 +205,7 @@ const HIDEABLE = [
   'audit',
   'intent',
   'indexability',
+  'rendering',
   'origin',
   'depth',
   'responseTime',
@@ -220,6 +226,7 @@ const DEFAULT_WIDTHS: Record<string, number> = {
   audit: 110,
   intent: 260,
   indexability: 140,
+  rendering: 220,
   origin: 240,
   depth: 100,
   responseTime: 160,
@@ -450,6 +457,8 @@ function Cell({
       ) : (
         <Muted>—</Muted>
       )
+    case 'rendering':
+      return row.internal ? <RenderStateBadge state={row.render} /> : <Muted>—</Muted>
     case 'origin':
       return row.internal && row.participation !== null ? (
         <div className="grid max-w-xs gap-1.5 text-xs">
@@ -573,6 +582,7 @@ export function PagesTable({
   rows,
   query,
   analysed,
+  rendered,
   footer,
   filters,
   status,
@@ -589,6 +599,8 @@ export function PagesTable({
   query: DetailQuery
   /** Whether the crawl was checked for issues: a URL with none is then clean, not unchecked. */
   analysed: boolean
+  /** The crawl rendered its pages: only then is there a rendering column. */
+  rendered: boolean
 }) {
   const t = useTranslations('PagesDetails')
   const tCommon = useTranslations('Common')
@@ -621,6 +633,7 @@ export function PagesTable({
         ...columnVisibility,
         referencedBy: query.view === 'errors' || query.view === 'redirects',
         issueDetail: detail !== undefined,
+        rendering: rendered && columnVisibility.rendering !== false,
         select: canEdit,
       },
       rowSelection: selection,
@@ -796,7 +809,9 @@ export function PagesTable({
               <DropdownMenuContent align="end" className="min-w-52">
                 {table
                   .getAllLeafColumns()
-                  .filter((column) => column.getCanHide())
+                  .filter(
+                    (column) => column.getCanHide() && (rendered || column.id !== 'rendering'),
+                  )
                   .map((column) => (
                     <DropdownMenuCheckboxItem
                       key={column.id}

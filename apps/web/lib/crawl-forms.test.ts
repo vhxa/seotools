@@ -271,6 +271,18 @@ it('refuses rendered mode without fresh ready evidence, but always allows HTML',
   form.set('renderingMode', 'http')
   expect(parseCrawlSettingsForm(form, false).ok).toBe(true)
 })
+
+it('lets a domain already saved as Rendered save its settings without a ready browser', () => {
+  const form = formOf({ ...validSettings, renderingMode: 'headless', concurrency: '3' })
+  const kept = parseCrawlSettingsForm(form, false, 'headless')
+  expect(kept.ok).toBe(true)
+  if (kept.ok) expect(kept.settings).toMatchObject({ renderingMode: 'headless', concurrency: 3 })
+  // Only switching to Rendered is refused; a domain on HTML still cannot.
+  expect(parseCrawlSettingsForm(form, false, 'http')).toEqual({
+    ok: false,
+    error: 'renderingUnavailable',
+  })
+})
 it.each(['https://example.com', 'bad host.test', '*.example.com', 'example.com/path', '-bad.test'])(
   'rejects invalid omitted hostname %s',
   (host) => {

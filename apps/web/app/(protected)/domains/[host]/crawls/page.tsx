@@ -28,6 +28,7 @@ import { getDb } from '@/lib/db'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
 import { isBrowsableStatus } from '@seotools/core/crawl/compare'
+import { RenderStamp } from '@/components/history/render-stamp'
 
 export const dynamic = 'force-dynamic'
 
@@ -191,6 +192,7 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                           </span>
                           {crawl.id === latest?.id && <Badge>{t('latest')}</Badge>}
                         </span>
+                        <RenderStamp crawl={crawl} />
                         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
                           {isBrowsable && !crawl.pruned && (
                             <Link

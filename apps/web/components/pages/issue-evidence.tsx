@@ -20,7 +20,7 @@ const ADDRESS = 'min-w-0 font-mono text-xs break-all'
  * opened apart, when it is some other HTTP(S) URL, and plain text for anything else. What a site
  * wrote is never put in an `href` unless it is a real URL (`evidenceTarget`).
  */
-function Address({
+export function Address({
   url,
   text,
   known,

@@ -22,6 +22,12 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- JavaScript rendering in the interface: the crawl settings say what each mode costs and why
+  Rendered is unavailable; a URL's detail has a JavaScript tab that compares the served HTML with
+  the rendered page, or says it was not rendered, redirected by JavaScript or incomplete; the URLs
+  table and its CSV export have a Rendering column and filter; the overview, the crawl list and the
+  crawl comparison say which mode a crawl ran in, how many pages could not be observed completely and
+  what that leaves unknown.
 - Rendered crawls report text, titles, descriptions, H1s, canonical URLs, meta robots directives,
   structured data, hreflang and social tags added or changed by JavaScript, along with render
   redirects, robots-blocked resources, failures and uncaught script errors. Only complete

@@ -69,6 +69,19 @@ results; HTML is never stored. A page whose render failed, is missing, neither s
 redirected, or was cut at the size limit (or whose served HTML was) makes link absence unknown for the whole crawl:
 link-dependent findings are then not claimed, and comparisons treat them as unverified.
 
+## Where it shows in the interface
+
+The JavaScript tab of a URL compares the served HTML with the rendered page (title, description,
+first H1, canonical, robots, word count, structured data, hreflang, Open Graph, and the internal
+links that exist only after rendering), lists the resources that failed, were blocked by `robots.txt`
+or were left out, and the script errors. A page that was not rendered, was redirected by JavaScript
+or has an incomplete render (failed, cut at the size limit, did not settle, or stored before
+completeness was recorded) says so, compares nothing and leaves its JavaScript findings unknown. The
+URLs table and its CSV have a Rendering column and filter; the overview, the crawl list and the
+comparison say which mode each crawl ran in and how many pages could not be observed completely.
+Comparing an HTML crawl with a rendered one says that findings about each page's content, link-dependent
+findings and JavaScript findings are not comparable; only findings about the server's answer are.
+
 An unavailable browser pauses the crawl for up to ten minutes total, polling every 30 seconds.
 The recovery allowance survives worker restarts. Exhaustion fails the crawl with a browser
 unavailable reason and follows ordinary crawl-problem alerts; it never falls back to HTML.

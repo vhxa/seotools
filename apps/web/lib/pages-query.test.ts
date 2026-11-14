@@ -29,6 +29,7 @@ const base: DetailQuery = {
   participation: null,
   intent: null,
   rule: null,
+  rendering: null,
   url: null,
 }
 
@@ -54,6 +55,7 @@ describe('parseDetailQuery', () => {
         audit: 'excluded',
         intent: 'not-indexable',
         rule: '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f11',
+        rendering: 'incomplete',
         url: hash,
       }),
     ).toEqual({
@@ -73,6 +75,7 @@ describe('parseDetailQuery', () => {
       participation: 'excluded',
       intent: 'not-indexable',
       rule: '0b3f6b5a-6b0c-4f0b-9a54-2f1f6c0c2f11',
+      rendering: 'incomplete',
       url: hash,
     })
   })
@@ -202,6 +205,7 @@ describe('detailHref', () => {
       participation: 'audited',
       intent: 'indexable',
       rule: null,
+      rendering: null,
       url: 'b'.repeat(32),
     }
     const href = detailHref('acme.com', query)
@@ -332,49 +336,71 @@ describe('the filters that cannot apply', () => {
   } as DetailQuery
 
   it('are none for URLs of the site with an audit, in a view with several types', () => {
-    expect(unappliedFilters({ ...withFilters, view: 'all' }, { auditData: true })).toEqual({})
-    expect(filterAvailability('all', { auditData: true })).toEqual({ audit: null, type: null })
+    expect(
+      unappliedFilters({ ...withFilters, view: 'all' }, { auditData: true, rendered: false }),
+    ).toEqual({})
+    expect(filterAvailability('all', { auditData: true, rendered: true })).toEqual({
+      audit: null,
+      type: null,
+      rendering: null,
+    })
   })
 
   it('include the audit ones on external URLs, which are not audited, and the type', () => {
-    expect(unappliedFilters({ ...withFilters, view: 'external' }, { auditData: true })).toEqual({
+    expect(
+      unappliedFilters({ ...withFilters, view: 'external' }, { auditData: true, rendered: false }),
+    ).toEqual({
       type: 'external',
       indexability: 'external',
       participation: 'external',
       intent: 'external',
       rule: 'external',
     })
-    expect(filterAvailability('external', { auditData: true })).toEqual({
+    expect(filterAvailability('external', { auditData: true, rendered: false })).toEqual({
       audit: 'external',
       type: 'external',
+      rendering: 'external',
     })
   })
 
   it('include the type where the view has one only', () => {
-    expect(unappliedFilters({ ...withFilters, view: 'pages' }, { auditData: true })).toEqual({
+    expect(
+      unappliedFilters({ ...withFilters, view: 'pages' }, { auditData: true, rendered: false }),
+    ).toEqual({
       type: 'view',
     })
-    expect(filterAvailability('redirects', { auditData: true }).type).toBe('view')
+    expect(filterAvailability('redirects', { auditData: true, rendered: false }).type).toBe('view')
   })
 
   it('include the audit ones in a crawl with no audit data, never reading its silence as a no', () => {
-    expect(unappliedFilters({ ...withFilters, view: 'all' }, { auditData: false })).toEqual({
+    expect(
+      unappliedFilters({ ...withFilters, view: 'all' }, { auditData: false, rendered: false }),
+    ).toEqual({
       indexability: 'no-audit-data',
       participation: 'no-audit-data',
       intent: 'no-audit-data',
       rule: 'no-audit-data',
     })
-    expect(filterAvailability('pages', { auditData: false }).audit).toBe('no-audit-data')
+    expect(filterAvailability('pages', { auditData: false, rendered: false }).audit).toBe(
+      'no-audit-data',
+    )
     // External wins as the reason: the crawl is not what keeps them from applying.
-    expect(filterAvailability('external', { auditData: false }).audit).toBe('external')
+    expect(filterAvailability('external', { auditData: false, rendered: false }).audit).toBe(
+      'external',
+    )
   })
 
   it('say nothing about a filter that is not set', () => {
-    expect(unappliedFilters({ ...base, view: 'external' }, { auditData: false })).toEqual({})
+    expect(
+      unappliedFilters({ ...base, view: 'external' }, { auditData: false, rendered: false }),
+    ).toEqual({})
   })
 
   it('are not asked of the database, and the rest are', () => {
-    const unapplied = unappliedFilters({ ...withFilters, view: 'external' }, { auditData: true })
+    const unapplied = unappliedFilters(
+      { ...withFilters, view: 'external' },
+      { auditData: true, rendered: false },
+    )
     expect(listingOf({ ...withFilters, view: 'external' }, unapplied)).toEqual({
       view: 'external',
       search: 'x',
@@ -394,17 +420,21 @@ describe('the filters that cannot apply', () => {
 
   it('send the issue on its own, whatever the view it is in', () => {
     const issue = parseDetailQuery({ issue: 'client-error', status: 'none' })
-    expect(listingOf(issue, unappliedFilters(issue, { auditData: true }))).toEqual({
-      view: 'all',
-      issue: 'client-error',
-      status: 'none',
-    })
+    expect(listingOf(issue, unappliedFilters(issue, { auditData: true, rendered: false }))).toEqual(
+      {
+        view: 'all',
+        issue: 'client-error',
+        status: 'none',
+      },
+    )
   })
 
   it('send what rules accept on its own too, and never next to an issue', () => {
     const accepted = parseDetailQuery({ accepted: 'noindex', view: 'resources' })
     expect(accepted.view).toBe('all')
-    expect(listingOf(accepted, unappliedFilters(accepted, { auditData: true }))).toEqual({
+    expect(
+      listingOf(accepted, unappliedFilters(accepted, { auditData: true, rendered: false })),
+    ).toEqual({
       view: 'all',
       accepted: 'noindex',
     })
@@ -468,4 +498,34 @@ it('round trips acceptance kind in list and export addresses and passes it to th
   )
   expect(parseDetailQuery({ acceptanceKind: 'rule' }).acceptanceKind).toBeNull()
   expect(parseDetailQuery({ accepted: 'all', acceptanceKind: 'unknown' }).acceptanceKind).toBeNull()
+})
+
+describe('the rendering filter', () => {
+  it('is read, written and cleared like the others', () => {
+    const query = parseDetailQuery({ rendering: 'incomplete' })
+    expect(query.rendering).toBe('incomplete')
+    expect(detailHref('example.com', query)).toBe('/domains/example.com/urls?rendering=incomplete')
+    expect(parseDetailQuery({ rendering: 'nonsense' }).rendering).toBeNull()
+    expect(activeFilters(query)).toEqual(['rendering'])
+    expect(withoutFilter('rendering')).toMatchObject({ rendering: null, page: 1 })
+  })
+
+  it('does not apply to a crawl made without rendering, and says why', () => {
+    const query = { ...base, rendering: 'complete' as const }
+    expect(unappliedFilters(query, { auditData: true, rendered: false })).toEqual({
+      rendering: 'html-crawl',
+    })
+    expect(listingOf(query, { rendering: 'html-crawl' })).not.toHaveProperty('rendering')
+    expect(unappliedFilters(query, { auditData: true, rendered: true })).toEqual({})
+    expect(listingOf(query, {})).toMatchObject({ rendering: 'complete' })
+  })
+
+  it('is not offered for external URLs, which are never rendered', () => {
+    expect(filterAvailability('external', { auditData: true, rendered: true }).rendering).toBe(
+      'external',
+    )
+    expect(detailHref('example.com', { ...base, view: 'external', rendering: 'redirect' })).toBe(
+      '/domains/example.com/urls?view=external',
+    )
+  })
 })

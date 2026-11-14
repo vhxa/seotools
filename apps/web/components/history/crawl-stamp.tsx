@@ -3,6 +3,7 @@ import type { Crawl } from '@seotools/db'
 import { useFormatter, useTranslations } from 'next-intl'
 import { rulesStateOf, type RulesState } from '@/lib/rules-state'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
+import { RenderStamp } from '@/components/history/render-stamp'
 import { Badge } from '@/components/ui/badge'
 
 /** When a crawl happened: when it ended, or when it started if it never did. */
@@ -73,6 +74,9 @@ export function CrawlStamp({ crawl, currentVersion }: { crawl: Crawl; currentVer
           {t('catalogOlder')}
         </Badge>
       )}
+      <div className="basis-full">
+        <RenderStamp crawl={crawl} />
+      </div>
     </div>
   )
 }
