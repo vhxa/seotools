@@ -658,10 +658,21 @@ export async function loadSite(
                 )
               : (url.documentUnobserved?.filter((id) => !isPageLocalIssue(id)) ?? []),
           ),
+          // Graph checks that read another URL's document state. Whether a target is canonicalised
+          // is unknown for any page without a complete document, a JavaScript redirect included
+          // (it has no document). A JavaScript redirect is a proven blocker for the indexability
+          // of a source, and keeps its served nofollow (`selectDocument`); an unobserved source
+          // leaves both unknown.
+          ...(internal.some((url) => url.blockersKnown === false)
+            ? ['links-to-canonicalised']
+            : []),
           ...(internal.some(
             (url) => url.blockersKnown === false && url.documentObservation !== 'redirected',
           )
-            ? ['only-noindex-inlinks', 'links-to-canonicalised']
+            ? ['only-noindex-inlinks']
+            : []),
+          ...(internal.some((url) => url.documentObservation === 'unobserved')
+            ? ['only-nofollow-inlinks']
             : []),
         ])
       : undefined,

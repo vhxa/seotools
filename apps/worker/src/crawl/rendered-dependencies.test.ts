@@ -15,6 +15,7 @@ import { fakeSite, type Answer } from './fake-site'
 import { page, SITE } from './test-site'
 import { renderedOutcome } from './render-fixture'
 import { loadSite } from './site-audit'
+import { analyseCrawl, currentAuditConfig } from './analysis'
 import { runVerification } from './verification'
 import type { RenderInput, RenderOutcome } from '../render/types'
 
@@ -261,6 +262,7 @@ it('leaves every check reading a conflicting rendered canonical unknown (canonic
         'canonical-not-indexable',
         'indexable-not-in-sitemap',
         'title-duplicate',
+        'content-near-duplicate',
       ]),
     )
     // What does not read the canonical is still judged.
@@ -322,4 +324,63 @@ it('keeps the served meta nofollow of a page JavaScript redirects in the link gr
   expect(redirecting.nofollow).toBe(true)
   expect(site.get(`${SITE}/x`)!.anchorsIn).toBe(1)
   expect(site.get(`${SITE}/x`)!.followedAnchorsIn).toBe(0)
+})
+
+it('leaves links-to-canonicalised unknown for the crawl when its target redirects by JavaScript', async () => {
+  // The review's reproduction: home links to /x, canonicalised to /b; in the second crawl /x
+  // redirects by JavaScript, so it has no document and nobody can tell whether it is canonicalised.
+  const data = {
+    [`${SITE}/`]: page('/', { links: '<a href="/x">X</a><a href="/b">B</a>' }),
+    [`${SITE}/x`]: page('/x', { canonical: '/b' }),
+    [`${SITE}/b`]: page('/b'),
+  }
+  const redirecting = async (input: RenderInput): Promise<RenderOutcome> => ({
+    ...renderedOutcome(input),
+    ...(input.url === `${SITE}/x`
+      ? { redirected: true, settled: false, finalUrl: `${SITE}/b` }
+      : {}),
+  })
+  const crawls = [await crawl(data), await crawl(data, redirecting), await crawl(data)]
+  expect(await ids(crawls[0]!, '/')).toContain('links-to-canonicalised')
+  expect(await ids(crawls[2]!, '/')).toContain('links-to-canonicalised')
+  expect(crawls[0]!.auditSnapshot?.unobserved).not.toContain('links-to-canonicalised')
+  expect(crawls[1]!.auditSnapshot?.unobserved).toContain('links-to-canonicalised')
+  // A JavaScript redirect is a proven blocker for what links from it say of their targets.
+  expect(crawls[1]!.auditSnapshot?.unobserved).not.toContain('only-noindex-inlinks')
+  const evidence = await expectNeverNamed(crawls, '/', ['links-to-canonicalised'])
+  expect(observe('links-to-canonicalised', evidence[1]!).presence).toBe('unknown')
+})
+
+it('leaves only-nofollow-inlinks unknown for the crawl when a linking page has no extracted document', async () => {
+  // Home says nofollow in its meta robots; a render without extracted values (an older row) leaves
+  // its directives, and so whether its links are followed, unknown.
+  const data = {
+    [`${SITE}/`]: page('/', {
+      head: '<meta name="robots" content="nofollow">',
+      links: '<a href="/a">A</a>',
+    }),
+    [`${SITE}/a`]: page('/a'),
+  }
+  const crawls: Crawl[] = []
+  for (const legacy of [false, true, false]) {
+    const result = await crawl(data)
+    if (legacy) {
+      const url = (await db.crawls.getUrl(result.id, hash('/')))!
+      const row = (await db.crawls.renders(result.id)).find((row) => row.urlHash === hash('/'))!
+      delete row.data.page
+      await db.crawls.recordResult({
+        crawlId: result.id,
+        urlHash: hash('/'),
+        result: url,
+        render: row,
+      })
+      await analyseCrawl(db, result.id, await currentAuditConfig(db, domainId))
+    }
+    crawls.push((await db.crawls.get(result.id))!)
+  }
+  expect(await ids(crawls[0]!, '/a')).toContain('only-nofollow-inlinks')
+  expect(await ids(crawls[1]!, '/a')).not.toContain('only-nofollow-inlinks')
+  expect(crawls[1]!.auditSnapshot?.unobserved).toContain('only-nofollow-inlinks')
+  expect(crawls[1]!.auditSnapshot?.rendersUnobserved).toBe(0)
+  await expectNeverNamed(crawls, '/a', ['only-nofollow-inlinks'])
 })

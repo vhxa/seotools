@@ -669,7 +669,8 @@ export const CHECKS: Record<PageIssueId, Check> = {
       url.indexable && facts.textHash !== null && duplicates(url, site.texts.get(facts.textHash)),
   ),
   'content-near-duplicate': onPage((url, _, site) => {
-    const partners = site.nearDuplicates.get(url)
+    // Indexability read through the URL itself, so that the read recording sees it.
+    const partners = url.indexable && site.nearDuplicates.get(url)
     if (!partners) return false
     const urls = partners.flatMap((partner) => boundedUrl(partner.url.url) ?? [])
     return backedBy({
@@ -743,6 +744,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'only-nofollow-inlinks': onPage(
     (url, _, site) =>
       graphAbsenceKnown(site) &&
+      !site.documentUnobserved?.has('only-nofollow-inlinks') &&
       INLINKS_WRONG['only-nofollow-inlinks'](url) &&
       !excusesInlinks(url, site),
   ),
