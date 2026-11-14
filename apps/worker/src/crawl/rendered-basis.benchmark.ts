@@ -90,7 +90,7 @@ try {
       concurrency: 2,
       maxRetries: 0,
     })
-    const paths = ['/', ...Array.from({ length: 11 }, (_, i) => `/page-${i}`)]
+    const paths = ['/', ...Array.from({ length: 39 }, (_, i) => `/page-${i}`)]
     const data: Record<string, Answer> = {}
     for (const path of paths)
       data[`${SITE}${path}`] = page(path, {
@@ -143,7 +143,7 @@ try {
       limit: 100,
       offset: 0,
     })
-    if (stored.status !== 'completed' || pages.length !== 12)
+    if (stored.status !== 'completed' || pages.length !== 40)
       throw new Error('Incomplete benchmark workload')
     results.push({
       mode,
@@ -166,7 +166,7 @@ try {
         browser: version,
         concurrency: 2,
         renderWaitMs: 1000,
-        pages: 12,
+        pages: 40,
         resourceCache: '64 MiB per crawl; disabled with a zero-capacity cache per render',
         memoryMetric:
           '100 ms sampled sum of ps RSS for browser and descendants; includes shared mappings repeatedly; not a worst-case bound',

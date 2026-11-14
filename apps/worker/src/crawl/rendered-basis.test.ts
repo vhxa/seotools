@@ -9,6 +9,8 @@ import {
   PAGE_ISSUE_IDS,
   evidenceOf,
   classifyFinding,
+  isPageLocalIssue,
+  observe,
   indexTraces,
   type PageIssueId,
 } from '@seotools/core'
@@ -285,6 +287,18 @@ it('keeps incomplete A unknown and B normally comparable in both directions, inc
       expect(
         classifyFinding('title-missing', { base: evidence[a!]!, target: evidence[b!]! })?.kind,
       ).toBe(path === '/a' ? 'unverified' : 'persistent')
+      // Every page-local document issue: unknown for A only, never for B.
+      for (const issue of PAGE_ISSUE_IDS.filter(
+        (id) => ISSUE_BASIS[id] === 'document' && isPageLocalIssue(id),
+      )) {
+        const change = classifyFinding(issue, { base: evidence[a!]!, target: evidence[b!]! })
+        if (path === '/b') expect(change?.kind, issue).not.toBe('unverified')
+        else if (change) expect(change.kind, issue).toBe('unverified')
+        if (path === '/a') expect(observe(issue, evidence[1]!).presence, issue).toBe('unknown')
+      }
+      // Issues that read other pages stay unknown crawl-wide, for B too.
+      for (const issue of ['title-duplicate', 'hreflang-no-return', 'canonical-not-indexable'])
+        expect(observe(issue, evidence[1]!).presence, issue).toBe('unknown')
     }
   }
   expect(crawls[1]!.auditSnapshot?.unobserved).toContain('title-duplicate')
