@@ -18,8 +18,10 @@ are unknown, never judged on an HTML fallback. Crawl stamps and URL details stat
 basis and separate document coverage from navigation coverage. Page-local document uncertainty
 applies only to that URL; duplicates, canonical/hreflang targets and other checks involving other
 pages remain unverified crawl-wide. Graph absence retains its crawl-wide completeness rule.
-Changing basis makes document and graph findings unverified across crawls, even if page-local
-or reported by both, and never a fresh/back alert. Complete rendered documents compare normally.
+Between an HTML crawl and a rendered crawl only findings about the server's answer (status,
+redirects, timing, headers, robots.txt, sitemaps, vitals) are compared. Document, link and
+served-source findings, including JavaScript ones, are unverified, even if page-local or reported
+by both, and never a fresh/back alert. Complete rendered documents compare normally.
 An HTML-only recheck cannot settle a rendered crawl's document findings; a full crawl is needed.
 This uses the stored base crawl, even if domain settings later change.
 

@@ -151,8 +151,8 @@ export async function UrlDetail({
           <p>{basis('exceptions')}</p>
           {documentState.unknown && (
             <p role="status">
-              {basis('unknown')} {basis(documentState.reason)}{' '}
-              {basis('unknownCount', { count: documentState.count })}
+              {basis(documentState.reason === 'dependencies' ? 'partlyUnknown' : 'unknown')}{' '}
+              {basis(documentState.reason)} {basis('unknownCount', { count: documentState.count })}
             </p>
           )}
         </div>
@@ -351,7 +351,7 @@ export async function UrlDetail({
             ) : data.issues.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {documentState.unknown
-                  ? basis('unknown')
+                  ? basis(documentState.reason === 'dependencies' ? 'partlyUnknown' : 'unknown')
                   : data.accepted.length > 0
                     ? t('noPendingIssues')
                     : t('noIssues')}

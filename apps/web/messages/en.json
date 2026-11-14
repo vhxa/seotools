@@ -3948,6 +3948,7 @@
     "html": "Judged on the served HTML",
     "exceptions": "Response and source diagnostics, raw fields and the share preview use the served response.",
     "unknown": "Document findings unknown.",
+    "partlyUnknown": "Some document findings are unknown.",
     "failed": "Rendering failed.",
     "redirected": "Redirect observed; the source document was abandoned.",
     "truncated": "The served or rendered document was truncated.",

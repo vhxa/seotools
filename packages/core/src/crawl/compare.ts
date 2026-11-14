@@ -890,8 +890,7 @@ export function findingChangesBetween(
 export function issuePairReasons(notes: readonly PairNoteCode[], issue: string): UnknownReason[] {
   return notes.flatMap((note): UnknownReason[] => {
     // Changed identity can coalesce URLs and alter both page-local and site-wide findings.
-    if (note === 'basis')
-      return issueBasisOf(issue) === 'response' ? [] : ['basis']
+    if (note === 'basis') return issueBasisOf(issue) === 'response' ? [] : ['basis']
     if (note === 'ignoredParameters') return ['audit']
     if ((note === 'audit' || note === 'incomplete') && isPageLocalIssue(issue)) return []
     return [note === 'legacy' ? 'participation' : note]

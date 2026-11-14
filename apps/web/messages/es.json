@@ -3948,6 +3948,7 @@
     "html": "Evaluado sobre el HTML recibido",
     "exceptions": "Los diagnósticos de respuesta y código fuente, los campos originales y la vista previa social usan la respuesta recibida.",
     "unknown": "No se pueden determinar los hallazgos del documento.",
+    "partlyUnknown": "Algunos hallazgos del documento no se pueden determinar.",
     "failed": "Falló la renderización.",
     "redirected": "Se observó una redirección y no se terminó de observar el documento de origen.",
     "truncated": "El documento recibido o renderizado quedó incompleto.",

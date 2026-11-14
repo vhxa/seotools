@@ -55,7 +55,7 @@ export const ALERT_EMAIL_COPY = {
     noteIncomplete: 'A crawl stopped at its URL limit, so URLs it did not reach are not gone.',
     noteCatalog: 'The checks changed between the two crawls: some findings differ because of that.',
     noteBasis:
-      'One crawl read the served HTML and the other the rendered page: only findings about the server\'s answer are compared; the others are unverified, not new or resolved.',
+      "One crawl read the served HTML and the other the rendered page: only findings about the server's answer are compared; the others are unverified, not new or resolved.",
     noteAudit:
       'The audit rules changed between the two crawls: findings that differ because of them are unverified, not new or resolved.',
     noteLegacy: 'An older crawl did not keep which URLs were audited.',
