@@ -542,7 +542,8 @@
       "indexability": "Technical state",
       "origin": "Configuration source",
       "actions": "Actions",
-      "referencedBy": "Referenced by"
+      "referencedBy": "Referenced by",
+      "rendering": "Rendering"
     },
     "sortBy": "Sort by {column}",
     "sortedAscending": "Sorted ascending, click to sort descending",
@@ -608,9 +609,18 @@
         "all": "Any technical state"
       },
       "unavailable": {
-        "external": "External URLs are not audited and have no type, so this filter does not apply to them.",
+        "external": "External URLs are not audited, have no type and are never rendered, so this filter does not apply to them.",
         "view": "This view has a single type, so there is nothing to pick.",
-        "no-audit-data": "This crawl has no audit data yet, so this filter cannot apply."
+        "no-audit-data": "This crawl has no audit data yet, so this filter cannot apply.",
+        "html-crawl": "This crawl did not render its pages, so there is no rendering state to filter by."
+      },
+      "rendering": {
+        "label": "Rendering",
+        "all": "Any rendering state",
+        "complete": "Complete",
+        "redirect": "Redirected by JavaScript",
+        "incomplete": "Incomplete (failed, cut or not settled)",
+        "not-rendered": "Not rendered"
       }
     },
     "findings": {
@@ -649,7 +659,8 @@
         "intent": "{value}",
         "rule": "Decided by one rule",
         "accepted": "Accepted or dismissed: {value}",
-        "state": "State: {value}"
+        "state": "State: {value}",
+        "rendering": "Rendering: {value}"
       },
       "anyFinding": "any finding",
       "states": {
@@ -755,7 +766,8 @@
       "cls": "CLS (field, phone)",
       "note": "Decision note",
       "decisionBy": "Dismissed by",
-      "decisionAt": "Dismissed at"
+      "decisionAt": "Dismissed at",
+      "rendering": "Rendering"
     },
     "values": {
       "internal": "This site",
@@ -790,7 +802,8 @@
       "audit": "Audit and indexing",
       "technical": "Technical metadata",
       "ruleOrigins": "Rule origins",
-      "preview": "Search and social preview"
+      "preview": "Search and social preview",
+      "javascript": "JavaScript rendering"
     },
     "fields": {
       "contentType": "Content type",
@@ -870,7 +883,8 @@
       "links": "Links",
       "indexing": "Indexing",
       "history": "History",
-      "technical": "Technical"
+      "technical": "Technical",
+      "javascript": "JavaScript"
     },
     "words": "Words",
     "inbound": "Inbound links",
@@ -1735,17 +1749,25 @@
     "description": "How crawls of {host} behave. Changes apply from the next crawl.",
     "rendering": {
       "label": "Page rendering",
-      "hint": "Rendering runs JavaScript to discover additional links.",
       "modes": {
         "http": "HTML",
         "headless": "Rendered"
       },
-      "unavailable": "Rendered mode unavailable: {reason}",
+      "unavailable": "Rendered mode is unavailable: {reason}",
+      "unavailableKept": "This domain stays on Rendered and its other settings can be saved, but its next crawl will fail if the browser is still unavailable then.",
       "comparison": "Findings about the server's answer (status codes, redirects, response time…) will be compared with earlier crawls as usual. Findings about each page's content, about which pages link to which, and JavaScript findings will show as not comparable, never as new or fixed.",
       "wait": "Render wait limit (ms)",
       "waitHint": "From 1000 to 30000 milliseconds; default 5000.",
       "omitted": "Additional omitted hosts",
-      "omittedHint": "One hostname suffix per line, up to 50. Requests to these hosts and their subdomains are omitted."
+      "omittedHint": "One hostname suffix per line, up to 50. Requests to these hosts and their subdomains are omitted.",
+      "cost": {
+        "http": "Fast. Reads the HTML the server sends, without running JavaScript.",
+        "headless": "Several times slower. Every page is opened in a browser that runs its JavaScript. Needs the browser container."
+      },
+      "options": "Rendered mode options",
+      "optionsRendered": "Used when pages are rendered.",
+      "optionsHtml": "Not used in HTML mode. Your values are kept.",
+      "available": "JavaScript rendering is available for this domain: a browser is ready. Nothing changes unless you choose Rendered and save."
     },
     "userAgent": {
       "label": "User-Agent",
@@ -3519,7 +3541,9 @@
     "allIssues": "All issues",
     "notCheckedFindings": "This crawl does not have the analysis needed to show findings. Run a new full crawl to collect current data.",
     "changesTitle": "What changed since the previous crawl",
-    "configurationChanged": "Configuration changed"
+    "configurationChanged": "Configuration changed",
+    "renderingAvailable": "JavaScript rendering is available for this domain.",
+    "renderingAvailableLink": "Change it in the crawl settings"
   },
   "Issues": {
     "metaTitle": "Issues · {host} · seotools",
@@ -3957,5 +3981,166 @@
     "coverage": "{complete, number} complete documents; {redirected, number} redirects; {unobserved, number} unobserved documents.",
     "dependencies": "Some checks depend on a canonical, stored inputs or other pages that were not completely observed, or on a finding that could not be judged.",
     "unknownCount": "{count, number} checks could not be verified."
+  },
+  "RenderState": {
+    "complete": "Complete",
+    "redirect": "Redirected by JavaScript",
+    "unsettled": "Did not settle",
+    "truncated": "Cut at the size limit",
+    "failed": "Failed",
+    "unknown": "Not verifiable",
+    "notRendered": "Not rendered",
+    "hints": {
+      "complete": "The page was rendered whole and had settled.",
+      "redirect": "JavaScript sent the page to another address. Nothing else was compared.",
+      "unsettled": "The page was still loading when the wait limit ended. Its JavaScript findings are unknown.",
+      "truncated": "The rendered page or the served HTML was cut at the size limit. Its JavaScript findings are unknown.",
+      "failed": "The browser could not render the page. Its JavaScript findings are unknown.",
+      "unknown": "This render was stored before it was recorded whether the page was whole, so its JavaScript findings are unknown.",
+      "notRendered": "This crawl has no render for this URL: nothing was observed."
+    }
+  },
+  "UrlRendering": {
+    "values": {
+      "none": "None",
+      "unknown": "Not recorded"
+    },
+    "fields": {
+      "title": "Title",
+      "description": "Meta description",
+      "h1": "First H1",
+      "canonical": "Canonical",
+      "robots": "Robots directives",
+      "words": "Words",
+      "structuredData": "Structured data",
+      "hreflang": "Hreflang entries",
+      "ogTitle": "Open Graph title",
+      "ogImage": "Open Graph image"
+    },
+    "comparison": {
+      "caption": "Values of the served HTML and of the rendered page",
+      "field": "Field",
+      "served": "Served HTML",
+      "rendered": "After rendering",
+      "differs": "Differs",
+      "unknownNote": "“Not recorded” means this crawl did not keep that value, so nothing is claimed about it."
+    },
+    "complete": "Rendered whole: the page settled and nothing was cut.",
+    "duration": "Took {seconds} s",
+    "links": {
+      "title": "Internal links",
+      "served": "The served HTML links to {count, plural, one {# page} other {# pages}} of the site",
+      "onlyAfter": "{count, plural, one {# page is linked only after rendering} other {# pages are linked only after rendering}}",
+      "noneOnlyAfter": "no other page is linked only after rendering"
+    },
+    "requests": {
+      "title": "Resources the page asked for",
+      "none": "No resource failed, was blocked by robots.txt or was left out.",
+      "unknown": "This render did not keep the list of resources.",
+      "failed": "Failed to load",
+      "blockedByRobots": "Blocked by robots.txt",
+      "omitted": "Left out",
+      "refused": "Refused by the crawler",
+      "first": "The first {shown} of {count}.",
+      "reasons": {
+        "analytics": "analytics",
+        "experiment": "experiment tool",
+        "type": "type",
+        "domain-list": "domain list",
+        "scheme": "scheme",
+        "limit": "request limit",
+        "redirect": "redirect",
+        "method": "method"
+      }
+    },
+    "scriptErrors": {
+      "title": "Script errors",
+      "none": "No uncaught script errors.",
+      "count": "{count, plural, one {# uncaught script error} other {# uncaught script errors}}"
+    },
+    "notRendered": {
+      "title": "Not rendered by this crawl",
+      "reasons": {
+        "html-crawl": "This crawl read the served HTML only. It did not open pages in a browser, so there is no rendered version to compare.",
+        "external": "It is on another site, and other sites are never rendered.",
+        "not-page": "Only HTML pages are rendered.",
+        "status": "Only pages that answer with exactly 200 are rendered, and this one did not.",
+        "missing": "It is a page this crawl should have rendered, but it has no render."
+      },
+      "unknownFindings": "Its JavaScript findings are unknown for this crawl, and so are the findings that depend on links between pages."
+    },
+    "incomplete": {
+      "failed": {
+        "title": "The render failed",
+        "body": "The browser could not produce the rendered page."
+      },
+      "unsettled": {
+        "title": "The page did not settle",
+        "body": "The page was still loading when the wait limit of {ms} ms ended."
+      },
+      "truncated": {
+        "title": "The page was cut at the size limit",
+        "rendered": "The rendered page was cut at the size limit.",
+        "served": "The served HTML was cut at the size limit.",
+        "both": "Both the served HTML and the rendered page were cut at the size limit."
+      },
+      "unknown": {
+        "title": "Completeness not recorded",
+        "body": "This render was stored before it was recorded whether the page was whole."
+      },
+      "failure": "Reason: {reason}.",
+      "failures": {
+        "load-timeout": "the page did not load in time",
+        "crashed": "the browser crashed",
+        "serialization": "the rendered page could not be read",
+        "navigation": "the navigation failed"
+      },
+      "findingsUnknown": "Its JavaScript findings are unknown for this crawl: nothing is claimed about what JavaScript changes, and nothing is reported as fixed."
+    },
+    "redirect": {
+      "title": "JavaScript sent this page to another address",
+      "target": "Target:",
+      "nothingElse": "Nothing else was compared: the page that was abandoned is not observed. The links in the served HTML still count."
+    }
+  },
+  "RenderingSummary": {
+    "title": "JavaScript rendering",
+    "help": "This crawl opened its pages in a browser. Here: what only appears after rendering, and how many pages could not be observed completely.",
+    "rendered": "{count, plural, one {# page rendered in a browser} other {# pages rendered in a browser}}",
+    "coverageUnknown": "How many pages were observed completely is not known yet: this crawl has not been analysed.",
+    "allObserved": "Every page was observed completely.",
+    "someUnobserved": "{count, plural, one {# page} other {# pages}} could not be observed completely.",
+    "causes": "Failed or not rendered: {failed} · cut at the size limit: {truncated} · did not settle: {unsettled}. A page can be in several.",
+    "linksUnknown": "Findings that depend on which pages link to which (orphan pages, pages linked only by JavaScript, pages without internal links) are unknown for this crawl.",
+    "groups": {
+      "links": "Links only after rendering",
+      "text": "Text only after rendering",
+      "tags": "Tags that JavaScript adds or changes"
+    },
+    "none": "None",
+    "noneNote": "No page observed completely has links, text or tags that appear only after rendering.",
+    "notChecked": "This crawl has not been checked for findings yet.",
+    "stamp": {
+      "html": "HTML",
+      "rendered": "Rendered",
+      "hints": {
+        "html": "Read the served HTML only: no page was opened in a browser.",
+        "rendered": "Pages were opened in a browser that ran their JavaScript."
+      },
+      "coverageUnknown": "Coverage not analysed yet",
+      "allObserved": "All pages observed completely",
+      "someUnobserved": "{count, plural, one {# page} other {# pages}} not observed completely",
+      "causes": "failed or missing: {failed} · cut: {truncated} · did not settle: {unsettled}",
+      "linksNotEvaluated": "Findings that depend on links between pages were not evaluated.",
+      "linksEvaluated": "Findings that depend on links between pages were evaluated."
+    },
+    "pair": {
+      "htmlToRendered": "The earlier crawl read HTML only and the later one rendered its pages",
+      "renderedToHtml": "The earlier crawl rendered its pages and the later one read HTML only",
+      "cannotCompare": "Findings about each page's content (titles, headings, text, images…), about which pages link to which (orphan pages, click depth, pages without internal links) and every JavaScript finding show as not comparable, never as new or fixed.",
+      "canCompare": "Findings about the server's answer (status codes, redirects, response time…) are compared as usual."
+    },
+    "noneObserved": "None among the pages observed completely",
+    "linksUnknownGroup": "Unknown for this crawl"
   }
 }

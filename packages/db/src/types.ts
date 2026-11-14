@@ -4,6 +4,7 @@ import type { RuleEditing, RuleSelectors } from './audit'
 import type { CrawlFileObservation, CrawlFileRecord } from '@seotools/core/crawl/files'
 import type { IncidentKind, IncidentStage } from '@seotools/core/incidents'
 import type { VitalMetrics } from '@seotools/core'
+import type { RenderCounts, RenderFilter, RenderState } from '@seotools/core/crawl/render-state'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
   AccessGrant,
@@ -565,6 +566,11 @@ export interface CrawlUrlQuery {
   intent?: IndexIntent
   /** Only URLs the analysis applied this rule to, for either dimension. Within the `view`. */
   rule?: string
+  /**
+   * Only URLs by what the crawl's JavaScript rendering observed of them (`RenderState`), or those it
+   * has no render for. Within the `view`. An HTML crawl has no renders: the page does not offer it.
+   */
+  rendering?: RenderFilter
 }
 
 /** The URLs of a crawl in each view. `all` is the sum of `internal` and `external`. */
@@ -768,7 +774,22 @@ export interface CrawlRepository {
   ): Promise<{ urlHash: string; scope: CrawlUrlScope; seq: number | null }[]>
   /** Stores what a request returned along with the URLs and links found in it, atomically. */
   renders(crawlId: string): Promise<CrawlUrlRender[]>
+  /** The render of one URL of a crawl, or `null` when the crawl has none for it. */
   renderOf(crawlId: string, urlHash: string): Promise<CrawlUrlRender | null>
+  /** The state of the render of each of these URLs. URLs without a render are not in the map. */
+  renderStatesOf(crawlId: string, urlHashes: string[]): Promise<Map<string, RenderState>>
+  /** How many renders each crawl has in each state; crawls without renders are not in the map. */
+  renderCounts(crawlIds: string[]): Promise<Map<string, RenderCounts>>
+  /**
+   * The pages of the site a URL links to by anchors: how many the served HTML links to, and how many
+   * only exist after rendering (`total`, not among the first), with the first `limit` of those.
+   * No rendered-only anchors for a crawl made without rendering.
+   */
+  renderedLinksOf(
+    crawlId: string,
+    urlHash: string,
+    limit: number,
+  ): Promise<{ served: number; total: number; items: { url: string; urlHash: string }[] }>
   saveBrowserWait(crawlId: string, milliseconds: number): Promise<void>
   recordResult(input: {
     render?: CrawlUrlRender

@@ -123,6 +123,8 @@ export function CrawlSettingsForm({
   )
   // Controlled: what a choice shows (the hint, the count, the key field) follows it.
   const [mode, setMode] = useState<string>(settings.renderingMode)
+  const [renderWait, setRenderWait] = useState(String(settings.renderWaitMs))
+  const [renderOmitted, setRenderOmitted] = useState(settings.renderOmittedHosts.join('\n'))
   const [retention, setRetention] = useState<Retention>(retentionOf(settings.retainCrawls))
   const [files, setFiles] = useState<readonly ExtraCrawlFileKind[]>(enabledExtraFiles(settings))
 
@@ -155,63 +157,125 @@ export function CrawlSettingsForm({
         description={t('sections.requests.description')}
       >
         {modes.length > 1 ? (
-          <div className="grid gap-2">
-            <Label htmlFor="renderingMode">{t('rendering.label')}</Label>
-            <Select
-              name="renderingMode"
-              items={modes}
-              value={mode}
-              disabled={!canEdit}
-              onValueChange={(value) => value && setMode(value)}
-            >
-              <SelectTrigger id="renderingMode" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                {modes.map((item) => (
-                  <SelectItem
-                    key={item.value}
-                    value={item.value}
-                    disabled={item.value === 'headless' && browserState !== 'ready'}
-                  >
-                    {item.label}
-                  </SelectItem>
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="renderingMode">{t('rendering.label')}</Label>
+              <Select
+                name="renderingMode"
+                items={modes}
+                value={mode}
+                disabled={!canEdit}
+                onValueChange={(value) => value && setMode(value)}
+              >
+                <SelectTrigger id="renderingMode" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  {modes.map((item) => (
+                    <SelectItem
+                      key={item.value}
+                      value={item.value}
+                      disabled={
+                        item.value === 'headless' &&
+                        browserState !== 'ready' &&
+                        settings.renderingMode !== 'headless'
+                      }
+                    >
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* What each choice costs, always both: the choice never changes the layout. */}
+              <ul className="grid gap-1 text-xs text-muted-foreground">
+                {CRAWL_RENDERING_AVAILABLE.map((value) => (
+                  <li key={value} className={mode === value ? 'text-foreground' : undefined}>
+                    <span className="font-medium">{t(`rendering.modes.${value}`)}:</span>{' '}
+                    {t(`rendering.cost.${value}`)}
+                  </li>
                 ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">{t('rendering.hint')}</p>
-            {browserState !== 'ready' && (
+              </ul>
+              {browserState === 'ready' && settings.renderingMode === 'http' && (
+                <p className="text-xs text-muted-foreground">{t('rendering.available')}</p>
+              )}
+              {browserState !== 'ready' && (
+                <p className="text-xs text-muted-foreground">
+                  {t('rendering.unavailable', { reason: browser(browserState) })}{' '}
+                  <a
+                    className="underline"
+                    href="https://github.com/vhxa/seotools/blob/main/docs/rendering.md"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {browser('guide')}
+                  </a>
+                  {settings.renderingMode === 'headless' && ` ${t('rendering.unavailableKept')}`}
+                </p>
+              )}
+              {/* The invisible copy reserves the room, so the warning never moves what is below. */}
+              <div className="relative">
+                <p aria-hidden className="invisible text-xs">
+                  {t('rendering.comparison')}
+                </p>
+                <p className="absolute inset-0 text-xs text-muted-foreground" aria-live="polite">
+                  {mode !== settings.renderingMode ? t('rendering.comparison') : ''}
+                </p>
+              </div>
+            </div>
+            {/*
+              Part of the Rendered choice: shown in both so nothing moves, disabled under HTML. A
+              disabled field is not submitted, so the saved values travel in hidden fields and an
+              HTML save never resets them.
+            */}
+            <div
+              role="group"
+              aria-label={t('rendering.options')}
+              className="grid gap-4 rounded-lg border p-4"
+            >
               <p className="text-xs text-muted-foreground">
-                {t('rendering.unavailable', { reason: browser(browserState) })}
+                {t(mode === 'headless' ? 'rendering.optionsRendered' : 'rendering.optionsHtml')}
               </p>
-            )}
-            <p className="min-h-8 text-xs text-muted-foreground">
-              {mode !== settings.renderingMode ? t('rendering.comparison') : ''}
-            </p>
+              {mode !== 'headless' && (
+                <>
+                  <input type="hidden" name="renderWaitMs" value={renderWait} />
+                  <input type="hidden" name="renderOmittedHosts" value={renderOmitted} />
+                </>
+              )}
+              <div className="grid content-start gap-2">
+                <div className="flex items-center gap-1">
+                  <Label htmlFor="renderWaitMs">{t('rendering.wait')}</Label>
+                  <InfoHelp label={t('rendering.wait')}>{t('rendering.waitHint')}</InfoHelp>
+                </div>
+                <Input
+                  id="renderWaitMs"
+                  {...(mode === 'headless' ? { name: 'renderWaitMs' } : {})}
+                  type="number"
+                  min={1000}
+                  max={30000}
+                  step={1}
+                  value={renderWait}
+                  onChange={(event) => setRenderWait(event.target.value)}
+                  required
+                  disabled={!canEdit || mode !== 'headless'}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="renderOmittedHosts">{t('rendering.omitted')}</Label>
+                <Textarea
+                  id="renderOmittedHosts"
+                  {...(mode === 'headless' ? { name: 'renderOmittedHosts' } : {})}
+                  value={renderOmitted}
+                  onChange={(event) => setRenderOmitted(event.target.value)}
+                  disabled={!canEdit || mode !== 'headless'}
+                />
+                <p className="text-xs text-muted-foreground">{t('rendering.omittedHint')}</p>
+              </div>
+            </div>
           </div>
         ) : (
           <input type="hidden" name="renderingMode" value={modes[0]?.value ?? mode} />
         )}
 
-        <NumberField
-          name="renderWaitMs"
-          label={t('rendering.wait')}
-          hint={t('rendering.waitHint')}
-          defaultValue={settings.renderWaitMs}
-          min={1000}
-          max={30000}
-          disabled={!canEdit}
-        />
-        <div className="grid gap-2">
-          <Label htmlFor="renderOmittedHosts">{t('rendering.omitted')}</Label>
-          <Textarea
-            id="renderOmittedHosts"
-            name="renderOmittedHosts"
-            defaultValue={settings.renderOmittedHosts.join('\n')}
-            disabled={!canEdit}
-          />
-          <p className="text-xs text-muted-foreground">{t('rendering.omittedHint')}</p>
-        </div>
         <div className="grid gap-2">
           <Label htmlFor="userAgent">{t('userAgent.label')}</Label>
           <Input

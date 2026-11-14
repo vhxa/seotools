@@ -11,6 +11,9 @@ import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
 import { FavouriteDomainButton } from '@/components/favourite-domain-button'
 import { InfoHelp } from '@/components/help'
 import { DomainVitals } from '@/components/pages/domain-vitals'
+import { RenderingSummary } from '@/components/pages/rendering-summary'
+import { renderBrowserStatus } from '@/lib/render-browser'
+import { isRenderedCrawl } from '@/lib/rendering'
 import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { TrendChart } from '@/components/pages/trend-chart'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -75,6 +78,15 @@ export default async function DomainDashboardPage({
   const counts =
     latest && figures && state.kind === 'current' ? await db.crawls.issueCounts(latest.id) : []
   const priorities = homePriorities(latest, state, counts)
+  const rendered = latest !== null && isRenderedCrawl(latest)
+  const renderCounts =
+    rendered && !latest.pruned
+      ? (await db.crawls.renderCounts([latest.id])).get(latest.id)
+      : undefined
+  // A quiet hint, never a change: this domain reads served HTML while a browser could render it.
+  const renderingAvailable =
+    (await db.crawls.settings(domain.id)).renderingMode === 'http' &&
+    (await renderBrowserStatus())?.state === 'ready'
   const query = parseDetailQuery({})
   const base = `/domains/${domain.host}`
   const number = (value: number | null | undefined) =>
@@ -200,6 +212,25 @@ export default async function DomainDashboardPage({
           </p>
         )}
       </section>
+
+      {rendered && latest && !latest.pruned && (
+        <RenderingSummary
+          host={domain.host}
+          crawl={latest}
+          counts={renderCounts ?? undefined}
+          issueCounts={counts}
+          analysed={figures !== null && state.kind === 'current'}
+        />
+      )}
+
+      {renderingAvailable && (
+        <p className="text-sm text-muted-foreground">
+          {t('renderingAvailable')}{' '}
+          <Link href={`${base}/settings/crawl`} className="underline">
+            {t('renderingAvailableLink')}
+          </Link>
+        </p>
+      )}
 
       {comparison?.base && latest && (
         <section className="grid gap-2">

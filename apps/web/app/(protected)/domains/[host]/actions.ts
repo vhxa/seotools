@@ -162,7 +162,13 @@ export async function saveCrawlSettingsAction(
   if (domain.archivedAt) return { error: await archivedMessage() }
   const t = await getTranslations('CrawlSettings.errors')
   const limits = CRAWL_SETTINGS_LIMITS
-  const parsed = parseCrawlSettingsForm(formData, (await renderBrowserStatus())?.state === 'ready')
+  const db = await getDb()
+  const previous = await db.crawls.settings(domain.id)
+  const parsed = parseCrawlSettingsForm(
+    formData,
+    (await renderBrowserStatus())?.state === 'ready',
+    previous.renderingMode,
+  )
   if (!parsed.ok) {
     switch (parsed.error) {
       case 'scope':
@@ -196,7 +202,6 @@ export async function saveCrawlSettingsAction(
     }
   }
 
-  const db = await getDb()
   const secretStore = domainRequestSettings(db.crawls, domain.id, settingsKeyFrom(getEnv()))
   const previousSecrets =
     (await secretStore.getJson('request', requestSettingsSchema)) ?? EMPTY_REQUEST_SETTINGS
@@ -220,7 +225,6 @@ export async function saveCrawlSettingsAction(
         },
   )
   if (!credentials.success) return { error: t('requestSecrets') }
-  const previous = await db.crawls.settings(domain.id)
   await db.crawls.saveSettings(domain.id, parsed.settings)
   if (credentials.data.headers.length || credentials.data.username || credentials.data.password) {
     await secretStore.setJson('request', credentials.data, { encrypted: true })

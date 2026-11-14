@@ -1,5 +1,6 @@
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
+import type { RenderState } from '@seotools/core/crawl/render-state'
 import type { CrawlUrl, CrawlUrlAudit, CrawlUrlIssue } from '@seotools/db'
 import { FilterIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -36,6 +37,7 @@ import {
   parseDetailQuery,
   unappliedFilters,
 } from '@/lib/pages-query'
+import { isRenderedCrawl } from '@/lib/rendering'
 import { loadUrlDetail } from '@/lib/url-detail'
 import { requireDomain } from '@/lib/workspace'
 
@@ -54,6 +56,7 @@ const toRow = (
   priority: boolean,
   audit: CrawlUrlAudit | undefined,
   refOf: ReturnType<typeof ruleRefsOf>,
+  render: RenderState | null,
 ): PageRow => ({
   automaticCheck: false,
   urlHash: url.urlHash,
@@ -80,6 +83,7 @@ const toRow = (
   conditions: audit?.conditions ?? {},
   indexability: audit?.indexability ?? null,
   blockers: audit?.blockers ?? [],
+  render,
 })
 
 export default async function PagesDetailsPage({
@@ -118,7 +122,10 @@ export default async function PagesDetailsPage({
 
   // The audit has no state for a crawl analysed before it was kept: a filter on it would only list
   // nothing, which is not the same as there being no such URLs.
-  const context = { auditData: browsable?.pagesAudit != null }
+  const context = {
+    auditData: browsable?.pagesAudit != null,
+    rendered: browsable !== null && isRenderedCrawl(browsable),
+  }
   const unapplied = unappliedFilters(query, context)
   const available = filterAvailability(query.view, context)
 
@@ -148,10 +155,13 @@ export default async function PagesDetailsPage({
       db.priorityUrls.list(domain.id),
     ])
     const hashes = urls.map((url) => url.urlHash)
-    const [issues, audits, automaticChecks] = await Promise.all([
+    const [issues, audits, automaticChecks, renders] = await Promise.all([
       db.crawls.issuesOf(browsable.id, hashes),
       db.crawls.auditOf(browsable.id, hashes),
       automaticFileChecks(db.crawls, browsable.id, urls),
+      isRenderedCrawl(browsable)
+        ? db.crawls.renderStatesOf(browsable.id, hashes)
+        : new Map<string, RenderState>(),
     ])
     const auditByUrl = new Map(audits.map((audit) => [audit.urlHash, audit]))
     const refOf = ruleRefsOf(browsable.auditSnapshot)
@@ -168,6 +178,7 @@ export default async function PagesDetailsPage({
         priorities.has(url.urlHash),
         auditByUrl.get(url.urlHash),
         refOf,
+        renders.get(url.urlHash) ?? null,
       ),
       automaticCheck: automaticChecks.has(url.urlHash),
     }))
@@ -341,11 +352,13 @@ export default async function PagesDetailsPage({
                 query.participation,
                 query.intent,
                 query.rule,
+                query.rendering,
               ].join('|')}
               host={domain.host}
               rows={rows}
               query={{ ...query, page }}
               analysed={browsable.pagesByWorstIssue !== null}
+              rendered={isRenderedCrawl(browsable)}
               analysis={
                 <CrawlSwitcher
                   crawls={history}
@@ -361,6 +374,11 @@ export default async function PagesDetailsPage({
                     host={domain.host}
                     query={{ ...query, page: 1 }}
                     typeUnavailable={available.type ?? undefined}
+                    rendering={
+                      isRenderedCrawl(browsable) || query.rendering
+                        ? { unavailable: available.rendering ?? undefined }
+                        : null
+                    }
                   />
                   <AuditFilters
                     stacked

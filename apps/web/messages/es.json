@@ -542,7 +542,8 @@
       "indexability": "Estado técnico",
       "origin": "Origen de la configuración",
       "actions": "Acciones",
-      "referencedBy": "Referenciada por"
+      "referencedBy": "Referenciada por",
+      "rendering": "Renderizado"
     },
     "sortBy": "Ordenar por {column}",
     "sortedAscending": "Orden ascendente, haz clic para ordenar de forma descendente",
@@ -608,9 +609,18 @@
         "all": "Cualquier estado técnico"
       },
       "unavailable": {
-        "external": "Las URLs externas no se auditan y no tienen tipo, así que este filtro no se les aplica.",
+        "external": "Las URL externas no se auditan, no tienen tipo y nunca se renderizan, así que este filtro no se aplica a ellas.",
         "view": "Esta vista tiene un único tipo, así que no hay nada que elegir.",
-        "no-audit-data": "Este rastreo todavía no tiene datos de auditoría, así que este filtro no puede aplicarse."
+        "no-audit-data": "Este rastreo todavía no tiene datos de auditoría, así que este filtro no puede aplicarse.",
+        "html-crawl": "Este rastreo no renderizó sus páginas, así que no hay estado de renderizado por el que filtrar."
+      },
+      "rendering": {
+        "label": "Renderizado",
+        "all": "Cualquier estado de renderizado",
+        "complete": "Completo",
+        "redirect": "Redirigida por JavaScript",
+        "incomplete": "Incompleto (fallido, cortado o sin terminar)",
+        "not-rendered": "Sin renderizar"
       }
     },
     "findings": {
@@ -649,7 +659,8 @@
         "intent": "{value}",
         "rule": "Decididas por una regla",
         "accepted": "Aceptados o descartados: {value}",
-        "state": "Estado: {value}"
+        "state": "Estado: {value}",
+        "rendering": "Renderizado: {value}"
       },
       "anyFinding": "cualquier hallazgo",
       "states": {
@@ -755,7 +766,8 @@
       "cls": "CLS (usuarios reales, móvil)",
       "note": "Nota de la decisión",
       "decisionBy": "Descartado por",
-      "decisionAt": "Fecha del descarte"
+      "decisionAt": "Fecha del descarte",
+      "rendering": "Renderizado"
     },
     "values": {
       "internal": "Este sitio",
@@ -790,7 +802,8 @@
       "audit": "Auditoría e indexación",
       "technical": "Metadatos técnicos",
       "ruleOrigins": "Origen de las reglas",
-      "preview": "Vista previa en buscadores y redes"
+      "preview": "Vista previa en buscadores y redes",
+      "javascript": "Renderizado de JavaScript"
     },
     "fields": {
       "contentType": "Tipo de contenido",
@@ -870,7 +883,8 @@
       "links": "Enlaces",
       "indexing": "Indexación",
       "history": "Historial",
-      "technical": "Técnico"
+      "technical": "Técnico",
+      "javascript": "JavaScript"
     },
     "words": "Palabras",
     "inbound": "Enlaces entrantes",
@@ -1735,17 +1749,25 @@
     "description": "Cómo se comportan los rastreos de {host}. Los cambios se aplican desde el siguiente rastreo.",
     "rendering": {
       "label": "Renderizado de páginas",
-      "hint": "El renderizado ejecuta JavaScript para descubrir más enlaces.",
       "modes": {
         "http": "HTML",
         "headless": "Renderizado"
       },
-      "unavailable": "Renderizado no disponible: {reason}",
+      "unavailable": "El modo renderizado no está disponible: {reason}",
+      "unavailableKept": "Este dominio sigue en modo renderizado y puedes guardar el resto de sus ajustes, pero su próximo rastreo fallará si el navegador sigue sin estar disponible.",
       "comparison": "Los hallazgos sobre la respuesta del servidor (códigos de estado, redirecciones, tiempo de respuesta…) se compararán con los rastreos anteriores como siempre. Los hallazgos sobre el contenido de cada página, sobre qué páginas enlazan a cuáles y los de JavaScript aparecerán como no comparables, nunca como nuevos ni corregidos.",
       "wait": "Límite de espera del renderizado (ms)",
       "waitHint": "Entre 1000 y 30000 milisegundos; 5000 por defecto.",
       "omitted": "Hosts adicionales que omitir",
-      "omittedHint": "Un sufijo de hostname por línea, hasta 50. Se omiten las solicitudes a estos hosts y sus subdominios."
+      "omittedHint": "Un sufijo de hostname por línea, hasta 50. Se omiten las solicitudes a estos hosts y sus subdominios.",
+      "cost": {
+        "http": "Rápido. Lee el HTML que envía el servidor, sin ejecutar JavaScript.",
+        "headless": "Varias veces más lento. Cada página se abre en un navegador que ejecuta su JavaScript. Necesita el contenedor del navegador."
+      },
+      "options": "Opciones del modo renderizado",
+      "optionsRendered": "Se usan al renderizar las páginas.",
+      "optionsHtml": "No se usan en modo HTML. Tus valores se conservan.",
+      "available": "El renderizado de JavaScript está disponible para este dominio: hay un navegador listo. No cambia nada hasta que elijas Renderizado y guardes."
     },
     "userAgent": {
       "label": "User-Agent",
@@ -3519,7 +3541,9 @@
     "allIssues": "Todos los problemas",
     "notCheckedFindings": "Este rastreo no tiene el análisis necesario para mostrar hallazgos. Inicia un nuevo rastreo completo para obtener datos actuales.",
     "changesTitle": "Qué ha cambiado desde el rastreo anterior",
-    "configurationChanged": "La configuración ha cambiado"
+    "configurationChanged": "La configuración ha cambiado",
+    "renderingAvailable": "El renderizado de JavaScript está disponible para este dominio.",
+    "renderingAvailableLink": "Cámbialo en los ajustes de rastreo"
   },
   "Issues": {
     "metaTitle": "Problemas · {host} · seotools",
@@ -3957,5 +3981,166 @@
     "coverage": "{complete, number} documentos completos; {redirected, number} redirecciones; {unobserved, number} documentos sin observar.",
     "dependencies": "Algunas comprobaciones dependen de una canónica, de datos guardados o de otras páginas que no se observaron por completo, o de un hallazgo que no se pudo evaluar.",
     "unknownCount": "No se pudieron verificar {count, number} comprobaciones."
+  },
+  "RenderState": {
+    "complete": "Completo",
+    "redirect": "Redirigida por JavaScript",
+    "unsettled": "No terminó de cargar",
+    "truncated": "Cortada por el límite de tamaño",
+    "failed": "Falló",
+    "unknown": "No verificable",
+    "notRendered": "Sin renderizar",
+    "hints": {
+      "complete": "La página se renderizó entera y había terminado de cargar.",
+      "redirect": "JavaScript llevó la página a otra dirección. No se comparó nada más.",
+      "unsettled": "La página seguía cargando cuando terminó el tiempo de espera. Sus hallazgos de JavaScript son desconocidos.",
+      "truncated": "La página renderizada o el HTML servido se cortó por el límite de tamaño. Sus hallazgos de JavaScript son desconocidos.",
+      "failed": "El navegador no pudo renderizar la página. Sus hallazgos de JavaScript son desconocidos.",
+      "unknown": "Este renderizado se guardó antes de registrar si la página estaba entera, así que sus hallazgos de JavaScript son desconocidos.",
+      "notRendered": "Este rastreo no tiene renderizado de esta URL: no se observó nada."
+    }
+  },
+  "UrlRendering": {
+    "values": {
+      "none": "Ninguno",
+      "unknown": "No registrado"
+    },
+    "fields": {
+      "title": "Título",
+      "description": "Meta description",
+      "h1": "Primer H1",
+      "canonical": "Canonical",
+      "robots": "Directivas de robots",
+      "words": "Palabras",
+      "structuredData": "Datos estructurados",
+      "hreflang": "Entradas hreflang",
+      "ogTitle": "Título Open Graph",
+      "ogImage": "Imagen Open Graph"
+    },
+    "comparison": {
+      "caption": "Valores del HTML servido y de la página renderizada",
+      "field": "Campo",
+      "served": "HTML servido",
+      "rendered": "Tras renderizar",
+      "differs": "Difiere",
+      "unknownNote": "«No registrado» significa que este rastreo no guardó ese valor, así que no se afirma nada sobre él."
+    },
+    "complete": "Renderizada entera: la página terminó de cargar y no se cortó nada.",
+    "duration": "Tardó {seconds} s",
+    "links": {
+      "title": "Enlaces internos",
+      "served": "El HTML servido enlaza a {count, plural, one {# página} other {# páginas}} del sitio",
+      "onlyAfter": "{count, plural, one {# página se enlaza solo tras renderizar} other {# páginas se enlazan solo tras renderizar}}",
+      "noneOnlyAfter": "ninguna otra página se enlaza solo tras renderizar"
+    },
+    "requests": {
+      "title": "Recursos que pidió la página",
+      "none": "Ningún recurso falló, fue bloqueado por robots.txt ni se dejó fuera.",
+      "unknown": "Este renderizado no guardó la lista de recursos.",
+      "failed": "No se pudieron cargar",
+      "blockedByRobots": "Bloqueados por robots.txt",
+      "omitted": "Dejados fuera",
+      "refused": "Rechazados por el rastreador",
+      "first": "Los primeros {shown} de {count}.",
+      "reasons": {
+        "analytics": "analítica",
+        "experiment": "herramienta de experimentos",
+        "type": "tipo",
+        "domain-list": "lista de dominios",
+        "scheme": "esquema",
+        "limit": "límite de peticiones",
+        "redirect": "redirección",
+        "method": "método"
+      }
+    },
+    "scriptErrors": {
+      "title": "Errores de scripts",
+      "none": "Ningún error de script sin capturar.",
+      "count": "{count, plural, one {# error de script sin capturar} other {# errores de script sin capturar}}"
+    },
+    "notRendered": {
+      "title": "No renderizada en este rastreo",
+      "reasons": {
+        "html-crawl": "Este rastreo solo leyó el HTML servido. No abrió las páginas en un navegador, así que no hay versión renderizada que comparar.",
+        "external": "Está en otro sitio, y los demás sitios nunca se renderizan.",
+        "not-page": "Solo se renderizan las páginas HTML.",
+        "status": "Solo se renderizan las páginas que responden exactamente 200, y esta no lo hizo.",
+        "missing": "Es una página que este rastreo debería haber renderizado, pero no tiene renderizado."
+      },
+      "unknownFindings": "Sus hallazgos de JavaScript son desconocidos en este rastreo, igual que los que dependen de los enlaces entre páginas."
+    },
+    "incomplete": {
+      "failed": {
+        "title": "El renderizado falló",
+        "body": "El navegador no pudo producir la página renderizada."
+      },
+      "unsettled": {
+        "title": "La página no terminó de cargar",
+        "body": "La página seguía cargando cuando terminó el tiempo de espera de {ms} ms."
+      },
+      "truncated": {
+        "title": "La página se cortó por el límite de tamaño",
+        "rendered": "La página renderizada se cortó por el límite de tamaño.",
+        "served": "El HTML servido se cortó por el límite de tamaño.",
+        "both": "Tanto el HTML servido como la página renderizada se cortaron por el límite de tamaño."
+      },
+      "unknown": {
+        "title": "Integridad no registrada",
+        "body": "Este renderizado se guardó antes de registrar si la página estaba entera."
+      },
+      "failure": "Motivo: {reason}.",
+      "failures": {
+        "load-timeout": "la página no cargó a tiempo",
+        "crashed": "el navegador se cerró inesperadamente",
+        "serialization": "no se pudo leer la página renderizada",
+        "navigation": "falló la navegación"
+      },
+      "findingsUnknown": "Sus hallazgos de JavaScript son desconocidos en este rastreo: no se afirma nada sobre lo que cambia JavaScript y nada se da por corregido."
+    },
+    "redirect": {
+      "title": "JavaScript llevó esta página a otra dirección",
+      "target": "Destino:",
+      "nothingElse": "No se comparó nada más: la página abandonada no se observa. Los enlaces del HTML servido siguen contando."
+    }
+  },
+  "RenderingSummary": {
+    "title": "Renderizado de JavaScript",
+    "help": "Este rastreo abrió sus páginas en un navegador. Aquí: lo que solo aparece tras renderizar y cuántas páginas no pudieron observarse por completo.",
+    "rendered": "{count, plural, one {# página renderizada en un navegador} other {# páginas renderizadas en un navegador}}",
+    "coverageUnknown": "Aún no se sabe cuántas páginas se observaron por completo: este rastreo no se ha analizado.",
+    "allObserved": "Todas las páginas se observaron por completo.",
+    "someUnobserved": "{count, plural, one {# página no pudo observarse por completo} other {# páginas no pudieron observarse por completo}}.",
+    "causes": "Fallidas o sin renderizar: {failed} · cortadas por el límite de tamaño: {truncated} · sin terminar de cargar: {unsettled}. Una página puede estar en varias.",
+    "linksUnknown": "Los hallazgos que dependen de qué páginas enlazan a cuáles (páginas huérfanas, páginas enlazadas solo por JavaScript, páginas sin enlaces internos) son desconocidos en este rastreo.",
+    "groups": {
+      "links": "Enlaces solo tras renderizar",
+      "text": "Texto solo tras renderizar",
+      "tags": "Etiquetas que JavaScript añade o cambia"
+    },
+    "none": "Ninguno",
+    "noneNote": "Ninguna página observada por completo tiene enlaces, texto o etiquetas que aparezcan solo tras renderizar.",
+    "notChecked": "Este rastreo aún no se ha revisado en busca de hallazgos.",
+    "stamp": {
+      "html": "HTML",
+      "rendered": "Renderizado",
+      "hints": {
+        "html": "Solo leyó el HTML servido: no se abrió ninguna página en un navegador.",
+        "rendered": "Las páginas se abrieron en un navegador que ejecutó su JavaScript."
+      },
+      "coverageUnknown": "Cobertura aún sin analizar",
+      "allObserved": "Todas las páginas observadas por completo",
+      "someUnobserved": "{count, plural, one {# página no observada por completo} other {# páginas no observadas por completo}}",
+      "causes": "fallidas o ausentes: {failed} · cortadas: {truncated} · sin terminar de cargar: {unsettled}",
+      "linksNotEvaluated": "No se evaluaron los hallazgos que dependen de los enlaces entre páginas.",
+      "linksEvaluated": "Se evaluaron los hallazgos que dependen de los enlaces entre páginas."
+    },
+    "pair": {
+      "htmlToRendered": "El rastreo anterior solo leyó HTML y el posterior renderizó sus páginas",
+      "renderedToHtml": "El rastreo anterior renderizó sus páginas y el posterior solo leyó HTML",
+      "cannotCompare": "Los hallazgos sobre el contenido de cada página (títulos, encabezados, texto, imágenes…), sobre qué páginas enlazan a cuáles (páginas huérfanas, profundidad de clics, páginas sin enlaces internos) y todos los hallazgos de JavaScript aparecen como no comparables, nunca como nuevos ni corregidos.",
+      "canCompare": "Los hallazgos sobre la respuesta del servidor (códigos de estado, redirecciones, tiempo de respuesta…) se comparan como siempre."
+    },
+    "noneObserved": "Ninguno entre las páginas observadas por completo",
+    "linksUnknownGroup": "Desconocido en este rastreo"
   }
 }

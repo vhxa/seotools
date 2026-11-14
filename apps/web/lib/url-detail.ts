@@ -8,7 +8,7 @@ import type {
   CrawlUrlAcceptedIssue,
   CrawlUrlIssue,
 } from '@seotools/db'
-import { crawlIdentityHash } from '@seotools/core'
+import { crawlIdentityHash, normalizeCrawlUrl } from '@seotools/core'
 import { currentAuditOf, type UrlAuditCurrent } from './audit-rules'
 import { automaticFileChecks } from './automatic-checks'
 import { getDb } from './db'
@@ -21,6 +21,7 @@ import {
   type RecheckView,
 } from './recheck'
 import { loadUrlLinks, type UrlLinksPage } from './url-links'
+import { RENDER_DETAIL_SAMPLE, renderViewOf, type RenderView } from './url-rendering'
 
 /** At most this many findings of other URLs are named in the detail of the URL that accepts them. */
 const MAX_ACCEPTED_ELSEWHERE = 10
@@ -50,6 +51,14 @@ export interface UrlDetailData {
    */
   links: { in: UrlLinksPage; out: UrlLinksPage }
   priority: boolean
+  /** What the crawl's JavaScript rendering observed of this URL, or why it did not. */
+  rendering: {
+    view: RenderView
+    /** Complete observations only: the anchors that exist only after rendering, and the served ones. */
+    links: { served: number; total: number; items: { url: string; urlHash: string }[] } | null
+    /** The addresses of the render that are pages of the crawl, to link to their detail. */
+    known: ReadonlyMap<string, string>
+  }
   /**
    * What the analysis concluded about this URL: whether it was audited, what is expected of it and
    * what the crawl saw. `null` for an external URL, or one in a crawl analysed before this existed.
@@ -139,6 +148,17 @@ export async function loadUrlDetail(input: {
         (queued) => queued.urlHash === urlHash && queued.state === 'queued',
       )
     : false
+  const rendering = renderViewOf({ crawl, url, render })
+  const renderedLinks =
+    rendering.kind === 'complete'
+      ? await db.crawls.renderedLinksOf(crawl.id, urlHash, RENDER_DETAIL_SAMPLE)
+      : null
+  const redirectKnown = new Map<string, string>()
+  if (rendering.kind === 'redirect') {
+    const target = normalizeCrawlUrl(rendering.target)
+    const hash = target ? crawlIdentityHash(target, crawl, host) : null
+    if (target && hash && (await db.crawls.getUrl(crawl.id, hash))) redirectKnown.set(target, hash)
+  }
   const evidenceUrls = await crawlUrlsInEvidence(
     [...issues, ...accepted],
     async (address) =>
@@ -165,6 +185,7 @@ export async function loadUrlDetail(input: {
     evidenceUrls,
     links: { in: linksIn, out: linksOut },
     priority: priorities.some((p) => p.urlHash === urlHash),
+    rendering: { view: rendering, links: renderedLinks, known: redirectKnown },
     audit: audit[0] ?? null,
     current: currentAuditOf(config, host, url.url),
     results: historical

@@ -30,6 +30,7 @@ import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { UrlSharePreview } from '@/components/pages/share-preview'
 import { UrlLinks } from '@/components/pages/url-links'
+import { UrlRendering } from '@/components/pages/url-rendering'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
@@ -336,7 +337,16 @@ export async function UrlDetail({
       )}
       <Tabs defaultValue="findings" className="min-w-0">
         <TabsList className="max-w-full flex-wrap group-data-horizontal/tabs:h-auto">
-          {(['findings', 'links', 'indexing', 'history', 'technical'] as const).map((tab) => (
+          {(
+            [
+              'findings',
+              'links',
+              'indexing',
+              ...(url.scope === 'internal' ? (['javascript'] as const) : []),
+              'history',
+              'technical',
+            ] as const
+          ).map((tab) => (
             <TabsTrigger key={tab} value={tab}>
               {t(`tabs.${tab}`)}
             </TabsTrigger>
@@ -510,6 +520,13 @@ export async function UrlDetail({
             </Disclosure>
           )}
         </TabsContent>
+        {url.scope === 'internal' && (
+          <TabsContent value="javascript">
+            <Section title={t('sections.javascript')}>
+              <UrlRendering data={data} hrefFor={hrefFor} />
+            </Section>
+          </TabsContent>
+        )}
         <TabsContent value="technical">
           <Disclosure title={t('sections.technical')}>
             <Fields>

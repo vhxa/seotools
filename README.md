@@ -12,7 +12,7 @@ Raspberry Pi to a VPS.
   from served HTML, and reports JavaScript-only links. Choose HTML or Rendered in domain crawl
   settings; new domains use Rendered only when the browser is ready. Document checks then judge the
   rendered page; response/source diagnostics and share previews keep the served HTML. Incomplete
-  documents stay unknown, and HTML-only rechecks cannot settle rendered document findings. See [rendering](docs/rendering.md).
+  documents stay unknown, and HTML-only rechecks cannot settle rendered document findings. Each URL shows what rendering observed, and what it could not. See [rendering](docs/rendering.md).
 - **Crawls whole sites** from the home page, sitemaps and every link, including what `robots.txt`
   blocks (auditing it is the point), with per-domain scope, depth, rate limits, request headers and
   Basic Auth for staging sites and lists of URLs. The Crawls area brings runs, comparison and

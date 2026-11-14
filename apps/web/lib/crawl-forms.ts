@@ -42,15 +42,23 @@ const integer = (value: string) => (/^\d+$/.test(value) ? Number(value) : Number
 const inRange = (value: number, { min, max }: { min: number; max: number }) =>
   Number.isInteger(value) && value >= min && value <= max
 
-/** Validates the crawl settings form. Modes that are not implemented yet are refused here too. */
+/**
+ * Validates the crawl settings form. Switching *to* Rendered needs a ready browser; a domain that is
+ * already saved as Rendered (`currentMode`) can save its other settings while the browser is not
+ * ready, and its next crawl then waits for the browser or fails.
+ */
 export function parseCrawlSettingsForm(
   form: FormData,
   browserReady = false,
+  currentMode: CrawlRenderingMode = 'http',
 ): CrawlSettingsFormResult {
   const limits = CRAWL_SETTINGS_LIMITS
 
   const mode = text(form, 'renderingMode') as CrawlRenderingMode
-  if (!CRAWL_RENDERING_MODES.includes(mode) || (mode === 'headless' && !browserReady)) {
+  if (
+    !CRAWL_RENDERING_MODES.includes(mode) ||
+    (mode === 'headless' && !browserReady && currentMode !== 'headless')
+  ) {
     return { ok: false, error: 'renderingUnavailable' }
   }
 

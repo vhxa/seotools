@@ -7,6 +7,7 @@ import {
   ANY_ACCEPTED,
 } from '@seotools/core/crawl/acceptance'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
+import { RENDER_FILTERS, type RenderFilter } from '@seotools/core/crawl/render-state'
 import {
   CRAWL_URL_VIEWS,
   FINDING_STATE_FILTERS,
@@ -92,6 +93,8 @@ export interface DetailQuery {
   intent: IndexIntent | null
   /** Only URLs this rule decided: how the settings link to the URLs a rule affects. */
   rule: string | null
+  /** Only URLs by what the crawl's JavaScript rendering observed of them. */
+  rendering: RenderFilter | null
   /** The hash of the URL open in the drawer. */
   url: string | null
 }
@@ -112,6 +115,7 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
   const status = first(params.status)
   const type = first(params.type)
   const indexability = first(params.indexability)
+  const rendering = first(params.rendering)
   const validIssue = issue && isPageIssueId(issue) ? issue : null
   const accepted = first(params.accepted)
   const validAccepted =
@@ -141,6 +145,7 @@ export function parseDetailQuery(params: RawParams): DetailQuery {
     participation: PARTICIPATION_FILTERS.find((option) => option === participation) ?? null,
     intent: INDEX_INTENTS.find((option) => option === intent) ?? null,
     rule: rule && RULE_ID.test(rule) ? rule : null,
+    rendering: RENDER_FILTERS.find((option) => option === rendering) ?? null,
     url: url && isUrlHash(url) ? url : null,
   }
 }
@@ -157,6 +162,7 @@ export const FILTER_KEYS = [
   'participation',
   'intent',
   'rule',
+  'rendering',
 ] as const
 export type FilterKey = (typeof FILTER_KEYS)[number]
 
@@ -168,6 +174,8 @@ export type NotApplied =
   | 'view'
   /** The crawl has no audit data (yet): its URLs have no state to filter by. */
   | 'no-audit-data'
+  /** The crawl was made without rendering: no page has a render to filter by. */
+  | 'html-crawl'
 
 const AUDIT_FILTERS: readonly FilterKey[] = ['indexability', 'participation', 'intent', 'rule']
 
@@ -178,6 +186,7 @@ const isSet = (query: Pick<DetailQuery, FilterKey>, key: FilterKey) =>
 function blockedByView(view: CrawlUrlView, key: FilterKey): NotApplied | null {
   if (key === 'type') return viewHasTypes(view) ? null : view === 'external' ? 'external' : 'view'
   if (AUDIT_FILTERS.includes(key)) return viewIsAudited(view) ? null : 'external'
+  if (key === 'rendering') return view === 'external' ? 'external' : null
   return null
 }
 
@@ -188,11 +197,12 @@ function blockedByView(view: CrawlUrlView, key: FilterKey): NotApplied | null {
  */
 export function filterAvailability(
   view: CrawlUrlView,
-  context: { auditData: boolean },
-): { audit: NotApplied | null; type: NotApplied | null } {
+  context: { auditData: boolean; rendered: boolean },
+): { audit: NotApplied | null; type: NotApplied | null; rendering: NotApplied | null } {
   return {
     audit: blockedByView(view, 'indexability') ?? (context.auditData ? null : 'no-audit-data'),
     type: blockedByView(view, 'type'),
+    rendering: blockedByView(view, 'rendering') ?? (context.rendered ? null : 'html-crawl'),
   }
 }
 
@@ -204,14 +214,20 @@ export function filterAvailability(
  */
 export function unappliedFilters(
   query: Pick<DetailQuery, 'view' | FilterKey> & Partial<Pick<DetailQuery, 'acceptanceKind'>>,
-  context: { auditData: boolean },
+  context: { auditData: boolean; rendered: boolean },
 ): Partial<Record<FilterKey, NotApplied>> {
   const availability = filterAvailability(query.view, context)
   const unapplied: Partial<Record<FilterKey, NotApplied>> = {}
   for (const key of FILTER_KEYS) {
     if (!isSet(query, key)) continue
     const reason =
-      key === 'type' ? availability.type : AUDIT_FILTERS.includes(key) ? availability.audit : null
+      key === 'type'
+        ? availability.type
+        : key === 'rendering'
+          ? availability.rendering
+          : AUDIT_FILTERS.includes(key)
+            ? availability.audit
+            : null
     if (reason) unapplied[key] = reason
   }
   return unapplied
@@ -238,6 +254,7 @@ export function listingOf(
       : {}),
     ...(query.intent && applies('intent') ? { intent: query.intent } : {}),
     ...(query.rule && applies('rule') ? { rule: query.rule } : {}),
+    ...(query.rendering && applies('rendering') ? { rendering: query.rendering } : {}),
   }
 }
 
@@ -258,6 +275,7 @@ export function withoutFilter(key: FilterKey | 'all'): Partial<DetailQuery> {
     participation: null,
     intent: null,
     rule: null,
+    rendering: null,
   }
   const changes: Partial<DetailQuery> =
     key === 'all'
@@ -304,6 +322,7 @@ export function detailHref(
   if (next.participation && kept('participation')) params.set('audit', next.participation)
   if (next.intent && kept('intent')) params.set('intent', next.intent)
   if (next.rule && kept('rule')) params.set('rule', next.rule)
+  if (next.rendering && kept('rendering')) params.set('rendering', next.rendering)
   if (next.sort) {
     params.set('sort', next.sort)
     if (next.direction === 'desc') params.set('dir', 'desc')

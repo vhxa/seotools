@@ -235,6 +235,22 @@ describe('the pages file', () => {
     })
   })
 
+  it('says what rendering observed of each page, and that a page without a render has none', () => {
+    const rendering = (render?: Parameters<typeof exportRecords>[1]['render']) => {
+      const url = crawlUrl('/p')
+      const [row] = asObjects(
+        'pages',
+        exportRecords('pages', { url, issues: [], audit: audit(url), render }, context()).join(''),
+      )
+      return row?.Rendering
+    }
+    expect(rendering('complete')).toBe('Complete')
+    expect(rendering('redirect')).toBe('Redirected by JavaScript')
+    expect(rendering('truncated')).toBe('Cut at the size limit')
+    expect(rendering('failed')).toBe('Failed')
+    expect(rendering()).toBe('Not rendered')
+  })
+
   it('describes the state of a page in words and counts its findings per type', () => {
     const url = crawlUrl('/blocked', { statusCode: 200 })
     const text = exportRecords(
@@ -735,7 +751,7 @@ describe('the filters of the file', () => {
     parseDetailQuery(Object.fromEntries(new URLSearchParams(search)))
   const describeAddress = (search: string, auditData = true) => {
     const parsed = query(search)
-    return describeListing(parsed, unappliedFilters(parsed, { auditData }), t)
+    return describeListing(parsed, unappliedFilters(parsed, { auditData, rendered: false }), t)
   }
 
   it('names the view when there are no filters', () => {
@@ -792,7 +808,7 @@ describe('the address of an export', () => {
   })
 
   it('reads back as the same listing the table asks the database for', () => {
-    const context = { auditData: true }
+    const context = { auditData: true, rendered: false }
     const back = parseDetailQuery(
       rawParamsOf(new URLSearchParams(exportHref('example.com', query, 'pages').split('?')[1])),
     )
@@ -831,6 +847,7 @@ describe('walking the crawl', () => {
         next: null,
       })) as unknown as ExportSource['outlinksOf'],
       urlsOf: vi.fn(async () => []) as unknown as ExportSource['urlsOf'],
+      renderStatesOf: vi.fn(async () => new Map()) as unknown as ExportSource['renderStatesOf'],
       calls: { listUrls, issuesOf, auditOf },
       ...overrides,
     }

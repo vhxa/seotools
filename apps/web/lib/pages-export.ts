@@ -8,6 +8,7 @@ import {
   type FindingAcceptance,
 } from '@seotools/core/crawl/acceptance'
 import type { Extractor } from '@seotools/core/crawl/extraction'
+import type { RenderState } from '@seotools/core/crawl/render-state'
 import { evidenceKindOf } from '@seotools/core/crawl/evidence'
 import {
   PAGE_ISSUES,
@@ -179,6 +180,8 @@ export function describeListing(
         return { value: translate(`PagesDetails.filters.intent.${query.intent!}`) }
       case 'rule':
         return {}
+      case 'rendering':
+        return { value: translate(`PagesDetails.filters.rendering.${query.rendering!}`) }
     }
   }
   // A filter that does not apply to the view did not narrow the list, so the file does not claim it.
@@ -217,6 +220,8 @@ export interface ExportContext {
   onlyAccepted?: string | null
   /** Whether the crawl was checked for findings: without it a URL with none is unknown, not clean. */
   analysed: boolean
+  /** The crawl rendered its pages: the pages file then reads the state of each render. */
+  rendered?: boolean
   translate: Translate
   /** The domain's custom extractors: one more column each in the pages file, named as they are. */
   extractors?: readonly Extractor[]
@@ -234,6 +239,8 @@ export interface ExportUrl {
   links?: OutLink[]
   /** Where its redirects end (the redirects file). */
   redirect?: RedirectChain
+  /** What the crawl's rendering observed of it. Absent: no render (`notRendered`). */
+  render?: RenderState | undefined
 }
 
 /** Where a redirect leads once every hop the crawl recorded is followed. */
@@ -339,6 +346,12 @@ export const PAGES_COLUMNS: readonly UrlColumn[] = [
       audit ? tr(c, `AuditState.participation.${audit.participation}`) : null,
   },
   { header: 'expectation', cell: expectationOf },
+  {
+    header: 'rendering',
+    // A page the crawl has no render for says so: an HTML crawl rendered nothing, which is a fact.
+    cell: ({ url, render }, c) =>
+      url.scope === 'internal' ? tr(c, `RenderState.${render ?? 'notRendered'}`) : null,
+  },
   { header: 'title', cell: ({ url }) => url.title },
   // Empty where the crawl did not store it: a crawl from before the tags were kept, or no tag.
   { header: 'ogTitle', cell: ({ url }) => url.data?.facts?.social?.title },
@@ -658,7 +671,7 @@ export function exportRecords(kind: ExportKind, row: ExportUrl, context: ExportC
 /** What the export needs of the database. */
 export type ExportSource = Pick<
   CrawlRepository,
-  'listUrls' | 'issuesOf' | 'acceptedOf' | 'auditOf' | 'outlinksOf' | 'urlsOf'
+  'listUrls' | 'issuesOf' | 'acceptedOf' | 'auditOf' | 'outlinksOf' | 'urlsOf' | 'renderStatesOf'
 >
 
 /** Follows the redirects of these URLs through what the crawl recorded, a hop at a time. */
@@ -768,13 +781,16 @@ export async function* exportCsv(options: {
       const hashes = urls.map((url) => url.urlHash)
       // The pages file counts findings only when the crawl was checked for them.
       const checked = kind === 'findings' || context.analysed
-      const [issues, accepted, audits, chains] = await Promise.all([
+      const [issues, accepted, audits, chains, renders] = await Promise.all([
         checked ? source.issuesOf(listing.crawlId, hashes) : [],
         checked ? source.acceptedOf(listing.crawlId, hashes) : [],
         source.auditOf(listing.crawlId, hashes),
         kind === 'redirects'
           ? redirectChains(source, listing.crawlId, urls, context)
           : new Map<string, RedirectChain>(),
+        kind === 'pages' && context.rendered
+          ? source.renderStatesOf(listing.crawlId, hashes)
+          : new Map<string, RenderState>(),
       ])
       const issuesByUrl = new Map<string, CrawlUrlIssue[]>()
       for (const issue of issues) {
@@ -799,6 +815,7 @@ export async function* exportCsv(options: {
         audit: auditByUrl.get(url.urlHash),
         links,
         redirect: chains.get(url.urlHash),
+        render: renders.get(url.urlHash),
       })
       if (kind === 'links') {
         // A page can have any number of links: they are read a bounded page at a time.

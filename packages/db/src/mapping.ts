@@ -9,6 +9,7 @@ import {
   isNull,
   lt,
   ne,
+  notInArray,
   or,
   sql,
   type AnyColumn,
@@ -16,6 +17,7 @@ import {
   type SQLWrapper,
 } from 'drizzle-orm'
 import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/acceptance'
+import { renderFilterStates, type RenderState } from '@seotools/core/crawl/render-state'
 import {
   ALERT_KINDS,
   JOB_TYPES,
@@ -773,6 +775,32 @@ export function crawlViewWhere(columns: CrawlUrlColumns, view: CrawlUrlView): SQ
   }
 }
 
+/** The columns of `crawl_url_renders` that classify a render. */
+interface RenderColumns {
+  status: AnyColumn
+  settled: AnyColumn
+  truncated: AnyColumn
+  data: AnyColumn
+}
+
+/**
+ * The state of a render (`RenderState`, `@seotools/core/crawl/render-state`, which has the same
+ * precedence in code) as SQL. `servedData` is the `data` of the URL's `crawl_urls` row.
+ *
+ * Both flags live in JSON text written by `JSON.stringify` (no spaces), and a quote inside a string
+ * is always escaped, so `"truncated":true` and `"redirected":true` can only be a key with that
+ * value: a text match reads them in both dialects (a JSON cast would fail a whole query on one
+ * `\u0000` in a page title). No parameters: the expression is also grouped by.
+ */
+export const renderStateSql = (columns: RenderColumns, servedData: AnyColumn) =>
+  sql<RenderState>`case
+    when ${columns.status} = 'failed' then 'failed'
+    when ${columns.truncated} is true or ${servedData} like '%"truncated":true%' then 'truncated'
+    when ${columns.truncated} is null then 'unknown'
+    when ${columns.data} like '%"redirected":true%' then 'redirect'
+    when not ${columns.settled} then 'unsettled'
+    else 'complete' end`
+
 /** The URLs whose status is of a class, or that have none. */
 export function crawlStatusWhere(
   columns: CrawlUrlColumns,
@@ -796,8 +824,11 @@ export function crawlUrlWhere(
     withAccepted: (issue: string | null, kind?: CrawlUrlQuery['acceptanceKind']) => SQLWrapper
     withState?: (state: string, issue?: string) => SQLWrapper
     withAudit: (filter: AuditFilter) => SQLWrapper
+    /** The hashes of the URLs whose render is in one of these states, or of every rendered URL. */
+    withRender: (states: readonly RenderState[] | null) => SQLWrapper
   },
 ): SQL | undefined {
+  const renderStates = query.rendering ? renderFilterStates(query.rendering) : undefined
   const pattern = query.search ? containsPattern(query.search) : null
   return and(
     eq(columns.crawlId, query.crawlId),
@@ -825,6 +856,11 @@ export function crawlUrlWhere(
         )
       : undefined,
     hasAuditFilter(query) ? inArray(columns.urlHash, subqueries.withAudit(query)) : undefined,
+    renderStates === undefined
+      ? undefined
+      : renderStates === null
+        ? notInArray(columns.urlHash, subqueries.withRender(null))
+        : inArray(columns.urlHash, subqueries.withRender(renderStates)),
   )
 }
 
