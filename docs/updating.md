@@ -473,6 +473,14 @@ already pruned.
 
 ## What has been validated
 
+The [0.5.0 → 0.6.0 integration rehearsal](rehearsals/2026-11-14-upgrade-0.6.0.md), run on
+**2026-11-14** with named volumes, passed on SQLite and PostgreSQL 17: 0034/0035 applied with
+matching journal pairs, eligible crawls were analysed again, every earlier crawl and domain stayed
+on HTML with JavaScript checks unknown, and published 0.5.0 refused both upgraded databases without
+changing data. It also ran the shipped Compose file with and without the `rendering` profile
+against a fake site (identical findings in three rendered crawls, isolation refusals, a browser
+killed mid-crawl). Only Linux arm64 was run; Dokploy was not exercised.
+
 The [0.3.0 → 0.4.0 integration rehearsal](rehearsals/2026-11-12-upgrade-0.4.0.md),
 run on **2026-11-11**, passed using **named volumes**: SQLite and PostgreSQL 17 applied
 0026/0027, all 28 image journal timestamp/hash pairs matched on both dialects, and eligible
