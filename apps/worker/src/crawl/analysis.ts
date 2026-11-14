@@ -179,14 +179,8 @@ export async function analyseCrawl(
   )
   if (config.documentBasis) {
     unobserved = unobserved.filter((id) => ISSUE_BASIS[id] !== 'document')
-    for (const url of site.urls)
-      for (const id of url.documentUnobserved ?? [])
-        if (!isPageLocalIssue(id)) unobserved.push(id as (typeof unobserved)[number])
-    if (site.urls.some((url) => url.contentPage && url.documentObservation !== 'complete'))
-      unobserved.push(
-        ...PAGE_ISSUE_IDS.filter((id) => ISSUE_BASIS[id] === 'document' && !isPageLocalIssue(id)),
-      )
   }
+  for (const id of site.documentUnobserved ?? []) unobserved.push(id as (typeof unobserved)[number])
   if (site.urls.some((url) => url.internal && url.contentPage && url.url.data?.truncated === true))
     unobserved.push(...TRUNCATION_SKIPPING_ISSUES)
   if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {

@@ -1,4 +1,4 @@
-import { ISSUE_BASIS, isPageLocalIssue } from '@seotools/core'
+import { ISSUE_BASIS } from '@seotools/core'
 import {
   AUDIT_CONDITIONS,
   HREFLANG_SOURCES,
@@ -195,6 +195,9 @@ const HREFLANG_RELATIONS = {
   'hreflang-no-return': {
     wrong: (target: AuditedUrl, page: AuditedUrl, site: Site) =>
       target.contentPage &&
+      target.documentObservation !== 'unobserved' &&
+      target.documentObservation !== 'redirected' &&
+      page.blockersKnown !== false &&
       !target.hreflang.some(
         (entry) => identityOf(site, entry.url) === identityOf(site, page.url.url),
       ),
@@ -219,7 +222,11 @@ const unexcused =
   (issue: keyof typeof HREFLANG_RELATIONS) =>
   (target: AuditedUrl, page: AuditedUrl, site: Site) => {
     const relation = HREFLANG_RELATIONS[issue]
-    return relation.wrong(target, page, site) && !relation.excused(page, target, site)
+    return (
+      page.blockersKnown !== false &&
+      relation.wrong(target, page, site) &&
+      !relation.excused(page, target, site)
+    )
   }
 
 /** What the links that reach a URL say of it, whatever is expected of the URL. */
@@ -449,9 +456,9 @@ export const CHECKS: Record<PageIssueId, Check> = {
   // --- directives ----------------------------------------------------------
   'directive-outside-head': onPage((_, facts) => facts.robotsOutsideHead > 0),
   'directives-conflict': onPage(
-    ({ noindex, nofollow, directives: d }) =>
-      (noindex && (d.has('index') || d.has('all'))) ||
-      (nofollow && (d.has('follow') || d.has('all'))),
+    ({ directives: d }) =>
+      ((d.has('noindex') || d.has('none')) && (d.has('index') || d.has('all'))) ||
+      ((d.has('nofollow') || d.has('none')) && (d.has('follow') || d.has('all'))),
   ),
   'directives-conflict-snippets': onPage(({ directives }) => {
     const limits = valuesOf(directives, 'max-snippet')
@@ -514,7 +521,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   ),
   'canonical-not-indexable': onPage((url, _, site) => {
     const target = notIndexableCanonical(url, site)
-    if (!target) return false
+    if (!target || url.blockersKnown === false) return false
     const blockers = indexingBlockers(target)
     const excused = excusedBlockers(url, target, site)
     return blockers.every((blocker) => excused.has(blocker)) ? false : pointsAt(target, blockers)
@@ -742,6 +749,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'only-noindex-inlinks': onPage(
     (url, _, site) =>
       graphAbsenceKnown(site) &&
+      !site.documentUnobserved?.has('only-noindex-inlinks') &&
       INLINKS_WRONG['only-noindex-inlinks'](url) &&
       !excusesInlinks(url, site),
   ),
@@ -1000,7 +1008,7 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
   }
 
   const canonical = url.facts && notIndexableCanonical(url, site)
-  if (canonical) {
+  if (canonical && url.blockersKnown !== false) {
     const blockers = indexingBlockers(canonical)
     const excused = excusedBlockers(url, canonical, site)
     if (blockers.every((blocker) => excused.has(blocker))) {
@@ -1015,7 +1023,12 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
       const target = site.get(entry.url)
       if (!target || target === url || !target.internal || seen.has(entry.url)) continue
       seen.add(entry.url)
-      if (!relation.wrong(target, url, site) || !relation.excused(url, target, site)) continue
+      if (
+        url.blockersKnown === false ||
+        !relation.wrong(target, url, site) ||
+        !relation.excused(url, target, site)
+      )
+        continue
       // A missing return is excused as much by the page being expected out as by the target.
       add(issue, relationAcceptance(url, target, relation.blockers(target)), target)
     }
@@ -1023,7 +1036,8 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
 
   if (url.facts && graphAbsenceKnown(site) && isExpectedOut(url)) {
     for (const issue of Object.keys(INLINKS_WRONG) as (keyof typeof INLINKS_WRONG)[]) {
-      if (INLINKS_WRONG[issue](url)) add(issue, expectedOutAcceptance(url), null)
+      if (!site.documentUnobserved?.has(issue) && INLINKS_WRONG[issue](url))
+        add(issue, expectedOutAcceptance(url), null)
     }
   }
 
@@ -1045,12 +1059,7 @@ export function detectFindings(
 ): { found: Finding[]; accepted: AcceptedFinding[] } {
   const found: Finding[] = []
   for (const issue of PAGE_ISSUE_IDS) {
-    if (
-      ISSUE_BASIS[issue] === 'document' &&
-      (url.documentUnobserved?.includes(issue) ||
-        (!isPageLocalIssue(issue) && site.documentUnobserved?.has(issue)))
-    )
-      continue
+    if (ISSUE_BASIS[issue] === 'document' && url.documentUnobserved?.includes(issue)) continue
     const subject =
       ISSUE_BASIS[issue] === 'html' || ISSUE_BASIS[issue] === 'response' ? (url.served ?? url) : url
     const result = CHECKS[issue](subject, site)
@@ -1071,9 +1080,7 @@ export function detectFindings(
   return applyFindingDismissals(url, site, kept, [
     ...accepted,
     ...acceptedRelations(url, site).filter(
-      ({ issue }) =>
-        ISSUE_BASIS[issue] !== 'document' ||
-        (!url.documentUnobserved?.includes(issue) && !site.documentUnobserved?.has(issue)),
+      ({ issue }) => ISSUE_BASIS[issue] !== 'document' || !url.documentUnobserved?.includes(issue),
     ),
   ])
 }

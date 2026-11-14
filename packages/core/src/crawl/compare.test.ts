@@ -1006,13 +1006,20 @@ it('keeps page-local JavaScript findings unverified across HTML or partial rende
 it('guards every document and graph basis before persistent and accepted shortcuts', () => {
   const html = facts()
   const rendered = facts({ documentBasis: 'rendered-v1', graphBasis: 'rendered' })
-  for (const issue of PAGE_ISSUE_IDS.filter((id) => ['document', 'graph'].includes(issueBasisOf(id)!))) {
-    for (const [a, b] of [[html, rendered], [rendered, html]]) {
+  for (const issue of PAGE_ISSUE_IDS.filter((id) =>
+    ['document', 'graph'].includes(issueBasisOf(id)!),
+  )) {
+    for (const [a, b] of [
+      [html, rendered],
+      [rendered, html],
+    ]) {
       for (const targetIssues of [[], [issue]]) {
-        expect(classifyFinding(issue, {
-          base: seen([issue], {}, a),
-          target: seen(targetIssues, { accepted: new Set([issue]) }, b),
-        })).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+        expect(
+          classifyFinding(issue, {
+            base: seen([issue], {}, a),
+            target: seen(targetIssues, { accepted: new Set([issue]) }, b),
+          }),
+        ).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
       }
     }
   }
@@ -1025,10 +1032,26 @@ it('keeps document uncertainty URL-local and refuses unknown or cross-basis hist
   const reported = seen(['title-missing'], { documentObservation: 'complete' }, rendered)
   const unknown = seen([], { documentObservation: 'unobserved' }, rendered)
   const absent = seen([], { documentObservation: 'complete' }, rendered)
-  for (const pair of [{base: reported, target: unknown}, {base: unknown, target: reported}]) {
-    expect(classifyFinding('title-missing', pair)).toMatchObject({kind: 'unverified', reasons: ['unobserved']})
+  for (const pair of [
+    { base: reported, target: unknown },
+    { base: unknown, target: reported },
+  ]) {
+    expect(classifyFinding('title-missing', pair)).toMatchObject({
+      kind: 'unverified',
+      reasons: ['unobserved'],
+    })
   }
-  expect(classifyFinding('title-missing', {base: reported, target: reported, between: [unknown]})).toMatchObject({kind: 'persistent'})
-  expect(classifyFinding('title-missing', {base: absent, target: reported, earlier: [unknown, seen(['title-missing'])]})).toMatchObject({kind: 'new'})
-  expect(classifyFinding('title-missing', {base: absent, target: reported})).toMatchObject({kind: 'new'})
+  expect(
+    classifyFinding('title-missing', { base: reported, target: reported, between: [unknown] }),
+  ).toMatchObject({ kind: 'persistent' })
+  expect(
+    classifyFinding('title-missing', {
+      base: absent,
+      target: reported,
+      earlier: [unknown, seen(['title-missing'])],
+    }),
+  ).toMatchObject({ kind: 'new' })
+  expect(classifyFinding('title-missing', { base: absent, target: reported })).toMatchObject({
+    kind: 'new',
+  })
 })

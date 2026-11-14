@@ -1,3 +1,4 @@
+import { issueBasisOf } from '@seotools/core/crawl/basis'
 import { FindingStatesList } from '@/components/audit/finding-states-list'
 import { FindingStateActions } from '@/components/audit/finding-state-actions'
 import { VitalsValues } from './vitals-values'
@@ -90,18 +91,26 @@ export async function UrlDetail({
   const basis = await getTranslations('AuditBasis')
   const { url, crawl, audit } = data
   const renderedBasis = crawl.auditSnapshot?.documentBasis === 'rendered-v1'
+  const unknownDocumentChecks = new Set([
+    ...(audit?.documentUnobserved ?? []),
+    ...(crawl.auditSnapshot?.unobserved ?? []).filter((id) => issueBasisOf(id) === 'document'),
+  ])
   const documentUnknown =
-    renderedBasis && isPageUrl(data) && audit?.documentObservation !== 'complete'
+    renderedBasis &&
+    isPageUrl(data) &&
+    (audit?.documentObservation !== 'complete' || unknownDocumentChecks.size > 0)
   const renderReason =
-    data.render?.status === 'failed'
-      ? 'failed'
-      : data.render?.data.redirected
-        ? 'redirected'
-        : url.data?.truncated || data.render?.truncated
-          ? 'truncated'
-          : data.render?.status === 'rendered' && !data.render.settled
-            ? 'unsettled'
-            : 'missing'
+    audit?.documentObservation === 'complete'
+      ? 'dependencies'
+      : data.render?.status === 'failed'
+        ? 'failed'
+        : data.render?.data.redirected
+          ? 'redirected'
+          : url.data?.truncated || data.render?.truncated
+            ? 'truncated'
+            : data.render?.status === 'rendered' && !data.render.settled
+              ? 'unsettled'
+              : 'missing'
   const findingGroups = groupDetailFindings(data.issues)
   const findingsId = `url-findings-${crawl.id}-${url.urlHash}`
   const isPage = url.kind === 'page'
@@ -155,7 +164,8 @@ export async function UrlDetail({
           <p>{basis('exceptions')}</p>
           {documentUnknown && (
             <p role="status">
-              {basis('unknown')} {basis(renderReason)}
+              {basis('unknown')} {basis(renderReason)}{' '}
+              {basis('unknownCount', { count: unknownDocumentChecks.size })}
             </p>
           )}
         </div>

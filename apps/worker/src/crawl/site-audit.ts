@@ -631,15 +631,20 @@ export async function loadSite(
     sitemapCoverage: sitemapCoverageOf(crawl, domain.host, urls),
     htmlLinksComplete: crawl.status === 'completed',
     documentUnobserved: config.documentBasis
-      ? new Set(
-          internal.flatMap((url) =>
+      ? new Set([
+          ...internal.flatMap((url) =>
             url.documentObservation && url.documentObservation !== 'complete'
               ? PAGE_ISSUE_IDS.filter(
                   (id) => ISSUE_BASIS[id] === 'document' && !isPageLocalIssue(id),
                 )
               : (url.documentUnobserved?.filter((id) => !isPageLocalIssue(id)) ?? []),
           ),
-        )
+          ...(internal.some(
+            (url) => url.blockersKnown === false && url.documentObservation !== 'redirected',
+          )
+            ? ['only-noindex-inlinks', 'links-to-canonicalised']
+            : []),
+        ])
       : undefined,
     rendersUnobserved,
     renderCoverage,

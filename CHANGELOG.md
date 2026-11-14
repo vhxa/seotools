@@ -40,6 +40,12 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Changed
 
+- Rendered crawls judge document findings, indexability and rules on the completely observed
+  rendered page. Served noindex restrictions persist; response and source diagnostics and social
+  previews keep the served response. Incomplete documents stay unknown per URL for page-local
+  checks and crawl-wide for checks involving other pages. Different observation bases are never
+  reported as new or fixed, and HTML-only rechecks cannot settle rendered document findings.
+
 - Sitemap orphan findings describe the links observed in either HTML or rendered crawls. Rendered
   crawls pause when the browser is unavailable and fail after their recovery allowance, without
   falling back to HTML. In a rendered crawl, a page that was neither rendered whole and settled nor

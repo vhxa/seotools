@@ -3953,6 +3953,8 @@
     "truncated": "The served or rendered document was truncated.",
     "unsettled": "The page did not settle within the observation window.",
     "missing": "A complete document observation was not stored.",
-    "coverage": "{complete, number} complete documents; {redirected, number} redirects; {unobserved, number} unobserved documents."
+    "coverage": "{complete, number} complete documents; {redirected, number} redirects; {unobserved, number} unobserved documents.",
+    "dependencies": "Some checks lack stored inputs or complete observations of other pages.",
+    "unknownCount": "{count, number} document checks could not be verified."
   }
 }

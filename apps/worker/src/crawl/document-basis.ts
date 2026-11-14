@@ -84,5 +84,12 @@ export function selectDocument(
   else if (complete && !render.data.documentLinks?.embedsComplete)
     url.documentUnobserved.push('resources-broken')
   if (!url.canonicalKnown)
-    url.documentUnobserved.push('canonical-required-missing', 'canonical-forbidden-present')
+    url.documentUnobserved.push(
+      'canonical-required-missing',
+      'canonical-forbidden-present',
+      'canonical-not-indexable',
+      'hreflang-no-return',
+      'hreflang-noindex',
+      'hreflang-non-canonical',
+    )
 }

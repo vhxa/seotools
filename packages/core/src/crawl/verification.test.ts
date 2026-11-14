@@ -146,7 +146,12 @@ describe('verificationIsCurrent', () => {
 it('never settles document issues of a rendered base, including legacy recheck outcomes', () => {
   for (const issue of PAGE_ISSUE_IDS.filter((id) => ISSUE_BASIS[id] === 'document')) {
     for (const recheck of [[], [issue]]) {
-      const result = compareWithCrawl({renderedBase: true, crawl: [issue], recheck, accepted: [issue]})
+      const result = compareWithCrawl({
+        renderedBase: true,
+        crawl: [issue],
+        recheck,
+        accepted: [issue],
+      })
       expect(result.fixed).toEqual([])
       expect(result.appeared).toEqual([])
       expect(result.remaining).toEqual([])

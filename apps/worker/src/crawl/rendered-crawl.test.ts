@@ -472,7 +472,7 @@ it.each(['failed', 'truncated', 'unsettled'] as const)(
       ).toEqual([])
     }
     // Prove the fixtures would reproduce all three errors without the coverage guard.
-    const unchecked = { ...site, rendersUnobserved: 0 }
+    const unchecked = { ...site, rendersUnobserved: 0, documentUnobserved: new Set<string>() }
     expect(
       detectFindings(site.get(`${SITE}/nofollow`)!, unchecked).found.map(({ issue }) => issue),
     ).toContain('only-nofollow-inlinks')

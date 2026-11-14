@@ -3953,6 +3953,8 @@
     "truncated": "El documento recibido o renderizado quedó incompleto.",
     "unsettled": "La página no se estabilizó durante el tiempo de observación.",
     "missing": "No se guardó una observación completa del documento.",
-    "coverage": "{complete, number} documentos completos; {redirected, number} redirecciones; {unobserved, number} documentos sin observar."
+    "coverage": "{complete, number} documentos completos; {redirected, number} redirecciones; {unobserved, number} documentos sin observar.",
+    "dependencies": "A algunas comprobaciones les faltan datos guardados u observaciones completas de otras páginas.",
+    "unknownCount": "No se pudieron verificar {count, number} comprobaciones del documento."
   }
 }

@@ -2191,7 +2191,7 @@ describe('HTML/render differences', () => {
       const crawlId = await crawl(websiteOf(SCENARIOS[id]), [], true, id)
       const stored = (await db.crawls.get(crawlId))!
       const site = await loadSite(db, stored, stored.auditSnapshot!)
-      const url = site.get(`${SITE}/x`)!
+      const url = site.get(`${SITE}/x`)!.served!
       const original = url.render!
       for (const render of [
         undefined,
@@ -2251,7 +2251,7 @@ describe('HTML/render differences', () => {
     )
     const stored = (await db.crawls.get(id))!
     const site = await loadSite(db, stored, stored.auditSnapshot!)
-    const url = site.get(`${SITE}/x`)!
+    const url = site.get(`${SITE}/x`)!.served!
     expect(CHECKS['javascript-redirect'](url, site)).not.toBe(false)
     for (const refresh of ['0;url=/target', '']) {
       url.facts!.refresh = refresh
@@ -2268,7 +2268,7 @@ describe('HTML/render differences', () => {
     )
     const stored = (await db.crawls.get(id))!
     const site = await loadSite(db, stored, stored.auditSnapshot!)
-    const url = site.get(`${SITE}/x`)!
+    const url = site.get(`${SITE}/x`)!.served!
     const test = (html: number, rendered: number, share: number) => {
       url.facts!.words = html
       url.render!.data.facts!.words = rendered
@@ -2292,7 +2292,7 @@ describe('HTML/render differences', () => {
     )
     const stored = (await db.crawls.get(id))!
     const site = await loadSite(db, stored, stored.auditSnapshot!)
-    const url = site.get(`${SITE}/x`)!
+    const url = site.get(`${SITE}/x`)!.served!
     url.render!.data.facts!.canonicals = [
       { ...url.facts!.canonicals[0]!, url: `${SITE}/x?noise=1#fragment` },
     ]

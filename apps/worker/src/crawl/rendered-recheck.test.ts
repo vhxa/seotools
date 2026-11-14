@@ -82,6 +82,11 @@ it('does not report an unchanged rendered page as changed after an HTML-only rec
     expect(combined.get(`${SITE}/followed`)?.clickDepth).toBe(1)
     const urlHash = crawlUrlHash(`${SITE}/`)
     const before = (await db.crawls.issuesOf(crawl.id, [urlHash])).map((row) => row.issue)
+    // Current domain settings cannot change the base crawl's document basis.
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      renderingMode: 'http',
+    })
     const verification = (await db.verifications.start({
       domainId,
       baseCrawlId: crawl.id,
