@@ -1735,13 +1735,13 @@
     "description": "Cómo se comportan los rastreos de {host}. Los cambios se aplican desde el siguiente rastreo.",
     "rendering": {
       "label": "Renderizado de páginas",
-      "hint": "La renderización ejecuta JavaScript para descubrir enlaces y evaluar el documento renderizado.",
+      "hint": "El renderizado ejecuta JavaScript para descubrir más enlaces.",
       "modes": {
         "http": "HTML",
         "headless": "Renderizado"
       },
       "unavailable": "Renderizado no disponible: {reason}",
-      "comparison": "Si cambia el modo de renderización, el próximo rastreo no será comparable con los anteriores para los hallazgos del documento y de los enlaces.",
+      "comparison": "Los hallazgos sobre la respuesta del servidor (códigos de estado, redirecciones, tiempo de respuesta…) se compararán con los rastreos anteriores como siempre. Los hallazgos sobre el contenido de cada página, sobre qué páginas enlazan a cuáles y los de JavaScript aparecerán como no comparables, nunca como nuevos ni corregidos.",
       "wait": "Límite de espera del renderizado (ms)",
       "waitHint": "Entre 1000 y 30000 milisegundos; 5000 por defecto.",
       "omitted": "Hosts adicionales que omitir",
@@ -2859,7 +2859,7 @@
       "audit": "la configuración de auditoría o la expectativa de la URL difieren",
       "unobserved": "un rastreo no pudo observar por completo los datos que necesita esta comprobación",
       "dismissed": "Una persona descartó este hallazgo.",
-      "basis": "la base de observación del documento o de los enlaces es distinta"
+      "basis": "un rastreo leyó el HTML recibido y el otro la página renderizada: solo se pueden comparar los hallazgos sobre la respuesta del servidor"
     },
     "notes": {
       "pruned": {
@@ -2908,7 +2908,7 @@
       },
       "basis": {
         "title": "Bases de observación distintas",
-        "description": "No se pueden atribuir cambios de hallazgos del documento o de los enlaces entre observaciones HTML y renderizadas."
+        "description": "Un rastreo leyó el HTML recibido y el otro la página renderizada. Los hallazgos sobre la respuesta del servidor se comparan como siempre; los del contenido de cada página, los de qué páginas enlazan a cuáles y los de JavaScript aparecen como no comparables, nunca como nuevos ni corregidos."
       }
     },
     "rowsShown": "{shown, number} de {matching, number} URLs mostradas",

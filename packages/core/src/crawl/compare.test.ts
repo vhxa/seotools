@@ -954,7 +954,7 @@ describe('HTML and rendered observation scopes', () => {
         base: seen([], {}, html),
         target: seen([issue], {}, rendered),
       })
-      if (issueBasisOf(issue) === 'graph') {
+      if (issueBasisOf(issue) === 'graph' || issueBasisOf(issue) === 'html') {
         expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
         expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
       } else if (isPageLocalIssue(issue)) {
@@ -986,19 +986,21 @@ it('keeps page-local JavaScript findings unverified across HTML or partial rende
         },
       }),
     )
+    // Across modes the basis changes first; within rendered crawls the render was not observed.
+    const reasons = [mode === 'html' ? 'basis' : 'unobserved']
     for (const issue of issues) {
       expect(
         classifyFinding(issue, {
           base: seen([], {}, unknown),
           target: seen([issue], {}, rendered),
         }),
-      ).toMatchObject({ kind: 'unverified', reasons: ['unobserved'] })
+      ).toMatchObject({ kind: 'unverified', reasons })
       expect(
         classifyFinding(issue, {
           base: seen([issue], {}, rendered),
           target: seen([], {}, unknown),
         }),
-      ).toMatchObject({ kind: 'unverified', reasons: ['unobserved'] })
+      ).toMatchObject({ kind: 'unverified', reasons })
     }
   }
 })
@@ -1024,7 +1026,52 @@ it('guards every document and graph basis before persistent and accepted shortcu
     }
   }
   expect(issuePairReasons(['basis'], 'title-missing')).toEqual(['basis'])
-  expect(issuePairReasons(['basis'], 'og-missing')).toEqual([])
+  expect(issuePairReasons(['basis'], 'og-missing')).toEqual(['basis'])
+  expect(issuePairReasons(['basis'], 'slow-response')).toEqual([])
+})
+
+it('compares only response findings between an HTML crawl and a rendered-v1 crawl', () => {
+  const html = crawlFactsOf(crawl())
+  const rendered = crawlFactsOf(
+    crawl({
+      auditSnapshot: {
+        ...auditSnapshotOf(2, []),
+        rendering: 'rendered',
+        documentBasis: 'rendered-v1',
+      },
+    }),
+  )
+  for (const issue of PAGE_ISSUE_IDS) {
+    for (const [a, b] of [
+      [html, rendered],
+      [rendered, html],
+    ]) {
+      const disappeared = classifyFinding(issue, {
+        base: seen([issue], {}, a),
+        target: seen([], {}, b),
+      })
+      const appeared = classifyFinding(issue, {
+        base: seen([], {}, a),
+        target: seen([issue], {}, b),
+      })
+      const both = classifyFinding(issue, {
+        base: seen([issue], {}, a),
+        target: seen([issue], {}, b),
+      })
+      if (issueBasisOf(issue) !== 'response') {
+        expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+        expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+        expect(both, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+      } else if (isPageLocalIssue(issue)) {
+        expect(disappeared?.kind, issue).toBe('resolved')
+        expect(appeared?.kind, issue).toBe('new')
+        expect(both?.kind, issue).toBe('persistent')
+      } else {
+        expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+        expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+      }
+    }
+  }
 })
 
 it('keeps document uncertainty URL-local and refuses unknown or cross-basis history as reappearance evidence', () => {

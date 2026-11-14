@@ -54,7 +54,8 @@ export const ALERT_EMAIL_COPY = {
       'Ignored query parameters changed: added and not seen URLs may come from this setting.',
     noteIncomplete: 'A crawl stopped at its URL limit, so URLs it did not reach are not gone.',
     noteCatalog: 'The checks changed between the two crawls: some findings differ because of that.',
-    noteBasis: 'The document or graph observation basis differs; those changes are unverified.',
+    noteBasis:
+      'One crawl read the served HTML and the other the rendered page: only findings about the server\'s answer are compared; the others are unverified, not new or resolved.',
     noteAudit:
       'The audit rules changed between the two crawls: findings that differ because of them are unverified, not new or resolved.',
     noteLegacy: 'An older crawl did not keep which URLs were audited.',
@@ -113,7 +114,7 @@ export const ALERT_EMAIL_COPY = {
     noteCatalog:
       'Las comprobaciones cambiaron entre los dos rastreos: algunos hallazgos difieren por eso.',
     noteBasis:
-      'La base de observación del documento o de los enlaces es distinta; esos cambios no se pueden confirmar.',
+      'Un rastreo leyó el HTML recibido y el otro la página renderizada: solo se comparan los hallazgos sobre la respuesta del servidor; los demás quedan sin verificar, no son nuevos ni resueltos.',
     noteAudit:
       'Las reglas de auditoría cambiaron entre los dos rastreos: los hallazgos que difieren por ellas están sin verificar, no son nuevos ni resueltos.',
     noteLegacy: 'Un rastreo antiguo no guardó qué URLs se auditaron.',

@@ -891,7 +891,7 @@ export function issuePairReasons(notes: readonly PairNoteCode[], issue: string):
   return notes.flatMap((note): UnknownReason[] => {
     // Changed identity can coalesce URLs and alter both page-local and site-wide findings.
     if (note === 'basis')
-      return issueBasisOf(issue) === 'document' || issueBasisOf(issue) === 'graph' ? ['basis'] : []
+      return issueBasisOf(issue) === 'response' ? [] : ['basis']
     if (note === 'ignoredParameters') return ['audit']
     if ((note === 'audit' || note === 'incomplete') && isPageLocalIssue(issue)) return []
     return [note === 'legacy' ? 'participation' : note]
@@ -904,9 +904,11 @@ function basisChanged(
   b: Pick<CrawlFacts, 'documentBasis' | 'graphBasis'>,
 ) {
   const basis = issueBasisOf(issue)
+  // Served-source findings read the same HTML in both modes, but a rendered crawl reaches other
+  // pages and the interface promises that only response findings compare across modes.
   return basis === 'document'
     ? a.documentBasis !== b.documentBasis
-    : basis === 'graph'
+    : basis === 'graph' || basis === 'html'
       ? a.graphBasis !== b.graphBasis
       : false
 }

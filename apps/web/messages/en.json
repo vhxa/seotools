@@ -1735,13 +1735,13 @@
     "description": "How crawls of {host} behave. Changes apply from the next crawl.",
     "rendering": {
       "label": "Page rendering",
-      "hint": "Rendering runs JavaScript to discover links and audit the rendered document.",
+      "hint": "Rendering runs JavaScript to discover additional links.",
       "modes": {
         "http": "HTML",
         "headless": "Rendered"
       },
       "unavailable": "Rendered mode unavailable: {reason}",
-      "comparison": "The next crawl will not be comparable with earlier ones for document and link findings if the rendering mode changes.",
+      "comparison": "Findings about the server's answer (status codes, redirects, response time…) will be compared with earlier crawls as usual. Findings about each page's content, about which pages link to which, and JavaScript findings will show as not comparable, never as new or fixed.",
       "wait": "Render wait limit (ms)",
       "waitHint": "From 1000 to 30000 milliseconds; default 5000.",
       "omitted": "Additional omitted hosts",
@@ -2859,7 +2859,7 @@
       "audit": "the audit configuration or the expectation for the URL differs",
       "unobserved": "a crawl could not completely observe the input this check needs",
       "dismissed": "A person dismissed this finding.",
-      "basis": "the document or graph observation basis differs"
+      "basis": "one crawl read the served HTML and the other the rendered page: only findings about the server's answer can be compared"
     },
     "notes": {
       "pruned": {
@@ -2908,7 +2908,7 @@
       },
       "basis": {
         "title": "Different observation bases",
-        "description": "Document and graph findings cannot be attributed across HTML and rendered observations."
+        "description": "One crawl read the served HTML and the other the rendered page. Findings about the server's answer are compared as usual; findings about each page's content, about which pages link to which, and JavaScript findings show as not comparable, never as new or fixed."
       }
     },
     "rowsShown": "{shown, number} of {matching, number} URLs shown",

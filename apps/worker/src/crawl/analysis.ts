@@ -212,7 +212,7 @@ export async function analyseCrawl(
         (url) =>
           url.internal &&
           url.contentPage &&
-          (!url.facts?.social || !url.render?.data.facts?.social),
+          (!(url.served ?? url).facts?.social || !url.render?.data.facts?.social),
       )
     ) {
       unobserved.push('social-tags-only-after-rendering')
