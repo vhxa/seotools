@@ -22,7 +22,13 @@ const OMIT_REASONS: readonly string[] = [
   'redirect',
   'method',
 ]
-const FAILURE_CODES = ['load-timeout', 'crashed', 'serialization', 'navigation'] as const
+const FAILURE_CODES = [
+  'load-timeout',
+  'crashed',
+  'serialization',
+  'navigation',
+  'not-rendered',
+] as const
 
 /** What a site wrote is text here: a value, never markup. */
 function Value({ shown }: { shown: Shown }) {
@@ -218,7 +224,7 @@ export function UrlRendering({
                 ? t(
                     `incomplete.truncated.${view.cut.rendered ? (view.cut.served ? 'both' : 'rendered') : 'served'}`,
                   )
-                : t(`incomplete.${view.state}.body`, { ms: view.waitMs ?? 0 })}
+                : t(`incomplete.${view.state}.body`)}
             </p>
             {view.state === 'failed' && failure && (
               <p>
@@ -258,10 +264,30 @@ export function UrlRendering({
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-      <p className="flex items-center gap-2 text-sm">
-        <CircleCheckIcon aria-hidden className="size-4" />
-        {t('complete')} <span className="text-muted-foreground">· {seconds(view.durationMs)}</span>
-      </p>
+      {view.loading ? (
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-1 text-sm">
+          <p className="flex items-center gap-2 font-medium">
+            <CircleCheckIcon aria-hidden className="size-4" />
+            {t('loading.title')}{' '}
+            <span className="font-normal text-muted-foreground">· {seconds(view.durationMs)}</span>
+          </p>
+          <p className="text-muted-foreground">
+            {view.loading.pending === null
+              ? t('loading.unknownPending', { ms: view.loading.windowMs ?? 0 })
+              : t('loading.body', {
+                  ms: view.loading.windowMs ?? 0,
+                  pending: view.loading.pending,
+                })}{' '}
+            {t('loading.findings')}
+          </p>
+        </div>
+      ) : (
+        <p className="flex items-center gap-2 text-sm">
+          <CircleCheckIcon aria-hidden className="size-4" />
+          {t('complete')}{' '}
+          <span className="text-muted-foreground">· {seconds(view.durationMs)}</span>
+        </p>
+      )}
       <Comparison rows={view.rows} />
       {links && (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-1">

@@ -348,36 +348,44 @@ it.each(['failed', 'truncated', 'unsettled', 'served-truncated', 'legacy'] as co
         await analyseCrawl(db, crawl.id, await currentAuditConfig(db, domainId))
       }
       const stored = (await db.crawls.get(crawl.id))!
-      expect(stored.auditSnapshot?.rendersUnobserved).toBe(partial ? 1 : 0)
+      // A page captured while still loading is an observation: the graph stays known.
+      const unknown = partial && cause !== 'unsettled'
+      expect(stored.auditSnapshot?.rendersUnobserved).toBe(unknown ? 1 : 0)
       expect(stored.auditSnapshot?.renderCoverage).toEqual({
         failedOrMissing: partial && (cause === 'failed' || cause === 'legacy') ? 1 : 0,
         truncated: partial && (cause === 'truncated' || cause === 'served-truncated') ? 1 : 0,
         unsettled: partial && cause === 'unsettled' ? 1 : 0,
       })
-      expect((await issues(crawl.id, '/orphan')).includes('orphan-in-sitemap')).toBe(!partial)
+      expect((await issues(crawl.id, '/orphan')).includes('orphan-in-sitemap')).toBe(!unknown)
       const site = await loadSite(db, stored, stored.auditSnapshot!)
       expect(presenceOf('unlinked', site.get(`${SITE}/orphan`)!, site)).toBe(
-        partial ? 'unknown' : 'present',
+        unknown ? 'unknown' : 'present',
       )
       // Even in a partial snapshot, the rendered menu positively proves that /only-js is linked.
       expect(presenceOf('unlinked', site.get(`${SITE}/only-js`)!, site)).toBe('absent')
-      if (partial)
+      if (unknown)
         expect(stored.auditSnapshot?.unobserved).toEqual(
           expect.arrayContaining([...RENDERED_GRAPH_ISSUES]),
         )
+      else
+        for (const issue of RENDERED_GRAPH_ISSUES)
+          expect(stored.auditSnapshot?.unobserved ?? []).not.toContain(issue)
       // A served page cut at the body limit cannot prove `few-html-links` absent anywhere.
       expect(stored.auditSnapshot?.unobserved?.includes('few-html-links') ?? false).toBe(
         partial && cause === 'served-truncated',
       )
       const comparison = await compareWithPrevious({ db, target: stored, exact: true })
       if (comparison.base) {
-        expect(comparison.byIssue.get('orphan-in-sitemap')).toMatchObject({
-          fresh: 0,
-          back: 0,
-          resolved: 0,
-          unverified: 1,
-          reasons: ['unobserved'],
-        })
+        if (cause === 'unsettled')
+          expect(comparison.byIssue.get('orphan-in-sitemap')?.unverified ?? 0).toBe(0)
+        else
+          expect(comparison.byIssue.get('orphan-in-sitemap')).toMatchObject({
+            fresh: 0,
+            back: 0,
+            resolved: 0,
+            unverified: 1,
+            reasons: ['unobserved'],
+          })
         expect(
           [...comparison.byIssue].filter(
             ([id, counts]) => id !== 'render-failed' && (counts.resolved > 0 || counts.fresh > 0),
@@ -415,7 +423,8 @@ it.each(['failed', 'truncated', 'unsettled', 'served-truncated', 'legacy'] as co
   },
 )
 
-it.each(['failed', 'truncated', 'unsettled'] as const)(
+// A page captured while still loading is an observation: only these leave the graph unknown.
+it.each(['failed', 'truncated'] as const)(
   'a %s /menu cannot prove only-nofollow/noindex inlinks or deep pages, including accepted findings',
   async (cause) => {
     await db.audit.setThresholds({ domainId, thresholds: { clickDepthMax: 1 } })
@@ -598,7 +607,13 @@ it.each(['failed', 'truncated', 'unsettled', 'legacy-values', 'redirected'] as c
       const stored = (await db.crawls.get(crawl.id))!
       snapshots.push(stored)
       const home = await issues(crawl.id, '/')
-      if (partial) {
+      const [homeAudit] = await db.crawls.auditOf(crawl.id, [hash('/')])
+      if (partial && cause === 'unsettled') {
+        // Captured while still loading: an observation, and the title had already changed.
+        expect(home).toContain('title-changed-by-javascript')
+        expect(homeAudit!.documentLoading).toBe(true)
+        expect(stored.auditSnapshot?.rendersUnobserved).toBe(0)
+      } else if (partial) {
         expect(home.filter((id) => RENDER_DIFFERENCE_IDS.some((issue) => issue === id))).toEqual(
           cause === 'failed'
             ? ['render-failed']
@@ -606,16 +621,14 @@ it.each(['failed', 'truncated', 'unsettled', 'legacy-values', 'redirected'] as c
               ? ['javascript-redirect']
               : [],
         )
-        expect(stored.auditSnapshot?.unobserved).toEqual(
-          expect.arrayContaining(
-            RENDER_DIFFERENCE_IDS.filter(
-              (id) =>
-                id !== 'render-failed' &&
-                (id !== 'javascript-redirect' ||
-                  (cause !== 'redirected' && cause !== 'legacy-values')),
-            ),
-          ),
+        // Unknown for that page only, never for the whole crawl.
+        const unknown = RENDER_DIFFERENCE_IDS.filter(
+          (id) =>
+            id !== 'render-failed' &&
+            (id !== 'javascript-redirect' || (cause !== 'redirected' && cause !== 'legacy-values')),
         )
+        expect(homeAudit!.documentUnobserved).toEqual(expect.arrayContaining(unknown))
+        for (const id of unknown) expect(stored.auditSnapshot?.unobserved ?? []).not.toContain(id)
       } else expect(home).toContain('title-changed-by-javascript')
       expect(stored.auditSnapshot?.unobserved).not.toContain('render-failed')
       if (partial && cause === 'redirected') {
@@ -623,7 +636,11 @@ it.each(['failed', 'truncated', 'unsettled', 'legacy-values', 'redirected'] as c
         expect(stored.auditSnapshot?.unobserved).not.toContain('javascript-redirect')
         expect(stored.auditSnapshot?.unobserved).not.toContain('orphan-in-sitemap')
       }
-      if (iteration > 0) {
+      if (iteration > 0 && cause === 'unsettled') {
+        const comparison = await compareWithPrevious({ db, target: stored, exact: true })
+        // Reported by both crawls: nothing changed, so it is not listed at all.
+        expect(comparison.byIssue.get('title-changed-by-javascript')).toBeUndefined()
+      } else if (iteration > 0) {
         const comparison = await compareWithPrevious({ db, target: stored, exact: true })
         expect(comparison.byIssue.get('title-changed-by-javascript')?.unverified).toBeGreaterThan(0)
         expect(comparison.byIssue.get('title-changed-by-javascript')).toMatchObject({
@@ -642,3 +659,41 @@ it.each(['failed', 'truncated', 'unsettled', 'legacy-values', 'redirected'] as c
     expect((await db.crawls.get(html.id))?.auditSnapshot?.rendering).toBe('rendered')
   },
 )
+
+it.each([
+  ['once', 1],
+  ['every time', Number.POSITIVE_INFINITY],
+])('never completes with a page recorded without its render (lost %s)', async (_label, losses) => {
+  // However a render goes missing (the cause seen on a real site is not known), a rendered crawl
+  // crawls such a page again, and records it as not rendered if it still has none.
+  let left = losses
+  const record = db.crawls.recordResult.bind(db.crawls)
+  vi.spyOn(db.crawls, 'recordResult').mockImplementation(async (input) =>
+    record(
+      input.urlHash === hash('/menu') && input.render && left-- > 0
+        ? { ...input, render: undefined }
+        : input,
+    ),
+  )
+  const crawl = await start()
+  await runCrawl(crawl.id, options())
+  const stored = (await db.crawls.get(crawl.id))!
+  expect(stored.status).toBe('completed')
+  expect(await db.crawls.unrenderedPages(crawl.id, 10)).toEqual([])
+  const render = await db.crawls.renderOf(crawl.id, hash('/menu'))
+  const counts = await db.crawls.countUrls(crawl.id)
+  expect(stored.pagesCount).toBe(counts.pagesCount)
+  expect(stored.urlsDoneCount).toBe(counts.urlsDoneCount)
+  const audit = (await db.crawls.auditOf(crawl.id, [hash('/menu')]))[0]!
+  if (losses === 1) {
+    expect(render?.status).toBe('rendered')
+    expect(audit.documentObservation).toBe('complete')
+  } else {
+    expect(render).toMatchObject({ status: 'failed', failure: 'not-rendered' })
+    expect(await issues(crawl.id, '/menu')).toContain('render-failed')
+    // Unknown for that page only: its JavaScript findings, never the whole crawl's.
+    expect(audit.documentUnobserved).toContain('title-changed-by-javascript')
+    expect(stored.auditSnapshot?.unobserved ?? []).not.toContain('title-changed-by-javascript')
+    expect(stored.auditSnapshot?.unobserved).toEqual(expect.arrayContaining(RENDERED_GRAPH_ISSUES))
+  }
+})

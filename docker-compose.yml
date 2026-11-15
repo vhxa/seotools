@@ -60,8 +60,10 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    shm_size: 256m
-    mem_limit: 1536m
+    # Memory for the browser and its shared memory: raise them to render more pages at once
+    # (RENDER_CONCURRENCY), see docs/rendering.md. Set them in .env; these are the defaults.
+    shm_size: ${RENDER_BROWSER_SHM:-256m}
+    mem_limit: ${RENDER_BROWSER_MEMORY:-1536m}
     pids_limit: 256
     networks: [render]
 

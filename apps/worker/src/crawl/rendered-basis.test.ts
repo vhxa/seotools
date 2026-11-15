@@ -206,15 +206,22 @@ it.each([
   },
 )
 
-it.each([
-  'failed',
-  'truncated',
-  'unsettled',
-  'missing',
-  'legacy',
-  'redirected',
-  'other-2xx',
-] as const)(
+it('judges the rendered document of a page captured while still loading', async () => {
+  const source = page('/', { title: null, head: '<meta name="robots" content="noindex">' })
+  const result = await crawl({ [`${SITE}/`]: source }, async (input) => ({
+    ...renderedOutcome(input),
+    settled: false,
+    pending: 2,
+  }))
+  // An observation: what it shows is reported, and it is marked as captured while loading.
+  expect(await ids(result)).toContain('title-missing')
+  const audit = (await db.crawls.auditOf(result.id, [hash('/')]))[0]!
+  expect(audit.documentObservation).toBe('complete')
+  expect(audit.documentLoading).toBe(true)
+  expect(audit.indexability).toBe('not-indexable')
+})
+
+it.each(['failed', 'truncated', 'missing', 'legacy', 'redirected', 'other-2xx'] as const)(
   'never judges the served document after %s; preserves known response blockers',
   async (cause) => {
     const source = page('/', { title: null, head: '<meta name="robots" content="noindex">' })
@@ -225,7 +232,6 @@ it.each([
         ? { status: 'failed', failure: { code: 'serialization', message: 'test' } }
         : {}),
       ...(cause === 'truncated' ? { truncated: true } : {}),
-      ...(cause === 'unsettled' ? { settled: false } : {}),
       ...(cause === 'redirected'
         ? { redirected: true, settled: false, finalUrl: `${SITE}/target` }
         : {}),

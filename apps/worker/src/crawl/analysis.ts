@@ -1,4 +1,4 @@
-import { RENDER_DIFFERENCE_IDS, unobservedCanonicalDifferences } from './render-differences'
+import { unobservedCanonicalDifferences } from './render-differences'
 import {
   EMPTY_AUDIT_SNAPSHOT,
   ISSUE_BASIS,
@@ -129,6 +129,14 @@ export async function analyseCrawl(
       })
     }
     if (!url.internal) continue
+    // Canonical declarations that do not resolve leave this page's canonical differences unknown;
+    // the checks raised nothing for them.
+    const canonicalUnknown = unobservedCanonicalDifferences(url.served ?? url, site)
+    if (canonicalUnknown.length > 0 && url.documentObservation) {
+      url.documentUnobserved = [
+        ...new Set([...(url.documentUnobserved ?? []), ...canonicalUnknown]),
+      ]
+    }
     urls.push({
       urlHash: url.url.urlHash,
       participation: url.participation,
@@ -141,6 +149,7 @@ export async function analyseCrawl(
       ...(url.documentObservation
         ? {
             documentObservation: url.documentObservation,
+            ...(url.documentLoading ? { documentLoading: true } : {}),
             documentUnobserved: url.documentUnobserved,
           }
         : {}),
@@ -182,44 +191,12 @@ export async function analyseCrawl(
   for (const id of site.documentUnobserved ?? []) unobserved.push(id as (typeof unobserved)[number])
   if (site.urls.some((url) => url.internal && url.contentPage && url.url.data?.truncated === true))
     unobserved.push(...TRUNCATION_SKIPPING_ISSUES)
-  if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {
-    unobserved.push(
-      ...PAGE_ISSUES_IDS_FOR_RENDERING.filter(
-        (id) => crawl.rendering?.mode !== 'rendered' || id !== 'render-failed',
-      ),
-    )
-  }
-  if (crawl.rendering?.mode === 'rendered' && site.rendersUnobserved > 0)
-    unobserved.push(...RENDERED_GRAPH_ISSUES)
-  if (crawl.rendering?.mode === 'rendered') {
-    // Legacy rows lack extracted values; redirected rows deliberately abandon them.
-    // Neither can establish DOM differences, but navigation needs only the final URL.
-    if (
-      site.urls.some(
-        (url) =>
-          url.internal &&
-          url.contentPage &&
-          (!url.render?.data.page || !url.render.data.facts || url.render.data.redirected === true),
-      )
-    ) {
-      unobserved.push(
-        ...RENDER_DIFFERENCE_IDS.filter(
-          (issue) => issue !== 'render-failed' && issue !== 'javascript-redirect',
-        ),
-      )
-    } else if (
-      site.urls.some(
-        (url) =>
-          url.internal &&
-          url.contentPage &&
-          (!(url.served ?? url).facts?.social || !url.render?.data.facts?.social),
-      )
-    ) {
-      unobserved.push('social-tags-only-after-rendering')
-    }
-  }
-  for (const url of site.urls)
-    unobserved.push(...unobservedCanonicalDifferences(url.served ?? url, site))
+  // An HTML crawl observed no JavaScript. A rendered one keeps what a page's render could not tell
+  // on that page (`documentUnobserved`, from `selectDocument`): only the graph, which reads every
+  // page's links, is unknown for the whole crawl when a render failed, was cut or is missing.
+  // A page captured while still loading is an observation and leaves nothing unknown here.
+  if (crawl.rendering?.mode !== 'rendered') unobserved.push(...PAGE_ISSUES_IDS_FOR_RENDERING)
+  else if (site.rendersUnobserved > 0) unobserved.push(...RENDERED_GRAPH_ISSUES)
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,

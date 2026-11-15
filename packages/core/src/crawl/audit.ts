@@ -1033,6 +1033,12 @@ export type ConditionStates = Partial<Record<AuditCondition, ConditionState>>
 export interface UrlAuditState {
   /** Absent on HTML and legacy analyses. Unknown input is retained per URL. */
   documentObservation?: 'complete' | 'redirected' | 'unobserved'
+  /**
+   * A complete document captured at the end of the window, still loading. What it shows is
+   * observed; an issue it does not show is unverified for this URL (`observe`). Absent: settled, or
+   * an analysis from before 0.6.0-rc.2.
+   */
+  documentLoading?: boolean
   documentUnobserved?: string[]
   participation: AuditParticipation
   /** The rule that decided it. `null`: the default. */

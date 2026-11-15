@@ -1201,6 +1201,7 @@ export function crawlAuditRows(crawlId: string, urls: CrawlUrlAudit[]) {
       ? JSON.stringify({
           blockers: url.blockers,
           documentObservation: url.documentObservation,
+          ...(url.documentLoading ? { documentLoading: true } : {}),
           documentUnobserved: url.documentUnobserved ?? [],
         })
       : url.blockers.length > 0
@@ -1861,7 +1862,10 @@ export function groupAcceptedIssues(rows: { urlHash: string; issue: string; deta
 /** Legacy arrays and the bounded rendered-observation envelope share the existing JSON column. */
 function readBlockerObservation(
   raw: string | null,
-): Pick<CrawlUrlAudit, 'blockers' | 'documentObservation' | 'documentUnobserved'> {
+): Pick<
+  CrawlUrlAudit,
+  'blockers' | 'documentObservation' | 'documentLoading' | 'documentUnobserved'
+> {
   const value: unknown = raw === null ? [] : parseJson(raw)
   if (Array.isArray(value))
     return { blockers: value.filter((x): x is string => typeof x === 'string') }
@@ -1875,6 +1879,7 @@ function readBlockerObservation(
     ...(state === 'complete' || state === 'redirected' || state === 'unobserved'
       ? { documentObservation: state }
       : {}),
+    ...(v.documentLoading === true ? { documentLoading: true } : {}),
     documentUnobserved: Array.isArray(v.documentUnobserved)
       ? v.documentUnobserved
           .filter((x): x is string => typeof x === 'string' && x.length <= 100)

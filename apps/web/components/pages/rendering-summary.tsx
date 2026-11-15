@@ -85,12 +85,16 @@ export function RenderingSummary({
                 {t('causes', {
                   failed: coverage.causes.failedOrMissing,
                   truncated: coverage.causes.truncated,
-                  unsettled: coverage.causes.unsettled,
                 })}
               </p>
             )}
             <p className="text-muted-foreground">{t('linksUnknown')}</p>
           </>
+        )}
+        {coverage?.causes && coverage.causes.unsettled > 0 && (
+          <p className="text-muted-foreground">
+            {t('loading', { count: coverage.causes.unsettled })}
+          </p>
         )}
       </div>
       {analysed ? (

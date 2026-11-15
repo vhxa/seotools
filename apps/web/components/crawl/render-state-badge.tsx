@@ -1,6 +1,6 @@
 'use client'
 
-import { isCompleteRender, type RenderState } from '@seotools/core/crawl/render-state'
+import { isObservedRender, type RenderState } from '@seotools/core/crawl/render-state'
 import { CircleCheckIcon, CornerUpRightIcon, TriangleAlertIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -21,12 +21,12 @@ export function RenderStateBadge({ state }: { state: RenderState | null }) {
   const Icon =
     state === 'redirect'
       ? CornerUpRightIcon
-      : isCompleteRender(state)
+      : isObservedRender(state)
         ? CircleCheckIcon
         : TriangleAlertIcon
   return (
     <span
-      className={`inline-flex items-center gap-1 ${isCompleteRender(state) ? '' : 'text-amber-700 dark:text-amber-400'}`}
+      className={`inline-flex items-center gap-1 ${isObservedRender(state) ? '' : 'text-amber-700 dark:text-amber-400'}`}
       title={t(`hints.${state}`)}
     >
       <Icon aria-hidden className="size-3.5 shrink-0" />

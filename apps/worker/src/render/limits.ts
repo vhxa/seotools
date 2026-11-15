@@ -2,6 +2,8 @@ import { MAX_BODY_BYTES } from '../crawl/fetcher'
 
 export const RENDER_LIMITS = {
   requests: 300,
+  /** Subresources of one page fetched at the same time, like a browser's connections to a host. */
+  pageResources: 6,
   urlChars: 2048,
   connectionMs: 10_000,
   protocolMs: 35_000,
@@ -18,8 +20,10 @@ export const RENDER_LIMITS = {
   scriptErrors: 5,
   messageChars: 200,
   quietMs: 500,
+  /** The capture window, from the moment the DOM is parsed: the domain's wait setting. */
   waitMs: 5000,
   maxWaitMs: 30_000,
+  /** How long the DOM may take to be parsed (DOMContentLoaded). Past it, the render failed. */
   loadGraceMs: 25_000,
   probeTimeoutMs: 2000,
   checkIntervalMs: 5 * 60_000,

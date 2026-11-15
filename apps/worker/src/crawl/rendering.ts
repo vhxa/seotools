@@ -151,9 +151,39 @@ export function renderObservation(
     failure: outcome.failure?.code ?? null,
     data: {
       facts,
+      capture: { pending: outcome.pending, afterMs: outcome.captureMs },
       redirected: outcome.redirected,
       requests: outcome.requests,
       scriptErrors: outcome.scriptErrors,
+    },
+  }
+}
+
+/** What a rendered crawl records of a page it could not render at all: a failed render, unknown. */
+export function notRenderedObservation(urlHash: string, url: string): CrawlUrlRender {
+  return {
+    urlHash,
+    status: 'failed',
+    settled: false,
+    truncated: false,
+    finalUrl: url,
+    durationMs: 0,
+    failure: 'not-rendered',
+    data: {
+      facts: null,
+      requests: {
+        made: 0,
+        cached: 0,
+        failedCount: 0,
+        omittedCount: 0,
+        blockedByRobotsCount: 0,
+        refusedCount: 0,
+        failed: [],
+        omitted: [],
+        blockedByRobots: [],
+        refused: [],
+      },
+      scriptErrors: { count: 0, first: [] },
     },
   }
 }

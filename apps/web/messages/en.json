@@ -618,8 +618,9 @@
         "label": "Rendering",
         "all": "Any rendering state",
         "complete": "Complete",
+        "loading": "Captured while still loading",
         "redirect": "Redirected by JavaScript",
-        "incomplete": "Incomplete (failed, cut or not settled)",
+        "incomplete": "Incomplete (failed or cut)",
         "not-rendered": "Not rendered"
       }
     },
@@ -1756,8 +1757,8 @@
       "unavailable": "Rendered mode is unavailable: {reason}",
       "unavailableKept": "This domain stays on Rendered and its other settings can be saved, but its next crawl will fail if the browser is still unavailable then.",
       "comparison": "Findings about the server's answer (status codes, redirects, response time…) will be compared with earlier crawls as usual. Findings about each page's content, about which pages link to which, and JavaScript findings will show as not comparable, never as new or fixed.",
-      "wait": "Render wait limit (ms)",
-      "waitHint": "From 1000 to 30000 milliseconds; default 5000.",
+      "wait": "Capture window (ms)",
+      "waitHint": "How long a page may run its JavaScript once its HTML is parsed. The page is captured as it is at the end of the window, or earlier once its network is quiet. From 1000 to 30000 milliseconds; default 5000.",
       "omitted": "Additional omitted hosts",
       "omittedHint": "One hostname suffix per line, up to 50. Requests to these hosts and their subdomains are omitted.",
       "cost": {
@@ -1779,7 +1780,7 @@
     },
     "requestsPerSecond": {
       "label": "Requests per second",
-      "hint": "The most requests per second this domain receives."
+      "hint": "The most requests per second this domain receives for its own URLs. In rendered crawls, the scripts, stylesheets and data a page loads are not held to it: they are fetched like a browser does, a few at a time per page."
     },
     "timeout": {
       "label": "Timeout (seconds)",
@@ -3976,7 +3977,7 @@
     "failed": "Rendering failed.",
     "redirected": "Redirect observed; the source document was abandoned.",
     "truncated": "The served or rendered document was truncated.",
-    "unsettled": "The page did not settle within the observation window.",
+    "unsettled": "The page was captured while still loading, and this analysis did not use such captures.",
     "missing": "A complete document observation was not stored.",
     "coverage": "{complete, number} complete documents; {redirected, number} redirects; {unobserved, number} unobserved documents.",
     "dependencies": "Some checks depend on a canonical, stored inputs or other pages that were not completely observed, or on a finding that could not be judged.",
@@ -3985,16 +3986,16 @@
   "RenderState": {
     "complete": "Complete",
     "redirect": "Redirected by JavaScript",
-    "unsettled": "Did not settle",
-    "truncated": "Cut at the size limit",
+    "unsettled": "Captured while loading",
+    "truncated": "Cut at a limit",
     "failed": "Failed",
     "unknown": "Not verifiable",
     "notRendered": "Not rendered",
     "hints": {
-      "complete": "The page was rendered whole and had settled.",
+      "complete": "Rendered whole and captured once the network was quiet.",
       "redirect": "JavaScript sent the page to another address. Nothing else was compared.",
-      "unsettled": "The page was still loading when the wait limit ended. Its JavaScript findings are unknown.",
-      "truncated": "The rendered page or the served HTML was cut at the size limit. Its JavaScript findings are unknown.",
+      "unsettled": "Captured at the end of the capture window, with requests still pending. Its findings are reported; what had not appeared by then is never reported as fixed.",
+      "truncated": "The rendered page or the served HTML was cut at a size or request limit. Its JavaScript findings are unknown.",
       "failed": "The browser could not render the page. Its JavaScript findings are unknown.",
       "unknown": "This render was stored before it was recorded whether the page was whole, so its JavaScript findings are unknown.",
       "notRendered": "This crawl has no render for this URL: nothing was observed."
@@ -4025,7 +4026,13 @@
       "differs": "Differs",
       "unknownNote": "“Not recorded” means this crawl did not keep that value, so nothing is claimed about it."
     },
-    "complete": "Rendered whole: the page settled and nothing was cut.",
+    "complete": "Rendered whole: captured once the network was quiet, and nothing was cut.",
+    "loading": {
+      "title": "Captured while still loading",
+      "body": "{pending, plural, =0 {Captured at the end of the {ms} ms window.} one {Captured at the end of the {ms} ms window, with # request still pending.} other {Captured at the end of the {ms} ms window, with # requests still pending.}}",
+      "unknownPending": "Captured at the end of the {ms} ms window, with requests still pending.",
+      "findings": "Its findings are reported from this capture. What had not appeared by then is not reported, and nothing it lacks is reported as fixed."
+    },
     "duration": "Took {seconds} s",
     "links": {
       "title": "Internal links",
@@ -4074,15 +4081,11 @@
         "title": "The render failed",
         "body": "The browser could not produce the rendered page."
       },
-      "unsettled": {
-        "title": "The page did not settle",
-        "body": "The page was still loading when the wait limit of {ms} ms ended."
-      },
       "truncated": {
-        "title": "The page was cut at the size limit",
-        "rendered": "The rendered page was cut at the size limit.",
+        "title": "The page was cut at a limit",
+        "rendered": "The rendered page was cut at a size or request limit.",
         "served": "The served HTML was cut at the size limit.",
-        "both": "Both the served HTML and the rendered page were cut at the size limit."
+        "both": "Both the served HTML and the rendered page were cut at a size or request limit."
       },
       "unknown": {
         "title": "Completeness not recorded",
@@ -4090,10 +4093,11 @@
       },
       "failure": "Reason: {reason}.",
       "failures": {
-        "load-timeout": "the page did not load in time",
+        "load-timeout": "the page's HTML was not parsed in time",
         "crashed": "the browser crashed",
         "serialization": "the rendered page could not be read",
-        "navigation": "the navigation failed"
+        "navigation": "the navigation failed",
+        "not-rendered": "the crawl could not render it"
       },
       "findingsUnknown": "Its JavaScript findings are unknown for this crawl: nothing is claimed about what JavaScript changes, and nothing is reported as fixed."
     },
@@ -4110,7 +4114,8 @@
     "coverageUnknown": "How many pages were observed completely is not known yet: this crawl has not been analysed.",
     "allObserved": "Every page was observed completely.",
     "someUnobserved": "{count, plural, one {# page} other {# pages}} could not be observed completely.",
-    "causes": "Failed or not rendered: {failed} · cut at the size limit: {truncated} · did not settle: {unsettled}. A page can be in several.",
+    "causes": "Failed or not rendered: {failed} · cut at a size or request limit: {truncated}. A page can be in both.",
+    "loading": "{count, plural, one {# page was captured while still loading} other {# pages were captured while still loading}}: their findings are reported.",
     "linksUnknown": "Findings that depend on which pages link to which (orphan pages, pages linked only by JavaScript, pages without internal links) are unknown for this crawl.",
     "groups": {
       "links": "Links only after rendering",
@@ -4130,7 +4135,7 @@
       "coverageUnknown": "Coverage not analysed yet",
       "allObserved": "All pages observed completely",
       "someUnobserved": "{count, plural, one {# page} other {# pages}} not observed completely",
-      "causes": "failed or missing: {failed} · cut: {truncated} · did not settle: {unsettled}",
+      "causes": "failed or missing: {failed} · cut: {truncated}",
       "linksNotEvaluated": "Findings that depend on links between pages were not evaluated.",
       "linksEvaluated": "Findings that depend on links between pages were evaluated."
     },

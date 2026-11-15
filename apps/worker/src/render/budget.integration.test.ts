@@ -16,7 +16,7 @@ const exec = promisify(execFile)
 const run = async (...args: string[]) =>
   (await exec(docker, args, { timeout: 30_000 })).stdout.trim()
 const compose = readFileSync(new URL('../../../../docker-compose.yml', import.meta.url), 'utf8')
-const memory = compose.match(/mem_limit: (\S+)/)![1]!
+const memory = compose.match(/mem_limit: \$\{RENDER_BROWSER_MEMORY:-(\S+)\}/)![1]!
 const pids = compose.match(/pids_limit: (\d+)/)![1]!
 const entrypoint = compose.match(/ {6}- \|\n([\s\S]*?) {6}- --\n/)![1]!.replaceAll('$$', '$')
 const flags = [...compose.matchAll(/^ {6}- (--.*)$/gm)]

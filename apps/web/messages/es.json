@@ -618,8 +618,9 @@
         "label": "Renderizado",
         "all": "Cualquier estado de renderizado",
         "complete": "Completo",
+        "loading": "Capturada mientras cargaba",
         "redirect": "Redirigida por JavaScript",
-        "incomplete": "Incompleto (fallido, cortado o sin terminar)",
+        "incomplete": "Incompleta (fallida o cortada)",
         "not-rendered": "Sin renderizar"
       }
     },
@@ -1756,8 +1757,8 @@
       "unavailable": "El modo renderizado no está disponible: {reason}",
       "unavailableKept": "Este dominio sigue en modo renderizado y puedes guardar el resto de sus ajustes, pero su próximo rastreo fallará si el navegador sigue sin estar disponible.",
       "comparison": "Los hallazgos sobre la respuesta del servidor (códigos de estado, redirecciones, tiempo de respuesta…) se compararán con los rastreos anteriores como siempre. Los hallazgos sobre el contenido de cada página, sobre qué páginas enlazan a cuáles y los de JavaScript aparecerán como no comparables, nunca como nuevos ni corregidos.",
-      "wait": "Límite de espera del renderizado (ms)",
-      "waitHint": "Entre 1000 y 30000 milisegundos; 5000 por defecto.",
+      "wait": "Ventana de captura (ms)",
+      "waitHint": "Cuánto tiempo puede ejecutar JavaScript una página una vez analizado su HTML. La página se captura tal como está al final de la ventana, o antes si su red ya está en calma. Entre 1000 y 30000 milisegundos; 5000 por defecto.",
       "omitted": "Hosts adicionales que omitir",
       "omittedHint": "Un sufijo de hostname por línea, hasta 50. Se omiten las solicitudes a estos hosts y sus subdominios.",
       "cost": {
@@ -1779,7 +1780,7 @@
     },
     "requestsPerSecond": {
       "label": "Peticiones por segundo",
-      "hint": "El máximo de peticiones por segundo que recibe este dominio."
+      "hint": "El máximo de peticiones por segundo que recibe este dominio para sus propias URL. En los rastreos renderizados, los scripts, las hojas de estilo y los datos que carga una página no cuentan para este límite: se piden como lo haría un navegador, unos pocos a la vez por página."
     },
     "timeout": {
       "label": "Tiempo de espera (segundos)",
@@ -3976,7 +3977,7 @@
     "failed": "Falló la renderización.",
     "redirected": "Se observó una redirección y no se terminó de observar el documento de origen.",
     "truncated": "El documento recibido o renderizado quedó incompleto.",
-    "unsettled": "La página no se estabilizó durante el tiempo de observación.",
+    "unsettled": "La página se capturó mientras seguía cargando, y este análisis no usaba esas capturas.",
     "missing": "No se guardó una observación completa del documento.",
     "coverage": "{complete, number} documentos completos; {redirected, number} redirecciones; {unobserved, number} documentos sin observar.",
     "dependencies": "Algunas comprobaciones dependen de una canónica, de datos guardados o de otras páginas que no se observaron por completo, o de un hallazgo que no se pudo evaluar.",
@@ -3985,16 +3986,16 @@
   "RenderState": {
     "complete": "Completo",
     "redirect": "Redirigida por JavaScript",
-    "unsettled": "No terminó de cargar",
-    "truncated": "Cortada por el límite de tamaño",
+    "unsettled": "Capturada mientras cargaba",
+    "truncated": "Cortada por un límite",
     "failed": "Falló",
     "unknown": "No verificable",
     "notRendered": "Sin renderizar",
     "hints": {
-      "complete": "La página se renderizó entera y había terminado de cargar.",
+      "complete": "Renderizada entera y capturada con la red ya en calma.",
       "redirect": "JavaScript llevó la página a otra dirección. No se comparó nada más.",
-      "unsettled": "La página seguía cargando cuando terminó el tiempo de espera. Sus hallazgos de JavaScript son desconocidos.",
-      "truncated": "La página renderizada o el HTML servido se cortó por el límite de tamaño. Sus hallazgos de JavaScript son desconocidos.",
+      "unsettled": "Capturada al final de la ventana de captura, con peticiones aún pendientes. Sus hallazgos se informan; lo que todavía no había aparecido nunca se da por corregido.",
+      "truncated": "La página renderizada o el HTML servido se cortó por un límite de tamaño o de peticiones. Sus hallazgos de JavaScript son desconocidos.",
       "failed": "El navegador no pudo renderizar la página. Sus hallazgos de JavaScript son desconocidos.",
       "unknown": "Este renderizado se guardó antes de registrar si la página estaba entera, así que sus hallazgos de JavaScript son desconocidos.",
       "notRendered": "Este rastreo no tiene renderizado de esta URL: no se observó nada."
@@ -4025,7 +4026,13 @@
       "differs": "Difiere",
       "unknownNote": "«No registrado» significa que este rastreo no guardó ese valor, así que no se afirma nada sobre él."
     },
-    "complete": "Renderizada entera: la página terminó de cargar y no se cortó nada.",
+    "complete": "Renderizada entera: capturada con la red en calma y sin cortes.",
+    "loading": {
+      "title": "Capturada mientras seguía cargando",
+      "body": "{pending, plural, =0 {Capturada al final de la ventana de {ms} ms.} one {Capturada al final de la ventana de {ms} ms, con # petición aún pendiente.} other {Capturada al final de la ventana de {ms} ms, con # peticiones aún pendientes.}}",
+      "unknownPending": "Capturada al final de la ventana de {ms} ms, con peticiones aún pendientes.",
+      "findings": "Sus hallazgos se informan a partir de esta captura. Lo que aún no había aparecido no se informa, y nada de lo que le falta se da por corregido."
+    },
     "duration": "Tardó {seconds} s",
     "links": {
       "title": "Enlaces internos",
@@ -4074,15 +4081,11 @@
         "title": "El renderizado falló",
         "body": "El navegador no pudo producir la página renderizada."
       },
-      "unsettled": {
-        "title": "La página no terminó de cargar",
-        "body": "La página seguía cargando cuando terminó el tiempo de espera de {ms} ms."
-      },
       "truncated": {
-        "title": "La página se cortó por el límite de tamaño",
-        "rendered": "La página renderizada se cortó por el límite de tamaño.",
+        "title": "La página se cortó por un límite",
+        "rendered": "La página renderizada se cortó por un límite de tamaño o de peticiones.",
         "served": "El HTML servido se cortó por el límite de tamaño.",
-        "both": "Tanto el HTML servido como la página renderizada se cortaron por el límite de tamaño."
+        "both": "Tanto el HTML servido como la página renderizada se cortaron por un límite de tamaño o de peticiones."
       },
       "unknown": {
         "title": "Integridad no registrada",
@@ -4090,10 +4093,11 @@
       },
       "failure": "Motivo: {reason}.",
       "failures": {
-        "load-timeout": "la página no cargó a tiempo",
+        "load-timeout": "el HTML de la página no se analizó a tiempo",
         "crashed": "el navegador se cerró inesperadamente",
         "serialization": "no se pudo leer la página renderizada",
-        "navigation": "falló la navegación"
+        "navigation": "falló la navegación",
+        "not-rendered": "el rastreo no pudo renderizarla"
       },
       "findingsUnknown": "Sus hallazgos de JavaScript son desconocidos en este rastreo: no se afirma nada sobre lo que cambia JavaScript y nada se da por corregido."
     },
@@ -4110,7 +4114,8 @@
     "coverageUnknown": "Aún no se sabe cuántas páginas se observaron por completo: este rastreo no se ha analizado.",
     "allObserved": "Todas las páginas se observaron por completo.",
     "someUnobserved": "{count, plural, one {# página no pudo observarse por completo} other {# páginas no pudieron observarse por completo}}.",
-    "causes": "Fallidas o sin renderizar: {failed} · cortadas por el límite de tamaño: {truncated} · sin terminar de cargar: {unsettled}. Una página puede estar en varias.",
+    "causes": "Fallidas o sin renderizar: {failed} · cortadas por un límite de tamaño o de peticiones: {truncated}. Una página puede estar en ambas.",
+    "loading": "{count, plural, one {# página se capturó mientras seguía cargando} other {# páginas se capturaron mientras seguían cargando}}: sus hallazgos se informan.",
     "linksUnknown": "Los hallazgos que dependen de qué páginas enlazan a cuáles (páginas huérfanas, páginas enlazadas solo por JavaScript, páginas sin enlaces internos) son desconocidos en este rastreo.",
     "groups": {
       "links": "Enlaces solo tras renderizar",
@@ -4130,7 +4135,7 @@
       "coverageUnknown": "Cobertura aún sin analizar",
       "allObserved": "Todas las páginas observadas por completo",
       "someUnobserved": "{count, plural, one {# página no observada por completo} other {# páginas no observadas por completo}}",
-      "causes": "fallidas o ausentes: {failed} · cortadas: {truncated} · sin terminar de cargar: {unsettled}",
+      "causes": "fallidas o ausentes: {failed} · cortadas: {truncated}",
       "linksNotEvaluated": "No se evaluaron los hallazgos que dependen de los enlaces entre páginas.",
       "linksEvaluated": "Se evaluaron los hallazgos que dependen de los enlaces entre páginas."
     },

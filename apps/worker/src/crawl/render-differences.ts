@@ -17,7 +17,10 @@ export const RENDER_DIFFERENCE_IDS = PAGE_ISSUE_IDS.filter(
     id !== 'links-only-after-rendering',
 )
 
-/** Redirects completely observe navigation, but say nothing about the abandoned DOM. */
+/**
+ * A whole render, settled or captured at the end of the window. Redirects completely observe
+ * navigation, but say nothing about the abandoned DOM.
+ */
 function completeRender(url: AuditedUrl, site: Site) {
   const render = url.render
   return site.config.rendering === 'rendered' &&
@@ -25,7 +28,6 @@ function completeRender(url: AuditedUrl, site: Site) {
     url.contentPage &&
     url.url.data?.truncated !== true &&
     render?.status === 'rendered' &&
-    (render.settled || render.data.redirected === true) &&
     render.truncated === false
     ? render
     : null
