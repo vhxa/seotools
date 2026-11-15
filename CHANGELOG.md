@@ -20,6 +20,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.6.0-rc.1] - 2026-11-15
+
 ### Added
 
 - JavaScript rendering in the interface: the crawl settings say what each mode costs and why
