@@ -30,6 +30,7 @@ function crawl(overrides: Partial<Crawl> & { id: string }): Crawl {
     pagesAudit: null,
     auditVersion: null,
     auditSnapshot: null,
+    renderObservation: null,
     robots: null,
     pruned: false,
     history: false,

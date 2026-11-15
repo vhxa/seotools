@@ -14,6 +14,10 @@ export const AUTH_SECRET = 'e2e-secret-e2e-secret-e2e-secret-e2e-secret'
 
 export const HOST = 'example.com'
 export const OTHER_HOST = 'other.example'
+/** Its last crawl was rendered in a browser and has more than a thousand pages. */
+export const RENDERED_HOST = 'rendered.example'
+export const RENDERED_PAGES = 2033
+export const RENDERED_UNOBSERVED = 1200
 
 export const ADMIN = {
   name: 'Ada Admin',
