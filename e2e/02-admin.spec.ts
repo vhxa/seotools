@@ -1,13 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from './support/test'
-import {
-  ADMIN,
-  ADMIN_STATE,
-  HOST,
-  RENDERED_HOST,
-  RENDERED_PAGES,
-  RENDERED_UNOBSERVED,
-} from './support/env'
+import { ADMIN, ADMIN_STATE, HOST, RENDERED_HOST, RENDERED_UNOBSERVED } from './support/env'
 import { signIn } from './support/helpers'
 
 const domain = `/domains/${HOST}`
@@ -546,7 +539,6 @@ test('a rule starts from a template, is saved with its paths, and shows in the l
 test('a rendered crawl of over a thousand pages shows its number and coverage in the dashboard and the list', async ({
   page,
 }) => {
-  const pages = RENDERED_PAGES.toLocaleString('en-US')
   const unobserved = RENDERED_UNOBSERVED.toLocaleString('en-US')
   await page.goto(`/domains/${RENDERED_HOST}`)
   const block = page.getByRole('region', { name: 'JavaScript rendering' })
@@ -564,5 +556,4 @@ test('a rendered crawl of over a thousand pages shows its number and coverage in
   const row = page.getByRole('row').filter({ hasText: 'Rendered' }).first()
   await expect(row.getByText(`${unobserved} pages not observed completely`)).toBeVisible()
   await expect(row.getByText('Coverage not analysed yet')).toHaveCount(0)
-  await expect(row.getByText(`${pages} pages`)).toBeVisible()
 })

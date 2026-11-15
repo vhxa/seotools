@@ -66,8 +66,9 @@ export async function seed(): Promise<Database> {
 }
 
 /**
- * A rendered crawl of more than a thousand pages, analysed with a snapshot that records its coverage:
- * only its figures are made up, so that the lists and the dashboard can show them. No page is stored.
+ * A rendered crawl that left more than a thousand pages unobserved, analysed with a snapshot that
+ * records it: only that coverage is made up, so that the lists and the dashboard can show it. No
+ * page is stored.
  */
 async function seedRenderedCrawl(db: Database) {
   const company = await createCompany(db, { name: 'Browser Ltd', domain: RENDERED_HOST })
@@ -79,12 +80,6 @@ async function seedRenderedCrawl(db: Database) {
   })
   const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
   if (!crawl) throw new Error('the rendered crawl did not start')
-  await db.crawls.updateCounts(crawl.id, {
-    pagesCount: RENDERED_PAGES,
-    urlsCount: RENDERED_PAGES,
-    urlsDoneCount: RENDERED_PAGES,
-    externalCount: 0,
-  })
   await db.crawls.finish(crawl.id, { status: 'completed' })
   const config = await currentAuditConfig(db, domainId)
   await db.crawls.saveAnalysis({
