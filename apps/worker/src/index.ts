@@ -30,6 +30,7 @@ import { createCrawlRunHandler } from './handlers/crawl-run'
 import { createCwvCollectHandler } from './handlers/cwv-collect'
 import { createMailSendHandler } from './handlers/mail-send'
 import { createUrlVerifyHandler } from './handlers/url-verify'
+import { startRenderRuntime } from './render/runtime'
 import { createRunner } from './runner'
 import { runDueSchedules } from './scheduler'
 import { createUpdateChecker } from './updates/update-checker'
@@ -53,6 +54,14 @@ async function main() {
       'SEOTOOLS_PAUSE_AUTOMATION is set: no scheduled crawls, refreshers, update checks or email will run',
     )
   }
+
+  const rendering = await startRenderRuntime({
+    browserUrl: env.RENDER_BROWSER_URL,
+    concurrency: env.RENDER_CONCURRENCY,
+    settings,
+    paused,
+    onError: (err) => log.error({ err }, 'browser check failed'),
+  })
 
   const workerId = `${hostname()}-${process.pid}-${randomBytes(2).toString('hex')}`
   const startedAt = new Date()
@@ -78,6 +87,7 @@ async function main() {
     log,
     handlers: {
       ...handlers,
+      ...rendering.handlers,
       [JOB_TYPES.auditRecompute]: createAuditRecomputeHandler({ db }),
       [JOB_TYPES.accessEmail]: createAccessEmailHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
       [JOB_TYPES.incidentAlerts]: createIncidentAlertsHandler({
@@ -97,6 +107,7 @@ async function main() {
     log: log.child({ lane: 'crawl' }),
     handlers: {
       [JOB_TYPES.crawlRun]: createCrawlRunHandler({
+        renderService: rendering.service,
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
         appVersion: pkg.version,
@@ -220,6 +231,7 @@ async function main() {
       favicons.stop(),
       crawlFiles.stop(),
       updates.stop(),
+      rendering.stop(),
       reanalysis,
     ])
     await db.close()

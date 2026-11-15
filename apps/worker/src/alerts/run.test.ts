@@ -275,7 +275,7 @@ describe('the change summary', () => {
     const { subject, text } = sent[0]!
     expect(subject).toBe('example.com: cambios desde el rastreo anterior')
     expect(text).toContain('URLs nuevas: 1.')
-    expect(text).toMatch(/Hallazgos: \d+ nuevos, 0 de vuelta, 0 resueltos, 0 sin verificar\./)
+    expect(text).toMatch(/Hallazgos: \d+ nuevos, 0 de vuelta, 1 resueltos, 0 sin verificar\./)
     expect(text).toContain(`from=${first}&to=${second}`)
   })
 

@@ -46,6 +46,22 @@ export const webEnvSchema = commonEnvSchema.extend({
 })
 
 export const workerEnvSchema = commonEnvSchema.extend({
+  RENDER_BROWSER_URL: z
+    .string()
+    .url()
+    .refine((value) => {
+      const url = new URL(value)
+      return (
+        ['http:', 'https:'].includes(url.protocol) &&
+        !url.username &&
+        !url.password &&
+        url.pathname === '/' &&
+        !url.search &&
+        !url.hash
+      )
+    }, 'must be an http(s) browser endpoint without credentials, path or query')
+    .optional(),
+  RENDER_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(2),
   WORKER_CONCURRENCY: int(2),
   WORKER_POLL_INTERVAL_MS: int(1000, 50),
   /** A job `running` for longer than this is considered abandoned and re-queued. */

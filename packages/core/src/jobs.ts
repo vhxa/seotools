@@ -28,6 +28,7 @@ export interface EnqueueInput {
 
 /** Registry of job types. Add new ones here, with a payload schema. */
 export const JOB_TYPES = {
+  renderCheck: 'render.check',
   exampleEcho: 'example.echo',
   mailSend: 'mail.send',
   crawlRun: 'crawl.run',
@@ -99,3 +100,5 @@ export const incidentAlertsPayload = z.object({
   stage: z.enum(['open', 'changed', 'warn-14', 'warn-3', 'expired', 'resolved']),
 })
 export const vitalsAlertsPayload = z.object({ crawlId: z.string().min(1) })
+
+export const renderCheckPayload = z.object({}).strict()

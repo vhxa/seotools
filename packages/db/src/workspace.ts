@@ -1,4 +1,4 @@
-import { normalizeDomain } from '@seotools/core'
+import { type CrawlSettings, normalizeDomain } from '@seotools/core'
 import type { Company, Database, Domain } from './types'
 
 export const MAX_COMPANY_NAME_LENGTH = 100
@@ -24,7 +24,7 @@ export type AddDomainResult =
  */
 export async function createCompany(
   db: Database,
-  input: { name: string; domain: string },
+  input: { name: string; domain: string; crawlSettings?: CrawlSettings },
 ): Promise<CreateCompanyResult> {
   const name = normalizeCompanyName(input.name)
   if (!name) return { ok: false, reason: 'invalid-name' }
@@ -33,7 +33,10 @@ export async function createCompany(
   if (await db.domains.findByHost(host)) return { ok: false, reason: 'domain-taken' }
 
   try {
-    return { ok: true, ...(await db.companies.create({ name, host })) }
+    return {
+      ok: true,
+      ...(await db.companies.create({ name, host, crawlSettings: input.crawlSettings })),
+    }
   } catch (error) {
     // Lost the race against another request registering the same domain.
     if (await db.domains.findByHost(host)) return { ok: false, reason: 'domain-taken' }
@@ -44,7 +47,7 @@ export async function createCompany(
 /** Adds a domain (as typed by the user, normalized before storing) to an existing company. */
 export async function addDomain(
   db: Database,
-  input: { companyId: string; domain: string },
+  input: { companyId: string; domain: string; crawlSettings?: CrawlSettings },
 ): Promise<AddDomainResult> {
   const host = normalizeDomain(input.domain)
   if (!host) return { ok: false, reason: 'invalid-domain' }
@@ -52,7 +55,14 @@ export async function addDomain(
   if (await db.domains.findByHost(host)) return { ok: false, reason: 'domain-taken' }
 
   try {
-    return { ok: true, domain: await db.domains.add({ companyId: input.companyId, host }) }
+    return {
+      ok: true,
+      domain: await db.domains.add({
+        companyId: input.companyId,
+        host,
+        crawlSettings: input.crawlSettings,
+      }),
+    }
   } catch (error) {
     if (await db.domains.findByHost(host)) return { ok: false, reason: 'domain-taken' }
     throw error

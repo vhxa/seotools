@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { Geist } from 'next/font/google'
 import { headers } from 'next/headers'
 import { NextIntlClientProvider } from 'next-intl'
-import { getLocale } from 'next-intl/server'
+import { getLocale, getMessages } from 'next-intl/server'
+import { CLIENT_NAMESPACES, pickNamespaces } from '@/i18n/client-namespaces'
 import { cn } from '@/lib/utils'
 import './globals.css'
 
@@ -15,7 +16,11 @@ export const metadata: Metadata = {
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [locale, requestHeaders] = await Promise.all([getLocale(), headers()])
+  const [locale, messages, requestHeaders] = await Promise.all([
+    getLocale(),
+    getMessages(),
+    headers(),
+  ])
   // Made per request by `proxy.ts`: the Content-Security-Policy lets only this inline script run.
   const nonce = requestHeaders.get('x-nonce') ?? undefined
   return (
@@ -31,7 +36,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         />
       </head>
       <body>
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider messages={pickNamespaces(messages, CLIENT_NAMESPACES)}>
+          {children}
+        </NextIntlClientProvider>
       </body>
     </html>
   )

@@ -103,7 +103,11 @@ describe('viewRecheck', () => {
       },
       ...overrides,
     }) as VerifiedUrl
-  const crawl = { auditVersion: 2, pagesByWorstIssue: { issue: 0, warning: 1, opportunity: 0 } }
+  const crawl = {
+    rendering: null,
+    auditVersion: 2,
+    pagesByWorstIssue: { issue: 0, warning: 1, opportunity: 0 },
+  }
   const input = {
     verified: verified(),
     crawl,
@@ -192,8 +196,44 @@ describe('viewRecheck', () => {
     ).not.toBeNull()
   })
 
+  it('never reports a document finding of a rendered base fixed or appeared, even from an outcome stored before', () => {
+    // An outcome stored by an older recheck ran the document checks on the HTML and left nothing
+    // unchecked: against a rendered crawl those are still not a recheck's to settle.
+    const old = verified({
+      outcome: {
+        ...verified().outcome!,
+        findings: [{ issue: 'h1-missing' }, { issue: 'title-too-short' }, { issue: 'http-url' }],
+        unchecked: [],
+      },
+    })
+    const rendered = viewRecheck({
+      ...input,
+      verified: old,
+      crawl: { ...crawl, rendering: { mode: 'rendered' } },
+      crawlIssues: ['title-missing', 'missing-security-header'],
+    })
+    expect(rendered?.comparison).toMatchObject({
+      fixed: ['missing-security-header'],
+      appeared: ['http-url'],
+    })
+    expect(rendered?.comparison?.pendingFullCrawl).toEqual(['title-missing'])
+    // The same outcome against an HTML crawl is compared as before.
+    const html = viewRecheck({
+      ...input,
+      verified: old,
+      crawlIssues: ['title-missing', 'missing-security-header'],
+    })
+    expect(html?.comparison).toMatchObject({
+      fixed: ['title-missing', 'missing-security-header'],
+      appeared: ['title-too-short', 'h1-missing', 'http-url'],
+    })
+  })
+
   it('does not compare with a crawl that was never analysed', () => {
-    const view = viewRecheck({ ...input, crawl: { auditVersion: 2, pagesByWorstIssue: null } })
+    const view = viewRecheck({
+      ...input,
+      crawl: { rendering: null, auditVersion: 2, pagesByWorstIssue: null },
+    })
     expect(view).toMatchObject({ comparison: null, notComparable: 'not-analysed' })
   })
 })
@@ -269,7 +309,7 @@ describe('previewSourceOf', () => {
       },
       ...overrides,
     }) as VerifiedUrl
-  const crawl = { auditVersion: 2, pagesByWorstIssue: null }
+  const crawl = { rendering: null, auditVersion: 2, pagesByWorstIssue: null }
   const sourceOf = (
     row: VerifiedUrl | null,
     options: { crawledAt?: Date; historical?: boolean } = {},

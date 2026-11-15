@@ -1,13 +1,27 @@
 import { test as base, expect } from '@playwright/test'
 
 /**
- * `test` for every spec: fails a test when the browser reported a Content-Security-Policy violation
+ * `test` for every spec: fails a test when the browser logged a next-intl missing-message error (a
+ * namespace that client code reads but `CLIENT_NAMESPACES` does not send), or reported a
+ * Content-Security-Policy violation
  * on any page it visited, so a new inline script or a resource from elsewhere cannot slip in
  * unnoticed while the policy quietly blocks it. It listens to the `securitypolicyviolation` event,
  * installed before any script of the page runs: a violation that code catches (a probe for `eval`)
  * never reaches the console but is still reported there.
  */
-export const test = base.extend<{ policyViolations: string[] }>({
+export const test = base.extend<{ policyViolations: string[]; missingMessages: string[] }>({
+  missingMessages: [
+    async ({ page }, use) => {
+      const missing: string[] = []
+      // next-intl logs `IntlError: MISSING_MESSAGE: Could not resolve ...` through `console.error`.
+      page.on('console', (message) => {
+        if (/MISSING_MESSAGE/.test(message.text())) missing.push(message.text())
+      })
+      await use(missing)
+      expect(missing, 'next-intl missing messages in the browser').toEqual([])
+    },
+    { auto: true },
+  ],
   policyViolations: [
     async ({ page }, use) => {
       const violations: string[] = []

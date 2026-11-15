@@ -1,6 +1,8 @@
 'use server'
 import {
   createVitalsClient,
+  JOB_TYPES,
+  renderCheckPayload,
   GOOGLE_VITALS_KEY,
   googleVitalsKeySchema,
   loadVitalsKey,
@@ -8,6 +10,7 @@ import {
   type VitalsFailure,
 } from '@seotools/core'
 import { revalidatePath } from 'next/cache'
+import { getDb } from '@/lib/db'
 import { getEnv } from '@/lib/env'
 import { requireAdmin } from '@/lib/session'
 import { getSettings } from '@/lib/settings'
@@ -63,4 +66,12 @@ export async function testGoogleKeyAction(
   } catch (error) {
     return { result: error instanceof VitalsError ? error.category : 'network' }
   }
+}
+
+export async function checkRenderBrowserAction(): Promise<void> {
+  await requireAdmin()
+  await (
+    await getDb()
+  ).jobs.enqueue({ type: JOB_TYPES.renderCheck, payload: renderCheckPayload.parse({}) })
+  revalidatePath('/system/integrations')
 }

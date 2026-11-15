@@ -30,6 +30,13 @@ export function presenceOf(
   site: Site,
 ): ConditionObservation {
   if (!judgeable(url, site)) return 'unknown'
+  if (
+    ['noindex', 'nofollow', 'canonical'].includes(condition) &&
+    (url.documentObservation === 'unobserved' ||
+      url.documentObservation === 'redirected' ||
+      (condition === 'canonical' && url.canonicalKnown === false))
+  )
+    return 'unknown'
   switch (condition) {
     case 'noindex':
       return url.noindex ? 'present' : url.directivesKnown ? 'absent' : 'unknown'

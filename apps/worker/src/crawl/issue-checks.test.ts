@@ -1,8 +1,22 @@
+import {
+  DIFFERENCE_FIXTURES,
+  differenceDocuments,
+  differenceOutcome,
+  type DifferenceId,
+} from './render-difference-fixtures'
+import { RENDER_DIFFERENCE_IDS, unobservedCanonicalDifferences } from './render-differences'
+import { renderedOutcome } from './render-fixture'
+import { readFileSync } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
+import { RENDERED_GRAPH_ISSUES } from './observed-inputs'
+import { htmlBaseline } from './html-baseline'
 import type { VitalMetrics } from '@seotools/core'
 import {
+  CRAWL_LINK_KINDS,
   emptyVitals,
   EMPTY_AUDIT_SNAPSHOT,
   MAX_EVIDENCE_ITEMS,
+  MAX_EVIDENCE_TEXT,
   PAGE_ISSUE_IDS,
   auditSnapshotOf,
   crawlUrlHash,
@@ -25,10 +39,73 @@ import { FetchError } from './fetcher'
 import { SAFE_HEADERS, SITE, page, sitemapOf, words, xml } from './test-site'
 import { CHECKS } from './issue-checks'
 import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
-import { parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
+import { loadSite, parseRobotsDirectives, type AuditedUrl, type Site } from './site-audit'
+
+// Lossless compression retains the full base output and readable Vitest diffs on a mismatch.
+const htmlBeforeRendering = JSON.parse(
+  gunzipSync(
+    readFileSync(new URL('./fixtures/html-pre-rendering.json.gz', import.meta.url)),
+  ).toString(),
+) as Record<string, unknown>
+
+/** Exercise each check's real scenario, including helper/condition calls, and track graph reads. */
+function assertGraphReadersClassified(
+  issue: PageIssueId,
+  url: AuditedUrl,
+  site: Site,
+  changedInputs: Set<string>,
+) {
+  const inputs = new Set([
+    ...changedInputs,
+    'anchorsIn',
+    'followedAnchorsIn',
+    'anchorsFromIndexable',
+    'htmlAnchorsIn',
+    'renderedAnchorsFrom',
+    'renderedLinksTo',
+    'renderedAnchorsOut',
+    'linksTo',
+    'clickDepth',
+    'linksComplete',
+    'htmlLinksComplete',
+    'rendersUnobserved',
+  ])
+  const read = new Set<string>()
+  const tracked = new WeakMap<AuditedUrl, AuditedUrl>()
+  const track = (value: AuditedUrl): AuditedUrl => {
+    let proxy = tracked.get(value)
+    if (!proxy) {
+      proxy = new Proxy(value, {
+        get(target, key, receiver) {
+          if (inputs.has(String(key))) read.add(String(key))
+          return Reflect.get(target, key, receiver) as unknown
+        },
+      })
+      tracked.set(value, proxy)
+    }
+    return proxy
+  }
+  const observed = new Proxy(site, {
+    get(target, key, receiver) {
+      if (inputs.has(String(key))) read.add(String(key))
+      if (key === 'get')
+        return (address: string) => {
+          const found = target.get(address)
+          return found ? track(found) : undefined
+        }
+      if (key === 'urls') return target.urls.map(track)
+      return Reflect.get(target, key, receiver) as unknown
+    },
+  })
+  CHECKS[issue](track(url), observed)
+  if (read.size > 0)
+    expect(RENDERED_GRAPH_ISSUES, `${issue} reads ${[...read].join(', ')}`).toContain(issue)
+}
 
 const log = createLogger('test', 'silent')
 interface Scenario {
+  rendered?: boolean
+  difference?: DifferenceId
   /** Where the issue should be found: a path, or an absolute URL. */
   at: string
   vitals?: Partial<VitalMetrics>
@@ -110,6 +187,37 @@ const shared = (
    ${card ? '<meta name="twitter:card" content="summary_large_image">' : ''}`
 
 const SCENARIOS: Record<PageIssueId, Scenario> = {
+  ...(Object.fromEntries(
+    Object.keys(DIFFERENCE_FIXTURES).map((id) => [
+      id,
+      {
+        rendered: true,
+        difference: id as DifferenceId,
+        at: '/x',
+        pages: {
+          '/x': {
+            ...page('/x'),
+            body: Buffer.from(differenceDocuments(id as DifferenceId).before),
+          },
+        },
+      },
+    ]),
+  ) as unknown as Record<DifferenceId, Scenario>),
+  'linked-only-by-javascript': {
+    rendered: true,
+    notLinked: ['/x'],
+    at: '/x',
+    pages: { '/x': page('/x') },
+  },
+  'links-only-after-rendering': {
+    rendered: true,
+    notLinked: ['/x'],
+    at: '/',
+    pages: { '/x': page('/x') },
+  },
+  'html-entities-as-text': { at: '/x', pages: { '/x': page('/x', { h1: 'd&amp;#8217;exemple' }) } },
+  'few-html-links': { at: '/x', pages: { '/x': page('/x') } },
+
   'lcp-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { lcp: 4001 } },
   'inp-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { inp: 501 } },
   'cls-poor': { at: '/x', pages: { '/x': page('/x') }, vitals: { cls: 0.251 } },
@@ -740,11 +848,21 @@ afterEach(async () => {
   await db.close()
 })
 
-async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = []) {
+async function crawl(
+  site: Record<string, Answer>,
+  rules: NewAuditRule[] = [],
+  rendered = false,
+  difference?: DifferenceId,
+) {
   for (const rule of rules) {
     const saved = await db.audit.saveRule({ domainId, rule })
     if (!saved.ok) throw new Error(`rule not saved: ${saved.error}`)
   }
+  if (rendered)
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      renderingMode: 'headless',
+    })
   const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
   if (!started) throw new Error('crawl did not start')
   await runCrawl(started.id, {
@@ -753,6 +871,13 @@ async function crawl(site: Record<string, Answer>, rules: NewAuditRule[] = []) {
     signal: new AbortController().signal,
     createFetcher: fakeSite(site, 0).createFetcher,
     retryBaseMs: 1,
+    renderService: {
+      check: async () => ({ state: 'ready', checkedAt: new Date().toISOString() }),
+      render: async (input) =>
+        difference && input.url === `${SITE}/x`
+          ? differenceOutcome(difference, input)
+          : renderedOutcome(input, input.url === `${SITE}/` ? '<a href="/x">JS menu</a>' : ''),
+    },
   })
   return started.id
 }
@@ -811,7 +936,12 @@ describe('each issue', () => {
     PAGE_ISSUE_IDS.filter((id) => id !== 'sitemap-too-big' && id !== 'indexed-not-in-sitemap'),
   )('finds %s', async (id) => {
     const scenario = SCENARIOS[id]
-    const crawlId = await crawl(websiteOf(scenario), scenario.rules)
+    const crawlId = await crawl(
+      websiteOf(scenario),
+      scenario.rules,
+      scenario.rendered,
+      scenario.difference,
+    )
     if (scenario.vitals) {
       await db.vitals.saveUrl({
         ...emptyVitals(),
@@ -826,8 +956,116 @@ describe('each issue', () => {
       })
       await analyseCrawl(db, crawlId, await currentAuditConfig(db, domainId))
     }
+    if (id in htmlBeforeRendering) {
+      const actual = (await htmlBaseline(db, crawlId)) as { snapshot: { unobserved: string[] } }
+      expect(actual.snapshot.unobserved).toEqual(
+        expect.arrayContaining([
+          ...RENDER_DIFFERENCE_IDS,
+          'linked-only-by-javascript',
+          'links-only-after-rendering',
+        ]),
+      )
+      // Decision 4: a crawl with a truncated served page also lists `few-html-links`; none here.
+      const truncated = (
+        await db.crawls.listUrls({ crawlId, view: 'all', limit: 10000, offset: 0 })
+      ).some((url) => url.data?.truncated === true)
+      expect(actual.snapshot.unobserved.includes('few-html-links')).toBe(truncated)
+      const htmlIssues = (
+        await db.crawls.issuesOf(
+          crawlId,
+          (await db.crawls.listUrls({ crawlId, view: 'all', limit: 10000, offset: 0 })).map(
+            (row) => row.urlHash,
+          ),
+        )
+      ).map((row) => row.issue)
+      expect(
+        htmlIssues.filter((issue) =>
+          [
+            ...RENDER_DIFFERENCE_IDS,
+            'linked-only-by-javascript',
+            'links-only-after-rendering',
+          ].some((id) => id === issue),
+        ),
+      ).toEqual([])
+      const added: string[] = [
+        ...RENDER_DIFFERENCE_IDS,
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ]
+      if (truncated) added.push('few-html-links')
+      actual.snapshot.unobserved = actual.snapshot.unobserved.filter(
+        (issue) => !added.includes(issue),
+      )
+      expect(JSON.stringify(actual)).toBe(
+        JSON.stringify(htmlBeforeRendering[id as keyof typeof htmlBeforeRendering]),
+      )
+    }
+    const stored = (await db.crawls.get(crawlId))!
+    const observedSite = await loadSite(db, stored, stored.auditSnapshot!)
+    // Derive the guard's inputs from loadSite itself, rather than a hand-maintained field list.
+    // Inject EVERY kind between every source/target: this also exercises failed embeds,
+    // sitemap counts, linksIn and future fields, on each check's real positive scenario.
+    const linksFrom = db.crawls.linksFrom
+    const renderedCrawl = {
+      ...stored,
+      rendering: { mode: 'rendered' as const, waitMs: 5000, omittedHosts: [] },
+    }
+    const config = { ...stored.auditSnapshot!, rendering: 'rendered' as const }
+    const without = await loadSite(db, renderedCrawl, config)
+    db.crawls.linksFrom = async (crawlId, hashes) => [
+      ...(await linksFrom(crawlId, hashes)),
+      ...hashes.flatMap((sourceHash) =>
+        without.urls.flatMap((target) =>
+          CRAWL_LINK_KINDS.map((kind) => ({
+            sourceHash,
+            targetHash: target.url.urlHash,
+            kind,
+            rendered: 1 as const,
+          })),
+        ),
+      ),
+    ]
+    let withLinks: Site
+    try {
+      withLinks = await loadSite(db, renderedCrawl, config)
+    } finally {
+      db.crawls.linksFrom = linksFrom
+    }
+    // Nested AuditedUrl references can cycle through linksTo; compare their identities.
+    const serialize = (value: unknown) =>
+      JSON.stringify(value, (_key, nested: unknown) =>
+        nested && typeof nested === 'object' && 'contentPage' in nested
+          ? (nested as AuditedUrl).url.urlHash
+          : nested,
+      )
+    const changedInputs = new Set<string>()
+    for (const url of without.urls) {
+      const other = withLinks.get(url.url.url)!
+      for (const key of Object.keys(url) as (keyof AuditedUrl)[]) {
+        if (serialize(url[key]) !== serialize(other[key])) changedInputs.add(key)
+      }
+    }
+    assertGraphReadersClassified(
+      id,
+      observedSite.get(absolute(scenario.at))!,
+      observedSite,
+      changedInputs,
+    )
     const found = await issuesAt(crawlId, scenario.at)
     expect(found.map((row) => row.issue)).toContain(id)
+    if (scenario.difference) {
+      const evidence = found.find((row) => row.issue === id)?.evidence
+      expect(evidence).toMatchObject({
+        kind: 'values',
+        total: 2,
+        items: [{ field: 'html' }, { field: 'rendered' }],
+      })
+      if (evidence?.kind === 'values')
+        for (const item of evidence.items) {
+          expect(item.text.length).toBeLessThanOrEqual(MAX_EVIDENCE_TEXT)
+          expect(item.text).not.toMatch(/[\r\n]/)
+        }
+    }
     if (scenario.details) {
       expect(found.find((row) => row.issue === id)?.details).toEqual(scenario.details)
     }
@@ -936,29 +1174,55 @@ describe('what a crawl did not look for', () => {
     await analyseCrawl(db, crawlId, EMPTY_AUDIT_SNAPSHOT)
     const snapshot = (await db.crawls.get(crawlId))?.auditSnapshot
     expect(snapshot?.unobserved).toEqual(
-      [...NEW_FACT_ISSUES, 'cls-poor', 'inp-poor', 'lcp-poor'].sort(),
+      [
+        ...NEW_FACT_ISSUES,
+        ...RENDER_DIFFERENCE_IDS,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
     )
 
     // Analysed again from what it stored (as the startup reanalysis does): worked out again.
     await analyseCrawl(db, crawlId, snapshot!)
     expect((await db.crawls.get(crawlId))?.auditSnapshot?.unobserved).toEqual(
-      [...NEW_FACT_ISSUES, 'cls-poor', 'inp-poor', 'lcp-poor'].sort(),
+      [
+        ...NEW_FACT_ISSUES,
+        ...RENDER_DIFFERENCE_IDS,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
     )
 
-    // A crawl that looked says nothing is unobserved, and keeps no field.
+    // A fresh HTML crawl observes the page facts, but neither vitals nor JavaScript.
     const fresh = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x') } }))
-    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual([
-      'cls-poor',
-      'inp-poor',
-      'lcp-poor',
-    ])
+    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual(
+      [
+        ...RENDER_DIFFERENCE_IDS,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
+    )
     // Which also holds when it is analysed again from a snapshot that said otherwise.
     await analyseCrawl(db, fresh, snapshot!)
-    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual([
-      'cls-poor',
-      'inp-poor',
-      'lcp-poor',
-    ])
+    expect((await db.crawls.get(fresh))?.auditSnapshot?.unobserved).toEqual(
+      [
+        ...RENDER_DIFFERENCE_IDS,
+        'cls-poor',
+        'inp-poor',
+        'lcp-poor',
+        'linked-only-by-javascript',
+        'links-only-after-rendering',
+      ].sort(),
+    )
 
     // Against the old crawl, what the new one reports is not new: nobody could have seen it.
     const bare = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x', { social: null }) } }))
@@ -1213,6 +1477,7 @@ describe('a URL a search engine has indexed', () => {
 describe('a site with nothing wrong', () => {
   it('has no issues at all', async () => {
     const crawlId = await crawl(websiteOf({ at: '/' }))
+    await analyseCrawl(db, crawlId, auditSnapshotOf(1, [], undefined, { htmlLinksMin: 0 }))
     expect(await issuesAt(crawlId, '/')).toEqual([])
     expect(await issuesAt(crawlId, '/about')).toEqual([])
     expect(await issuesAt(crawlId, '/sitemap.xml')).toEqual([])
@@ -1555,6 +1820,7 @@ describe('what is not an issue', () => {
         '/es': page('/es', { head: alternates }),
       },
     })
+    await analyseCrawl(db, crawlId, auditSnapshotOf(1, [], undefined, { htmlLinksMin: 0 }))
     expect(await issuesAt(crawlId, '/x')).toEqual([])
     expect(await issuesAt(crawlId, '/es')).toEqual([])
   })
@@ -1826,4 +2092,218 @@ it('records Alice and her decision time in the snapshot and acceptance before Bo
       (r) => r.issue === input.issue,
     )?.acceptance,
   ).toEqual(original.acceptance)
+})
+
+describe('stored HTML text and link heuristics', () => {
+  it.each([
+    ['title', { title: 'An &amp;amp; example' }, true],
+    ['description', { description: 'An &amp;nbsp; example' }, true],
+    ['second H1', { body: '<h1>d&amp;#x2019;exemple</h1>' }, true],
+    ['decoded once', { h1: 'd&#8217;exemple &amp; other' }, false],
+    ['no semicolon', { h1: 'd&amp;#8217 example' }, false],
+    ['name bound', { h1: '&amp;' + 'a'.repeat(33) + ';' }, false],
+    ['numeric bound', { h1: '&amp;#12345678;' }, false],
+    ['named boundary', { h1: '&amp;' + 'a'.repeat(32) + ';' }, true],
+    ['numeric boundary', { h1: '&amp;#1234567;' }, true],
+  ])('detects references in %s after one decode', async (_, options, raised) => {
+    const id = await crawl(websiteOf({ at: '/x', pages: { '/x': page('/x', options) } }))
+    const finding = (await issuesAt(id, '/x')).find((row) => row.issue === 'html-entities-as-text')
+    expect(Boolean(finding)).toBe(raised)
+    if (raised) expect(finding?.evidence).toMatchObject({ kind: 'values', total: 1 })
+  })
+
+  it('counts stored internal anchors, handles the threshold boundary and skips unjudgeable responses', async () => {
+    const links = (count: number) =>
+      Array.from({ length: count }, (_, i) => `<a href="/target${i}">Target</a>`).join('')
+    const id = await crawl(
+      websiteOf({
+        at: '/x',
+        pages: {
+          '/x': page('/x', { links: links(4) + '<a href="https://external.test/">External</a>' }),
+          '/boundary': page('/boundary', { links: links(5) }),
+          '/noindex': page('/noindex', { head: '<meta name="robots" content="noindex">' }),
+          '/redirect': moved('/about'),
+          '/error': { ...page('/error'), statusCode: 404 },
+          '/resource': {
+            statusCode: 200,
+            headers: { 'content-type': 'text/plain' },
+            body: Buffer.from('text'),
+          },
+        },
+      }),
+    )
+    const found = (await issuesAt(id, '/x')).find((row) => row.issue === 'few-html-links')
+    expect(found?.evidence).toEqual({
+      kind: 'values',
+      total: 1,
+      items: [{ field: 'internal-links', text: '4' }],
+    })
+    for (const path of ['/boundary', '/noindex', '/redirect', '/error', '/resource'])
+      expect((await issuesAt(id, path)).map((row) => row.issue)).not.toContain('few-html-links')
+    await analyseCrawl(db, id, auditSnapshotOf(1, [], undefined, { htmlLinksMin: 0 }))
+    expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('few-html-links')
+    await analyseCrawl(db, id, auditSnapshotOf(1, [], undefined, { htmlLinksMin: 6 }))
+    expect((await issuesAt(id, '/boundary')).map((row) => row.issue)).toContain('few-html-links')
+    const hash = crawlUrlHash(`${SITE}/x`)
+    const stored = await db.crawls.getUrl(id, hash)
+    await db.crawls.recordResult({
+      crawlId: id,
+      urlHash: hash,
+      result: { ...stored!, data: { ...stored!.data, truncated: true } },
+    })
+    await analyseCrawl(db, id, auditSnapshotOf(1, []))
+    expect((await issuesAt(id, '/x')).map((row) => row.issue)).not.toContain('few-html-links')
+    // Its silence on the cut page is not an absence: the whole crawl cannot tell, in either mode.
+    const snapshot = (await db.crawls.get(id))!.auditSnapshot!
+    expect(snapshot.rendering).toBeUndefined()
+    expect(snapshot.unobserved).toContain('few-html-links')
+  })
+})
+
+it('reanalyses legacy text and link data without needing newer optional facts', async () => {
+  const id = await crawl(
+    websiteOf({ at: '/x', pages: { '/x': page('/x', { title: 'An &amp;quot; example' }) } }),
+  )
+  const hash = crawlUrlHash(`${SITE}/x`)
+  const stored = (await db.crawls.getUrl(id, hash))!
+  const older = { ...stored.data!.facts! }
+  delete older.social
+  delete older.document
+  delete older.evidence
+  await db.crawls.recordResult({
+    crawlId: id,
+    urlHash: hash,
+    result: { ...stored, data: { ...stored.data, facts: older } },
+  })
+  await analyseCrawl(db, id, EMPTY_AUDIT_SNAPSHOT)
+  const found = (await issuesAt(id, '/x')).map((row) => row.issue)
+  expect(found).toContain('html-entities-as-text')
+  expect(found).toContain('few-html-links')
+  const snapshot = (await db.crawls.get(id))!.auditSnapshot!
+  expect(snapshot.unobserved).not.toContain('html-entities-as-text')
+  expect(snapshot.unobserved).not.toContain('few-html-links')
+})
+
+describe('HTML/render differences', () => {
+  it.each(Object.keys(DIFFERENCE_FIXTURES) as DifferenceId[])(
+    '%s stays silent for unchanged values, whitespace/case noise and incomplete observations',
+    async (id) => {
+      const crawlId = await crawl(websiteOf(SCENARIOS[id]), [], true, id)
+      const stored = (await db.crawls.get(crawlId))!
+      const site = await loadSite(db, stored, stored.auditSnapshot!)
+      const url = site.get(`${SITE}/x`)!.served!
+      const original = url.render!
+      for (const render of [
+        undefined,
+        { ...original, status: 'failed' as const },
+        { ...original, settled: false, data: { ...original.data, redirected: false } },
+        { ...original, truncated: true },
+        { ...original, truncated: null },
+        ...(id === 'javascript-redirect'
+          ? [] // Redirect fixtures already have no DOM values; the raised scenario proves this.
+          : [{ ...original, data: { ...original.data, page: undefined } }]),
+      ]) {
+        url.render = render
+        if (id === 'render-failed') continue
+        expect(CHECKS[id](url, site)).toBe(false)
+      }
+      // Equal facts, with different whitespace/case in every textual value, cannot be a change.
+      const noise = (value: string | null | undefined) =>
+        value ? ` \n ${value.toUpperCase().replaceAll(' ', ' \t ')}  ` : null
+      const same = {
+        ...original,
+        status: 'rendered' as const,
+        settled: true,
+        truncated: false,
+        finalUrl: url.url.url + '#fragment',
+        failure: null,
+        data: {
+          facts: structuredClone(url.facts),
+          page: {
+            title: noise(url.url.title),
+            description: noise(url.url.data?.description),
+            h1: noise(url.url.data?.h1?.[0]),
+            metaRobots: noise(url.url.metaRobots),
+            botRobots: url.url.data?.botRobots ?? {},
+            hreflang: url.url.data?.hreflang ?? [],
+          },
+          requests: { blockedByRobotsCount: 0 },
+          scriptErrors: { count: 0, first: [] },
+        },
+      }
+      url.render = same
+      expect(CHECKS[id](url, site)).toBe(false)
+      // A truncated served response is equally unobservable, even with a complete rendered result.
+      url.render = original
+      url.url.data = { ...url.url.data, truncated: true }
+      if (id !== 'render-failed') expect(CHECKS[id](url, site)).toBe(false)
+      const html = { ...site, config: { ...site.config, rendering: undefined } }
+      expect(CHECKS[id](url, html)).toBe(false)
+    },
+  )
+
+  it('attributes a complete navigation to the served meta refresh, even with an empty declaration', async () => {
+    const id = await crawl(
+      websiteOf(SCENARIOS['javascript-redirect']),
+      [],
+      true,
+      'javascript-redirect',
+    )
+    const stored = (await db.crawls.get(id))!
+    const site = await loadSite(db, stored, stored.auditSnapshot!)
+    const url = site.get(`${SITE}/x`)!.served!
+    expect(CHECKS['javascript-redirect'](url, site)).not.toBe(false)
+    for (const refresh of ['0;url=/target', '']) {
+      url.facts!.refresh = refresh
+      expect(CHECKS['javascript-redirect'](url, site)).toBe(false)
+    }
+  })
+
+  it('uses the configured text share, its disabling value, and the 50-word floor', async () => {
+    const id = await crawl(
+      websiteOf(SCENARIOS['text-only-after-rendering']),
+      [],
+      true,
+      'text-only-after-rendering',
+    )
+    const stored = (await db.crawls.get(id))!
+    const site = await loadSite(db, stored, stored.auditSnapshot!)
+    const url = site.get(`${SITE}/x`)!.served!
+    const test = (html: number, rendered: number, share: number) => {
+      url.facts!.words = html
+      url.render!.data.facts!.words = rendered
+      site.config = { ...site.config, thresholds: { renderedTextSharePct: share } }
+      return CHECKS['text-only-after-rendering'](url, site)
+    }
+    expect(test(70, 100, 30)).toBe(false) // share alone is insufficient
+    expect(test(350, 500, 30)).not.toBe(false) // exact boundary
+    expect(test(351, 500, 30)).toBe(false)
+    expect(test(350, 500, 31)).toBe(false)
+    expect(test(0, 100, 0)).toBe(false)
+  })
+
+  it('normalises canonical/redirect identity and ignores response-header robots directives', async () => {
+    await db.crawls.saveIgnoredParameters(domainId, ['noise'])
+    const id = await crawl(
+      websiteOf(SCENARIOS['canonical-changed-by-javascript']),
+      [],
+      true,
+      'canonical-changed-by-javascript',
+    )
+    const stored = (await db.crawls.get(id))!
+    const site = await loadSite(db, stored, stored.auditSnapshot!)
+    const url = site.get(`${SITE}/x`)!.served!
+    url.render!.data.facts!.canonicals = [
+      { ...url.facts!.canonicals[0]!, url: `${SITE}/x?noise=1#fragment` },
+    ]
+    url.render!.finalUrl = `${SITE}/x?noise=2#fragment`
+    expect(CHECKS['canonical-changed-by-javascript'](url, site)).toBe(false)
+    expect(CHECKS['javascript-redirect'](url, site)).toBe(false)
+    url.url.xRobotsTag = 'noindex, nofollow'
+    expect(CHECKS['noindex-only-in-html'](url, site)).toBe(false)
+    expect(CHECKS['nofollow-only-in-html'](url, site)).toBe(false)
+    url.render!.data.facts!.canonicals.push({ ...url.facts!.canonicals[0]!, url: `${SITE}/other` })
+    expect(CHECKS['canonical-changed-by-javascript'](url, site)).toBe(false)
+    expect(unobservedCanonicalDifferences(url, site)).toContain('canonical-changed-by-javascript')
+  })
 })

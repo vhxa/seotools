@@ -67,3 +67,20 @@ export function fakeSite(site: Record<string, Answer>, latencyMs = 1) {
     closed: () => closed,
   }
 }
+
+/** Rendering tests keep unknown hosts behind the real connect-time address guard. */
+export function fakeRenderSite(site: Record<string, Answer>, guarded: Fetcher): Fetcher {
+  const known = fakeSite(site).createFetcher({
+    userAgent: 'render-test',
+    timeoutMs: 1000,
+    concurrency: 2,
+  })
+  return {
+    fetch: (url, options) =>
+      Object.hasOwn(site, url) ? known.fetch(url, options) : guarded.fetch(url, options),
+    close() {
+      known.close()
+      guarded.close()
+    },
+  }
+}

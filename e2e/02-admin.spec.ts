@@ -237,6 +237,23 @@ test('the crawl settings are grouped in sections with one save always in reach',
   await expect(page.getByRole('button', { name: 'Save settings' })).toBeInViewport()
 })
 
+test('the crawl settings show the rendering mode, and Rendered is disabled without a ready browser', async ({
+  page,
+}) => {
+  await page.goto(`${domain}/settings/crawl`)
+  await expect(page.getByLabel('Page rendering')).toContainText('HTML')
+  await expect(page.getByText(/Several times slower/)).toBeVisible()
+  await expect(page.getByText(/Rendered mode is unavailable/)).toBeVisible()
+  // The options of the Rendered choice are in the page, disabled while HTML is chosen.
+  await expect(page.getByRole('spinbutton', { name: 'Render wait limit (ms)' })).toBeDisabled()
+  await page.getByLabel('Page rendering').click()
+  await expect(page.getByRole('option', { name: 'Rendered' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  )
+  await page.keyboard.press('Escape')
+})
+
 test('the addresses of earlier versions still work, and keep their query', async ({ page }) => {
   await page.goto(`${domain}/pages/details?view=redirects`)
   await expect(page).toHaveURL(new RegExp(`${domain}/urls\\?view=redirects$`))
@@ -341,6 +358,10 @@ test('Core Web Vitals stays hidden without a key and Integrations remains access
   await page.goto('/system/integrations')
   await expect(page.getByRole('heading', { name: 'Integrations', level: 1 })).toBeVisible()
   await expect(page.getByLabel('Google API key')).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Browser for JavaScript rendering' }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Check now', exact: true })).toBeVisible()
   const testKey = page.getByRole('button', { name: 'Test', exact: true })
   await expect(testKey).toBeDisabled()
   // Saving a key enables the test (never run here: it would ask Google); removing it disables it.

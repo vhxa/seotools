@@ -1,3 +1,8 @@
+import {
+  renderStateOf,
+  type RenderFilter,
+  type RenderObservation,
+} from '@seotools/core/crawl/render-state'
 import { describeFindingStates } from './finding-states'
 import { describeBotAccess } from './bot-access'
 import { describeAuditModel } from './audit-model'
@@ -86,6 +91,324 @@ export function describeDatabaseContract(
       (id) => legacy.acceptNofollow(id, true),
     )
     describeIncidents(() => db)
+
+    it('snapshots rendering transactionally, keeps atomic URL/render records and prunes them together', async () => {
+      const created = await createCompany(db, {
+        name: 'Rendering',
+        domain: 'example.com',
+        crawlSettings: {
+          ...DEFAULT_CRAWL_SETTINGS,
+          renderingMode: 'headless',
+          renderWaitMs: 1200,
+          renderOmittedHosts: ['omit.test'],
+        },
+      })
+      if (!created.ok) throw new Error('setup failed')
+      const domainId = created.domain.id
+      const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      expect(crawl.rendering).toEqual({
+        mode: 'rendered',
+        waitMs: 1200,
+        omittedHosts: ['omit.test'],
+      })
+      await db.crawls.saveSettings(domainId, DEFAULT_CRAWL_SETTINGS)
+      expect((await db.crawls.get(crawl.id))?.rendering).toEqual(crawl.rendering)
+      const url = 'https://example.com/'
+      const urlHash = crawlUrlHash(url)
+      await db.crawls.addUrls(crawl.id, [
+        { url, urlHash, seq: 1, depth: 0, source: 'seed', scope: 'internal' },
+      ])
+      const result: CrawlUrlResult = {
+        kind: 'page',
+        statusCode: 200,
+        contentType: 'text/html',
+        redirectTo: null,
+        title: null,
+        metaRobots: null,
+        xRobotsTag: null,
+        canonical: null,
+        responseTimeMs: 1,
+        bytes: 1,
+        error: null,
+        data: null,
+      }
+      const render = {
+        urlHash,
+        status: 'rendered' as const,
+        settled: true,
+        truncated: false,
+        finalUrl: url,
+        durationMs: 1,
+        failure: null,
+        data: {
+          facts: null,
+          redirected: true,
+          documentLinks: {
+            internal: 2,
+            nofollow: 1,
+            embeds: ['https://example.com/a.js'],
+            embedsComplete: true,
+          },
+          requests: {},
+          scriptErrors: { count: 0, first: [] },
+          page: {
+            canonical: 'https://example.com/canonical',
+            title: 'Rendered title',
+            description: 'Rendered description',
+            h1: 'Rendered heading',
+            metaRobots: 'noindex',
+            botRobots: {},
+            hreflang: [],
+          },
+        },
+      }
+      await expect(
+        db.crawls.recordResult({
+          crawlId: crawl.id,
+          urlHash,
+          result,
+          render: { ...render, data: { ...render.data, requests: 1n } },
+        }),
+      ).rejects.toThrow()
+      expect((await db.crawls.getUrl(crawl.id, urlHash))?.state).toBe('queued')
+      expect(await db.crawls.renders(crawl.id)).toEqual([])
+      await db.crawls.recordResult({
+        crawlId: crawl.id,
+        urlHash,
+        result,
+        render,
+        links: [{ sourceHash: urlHash, targetHash: urlHash, kind: 'anchor', rendered: 1 }],
+      })
+      expect((await db.crawls.getUrl(crawl.id, urlHash))?.state).toBe('done')
+      expect(await db.crawls.renders(crawl.id)).toMatchObject([render])
+      expect(await db.crawls.renderOf(crawl.id, urlHash)).toMatchObject(render)
+      expect(await db.crawls.renderOf(crawl.id, 'missing')).toBeNull()
+      expect(await db.crawls.linksFrom(crawl.id, [urlHash])).toMatchObject([{ rendered: 1 }])
+      await db.crawls.saveBrowserWait(crawl.id, 30000)
+      expect((await db.crawls.get(crawl.id))?.browserWaitMs).toBe(30000)
+      await db.crawls.finish(crawl.id, { status: 'completed' })
+      const next = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      await db.crawls.finish(next.id, { status: 'completed' })
+      await db.crawls.prune({ domainId, type: 'full', keep: 1 })
+      expect(await db.crawls.renders(crawl.id)).toEqual([])
+      expect((await db.crawls.get(crawl.id))?.rendering).toEqual(crawl.rendering)
+    })
+
+    it('classifies renders in SQL as renderStateOf does, filters and counts by state', async () => {
+      const created = await createCompany(db, {
+        name: 'States',
+        domain: 'example.com',
+        crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, renderingMode: 'headless' },
+      })
+      if (!created.ok) throw new Error('setup failed')
+      const crawl = (await db.crawls.start({
+        domainId: created.domain.id,
+        type: 'full',
+        trigger: 'manual',
+      }))!
+      const base: RenderObservation = {
+        status: 'rendered',
+        settled: true,
+        truncated: false,
+        redirected: false,
+        servedTruncated: false,
+      }
+      const cases: { name: string; render: RenderObservation | null }[] = [
+        { name: 'complete', render: base },
+        { name: 'redirect', render: { ...base, settled: false, redirected: true } },
+        { name: 'unsettled', render: { ...base, settled: false } },
+        { name: 'truncated', render: { ...base, truncated: true } },
+        { name: 'served', render: { ...base, servedTruncated: true } },
+        { name: 'failed', render: { ...base, status: 'failed', settled: false } },
+        { name: 'legacy', render: { ...base, truncated: null } },
+        // A title that says it is truncated is text, not the flag.
+        { name: 'quoted', render: base },
+        { name: 'none', render: null },
+      ]
+      const hash = (name: string) => crawlUrlHash(`https://example.com/${name}`)
+      await db.crawls.addUrls(
+        crawl.id,
+        cases.map(({ name }, index) => ({
+          url: `https://example.com/${name}`,
+          urlHash: hash(name),
+          seq: index + 1,
+          depth: 0,
+          source: 'seed' as const,
+          scope: 'internal' as const,
+        })),
+      )
+      for (const { name, render } of cases) {
+        await db.crawls.recordResult({
+          crawlId: crawl.id,
+          urlHash: hash(name),
+          result: {
+            kind: 'page',
+            statusCode: 200,
+            contentType: 'text/html',
+            redirectTo: null,
+            title: name === 'quoted' ? '"truncated":true "redirected":true' : null,
+            metaRobots: null,
+            xRobotsTag: null,
+            canonical: null,
+            responseTimeMs: 1,
+            bytes: 1,
+            error: null,
+            data: {
+              ...(render?.servedTruncated ? { truncated: true } : {}),
+              ...(name === 'quoted' ? { description: '"truncated":true "redirected":true' } : {}),
+            },
+          },
+          ...(render
+            ? {
+                render: {
+                  urlHash: hash(name),
+                  status: render.status,
+                  settled: render.settled,
+                  truncated: render.truncated,
+                  finalUrl: `https://example.com/${name}`,
+                  durationMs: 1,
+                  failure: render.status === 'failed' ? 'navigation' : null,
+                  data: {
+                    facts: null,
+                    redirected: render.redirected,
+                    requests: {},
+                    scriptErrors: { count: 0, first: [] },
+                  },
+                },
+              }
+            : {}),
+        })
+      }
+      const expected = new Map(
+        cases.flatMap(({ name, render }) =>
+          render ? [[hash(name), renderStateOf(render)] as const] : [],
+        ),
+      )
+      expect(Object.fromEntries([...expected.values()].map((state) => [state, true]))).toEqual({
+        complete: true,
+        redirect: true,
+        unsettled: true,
+        truncated: true,
+        failed: true,
+        unknown: true,
+      })
+      expect(
+        await db.crawls.renderStatesOf(
+          crawl.id,
+          cases.map(({ name }) => hash(name)),
+        ),
+      ).toEqual(expected)
+      const listed = async (rendering: RenderFilter) =>
+        (
+          await db.crawls.listUrls({
+            crawlId: crawl.id,
+            view: 'all',
+            rendering,
+            limit: 50,
+            offset: 0,
+          })
+        )
+          .map((url) => url.url.replace('https://example.com/', ''))
+          .sort()
+      expect(await listed('complete')).toEqual(['complete', 'quoted'])
+      expect(await listed('redirect')).toEqual(['redirect'])
+      expect(await listed('incomplete')).toEqual([
+        'failed',
+        'legacy',
+        'served',
+        'truncated',
+        'unsettled',
+      ])
+      expect(await listed('not-rendered')).toEqual(['none'])
+      expect(
+        await db.crawls.countListed({ crawlId: crawl.id, view: 'all', rendering: 'incomplete' }),
+      ).toBe(5)
+      expect((await db.crawls.renderCounts([crawl.id, 'unknown-crawl'])).get(crawl.id)).toEqual({
+        complete: 2,
+        redirect: 1,
+        unsettled: 1,
+        truncated: 2,
+        failed: 1,
+        unknown: 1,
+      })
+      expect((await db.crawls.renderCounts(['unknown-crawl'])).size).toBe(0)
+      expect((await db.crawls.renderOf(crawl.id, hash('failed')))?.failure).toBe('navigation')
+      expect(await db.crawls.renderOf(crawl.id, hash('none'))).toBeNull()
+    })
+
+    it('lists the links that only exist after rendering', async () => {
+      const created = await createCompany(db, {
+        name: 'Links',
+        domain: 'example.com',
+        crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, renderingMode: 'headless' },
+      })
+      if (!created.ok) throw new Error('setup failed')
+      const crawl = (await db.crawls.start({
+        domainId: created.domain.id,
+        type: 'full',
+        trigger: 'manual',
+      }))!
+      const names = ['home', 'served', 'late-b', 'late-a', 'script']
+      const hash = (name: string) => crawlUrlHash(`https://example.com/${name}`)
+      await db.crawls.addUrls(
+        crawl.id,
+        names.map((name, index) => ({
+          url: `https://example.com/${name}`,
+          urlHash: hash(name),
+          seq: index + 1,
+          depth: 0,
+          source: 'seed' as const,
+          scope: 'internal' as const,
+        })),
+      )
+      await db.crawls.recordResult({
+        crawlId: crawl.id,
+        urlHash: hash('home'),
+        result: {
+          kind: 'page',
+          statusCode: 200,
+          contentType: 'text/html',
+          redirectTo: null,
+          title: null,
+          metaRobots: null,
+          xRobotsTag: null,
+          canonical: null,
+          responseTimeMs: 1,
+          bytes: 1,
+          error: null,
+          data: null,
+        },
+        links: [
+          { sourceHash: hash('home'), targetHash: hash('served'), kind: 'anchor' },
+          { sourceHash: hash('home'), targetHash: hash('late-b'), kind: 'anchor', rendered: 1 },
+          {
+            sourceHash: hash('home'),
+            targetHash: hash('late-a'),
+            kind: 'anchor-nofollow',
+            rendered: 1,
+          },
+          { sourceHash: hash('home'), targetHash: hash('script'), kind: 'script', rendered: 1 },
+          // Found again after rendering, in another kind: the served HTML already links to it.
+          {
+            sourceHash: hash('home'),
+            targetHash: hash('served'),
+            kind: 'anchor-nofollow',
+            rendered: 1,
+          },
+        ],
+      })
+      expect(await db.crawls.renderedLinksOf(crawl.id, hash('home'), 1)).toEqual({
+        served: 1,
+        total: 2,
+        items: [{ url: 'https://example.com/late-a', urlHash: hash('late-a') }],
+      })
+      expect((await db.crawls.renderedLinksOf(crawl.id, hash('served'), 10)).total).toBe(0)
+      expect(await db.crawls.renderedLinksOf(crawl.id, 'missing', 10)).toEqual({
+        served: 0,
+        total: 0,
+        items: [],
+      })
+    })
 
     it('stores one favourite per user, replaces and clears it, and enforces foreign keys', async () => {
       const user = await db.users.create({
@@ -4259,6 +4582,46 @@ export function describeDatabaseContract(
           await db.crawls.finish(crawl.id, { status: 'completed' })
           return { domainId, crawlId: crawl.id, version, catalog: extra.catalog ?? 'v1' }
         }
+
+        it('retains per-URL document uncertainty in audit rows and compact history without changing legacy rows', async () => {
+          const crawl = await analysedCrawl(1)
+          const uncertain = state({
+            urlHash: hashOf('/cart'),
+            indexability: 'unknown',
+            documentObservation: 'unobserved',
+            documentUnobserved: ['title-missing', 'h1-missing'],
+          })
+          await saveIssues({
+            crawlId: crawl.crawlId,
+            issues: [],
+            pages: none,
+            withType: none,
+            catalog: 'v1',
+            audit: {
+              snapshot: {
+                version: 1,
+                rules: [],
+                rendering: 'rendered',
+                documentBasis: 'rendered-v1',
+                documentCoverage: { complete: 1, redirected: 0, unobserved: 1, legacyMissing: 0 },
+              },
+              urls: [uncertain, state({ urlHash: hashOf('/') })],
+            },
+          })
+          expect(await db.crawls.auditOf(crawl.crawlId, [hashOf('/cart')])).toEqual([uncertain])
+          expect((await db.crawls.auditOf(crawl.crawlId, [hashOf('/')]))[0]).not.toHaveProperty(
+            'documentObservation',
+          )
+          const next = await startCrawl(crawl.domainId)
+          await db.crawls.finish(next.id, { status: 'completed' })
+          await db.crawls.prune({ domainId: crawl.domainId, type: 'full', keep: 1 })
+          const history = await db.crawls.urlHistory({
+            domainId: crawl.domainId,
+            crawlIds: [crawl.crawlId],
+            urlHashes: [hashOf('/cart')],
+          })
+          expect(history[0]?.audit).toMatchObject(uncertain)
+        })
 
         const save = (
           crawl: { crawlId: string; version: number; catalog: string },

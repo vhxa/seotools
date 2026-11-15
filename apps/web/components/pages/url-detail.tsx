@@ -30,10 +30,11 @@ import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { UrlSharePreview } from '@/components/pages/share-preview'
 import { UrlLinks } from '@/components/pages/url-links'
+import { UrlRendering } from '@/components/pages/url-rendering'
 import { UrlRecheck } from '@/components/verification/url-recheck'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { groupDetailFindings } from '@/lib/url-detail-findings'
+import { documentFindingsState, groupDetailFindings } from '@/lib/url-detail-findings'
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { sharePreview } from '@/lib/share-preview'
 import { formatBytes } from '@/lib/format'
@@ -87,7 +88,17 @@ export async function UrlDetail({
     getTranslations('PageIssues'),
     getFormatter(),
   ])
+  const basis = await getTranslations('AuditBasis')
   const { url, crawl, audit } = data
+  const documentState = documentFindingsState({
+    documentBasis: crawl.auditSnapshot?.documentBasis,
+    observation: audit?.documentObservation,
+    unobserved: audit?.documentUnobserved,
+    crawlUnobserved: crawl.auditSnapshot?.unobserved,
+    page: isPageUrl(data),
+    servedTruncated: url.data?.truncated,
+    render: data.render,
+  })
   const findingGroups = groupDetailFindings(data.issues)
   const findingsId = `url-findings-${crawl.id}-${url.urlHash}`
   const isPage = url.kind === 'page'
@@ -135,6 +146,18 @@ export async function UrlDetail({
         </a>
       </div>
 
+      {crawl.pagesByWorstIssue !== null && (
+        <div className="grid gap-1 text-sm text-muted-foreground">
+          <p>{basis(documentState.rendered ? 'rendered' : 'html')}</p>
+          <p>{basis('exceptions')}</p>
+          {documentState.unknown && (
+            <p role="status">
+              {basis(documentState.reason === 'dependencies' ? 'partlyUnknown' : 'unknown')}{' '}
+              {basis(documentState.reason)} {basis('unknownCount', { count: documentState.count })}
+            </p>
+          )}
+        </div>
+      )}
       {context}
       <AuditResultsNotice host={host} state={data.results} />
       <Section title={v('title')}>
@@ -314,7 +337,16 @@ export async function UrlDetail({
       )}
       <Tabs defaultValue="findings" className="min-w-0">
         <TabsList className="max-w-full flex-wrap group-data-horizontal/tabs:h-auto">
-          {(['findings', 'links', 'indexing', 'history', 'technical'] as const).map((tab) => (
+          {(
+            [
+              'findings',
+              'links',
+              'indexing',
+              ...(url.scope === 'internal' ? (['javascript'] as const) : []),
+              'history',
+              'technical',
+            ] as const
+          ).map((tab) => (
             <TabsTrigger key={tab} value={tab}>
               {t(`tabs.${tab}`)}
             </TabsTrigger>
@@ -328,7 +360,11 @@ export async function UrlDetail({
               <p className="text-sm text-muted-foreground">{t('excludedFindings')}</p>
             ) : data.issues.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {data.accepted.length > 0 ? t('noPendingIssues') : t('noIssues')}
+                {documentState.unknown
+                  ? basis(documentState.reason === 'dependencies' ? 'partlyUnknown' : 'unknown')
+                  : data.accepted.length > 0
+                    ? t('noPendingIssues')
+                    : t('noIssues')}
               </p>
             ) : (
               <div className="grid gap-4">
@@ -484,6 +520,13 @@ export async function UrlDetail({
             </Disclosure>
           )}
         </TabsContent>
+        {url.scope === 'internal' && (
+          <TabsContent value="javascript">
+            <Section title={t('sections.javascript')}>
+              <UrlRendering data={data} hrefFor={hrefFor} />
+            </Section>
+          </TabsContent>
+        )}
         <TabsContent value="technical">
           <Disclosure title={t('sections.technical')}>
             <Fields>
@@ -525,5 +568,15 @@ export async function UrlDetail({
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+function isPageUrl(data: UrlDetailData) {
+  return (
+    data.url.scope === 'internal' &&
+    data.url.kind === 'page' &&
+    data.url.statusCode !== null &&
+    data.url.statusCode >= 200 &&
+    data.url.statusCode < 300
   )
 }

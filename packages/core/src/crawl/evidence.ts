@@ -3,7 +3,8 @@
  * someone can act on it (which images, which other pages, which canonical declarations, which
  * links). The shapes are in `types.ts`; this says which issues have it and reads it back from
  * storage. The worker gathers it while parsing a page (`PageFactsCollector`) or while comparing the
- * pages of a crawl, and keeps `total` with only the first few samples of each list.
+ * pages of a crawl or reading stored page values, and keeps `total` with only the first few samples
+ * of each list.
  *
  * Pure on purpose (no Node imports): client components import it through
  * `@seotools/core/crawl/evidence`.
@@ -30,6 +31,31 @@ export type IssueEvidenceKind = IssueEvidence['kind']
  * makes up examples. Issues not listed have none.
  */
 export const ISSUE_EVIDENCE = {
+  'text-only-after-rendering': 'values',
+  'title-only-after-rendering': 'values',
+  'title-changed-by-javascript': 'values',
+  'description-only-after-rendering': 'values',
+  'description-changed-by-javascript': 'values',
+  'h1-only-after-rendering': 'values',
+  'h1-changed-by-javascript': 'values',
+  'canonical-only-after-rendering': 'values',
+  'canonical-changed-by-javascript': 'values',
+  'noindex-only-in-html': 'values',
+  'noindex-added-by-javascript': 'values',
+  'nofollow-only-in-html': 'values',
+  'nofollow-added-by-javascript': 'values',
+  'structured-data-only-after-rendering': 'values',
+  'hreflang-only-after-rendering': 'values',
+  'social-tags-only-after-rendering': 'values',
+  'javascript-redirect': 'values',
+  'render-resources-blocked-by-robots': 'values',
+  'render-failed': 'values',
+  'render-script-errors': 'values',
+
+  'linked-only-by-javascript': 'related-urls',
+  'links-only-after-rendering': 'related-urls',
+  'html-entities-as-text': 'values',
+  'few-html-links': 'values',
   'img-no-alt': 'images',
   'img-empty-alt': 'images',
   'img-long-alt': 'images',
@@ -167,6 +193,16 @@ export function parseIssueEvidence(value: unknown): IssueEvidence | null {
   if (!envelope.success) return null
   const { total } = envelope.data
   switch (envelope.data.kind) {
+    case 'values': {
+      const list = items(
+        envelope.data.items,
+        z.object({
+          field: z.enum(['title', 'description', 'h1', 'internal-links', 'html', 'rendered']),
+          text,
+        }),
+      )
+      return list && { kind: 'values', total, items: list }
+    }
     case 'images': {
       const list = items(envelope.data.items, imageSchema)
       return list && { kind: 'images', total, items: list }

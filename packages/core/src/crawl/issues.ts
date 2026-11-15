@@ -50,6 +50,31 @@ const ISSUE_CATALOG = {
     'inp-poor': ['warning', 'medium'],
     'cls-poor': ['warning', 'medium'],
   },
+  javascript: {
+    'text-only-after-rendering': ['warning', 'medium'],
+    'title-only-after-rendering': ['warning', 'medium'],
+    'title-changed-by-javascript': ['opportunity', 'low'],
+    'description-only-after-rendering': ['opportunity', 'low'],
+    'description-changed-by-javascript': ['opportunity', 'low'],
+    'h1-only-after-rendering': ['opportunity', 'low'],
+    'h1-changed-by-javascript': ['opportunity', 'low'],
+    'canonical-only-after-rendering': ['warning', 'medium'],
+    'canonical-changed-by-javascript': ['warning', 'medium'],
+    'noindex-only-in-html': ['warning', 'medium'],
+    'noindex-added-by-javascript': ['warning', 'medium'],
+    'nofollow-only-in-html': ['opportunity', 'low'],
+    'nofollow-added-by-javascript': ['opportunity', 'low'],
+    'structured-data-only-after-rendering': ['opportunity', 'low'],
+    'hreflang-only-after-rendering': ['warning', 'medium'],
+    'social-tags-only-after-rendering': ['opportunity', 'medium'],
+    'javascript-redirect': ['warning', 'medium'],
+    'render-resources-blocked-by-robots': ['warning', 'medium'],
+    'render-failed': ['warning', 'medium'],
+    'render-script-errors': ['opportunity', 'low'],
+
+    'linked-only-by-javascript': ['warning', 'medium'],
+    'links-only-after-rendering': ['opportunity', 'medium'],
+  },
   'response-codes': {
     'no-response': ['issue', 'high'],
     'server-error': ['issue', 'high'],
@@ -155,6 +180,7 @@ const ISSUE_CATALOG = {
     'heading-too-long': ['opportunity', 'low'],
   },
   content: {
+    'html-entities-as-text': ['opportunity', 'low'],
     'content-duplicate': ['warning', 'high'],
     'content-near-duplicate': ['warning', 'medium'],
     'content-placeholder': ['warning', 'medium'],
@@ -194,6 +220,7 @@ const ISSUE_CATALOG = {
     'only-nofollow-inlinks': ['warning', 'medium'],
     'only-noindex-inlinks': ['warning', 'medium'],
     'orphan-in-sitemap': ['issue', 'medium'],
+    'few-html-links': ['opportunity', 'low'],
     'no-outgoing-links': ['warning', 'low'],
     'internal-nofollow-links': ['warning', 'low'],
     'deep-page': ['opportunity', 'medium'],
@@ -256,7 +283,7 @@ export const ISSUE_GROUPS = [
     ],
   },
   { id: 'architecture', categories: ['links', 'urls'] },
-  { id: 'technical', categories: ['security', 'html', 'performance'] },
+  { id: 'technical', categories: ['security', 'html', 'performance', 'javascript'] },
 ] as const satisfies readonly { id: string; categories: readonly IssueCategoryId[] }[]
 
 export type IssueGroupId = (typeof ISSUE_GROUPS)[number]['id']
@@ -290,7 +317,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  * - 9: a missing, repeated or misplaced title is secondary on a page that cannot be indexed, like
  *   the other title and description findings.
  */
-const CHECKS_REVISION = 10
+const CHECKS_REVISION = 15
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.
@@ -318,6 +345,16 @@ export const ISSUE_CATALOG_VERSION = (() => {
  * harms neither, and reporting the indexable one for it would be noise.
  */
 export const SEO_CONTENT_ISSUES: ReadonlySet<PageIssueId> = new Set<PageIssueId>([
+  'text-only-after-rendering',
+  'title-only-after-rendering',
+  'title-changed-by-javascript',
+  'description-only-after-rendering',
+  'description-changed-by-javascript',
+  'h1-only-after-rendering',
+  'h1-changed-by-javascript',
+  'structured-data-only-after-rendering',
+  'hreflang-only-after-rendering',
+
   'hreflang-no-return',
   'hreflang-invalid-code',
   'hreflang-outside-head',

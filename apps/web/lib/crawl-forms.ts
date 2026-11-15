@@ -3,7 +3,6 @@ import {
   INDEXNOW_KEY,
   parsePriorityUrl,
   OPTIONAL_CRAWL_FILES,
-  CRAWL_RENDERING_AVAILABLE,
   CRAWL_RENDERING_MODES,
   CRAWL_SETTINGS_LIMITS,
   crawlRecurrenceSchema,
@@ -17,6 +16,7 @@ export type CrawlSettingsFormError =
   | 'scope'
   | 'extractors'
   | 'renderingUnavailable'
+  | 'renderSettings'
   | 'userAgent'
   | 'concurrency'
   | 'requestsPerSecond'
@@ -42,15 +42,36 @@ const integer = (value: string) => (/^\d+$/.test(value) ? Number(value) : Number
 const inRange = (value: number, { min, max }: { min: number; max: number }) =>
   Number.isInteger(value) && value >= min && value <= max
 
-/** Validates the crawl settings form. Modes that are not implemented yet are refused here too. */
-export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult {
+/**
+ * Validates the crawl settings form. Switching *to* Rendered needs a ready browser; a domain that is
+ * already saved as Rendered (`currentMode`) can save its other settings while the browser is not
+ * ready, and its next crawl then waits for the browser or fails.
+ */
+export function parseCrawlSettingsForm(
+  form: FormData,
+  browserReady = false,
+  currentMode: CrawlRenderingMode = 'http',
+): CrawlSettingsFormResult {
   const limits = CRAWL_SETTINGS_LIMITS
 
   const mode = text(form, 'renderingMode') as CrawlRenderingMode
-  if (!CRAWL_RENDERING_MODES.includes(mode) || !CRAWL_RENDERING_AVAILABLE.includes(mode)) {
+  if (
+    !CRAWL_RENDERING_MODES.includes(mode) ||
+    (mode === 'headless' && !browserReady && currentMode !== 'headless')
+  ) {
     return { ok: false, error: 'renderingUnavailable' }
   }
 
+  const rendering = crawlSettingsSchema
+    .pick({ renderWaitMs: true, renderOmittedHosts: true })
+    .safeParse({
+      renderWaitMs: form.has('renderWaitMs') ? integer(text(form, 'renderWaitMs')) : 5000,
+      renderOmittedHosts: text(form, 'renderOmittedHosts')
+        .split(/\r?\n/)
+        .map((host) => host.trim())
+        .filter(Boolean),
+    })
+  if (!rendering.success) return { ok: false, error: 'renderSettings' }
   const concurrency = integer(text(form, 'concurrency'))
   if (!inRange(concurrency, limits.concurrency)) return { ok: false, error: 'concurrency' }
   const requestsPerSecond = integer(text(form, 'requestsPerSecond'))
@@ -121,6 +142,7 @@ export function parseCrawlSettingsForm(form: FormData): CrawlSettingsFormResult 
     collectVitals: form.get('collectVitals') === 'on',
     ...scope.data,
     renderingMode: mode,
+    ...rendering.data,
     userAgent: userAgent === '' ? null : userAgent,
     concurrency,
     requestsPerSecond,

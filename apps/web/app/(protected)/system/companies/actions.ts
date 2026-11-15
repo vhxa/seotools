@@ -1,5 +1,7 @@
 'use server'
 
+import { newDomainCrawlSettings } from '@/lib/render-browser'
+
 import { normalizeDomain } from '@seotools/core'
 import {
   addDomain,
@@ -40,7 +42,11 @@ export async function createCompanyAction(
   const t = await getTranslations('CompanyFields.errors')
   const values = { company: field(formData, 'company'), domain: field(formData, 'domain') }
 
-  const result = await createCompany(await getDb(), { name: values.company, domain: values.domain })
+  const result = await createCompany(await getDb(), {
+    name: values.company,
+    domain: values.domain,
+    crawlSettings: await newDomainCrawlSettings(),
+  })
   if (!result.ok) {
     switch (result.reason) {
       case 'invalid-name':
@@ -66,7 +72,10 @@ export async function addDomainAction(
   const t = await getTranslations('CompanyFields.errors')
   const values = { companyId: field(formData, 'companyId'), domain: field(formData, 'domain') }
 
-  const result = await addDomain(await getDb(), values)
+  const result = await addDomain(await getDb(), {
+    ...values,
+    crawlSettings: await newDomainCrawlSettings(),
+  })
   if (!result.ok) {
     switch (result.reason) {
       case 'invalid-domain':

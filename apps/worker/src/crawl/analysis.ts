@@ -1,7 +1,10 @@
+import { RENDER_DIFFERENCE_IDS, unobservedCanonicalDifferences } from './render-differences'
 import {
   EMPTY_AUDIT_SNAPSHOT,
+  ISSUE_BASIS,
   ISSUE_CATALOG_VERSION,
   PAGE_ISSUES,
+  PAGE_ISSUE_IDS,
   auditSnapshotOf,
   isSecondaryFinding,
   worstIssueType,
@@ -19,8 +22,16 @@ import type {
 } from '@seotools/db'
 import { conditionStatesOf } from './conditions'
 import { detectFindings } from './issue-checks'
-import { unobservedIssues } from './observed-inputs'
+import {
+  RENDERED_GRAPH_ISSUES,
+  TRUNCATION_SKIPPING_ISSUES,
+  unobservedIssues,
+} from './observed-inputs'
 import { loadSite } from './site-audit'
+
+const PAGE_ISSUES_IDS_FOR_RENDERING = PAGE_ISSUE_IDS.filter(
+  (id) => PAGE_ISSUES[id].category === 'javascript',
+)
 
 export interface CrawlAnalysis {
   /** Pages of the crawl, audited or not. */
@@ -68,7 +79,21 @@ export async function analyseCrawl(
 
   // What the crawl could not observe is about the crawl, not the configuration: it is worked out
   // again each time, never carried over from the snapshot that came with it.
-  const { unobserved: _recorded, ...config } = given
+  const {
+    documentBasis: _basis,
+    documentCoverage: _documents,
+    unobserved: _recorded,
+    rendering: _mode,
+    rendersUnobserved: _missing,
+    renderCoverage: _coverage,
+    ...rulesConfig
+  } = given
+  const config: AuditSnapshot = {
+    ...rulesConfig,
+    ...(crawl.rendering?.mode === 'rendered'
+      ? { rendering: 'rendered' as const, documentBasis: 'rendered-v1' as const }
+      : {}),
+  }
   const site = await loadSite(db, crawl, config)
   const issues: CrawlUrlIssue[] = []
   const acceptedIssues: CrawlUrlAcceptedIssue[] = []
@@ -113,6 +138,12 @@ export async function analyseCrawl(
       conditions: conditionStatesOf(url, site),
       indexability: url.indexability.state,
       blockers: url.indexability.blockers,
+      ...(url.documentObservation
+        ? {
+            documentObservation: url.documentObservation,
+            documentUnobserved: url.documentUnobserved,
+          }
+        : {}),
     })
     // A page is HTML that answered 2xx: a page that fails is an error, counted with the errors.
     if (!url.contentPage) continue
@@ -137,12 +168,58 @@ export async function analyseCrawl(
       pagesWithType[type]++
     }
   }
-  const unobserved = unobservedIssues(
-    site.urls.flatMap((url) => (url.internal && url.facts ? [url.facts] : [])),
+  let unobserved = unobservedIssues(
+    site.urls.flatMap((url) =>
+      url.internal && (url.served ?? url).facts ? [(url.served ?? url).facts!] : [],
+    ),
     (await db.vitals.origins(crawlId)).some(
       (row) => row.formFactor === 'all' && row.status === 'collected',
     ),
   )
+  if (config.documentBasis) {
+    unobserved = unobserved.filter((id) => ISSUE_BASIS[id] !== 'document')
+  }
+  for (const id of site.documentUnobserved ?? []) unobserved.push(id as (typeof unobserved)[number])
+  if (site.urls.some((url) => url.internal && url.contentPage && url.url.data?.truncated === true))
+    unobserved.push(...TRUNCATION_SKIPPING_ISSUES)
+  if (crawl.rendering?.mode !== 'rendered' || site.rendersUnobserved > 0) {
+    unobserved.push(
+      ...PAGE_ISSUES_IDS_FOR_RENDERING.filter(
+        (id) => crawl.rendering?.mode !== 'rendered' || id !== 'render-failed',
+      ),
+    )
+  }
+  if (crawl.rendering?.mode === 'rendered' && site.rendersUnobserved > 0)
+    unobserved.push(...RENDERED_GRAPH_ISSUES)
+  if (crawl.rendering?.mode === 'rendered') {
+    // Legacy rows lack extracted values; redirected rows deliberately abandon them.
+    // Neither can establish DOM differences, but navigation needs only the final URL.
+    if (
+      site.urls.some(
+        (url) =>
+          url.internal &&
+          url.contentPage &&
+          (!url.render?.data.page || !url.render.data.facts || url.render.data.redirected === true),
+      )
+    ) {
+      unobserved.push(
+        ...RENDER_DIFFERENCE_IDS.filter(
+          (issue) => issue !== 'render-failed' && issue !== 'javascript-redirect',
+        ),
+      )
+    } else if (
+      site.urls.some(
+        (url) =>
+          url.internal &&
+          url.contentPage &&
+          (!(url.served ?? url).facts?.social || !url.render?.data.facts?.social),
+      )
+    ) {
+      unobserved.push('social-tags-only-after-rendering')
+    }
+  }
+  for (const url of site.urls)
+    unobserved.push(...unobservedCanonicalDifferences(url.served ?? url, site))
   const saved = await db.crawls.saveAnalysis({
     crawlId,
     issues,
@@ -151,7 +228,33 @@ export async function analyseCrawl(
     withType: pagesWithType,
     catalog: ISSUE_CATALOG_VERSION,
     audit: {
-      snapshot: { ...config, ...(unobserved.length > 0 ? { unobserved } : {}) },
+      snapshot: {
+        ...config,
+        ...(crawl.rendering?.mode === 'rendered'
+          ? {
+              rendersUnobserved: site.rendersUnobserved,
+              renderCoverage: site.renderCoverage,
+              documentCoverage: {
+                complete: site.urls.filter(
+                  (url) => url.contentPage && url.documentObservation === 'complete',
+                ).length,
+                redirected: site.urls.filter(
+                  (url) => url.contentPage && url.documentObservation === 'redirected',
+                ).length,
+                unobserved: site.urls.filter(
+                  (url) => url.contentPage && url.documentObservation === 'unobserved',
+                ).length,
+                legacyMissing: site.urls.filter(
+                  (url) =>
+                    url.contentPage &&
+                    url.render?.status === 'rendered' &&
+                    (!url.render.data.facts || !url.render.data.page),
+                ).length,
+              },
+            }
+          : {}),
+        ...(unobserved.length > 0 ? { unobserved: [...new Set(unobserved)].sort() } : {}),
+      },
       pages: audit,
       urls,
     },

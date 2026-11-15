@@ -196,6 +196,7 @@ export async function runVerification(
     }
     const context = recheckContext({
       host,
+      renderedBase: baseCrawl?.rendering?.mode === 'rendered',
       ignoredParameters: baseCrawl?.ignoredParameters ?? [],
       now: new Date(),
       config,

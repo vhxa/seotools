@@ -13,6 +13,6 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   // Everything is bundled (workspace TS packages included) except the dependencies declared in
-  // package.json — only the native `better-sqlite3`, which is installed next to the bundle.
+  // package.json — `better-sqlite3` and the lazily loaded `puppeteer-core`, which is installed next to the bundle.
   deps: { alwaysBundle: [/^@seotools\//], onlyBundle: false },
 })

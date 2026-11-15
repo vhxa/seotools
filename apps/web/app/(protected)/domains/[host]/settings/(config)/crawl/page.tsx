@@ -1,3 +1,5 @@
+import { renderBrowserStatus } from '@/lib/render-browser'
+import { getBuildInfo } from '@/lib/build-info'
 import { defaultCrawlerUserAgent } from '@seotools/core'
 import { getTranslations } from 'next-intl/server'
 import { CrawlSettingsForm } from '@/components/crawl/crawl-settings-form'
@@ -25,10 +27,11 @@ export default async function CrawlSettingsPage({ params }: { params: Promise<{ 
         <p className="text-sm text-muted-foreground">{t('description', { host: domain.host })}</p>
       </div>
       <CrawlSettingsForm
+        browserState={(await renderBrowserStatus())?.state ?? 'unknown'}
         host={domain.host}
         settings={settings}
         secretsSaved={Boolean(await (await getDb()).crawls.requestSecrets(domain.id))}
-        defaultUserAgent={defaultCrawlerUserAgent(process.env.APP_VERSION)}
+        defaultUserAgent={defaultCrawlerUserAgent(getBuildInfo().version)}
       />
     </>
   )

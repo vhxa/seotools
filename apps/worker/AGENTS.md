@@ -5,7 +5,7 @@ Job runner and handlers, crawler, crawl scheduler, refreshers and the CLIs. Repo
 ## Structure
 
 ```
-apps/worker/         # Background job runner + handlers (example.echo, mail.send, access.email, crawl.alerts, crawl.run, audit.recompute), crawler, crawl scheduler, favicon and crawl file refreshers; also the bootstrap CLI (migrations), `recover` and `migrate-db` (SQLite → PostgreSQL copy, `copySqliteToPostgres`)
+apps/worker/         # Background job runner + handlers (example.echo, mail.send, access.email, crawl.alerts, crawl.run, audit.recompute, render.check), crawler, crawl scheduler, favicon and crawl file refreshers; also the bootstrap CLI (migrations), `recover` and `migrate-db` (SQLite → PostgreSQL copy, `copySqliteToPostgres`)
 ```
 
 ## Main third-party packages
@@ -25,6 +25,12 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 - Crawl files (robots.txt, sitemaps, llms.txt and the optional ones) live in `crawl_files`, one row per URL with what the last request answered, written by both full crawls and the daily refresher (`createCrawlFileRefresher`). Add a new kind in `crawlFileRequests` (`@seotools/core`), so both request it; an optional one also goes in `OPTIONAL_CRAWL_FILES`, which gives it a settings switch, a sidebar entry and a page under `crawl-files/[kind]`.
 - What these files contain is untrusted: parse it without backtracking regexes, and link a URL taken from one only after `normalizeCrawlUrl`, which refuses `javascript:` and the like.
 
+- Supply served documents to the rendering browser with the same charset selected by `textCharset` for `decodeText`; keep an existing header charset and add the selected charset when the header has none.
+
+- A rendered crawl never continues on HTML when its browser is unavailable: pause the drain, retain queued URLs and persist its cumulative recovery allowance; shutdown hands the job back. Commit each served result and its render observation in the same transaction.
+
+- During a render, the worker requests resources the page asks for on the site and other public hosts, always through the crawl's `createRequester` and `createHttpFetcher`. The browser container has no route out and sends all unintercepted traffic to a dead proxy (no bypass but `<-loopback>`, no non-proxied WebRTC UDP). The worker renders only on a browser instance that passed the isolation check (bound to its DevTools GUID): every unintercepted probe must fail with exactly the dead-proxy error; any other outcome, a timeout, a WebRTC candidate or traffic at the live canaries refuses it. Obey the site's robots.txt for render resources, never for the pages to audit.
+
 - On-demand bot access tests request only the tracked homepage and its redirect chain through `createRequester` and `createHttpFetcher`, with the domain’s crawl settings and credentials; only the User-Agent changes.
 
 ## Jobs
@@ -34,7 +40,7 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 - Crawls run in their own lane (`CRAWL_CONCURRENCY`, `crawl.run` jobs), so that they cannot hold up other jobs.
 - `audit.recompute` jobs (default lane) analyse a domain's latest full crawl again from what it stored, with no requests; they are safe to repeat and to run concurrently. Change rules with `db.audit.*`, which queues the job together with the change.
 - A domain has one active crawl at most, enforced by the unique `crawls.active_key`. Start crawls with `db.crawls.start`, which creates the crawl and its job together; never enqueue `crawl.run` directly.
-- A recheck of some URLs (`url.verify`, `runVerification`) is not a crawl: it has its own tables and one active recheck per domain, never changes a crawl, and is started with `db.verifications.start`, never by enqueueing the job. It runs in the crawl lane, steps aside for a crawl of its domain (`JobDeferredError`), and requests only URLs of the domain plus their `robots.txt`, through `createRequester` and `createHttpFetcher`. It runs only the issues classified `url` in `@seotools/core/crawl/verification` (TypeScript fails until a new issue is classified), with the rest of the site unreadable (`SiteContextError`): an issue that needs other pages, links or sitemaps is `site`, and a recheck never reports it fixed or new, nor compares it with a crawl analysed under other audit rules. What the rules accept among the `url` issues is kept apart in the outcome (`accepted`, absent in older rechecks: say nothing then) and shown as accepted, never as fixed (`compareWithCrawl`'s `nowAccepted`).
+- A recheck of some URLs (`url.verify`, `runVerification`) is not a crawl: it has its own tables and one active recheck per domain, never changes a crawl, and is started with `db.verifications.start`, never by enqueueing the job. It runs in the crawl lane, steps aside for a crawl of its domain (`JobDeferredError`), and requests only URLs of the domain plus their `robots.txt`, through `createRequester` and `createHttpFetcher`. It runs only the issues classified `url` and permitted by `canSettleIssue` for the base crawl's stored mode (an HTML-only recheck never settles rendered document findings), in `@seotools/core/crawl/verification` (TypeScript fails until a new issue is classified), with the rest of the site unreadable (`SiteContextError`): an issue that needs other pages, links or sitemaps is `site`, and a recheck never reports it fixed or new, nor compares it with a crawl analysed under other audit rules. What the rules accept among the `url` issues is kept apart in the outcome (`accepted`, absent in older rechecks: say nothing then) and shown as accepted, never as fixed (`compareWithCrawl`'s `nowAccepted`).
 
 ## Email and alerts
 

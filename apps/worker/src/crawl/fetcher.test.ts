@@ -19,6 +19,15 @@ beforeAll(async () => {
   server = http.createServer((req, res) => {
     lastHeaders = req.headers
     switch (req.url) {
+      case '/echo': {
+        const chunks: Buffer[] = []
+        req.on('data', (chunk) => chunks.push(chunk))
+        req.on('end', () => {
+          res.writeHead(200, { 'Content-Type': 'application/javascript', 'X-Method': req.method })
+          res.end(Buffer.concat(chunks))
+        })
+        return
+      }
       case '/html':
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
@@ -73,6 +82,34 @@ const fetcher = (overrides = {}) =>
 const { signal } = new AbortController()
 
 describe('createHttpFetcher', () => {
+  it('forwards bounded render methods, bodies and allowed headers and force-reads script responses', async () => {
+    const f = fetcher()
+    try {
+      const response = await f.fetch(`${origin}/echo`, {
+        signal,
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: 'https://site.test' },
+        body: Buffer.from('{"query":"x"}'),
+        readBody: 'force',
+        maxBytes: 5,
+      })
+      expect(response.headers['x-method']).toBe('POST')
+      expect(response.body?.toString()).toBe('{"que')
+      expect(response.truncated).toBe(true)
+      expect(lastHeaders.origin).toBe('https://site.test')
+      await expect(
+        f.fetch(`${origin}/echo`, { signal, method: 'POST', body: Buffer.alloc(1024 * 1024 + 1) }),
+      ).rejects.toMatchObject({ code: 'BODY_LIMIT' })
+      const preflight = await f.fetch(`${origin}/echo`, {
+        signal,
+        method: 'OPTIONS',
+        readBody: 'force',
+      })
+      expect(preflight.headers['x-method']).toBe('OPTIONS')
+    } finally {
+      f.close()
+    }
+  })
   it('returns the response, sending the configured User-Agent', async () => {
     const f = fetcher()
     const response = await f.fetch(`${origin}/html`, { signal })

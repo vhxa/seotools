@@ -1,6 +1,7 @@
 'use client'
 
 import { STATUS_FILTERS, VIEW_KINDS } from '@seotools/core/crawl/listing'
+import { RENDER_FILTERS } from '@seotools/core/crawl/render-state'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { FilterSelect } from '@/components/pages/filter-select'
@@ -15,12 +16,15 @@ export function UrlFilters({
   query,
   stacked = false,
   typeUnavailable,
+  rendering = null,
 }: {
   stacked?: boolean
   host: string
   query: DetailQuery
   /** Why the type cannot be picked in this view, if it cannot. */
   typeUnavailable?: NotApplied | undefined
+  /** Offered when the crawl was rendered (or the address already filters by it), else `null`. */
+  rendering?: { unavailable: NotApplied | undefined } | null
 }) {
   const t = useTranslations('PagesDetails.filters')
   const router = useRouter()
@@ -53,6 +57,20 @@ export function UrlFilters({
         unavailable={typeUnavailable ? t(`unavailable.${typeUnavailable}`) : undefined}
         className="w-52"
       />
+      {rendering && (
+        <FilterSelect
+          showLabel={stacked}
+          label={t('rendering.label')}
+          anyLabel={t('rendering.all')}
+          value={query.rendering}
+          options={RENDER_FILTERS.map((value) => ({ value, label: t(`rendering.${value}`) }))}
+          onChange={(rendering) => go({ rendering })}
+          unavailable={
+            rendering.unavailable ? t(`unavailable.${rendering.unavailable}`) : undefined
+          }
+          className="w-52"
+        />
+      )}
     </div>
   )
 }

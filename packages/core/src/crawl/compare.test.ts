@@ -1,3 +1,4 @@
+import { issueBasisOf } from './basis'
 import { describe, expect, it } from 'vitest'
 import { EMPTY_AUDIT_SNAPSHOT, auditSnapshotOf, type AuditRule } from './audit'
 import {
@@ -25,7 +26,7 @@ import {
   type UrlEvidence,
   type UrlSnapshot,
 } from './compare'
-import { PAGE_ISSUE_IDS } from './issues'
+import { PAGE_ISSUES, PAGE_ISSUE_IDS } from './issues'
 import { DEFAULT_THRESHOLDS } from './thresholds'
 
 const CATALOG = '3.abc'
@@ -548,6 +549,46 @@ describe('classifyFinding', () => {
       ).toBe('new')
     })
 
+    it('keeps the HTML rule: an earlier crawl that reported it counts, even under other rules or catalog', () => {
+      // HTML crawls behave as before rendered bases existed: only presence is asked of the crawl
+      // before, never that its rules, catalog or intent match.
+      for (const earlier of [
+        seen([issue], {}, facts({ catalog: 'other' })),
+        seen([issue], { intent: 'not-indexable' }),
+        seen([issue], { conditions: 'noindex:allowed' }),
+        seen([issue], {}, facts({ scope: 'other-scope' })),
+      ])
+        expect(classify(seen([]), seen([issue]), { earlier: [earlier] })?.kind).toBe('reappeared')
+    })
+
+    it('does not count an earlier crawl judged on another basis', () => {
+      const rendered = facts({ documentBasis: 'rendered-v1', graphBasis: 'rendered' })
+      const page = 'title-missing'
+      // HTML earlier, two rendered crawls: the HTML judgement says nothing of the rendered page.
+      expect(
+        classifyFinding(page, {
+          base: seen([], {}, rendered),
+          target: seen([page], {}, rendered),
+          earlier: [seen([page])],
+        })?.kind,
+      ).toBe('new')
+      expect(
+        classifyFinding(page, {
+          base: seen([], {}, rendered),
+          target: seen([page], {}, rendered),
+          earlier: [seen([page], {}, rendered)],
+        })?.kind,
+      ).toBe('reappeared')
+      // A response finding reads the same answer in both modes.
+      expect(
+        classifyFinding('server-error', {
+          base: seen([], {}, rendered),
+          target: seen(['server-error'], {}, rendered),
+          earlier: [seen(['server-error'])],
+        })?.kind,
+      ).toBe('reappeared')
+    })
+
     it('needs a crawl in between that could have reported it and did not', () => {
       expect(classify(seen([issue]), seen([issue]), { between: [seen([])] })?.kind).toBe(
         'reappeared',
@@ -820,6 +861,18 @@ describe('a finding decided by a figure the domain sets', () => {
   })
   const longer = { ...crawl, scope: 's2', thresholds: { ...DEFAULT_THRESHOLDS, titleMax: 100 } }
 
+  it('does not call a link finding fixed when its threshold changed', () => {
+    expect(
+      classifyFinding('few-html-links', {
+        base: { crawl, url: url(['few-html-links']) },
+        target: {
+          crawl: { ...crawl, thresholds: { ...DEFAULT_THRESHOLDS, htmlLinksMin: 0 } },
+          url: url([]),
+        },
+      }),
+    ).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+  })
+
   it('is not resolved when only the figure moved', () => {
     const change = classifyFinding('title-too-long', {
       base: { crawl, url: url(['title-too-long']) },
@@ -916,4 +969,203 @@ it('never calls a dismissal fixed or an undismissal new, including compact trace
     kind: 'unverified',
     reasons: ['dismissed'],
   })
+})
+
+describe('HTML and rendered observation scopes', () => {
+  it('keeps HTML keys unchanged and does not put render failures in configuration scope', () => {
+    const html = auditSnapshotOf(2, [])
+    const rendered = { ...html, rendering: 'rendered' as const }
+    expect(auditScopeKey(rendered)).not.toBe(auditScopeKey(html))
+    expect(auditScopeKey({ ...rendered, rendersUnobserved: 1 })).toBe(auditScopeKey(rendered))
+  })
+  it('never resolves or raises a site-dependent finding just because the crawl mode changed', () => {
+    const html = crawlFactsOf(crawl())
+    const rendered = crawlFactsOf(
+      crawl({
+        auditSnapshot: { ...auditSnapshotOf(2, []), rendering: 'rendered' },
+      }),
+    )
+    for (const issue of PAGE_ISSUE_IDS) {
+      const disappeared = classifyFinding(issue, {
+        base: seen([issue], {}, html),
+        target: seen([], {}, rendered),
+      })
+      const appeared = classifyFinding(issue, {
+        base: seen([], {}, html),
+        target: seen([issue], {}, rendered),
+      })
+      if (issueBasisOf(issue) === 'graph' || issueBasisOf(issue) === 'html') {
+        expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+        expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+      } else if (isPageLocalIssue(issue)) {
+        expect(disappeared?.kind, issue).toBe('resolved')
+        expect(appeared?.kind, issue).toBe('new')
+      } else {
+        expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+        expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+      }
+    }
+  })
+})
+
+it('keeps page-local JavaScript findings unverified across HTML or partial render observations', () => {
+  const issues = PAGE_ISSUE_IDS.filter(
+    (id) => PAGE_ISSUES[id].category === 'javascript' && isPageLocalIssue(id),
+  )
+  expect(issues).toHaveLength(20)
+  const rendered = crawlFactsOf(
+    crawl({ auditSnapshot: { ...auditSnapshotOf(2, []), rendering: 'rendered' } }),
+  )
+  for (const mode of ['html', 'rendered'] as const) {
+    const unknown = crawlFactsOf(
+      crawl({
+        auditSnapshot: {
+          ...auditSnapshotOf(2, []),
+          ...(mode === 'rendered' ? { rendering: mode } : {}),
+          unobserved: issues,
+        },
+      }),
+    )
+    // Across modes the basis changes first; within rendered crawls the render was not observed.
+    const reasons = [mode === 'html' ? 'basis' : 'unobserved']
+    for (const issue of issues) {
+      expect(
+        classifyFinding(issue, {
+          base: seen([], {}, unknown),
+          target: seen([issue], {}, rendered),
+        }),
+      ).toMatchObject({ kind: 'unverified', reasons })
+      expect(
+        classifyFinding(issue, {
+          base: seen([issue], {}, rendered),
+          target: seen([], {}, unknown),
+        }),
+      ).toMatchObject({ kind: 'unverified', reasons })
+    }
+  }
+})
+
+it('guards every document and graph basis before persistent and accepted shortcuts', () => {
+  const html = facts()
+  const rendered = facts({ documentBasis: 'rendered-v1', graphBasis: 'rendered' })
+  for (const issue of PAGE_ISSUE_IDS.filter((id) =>
+    ['document', 'graph'].includes(issueBasisOf(id)!),
+  )) {
+    for (const [a, b] of [
+      [html, rendered],
+      [rendered, html],
+    ]) {
+      for (const targetIssues of [[], [issue]]) {
+        expect(
+          classifyFinding(issue, {
+            base: seen([issue], {}, a),
+            target: seen(targetIssues, { accepted: new Set([issue]) }, b),
+          }),
+        ).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+      }
+    }
+  }
+  expect(issuePairReasons(['basis'], 'title-missing')).toEqual(['basis'])
+  expect(issuePairReasons(['basis'], 'og-missing')).toEqual(['basis'])
+  expect(issuePairReasons(['basis'], 'slow-response')).toEqual([])
+})
+
+it('compares only response findings between an HTML crawl and a rendered-v1 crawl', () => {
+  const html = crawlFactsOf(crawl())
+  const rendered = crawlFactsOf(
+    crawl({
+      auditSnapshot: {
+        ...auditSnapshotOf(2, []),
+        rendering: 'rendered',
+        documentBasis: 'rendered-v1',
+      },
+    }),
+  )
+  for (const issue of PAGE_ISSUE_IDS) {
+    for (const [a, b] of [
+      [html, rendered],
+      [rendered, html],
+    ]) {
+      const disappeared = classifyFinding(issue, {
+        base: seen([issue], {}, a),
+        target: seen([], {}, b),
+      })
+      const appeared = classifyFinding(issue, {
+        base: seen([], {}, a),
+        target: seen([issue], {}, b),
+      })
+      const both = classifyFinding(issue, {
+        base: seen([issue], {}, a),
+        target: seen([issue], {}, b),
+      })
+      if (issueBasisOf(issue) !== 'response') {
+        expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+        expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+        expect(both, issue).toMatchObject({ kind: 'unverified', reasons: ['basis'] })
+      } else if (isPageLocalIssue(issue)) {
+        expect(disappeared?.kind, issue).toBe('resolved')
+        expect(appeared?.kind, issue).toBe('new')
+        expect(both?.kind, issue).toBe('persistent')
+      } else {
+        expect(disappeared, issue).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+        expect(appeared, issue).toMatchObject({ kind: 'unverified', reasons: ['audit'] })
+      }
+    }
+  }
+})
+
+it('keeps document uncertainty URL-local and refuses unknown or cross-basis history as reappearance evidence', () => {
+  const rendered = facts({ documentBasis: 'rendered-v1', graphBasis: 'rendered' })
+  const reported = seen(['title-missing'], { documentObservation: 'complete' }, rendered)
+  const unknown = seen([], { documentObservation: 'unobserved' }, rendered)
+  const absent = seen([], { documentObservation: 'complete' }, rendered)
+  for (const pair of [
+    { base: reported, target: unknown },
+    { base: unknown, target: reported },
+  ]) {
+    expect(classifyFinding('title-missing', pair)).toMatchObject({
+      kind: 'unverified',
+      reasons: ['unobserved'],
+    })
+  }
+  expect(
+    classifyFinding('title-missing', { base: reported, target: reported, between: [unknown] }),
+  ).toMatchObject({ kind: 'persistent' })
+  expect(
+    classifyFinding('title-missing', {
+      base: absent,
+      target: reported,
+      earlier: [unknown, seen(['title-missing'])],
+    }),
+  ).toMatchObject({ kind: 'new' })
+  expect(classifyFinding('title-missing', { base: absent, target: reported })).toMatchObject({
+    kind: 'new',
+  })
+})
+
+it('retains cross-basis and crawl-wide unknown rows even when both crawls report a finding', () => {
+  const legacy = facts({ unobserved: new Set(['title-duplicate']) })
+  const rendered = facts({
+    documentBasis: 'rendered-v1',
+    graphBasis: 'rendered',
+    unobserved: new Set(['title-duplicate']),
+  })
+  expect(
+    classifyFinding('title-duplicate', {
+      base: seen(['title-duplicate'], {}, legacy),
+      target: seen(['title-duplicate'], {}, rendered),
+    }),
+  ).toMatchObject({ kind: 'unverified', reportedBy: 'both', reasons: ['basis'] })
+  expect(
+    classifyFinding('title-duplicate', {
+      base: seen(['title-duplicate'], {}, rendered),
+      target: seen(['title-duplicate'], {}, rendered),
+    }),
+  ).toMatchObject({ kind: 'unverified', reportedBy: 'both', reasons: ['unobserved'] })
+  expect(
+    classifyFinding('title-missing', {
+      base: seen(['title-missing']),
+      target: seen([], { participation: 'excluded' }, rendered),
+    }),
+  ).toMatchObject({ kind: 'excluded' })
 })

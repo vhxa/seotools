@@ -128,3 +128,14 @@ describe('readBuildInfo', () => {
     expect(readBuildInfo('0.2.0', { SEOTOOLS_BUILD_CHANNEL: '' }).channel).toBe('development')
   })
 })
+
+it('bounds render concurrency at four pages', () => {
+  const base = { BETTER_AUTH_SECRET: 'x'.repeat(32) }
+  expect(parseWorkerEnv(base).RENDER_CONCURRENCY).toBe(2)
+  for (const value of [1, 2, 3, 4])
+    expect(parseWorkerEnv({ ...base, RENDER_CONCURRENCY: String(value) }).RENDER_CONCURRENCY).toBe(
+      value,
+    )
+  for (const value of [0, 5, 8])
+    expect(() => parseWorkerEnv({ ...base, RENDER_CONCURRENCY: String(value) })).toThrow(EnvError)
+})

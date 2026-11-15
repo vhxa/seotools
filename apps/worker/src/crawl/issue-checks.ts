@@ -1,3 +1,4 @@
+import { ISSUE_BASIS } from '@seotools/core'
 import {
   AUDIT_CONDITIONS,
   HREFLANG_SOURCES,
@@ -22,6 +23,8 @@ import {
   type PageIssueId,
 } from '@seotools/core'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
+import { renderDifferenceChecks } from './render-differences'
+import { graphAbsenceKnown } from './observed-inputs'
 import { judgeable, presenceOf } from './conditions'
 import { MAX_NEAR_PARTNERS } from './fingerprint'
 import { isValidHreflang, isWellFormedLanguageTag } from './language-codes'
@@ -58,7 +61,7 @@ interface Found {
  * object does, and is what backs it up.
  */
 type Verdict = boolean | string[] | Found
-type Check = (url: AuditedUrl, site: Site) => Verdict
+export type Check = (url: AuditedUrl, site: Site) => Verdict
 
 /** The figures of the configuration being applied (`AUDIT_THRESHOLDS`), resolved once per config. */
 const resolved = new WeakMap<object, AuditThresholds>()
@@ -192,6 +195,9 @@ const HREFLANG_RELATIONS = {
   'hreflang-no-return': {
     wrong: (target: AuditedUrl, page: AuditedUrl, site: Site) =>
       target.contentPage &&
+      target.documentObservation !== 'unobserved' &&
+      target.documentObservation !== 'redirected' &&
+      page.blockersKnown !== false &&
       !target.hreflang.some(
         (entry) => identityOf(site, entry.url) === identityOf(site, page.url.url),
       ),
@@ -216,7 +222,11 @@ const unexcused =
   (issue: keyof typeof HREFLANG_RELATIONS) =>
   (target: AuditedUrl, page: AuditedUrl, site: Site) => {
     const relation = HREFLANG_RELATIONS[issue]
-    return relation.wrong(target, page, site) && !relation.excused(page, target, site)
+    return (
+      page.blockersKnown !== false &&
+      relation.wrong(target, page, site) &&
+      !relation.excused(page, target, site)
+    )
   }
 
 /** What the links that reach a URL say of it, whatever is expected of the URL. */
@@ -370,6 +380,7 @@ const SEARCH_PARAMETERS = new Set(['s', 'q', 'query', 'search', 'keyword', 'keyw
 
 /** What each issue of `PAGE_ISSUES` looks for. Each check says itself which URLs it applies to. */
 export const CHECKS: Record<PageIssueId, Check> = {
+  ...renderDifferenceChecks(figures),
   'lcp-poor': (url) => (url.vitals?.lcp ?? 0) > 4000,
   'inp-poor': (url) => (url.vitals?.inp ?? 0) > 500,
   'cls-poor': (url) => (url.vitals?.cls ?? 0) > 0.25,
@@ -445,9 +456,9 @@ export const CHECKS: Record<PageIssueId, Check> = {
   // --- directives ----------------------------------------------------------
   'directive-outside-head': onPage((_, facts) => facts.robotsOutsideHead > 0),
   'directives-conflict': onPage(
-    ({ noindex, nofollow, directives: d }) =>
-      (noindex && (d.has('index') || d.has('all'))) ||
-      (nofollow && (d.has('follow') || d.has('all'))),
+    ({ directives: d }) =>
+      ((d.has('noindex') || d.has('none')) && (d.has('index') || d.has('all'))) ||
+      ((d.has('nofollow') || d.has('none')) && (d.has('follow') || d.has('all'))),
   ),
   'directives-conflict-snippets': onPage(({ directives }) => {
     const limits = valuesOf(directives, 'max-snippet')
@@ -510,7 +521,7 @@ export const CHECKS: Record<PageIssueId, Check> = {
   ),
   'canonical-not-indexable': onPage((url, _, site) => {
     const target = notIndexableCanonical(url, site)
-    if (!target) return false
+    if (!target || url.blockersKnown === false) return false
     const blockers = indexingBlockers(target)
     const excused = excusedBlockers(url, target, site)
     return blockers.every((blocker) => excused.has(blocker)) ? false : pointsAt(target, blockers)
@@ -633,13 +644,33 @@ export const CHECKS: Record<PageIssueId, Check> = {
   ),
   'heading-too-long': onPage((_, facts) => facts.longHeadings > 0),
 
+  'html-entities-as-text': onPage(({ url }) => {
+    // These texts were decoded once at extraction. Bound each scan, not just the evidence.
+    const fields = [
+      { field: 'title' as const, text: url.title },
+      { field: 'description' as const, text: url.data?.description },
+      ...(url.data?.h1 ?? [])
+        .slice(0, MAX_EVIDENCE_ITEMS)
+        .map((text) => ({ field: 'h1' as const, text })),
+    ]
+    const items = fields.flatMap(({ field, text }) => {
+      const value = text?.slice(0, 16_384)
+      const match = value && /&(?:#\d{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,31});/i.exec(value)
+      return match
+        ? [{ field, text: boundedText(value!.slice(Math.max(0, match.index - 40))) }]
+        : []
+    })
+    return items.length > 0 && backedBy({ kind: 'values', total: items.length, items })
+  }),
+
   // --- content -------------------------------------------------------------
   'content-duplicate': onPage(
     (url, facts, site) =>
       url.indexable && facts.textHash !== null && duplicates(url, site.texts.get(facts.textHash)),
   ),
   'content-near-duplicate': onPage((url, _, site) => {
-    const partners = site.nearDuplicates.get(url)
+    // Indexability read through the URL itself, so that the read recording sees it.
+    const partners = url.indexable && site.nearDuplicates.get(url)
     if (!partners) return false
     const urls = partners.flatMap((partner) => boundedUrl(partner.url.url) ?? [])
     return backedBy({
@@ -711,17 +742,58 @@ export const CHECKS: Record<PageIssueId, Check> = {
   'uncrawlable-links': linkProblem('uncrawlable', (facts) => facts.uncrawlableLinks),
   // What links to a URL expected to be out of the index does not matter to it (`excusesInlinks`).
   'only-nofollow-inlinks': onPage(
-    (url, _, site) => INLINKS_WRONG['only-nofollow-inlinks'](url) && !excusesInlinks(url, site),
+    (url, _, site) =>
+      graphAbsenceKnown(site) &&
+      !site.documentUnobserved?.has('only-nofollow-inlinks') &&
+      INLINKS_WRONG['only-nofollow-inlinks'](url) &&
+      !excusesInlinks(url, site),
   ),
   'only-noindex-inlinks': onPage(
-    (url, _, site) => INLINKS_WRONG['only-noindex-inlinks'](url) && !excusesInlinks(url, site),
+    (url, _, site) =>
+      graphAbsenceKnown(site) &&
+      !site.documentUnobserved?.has('only-noindex-inlinks') &&
+      INLINKS_WRONG['only-noindex-inlinks'](url) &&
+      !excusesInlinks(url, site),
   ),
   // Found in a sitemap and nowhere else: no internal link was seen within the scope of the crawl.
-  'orphan-in-sitemap': (url) =>
-    url.contentPage && url.sitemaps > 0 && url.anchorsIn === 0 && url.url.source !== 'seed',
+  'linked-only-by-javascript': (url, site) =>
+    site.config.rendering === 'rendered' &&
+    site.rendersUnobserved === 0 &&
+    site.htmlLinksComplete &&
+    url.contentPage &&
+    url.htmlAnchorsIn === 0 &&
+    url.renderedAnchorsFrom.length > 0 &&
+    backedBy({ kind: 'related-urls', total: url.anchorsIn, urls: url.renderedAnchorsFrom }),
+  'links-only-after-rendering': onPage(
+    (url, _, site) =>
+      site.config.rendering === 'rendered' &&
+      site.rendersUnobserved === 0 &&
+      url.renderedAnchorsOut > 0 &&
+      backedBy({ kind: 'related-urls', total: url.renderedAnchorsOut, urls: url.renderedLinksTo }),
+  ),
+  'orphan-in-sitemap': (url, site) =>
+    (site.config.rendering !== 'rendered' || site.linksComplete) &&
+    url.contentPage &&
+    url.sitemaps > 0 &&
+    url.anchorsIn === 0 &&
+    url.url.source !== 'seed',
+  'few-html-links': onPage(
+    (url, _, site) =>
+      url.indexable &&
+      url.url.data?.truncated !== true &&
+      url.htmlInternalAnchorsOut < figures(site).htmlLinksMin &&
+      backedBy({
+        kind: 'values',
+        total: 1,
+        items: [{ field: 'internal-links', text: String(url.htmlInternalAnchorsOut) }],
+      }),
+  ),
   'no-outgoing-links': onPage((url) => url.internalAnchorsOut === 0),
   'internal-nofollow-links': onPage((url) => url.nofollowAnchorsOut > 0),
-  'deep-page': onPage((url, _, site) => (url.clickDepth ?? 0) > figures(site).clickDepthMax),
+  'deep-page': onPage(
+    (url, _, site) =>
+      graphAbsenceKnown(site) && (url.clickDepth ?? 0) > figures(site).clickDepthMax,
+  ),
   'anchor-empty': linkProblem('empty-anchor', (facts) => facts.emptyAnchors),
   'anchor-vague': linkProblem('vague-anchor', (facts) => facts.vagueAnchors),
 
@@ -938,7 +1010,7 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
   }
 
   const canonical = url.facts && notIndexableCanonical(url, site)
-  if (canonical) {
+  if (canonical && url.blockersKnown !== false) {
     const blockers = indexingBlockers(canonical)
     const excused = excusedBlockers(url, canonical, site)
     if (blockers.every((blocker) => excused.has(blocker))) {
@@ -953,15 +1025,21 @@ function acceptedRelations(url: AuditedUrl, site: Site): AcceptedFinding[] {
       const target = site.get(entry.url)
       if (!target || target === url || !target.internal || seen.has(entry.url)) continue
       seen.add(entry.url)
-      if (!relation.wrong(target, url, site) || !relation.excused(url, target, site)) continue
+      if (
+        url.blockersKnown === false ||
+        !relation.wrong(target, url, site) ||
+        !relation.excused(url, target, site)
+      )
+        continue
       // A missing return is excused as much by the page being expected out as by the target.
       add(issue, relationAcceptance(url, target, relation.blockers(target)), target)
     }
   }
 
-  if (url.facts && isExpectedOut(url)) {
+  if (url.facts && graphAbsenceKnown(site) && isExpectedOut(url)) {
     for (const issue of Object.keys(INLINKS_WRONG) as (keyof typeof INLINKS_WRONG)[]) {
-      if (INLINKS_WRONG[issue](url)) add(issue, expectedOutAcceptance(url), null)
+      if (!site.documentUnobserved?.has(issue) && INLINKS_WRONG[issue](url))
+        add(issue, expectedOutAcceptance(url), null)
     }
   }
 
@@ -982,8 +1060,12 @@ export function detectFindings(
   site: Site,
 ): { found: Finding[]; accepted: AcceptedFinding[] } {
   const found: Finding[] = []
+  const unknown = unknownIssuesOf(url, site)
   for (const issue of PAGE_ISSUE_IDS) {
-    const result = CHECKS[issue](url, site)
+    if (unknown.has(issue)) continue
+    const subject =
+      ISSUE_BASIS[issue] === 'html' || ISSUE_BASIS[issue] === 'response' ? (url.served ?? url) : url
+    const result = CHECKS[issue](subject, site)
     // A check that has nothing to read gives no finding, never a failed analysis.
     if (!result) continue
     if (result === true) found.push({ issue })
@@ -998,7 +1080,101 @@ export function detectFindings(
     }
   }
   const { kept, accepted } = auditPolicy(url, found)
-  return applyFindingDismissals(url, site, kept, [...accepted, ...acceptedRelations(url, site)])
+  return applyFindingDismissals(
+    url,
+    site,
+    kept,
+    [...accepted, ...acceptedRelations(url, site)].filter(({ issue }) => !unknown.has(issue)),
+  )
+}
+
+/**
+ * The findings whose presence the audit policy decides from another issue's result, and which are
+ * therefore unknown when that issue is: an explicit expectation of being indexable reports the
+ * blockers it names in `expected-indexable-blocked` and drops their generic findings
+ * (`INDEXING_FINDING_OF`), so when that finding cannot be judged, nobody can tell whether the
+ * generic ones would have been dropped. A generic finding a stated condition replaces (`GENERIC_OF`)
+ * does not depend on it: the rule alone decides that. Exclusions, other expectations and dismissals
+ * depend only on rules, never on another finding.
+ */
+export function dependentUnknowns(
+  url: Pick<AuditedUrl, 'excluded' | 'intent' | 'intentRule' | 'conditions'>,
+  unknown: ReadonlySet<string>,
+): PageIssueId[] {
+  if (url.excluded || url.intent !== 'indexable' || url.intentRule === null) return []
+  if (!unknown.has('expected-indexable-blocked')) return []
+  return Object.entries(INDEXING_FINDING_OF).flatMap(([condition, issue]) => {
+    const requirement = url.conditions[condition as AuditCondition].requirement
+    return requirement === 'allowed' || requirement === 'required' ? [] : [issue]
+  })
+}
+
+/** What a URL's selected canonical decides: a check reading any of these reads the canonical. */
+const CANONICAL_FIELDS: ReadonlySet<PropertyKey> = new Set([
+  'canonicalised',
+  'canonicalKnown',
+  'blockersKnown',
+  'indexability',
+  'indexable',
+])
+
+/**
+ * Whether judging `issue` on `url` reads the URL's selected canonical, directly or through its
+ * indexability (which a canonical elsewhere blocks). Recorded while the check runs, so that no list
+ * has to be kept by hand: a check that returns before reading it does not depend on it.
+ */
+function readsCanonical(issue: PageIssueId, url: AuditedUrl, site: Site): boolean {
+  let read = false
+  const address = new Proxy(url.url, {
+    get(target, key, receiver) {
+      if (key === 'canonical') read = true
+      return Reflect.get(target, key, receiver) as unknown
+    },
+  })
+  const subject = new Proxy(url, {
+    get(target, key, receiver) {
+      if (key === 'url') return address
+      if (CANONICAL_FIELDS.has(key)) read = true
+      return Reflect.get(target, key, receiver) as unknown
+    },
+  })
+  try {
+    CHECKS[issue](subject, site)
+  } catch {
+    return true
+  }
+  return read
+}
+
+const unknownIssues = new WeakMap<AuditedUrl, ReadonlySet<string>>()
+const NONE: ReadonlySet<string> = new Set()
+
+/**
+ * The issues a URL of a rendered-basis analysis cannot be judged on in this crawl: those its
+ * incomplete document leaves without input (`documentUnobserved` from `selectDocument`), every
+ * document or graph check that reads its canonical or blockers when they are unknown (conflicting
+ * or unresolved canonical declarations, an incomplete document), and the findings the audit policy
+ * decides from one of those (`dependentUnknowns`). It has no finding and no accepted row for them,
+ * and the list is stored with its audit state, so comparisons, alerts and rechecks read them as
+ * unknown for this URL. HTML analyses have none: `documentObservation` is only set by
+ * `selectDocument`.
+ */
+export function unknownIssuesOf(url: AuditedUrl, site: Site): ReadonlySet<string> {
+  if (!url.documentObservation) return NONE
+  const cached = unknownIssues.get(url)
+  if (cached) return cached
+  const unknown = new Set<string>(url.documentUnobserved)
+  if (url.blockersKnown === false) {
+    for (const issue of PAGE_ISSUE_IDS) {
+      const basis = ISSUE_BASIS[issue]
+      if (basis !== 'document' && basis !== 'graph') continue
+      if (!unknown.has(issue) && readsCanonical(issue, url, site)) unknown.add(issue)
+    }
+  }
+  for (const issue of dependentUnknowns(url, unknown)) unknown.add(issue)
+  url.documentUnobserved = PAGE_ISSUE_IDS.filter((issue) => unknown.has(issue))
+  unknownIssues.set(url, unknown)
+  return unknown
 }
 
 const dismissalIndexes = new WeakMap<AuditSnapshot, ReadonlyMap<string, FindingDismissal>>()

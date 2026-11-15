@@ -20,6 +20,63 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Added
+
+- JavaScript rendering in the interface: the crawl settings say what each mode costs and why
+  Rendered is unavailable; a URL's detail has a JavaScript tab that compares the served HTML with
+  the rendered page, or says it was not rendered, redirected by JavaScript or incomplete; the URLs
+  table and its CSV export have a Rendering column and filter; the overview, the crawl list and the
+  crawl comparison say which mode a crawl ran in, how many pages could not be observed completely and
+  what that leaves unknown.
+- Rendered crawls report text, titles, descriptions, H1s, canonical URLs, meta robots directives,
+  structured data, hreflang and social tags added or changed by JavaScript, along with render
+  redirects, robots-blocked resources, failures and uncaught script errors. Only complete
+  observations establish differences; a stopped client redirect reports its target without
+  treating its abandoned content as observed or making links elsewhere unknown. The text share
+  threshold is configurable per domain.
+- Rendered crawls run JavaScript on each internal HTML page answering 200, follow links found only
+  after rendering, and report pages linked only by JavaScript and pages whose internal links appear
+  after rendering. Per-domain settings control the mode, wait limit and omitted hosts.
+- An optional browser container with layered network isolation, a safety check that refuses any
+  browser whose own traffic does not all fail at its blocking proxy (rechecked whenever the browser
+  is replaced), and its connection status in System → Integrations.
+- Two low-importance opportunities flag HTML character references shown as text in titles,
+  descriptions or H1s, and indexable pages with very few internal links in the served HTML
+  (default: fewer than 5; configurable per domain, with 0 disabling the check).
+
+### Changed
+
+- Rendered crawls judge document findings, indexability and rules on the completely observed
+  rendered page. Served noindex restrictions persist; response and source diagnostics and social
+  previews keep the served response. An incomplete document or a conflicting canonical leaves
+  the checks that read it, and the findings that depend on them, unknown for that URL (and
+  crawl-wide for checks involving other pages). Between an HTML and a rendered crawl
+  only findings about the server's answer are compared; the others are unverified, never new or
+  fixed, and HTML-only rechecks cannot settle rendered document findings.
+- Sitemap orphan findings describe the links observed in either HTML or rendered crawls. Rendered
+  crawls pause when the browser is unavailable and fail after their recovery allowance, without
+  falling back to HTML. In a rendered crawl, a page that was neither rendered whole and settled nor
+  completely observed redirecting makes every link-dependent finding unknown for that crawl, so
+  comparisons and alerts never report it as new or fixed.
+- Pages load less translation text: the browser receives only the messages the interactive parts of each page use, not the whole catalog.
+- Earlier crawls are analysed again from their stored text and links for the two new checks. The
+  few-internal-links check is unknown, never fixed or new, for a crawl in which a page's HTML was
+  cut at the size limit.
+
+### Upgrade notes
+
+- Two forward-only database migrations, `0034_rendered_crawls` and `0035_render_truncation`, add
+  render settings, crawl snapshots and per-URL render observations. Take a backup before updating:
+  going back requires restoring that backup together with the previous image, which refuses to
+  start on the upgraded database.
+- Nothing changes for an installation that does not connect a browser. Updating the image,
+  including `latest`, keeps every domain on HTML; rendering is offered only once a browser is
+  connected and passes its safety check.
+- Earlier retained crawls are analysed again from stored observations after the update;
+  JavaScript findings remain unknown for crawls that did not render.
+- To add the optional browser, follow [the rendering guide](docs/rendering.md) (the `rendering`
+  Compose profile and `RENDER_BROWSER_URL`).
+
 ## [0.5.0] - 2026-11-12
 
 ### Added

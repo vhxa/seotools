@@ -9,6 +9,7 @@ import {
   isNull,
   lt,
   ne,
+  notInArray,
   or,
   sql,
   type AnyColumn,
@@ -16,6 +17,7 @@ import {
   type SQLWrapper,
 } from 'drizzle-orm'
 import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/acceptance'
+import { renderFilterStates, type RenderState } from '@seotools/core/crawl/render-state'
 import {
   ALERT_KINDS,
   JOB_TYPES,
@@ -270,6 +272,7 @@ export function foldUsage(
 
 export type CrawlRow = Omit<
   Crawl,
+  | 'rendering'
   | 'ignoredParameters'
   | 'seedUrls'
   | 'robots'
@@ -278,6 +281,7 @@ export type CrawlRow = Omit<
   | 'pagesAudit'
   | 'auditSnapshot'
 > & {
+  rendering: string | null
   ignoredParameters: string | null
   seedUrls: string | null
   robots: string | null
@@ -308,6 +312,7 @@ export type CrawlUrlRow = Omit<
 export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
 
 export const toCrawl = ({
+  rendering,
   ignoredParameters,
   seedUrls,
   robots,
@@ -325,6 +330,7 @@ export const toCrawl = ({
   auditSnapshot,
   ...row
 }: CrawlRow): Crawl => ({
+  rendering: parseJson(rendering) as Crawl['rendering'],
   ...row,
   pagesByWorstIssue:
     issue === null || warning === null || opportunity === null
@@ -577,6 +583,7 @@ export function newCrawlLinkRow(crawlRef: number, source: number, target: number
     source,
     target,
     kind: link.kind,
+    rendered: link.rendered ?? null,
     text: cleanText(context?.text, LINK_CONTEXT_LIMITS.text),
     element: cleanText(context?.element, LINK_CONTEXT_LIMITS.element),
     region: context?.region && LINK_REGIONS.includes(context.region) ? context.region : null,
@@ -768,6 +775,32 @@ export function crawlViewWhere(columns: CrawlUrlColumns, view: CrawlUrlView): SQ
   }
 }
 
+/** The columns of `crawl_url_renders` that classify a render. */
+interface RenderColumns {
+  status: AnyColumn
+  settled: AnyColumn
+  truncated: AnyColumn
+  data: AnyColumn
+}
+
+/**
+ * The state of a render (`RenderState`, `@seotools/core/crawl/render-state`, which has the same
+ * precedence in code) as SQL. `servedData` is the `data` of the URL's `crawl_urls` row.
+ *
+ * Both flags live in JSON text written by `JSON.stringify` (no spaces), and a quote inside a string
+ * is always escaped, so `"truncated":true` and `"redirected":true` can only be a key with that
+ * value: a text match reads them in both dialects (a JSON cast would fail a whole query on one
+ * `\u0000` in a page title). No parameters: the expression is also grouped by.
+ */
+export const renderStateSql = (columns: RenderColumns, servedData: AnyColumn) =>
+  sql<RenderState>`case
+    when ${columns.status} = 'failed' then 'failed'
+    when ${columns.truncated} is true or ${servedData} like '%"truncated":true%' then 'truncated'
+    when ${columns.truncated} is null then 'unknown'
+    when ${columns.data} like '%"redirected":true%' then 'redirect'
+    when not ${columns.settled} then 'unsettled'
+    else 'complete' end`
+
 /** The URLs whose status is of a class, or that have none. */
 export function crawlStatusWhere(
   columns: CrawlUrlColumns,
@@ -791,8 +824,11 @@ export function crawlUrlWhere(
     withAccepted: (issue: string | null, kind?: CrawlUrlQuery['acceptanceKind']) => SQLWrapper
     withState?: (state: string, issue?: string) => SQLWrapper
     withAudit: (filter: AuditFilter) => SQLWrapper
+    /** The hashes of the URLs whose render is in one of these states, or of every rendered URL. */
+    withRender: (states: readonly RenderState[] | null) => SQLWrapper
   },
 ): SQL | undefined {
+  const renderStates = query.rendering ? renderFilterStates(query.rendering) : undefined
   const pattern = query.search ? containsPattern(query.search) : null
   return and(
     eq(columns.crawlId, query.crawlId),
@@ -820,6 +856,11 @@ export function crawlUrlWhere(
         )
       : undefined,
     hasAuditFilter(query) ? inArray(columns.urlHash, subqueries.withAudit(query)) : undefined,
+    renderStates === undefined
+      ? undefined
+      : renderStates === null
+        ? notInArray(columns.urlHash, subqueries.withRender(null))
+        : inArray(columns.urlHash, subqueries.withRender(renderStates)),
   )
 }
 
@@ -1156,7 +1197,15 @@ export function crawlAuditRows(crawlId: string, urls: CrawlUrlAudit[]) {
     acceptNofollow: false,
     ...conditionColumns(url.conditions),
     indexability: url.indexability,
-    blockers: url.blockers.length > 0 ? JSON.stringify(url.blockers) : null,
+    blockers: url.documentObservation
+      ? JSON.stringify({
+          blockers: url.blockers,
+          documentObservation: url.documentObservation,
+          documentUnobserved: url.documentUnobserved ?? [],
+        })
+      : url.blockers.length > 0
+        ? JSON.stringify(url.blockers)
+        : null,
   }))
 }
 
@@ -1248,7 +1297,7 @@ export const toCrawlUrlAudit = (
     acceptNofollow: row.acceptNofollow,
     conditions,
     indexability: row.indexability as CrawlUrlAudit['indexability'],
-    blockers: row.blockers === null ? [] : (parseJson(row.blockers) as string[]),
+    ...readBlockerObservation(row.blockers),
   })
 }
 
@@ -1326,8 +1375,14 @@ export function toDomainFavicon(row: {
 
 export type CrawlSettingsRow = Omit<
   CrawlSettings,
-  'optionalFiles' | 'includePrefixes' | 'excludePrefixes' | 'extractors' | 'ignoredParameters'
+  | 'optionalFiles'
+  | 'includePrefixes'
+  | 'excludePrefixes'
+  | 'extractors'
+  | 'ignoredParameters'
+  | 'renderOmittedHosts'
 > & {
+  renderOmittedHosts: string | null
   optionalFiles: string | null
   extractors: string | null
   requestSecrets: string | null
@@ -1339,6 +1394,7 @@ export type CrawlSettingsRow = Omit<
 }
 
 export const toCrawlSettings = ({
+  renderOmittedHosts,
   domainId: _domainId,
   updatedAt: _updatedAt,
   optionalFiles,
@@ -1349,6 +1405,7 @@ export const toCrawlSettings = ({
   extractors,
   ...row
 }: CrawlSettingsRow): CrawlSettings => ({
+  renderOmittedHosts: (parseJson(renderOmittedHosts) ?? []) as string[],
   ...row,
   // Read back through its schema: an extractor that no longer checks out is dropped, not run.
   extractors: extractorsSchema.catch([]).parse(parseJson(extractors) ?? []),
@@ -1369,6 +1426,7 @@ export function enabledFilesByDomain(rows: CrawlSettingsRow[]): Map<string, Extr
 }
 
 export const crawlSettingsColumns = ({
+  renderOmittedHosts,
   optionalFiles,
   includePrefixes,
   excludePrefixes,
@@ -1376,6 +1434,7 @@ export const crawlSettingsColumns = ({
   extractors,
   ...settings
 }: CrawlSettings) => ({
+  renderOmittedHosts: JSON.stringify(renderOmittedHosts),
   ...settings,
   extractors: extractors.length > 0 ? JSON.stringify(extractors) : null,
   optionalFiles: JSON.stringify(optionalFiles),
@@ -1797,4 +1856,29 @@ export function groupAcceptedIssues(rows: { urlHash: string; issue: string; deta
     grouped.set(row.urlHash, [...(grouped.get(row.urlHash) ?? []), value])
   }
   return grouped
+}
+
+/** Legacy arrays and the bounded rendered-observation envelope share the existing JSON column. */
+function readBlockerObservation(
+  raw: string | null,
+): Pick<CrawlUrlAudit, 'blockers' | 'documentObservation' | 'documentUnobserved'> {
+  const value: unknown = raw === null ? [] : parseJson(raw)
+  if (Array.isArray(value))
+    return { blockers: value.filter((x): x is string => typeof x === 'string') }
+  if (!value || typeof value !== 'object') return { blockers: [] }
+  const v = value as Record<string, unknown>
+  const state = v.documentObservation
+  return {
+    blockers: Array.isArray(v.blockers)
+      ? v.blockers.filter((x): x is string => typeof x === 'string')
+      : [],
+    ...(state === 'complete' || state === 'redirected' || state === 'unobserved'
+      ? { documentObservation: state }
+      : {}),
+    documentUnobserved: Array.isArray(v.documentUnobserved)
+      ? v.documentUnobserved
+          .filter((x): x is string => typeof x === 'string' && x.length <= 100)
+          .slice(0, 200)
+      : [],
+  }
 }

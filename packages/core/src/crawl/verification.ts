@@ -1,3 +1,4 @@
+import { issueBasisOf } from './basis'
 /**
  * Rechecking some URLs after a fix, without a full crawl: what a recheck can establish and what it
  * cannot. Pure (no Node imports), so client components import it through
@@ -45,6 +46,29 @@ const U = 'url'
 const S = 'site'
 
 const SCOPE: Record<PageIssueId, VerificationScope> = {
+  'text-only-after-rendering': S,
+  'title-only-after-rendering': S,
+  'title-changed-by-javascript': S,
+  'description-only-after-rendering': S,
+  'description-changed-by-javascript': S,
+  'h1-only-after-rendering': S,
+  'h1-changed-by-javascript': S,
+  'canonical-only-after-rendering': S,
+  'canonical-changed-by-javascript': S,
+  'noindex-only-in-html': S,
+  'noindex-added-by-javascript': S,
+  'nofollow-only-in-html': S,
+  'nofollow-added-by-javascript': S,
+  'structured-data-only-after-rendering': S,
+  'hreflang-only-after-rendering': S,
+  'social-tags-only-after-rendering': S,
+  'javascript-redirect': S,
+  'render-resources-blocked-by-robots': S,
+  'render-failed': S,
+  'render-script-errors': S,
+
+  'linked-only-by-javascript': S,
+  'links-only-after-rendering': S,
   'lcp-poor': S,
   'inp-poor': S,
   'cls-poor': S,
@@ -172,6 +196,9 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'only-nofollow-inlinks': S,
   'only-noindex-inlinks': S,
   'orphan-in-sitemap': S,
+  'html-entities-as-text': U,
+  // Counts only anchors in this page's own response, without judging their destinations.
+  'few-html-links': U,
   'no-outgoing-links': U,
   'internal-nofollow-links': U,
   'deep-page': S,
@@ -204,6 +231,10 @@ const SCOPE: Record<PageIssueId, VerificationScope> = {
   'viewport-missing': U,
   'charset-missing': U,
 }
+
+/** HTML-only rechecks cannot settle a rendered crawl's document observations. */
+export const canSettleIssue = (issue: string, renderedBase = false): boolean =>
+  isUrlScopedIssue(issue) && !(renderedBase && issueBasisOf(issue) === 'document')
 
 export const verificationScopeOf = (issue: PageIssueId): VerificationScope => SCOPE[issue]
 
@@ -364,6 +395,7 @@ const byCatalog = (ids: Iterable<PageIssueId>) =>
  * the recheck could not check (`unchecked`) are pending too, never fixed.
  */
 export function compareWithCrawl(input: {
+  renderedBase?: boolean
   crawl: readonly string[]
   recheck: readonly string[]
   unchecked?: readonly string[]
@@ -376,7 +408,8 @@ export function compareWithCrawl(input: {
   const accepted = new Set(input.accepted ?? [])
   const before = new Set(input.crawl.filter(isPageIssueId))
   const after = new Set(input.recheck.filter(isPageIssueId))
-  const settled = (issue: PageIssueId) => SCOPE[issue] === 'url' && !unchecked.has(issue)
+  const settled = (issue: PageIssueId) =>
+    canSettleIssue(issue, input.renderedBase) && !unchecked.has(issue)
   const blind = new Set(input.unobserved ?? [])
   return {
     fixed: byCatalog(

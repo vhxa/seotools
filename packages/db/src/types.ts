@@ -4,6 +4,7 @@ import type { RuleEditing, RuleSelectors } from './audit'
 import type { CrawlFileObservation, CrawlFileRecord } from '@seotools/core/crawl/files'
 import type { IncidentKind, IncidentStage } from '@seotools/core/incidents'
 import type { VitalMetrics } from '@seotools/core'
+import type { RenderCounts, RenderFilter, RenderState } from '@seotools/core/crawl/render-state'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
   AccessGrant,
@@ -34,6 +35,7 @@ import type {
   LinkContext,
   ThresholdOverrides,
   CrawlPageData,
+  CrawlPageFacts,
   CrawlRecurrence,
   CrawlRobotsFiles,
   CrawlSettings,
@@ -292,7 +294,11 @@ export interface CompanyRepository {
   list(): Promise<CompanyWithDomains[]>
   get(id: string): Promise<Company | null>
   /** Creates a company together with its first domain. Rejects if the host is already taken. */
-  create(input: { name: string; host: string }): Promise<{ company: Company; domain: Domain }>
+  create(input: {
+    name: string
+    host: string
+    crawlSettings?: CrawlSettings
+  }): Promise<{ company: Company; domain: Domain }>
   /** `null` when the company does not exist. */
   rename(id: string, name: string): Promise<Company | null>
   /**
@@ -307,7 +313,7 @@ export interface DomainRepository {
   get(id: string): Promise<Domain | null>
   findByHost(host: string): Promise<DomainWithCompany | null>
   /** Rejects if the host is already taken or the company does not exist. */
-  add(input: { companyId: string; host: string }): Promise<Domain>
+  add(input: { companyId: string; host: string; crawlSettings?: CrawlSettings }): Promise<Domain>
   /**
    * Archives a domain, and in the same transaction cancels its active crawl and recheck: the jobs
    * notice at their next check and stop requesting. Archiving twice keeps the first date. `null`
@@ -333,7 +339,49 @@ export interface DomainRepository {
   usage(): Promise<Map<string, DomainUsage>>
 }
 
+export interface CrawlRendering {
+  mode: 'html' | 'rendered'
+  waitMs: number
+  omittedHosts: string[]
+}
+
+export interface CrawlUrlRender {
+  urlHash: string
+  status: 'rendered' | 'failed'
+  settled: boolean
+  /** Null for observations made before truncation was recorded: completeness is unknown. */
+  truncated: boolean | null
+  finalUrl: string
+  durationMs: number
+  failure: string | null
+  data: {
+    facts: CrawlPageFacts | null
+    /** Absent on older rows. A redirect observes the target, not the abandoned DOM. */
+    redirected?: boolean
+    /** Absent on older render rows: these extracted values were not retained. */
+    page?: {
+      canonical?: string | null
+      title: string | null
+      description: string | null
+      h1: string | null
+      metaRobots: string | null
+      botRobots: Record<string, string>
+      hreflang: NonNullable<CrawlPageData['hreflang']>
+    }
+    documentLinks?: {
+      internal: number
+      nofollow: number
+      embeds: string[]
+      embedsComplete: boolean
+    }
+    requests: unknown
+    scriptErrors: { count: number; first: string[] }
+  }
+}
+
 export interface Crawl {
+  rendering: CrawlRendering | null
+  browserWaitMs: number
   ignoredParameters?: string[]
   seedUrls?: string[] | null
   id: string
@@ -451,6 +499,7 @@ export interface CrawlUrl
 }
 
 export interface CrawlLink {
+  rendered?: number | null
   sourceHash: string
   targetHash: string
   kind: CrawlLinkKind
@@ -517,6 +566,11 @@ export interface CrawlUrlQuery {
   intent?: IndexIntent
   /** Only URLs the analysis applied this rule to, for either dimension. Within the `view`. */
   rule?: string
+  /**
+   * Only URLs by what the crawl's JavaScript rendering observed of them (`RenderState`), or those it
+   * has no render for. Within the `view`. An HTML crawl has no renders: the page does not offer it.
+   */
+  rendering?: RenderFilter
 }
 
 /** The URLs of a crawl in each view. `all` is the sum of `internal` and `external`. */
@@ -719,7 +773,26 @@ export interface CrawlRepository {
     crawlId: string,
   ): Promise<{ urlHash: string; scope: CrawlUrlScope; seq: number | null }[]>
   /** Stores what a request returned along with the URLs and links found in it, atomically. */
+  renders(crawlId: string): Promise<CrawlUrlRender[]>
+  /** The render of one URL of a crawl, or `null` when the crawl has none for it. */
+  renderOf(crawlId: string, urlHash: string): Promise<CrawlUrlRender | null>
+  /** The state of the render of each of these URLs. URLs without a render are not in the map. */
+  renderStatesOf(crawlId: string, urlHashes: string[]): Promise<Map<string, RenderState>>
+  /** How many renders each crawl has in each state; crawls without renders are not in the map. */
+  renderCounts(crawlIds: string[]): Promise<Map<string, RenderCounts>>
+  /**
+   * The pages of the site a URL links to by anchors: how many the served HTML links to, and how many
+   * only exist after rendering (`total`, not among the first), with the first `limit` of those.
+   * No rendered-only anchors for a crawl made without rendering.
+   */
+  renderedLinksOf(
+    crawlId: string,
+    urlHash: string,
+    limit: number,
+  ): Promise<{ served: number; total: number; items: { url: string; urlHash: string }[] }>
+  saveBrowserWait(crawlId: string, milliseconds: number): Promise<void>
   recordResult(input: {
+    render?: CrawlUrlRender
     crawlId: string
     urlHash: string
     result: CrawlUrlResult

@@ -18,6 +18,7 @@
     "./crawl/links": "./src/crawl/links.ts",
     "./crawl/schedule": "./src/crawl/schedule.ts",
     "./crawl/normalize": "./src/crawl/normalize.ts",
+    "./crawl/render-state": "./src/crawl/render-state.ts",
     "./crawl/settings": "./src/crawl/settings.ts",
     "./crawl/structured-data": "./src/crawl/structured-data.ts",
     "./crawl/thresholds": "./src/crawl/thresholds.ts",
@@ -28,7 +29,9 @@
     "./bot-access": "./src/bot-access.ts",
     "./crawl/audit-templates": "./src/crawl/audit-templates.ts",
     "./incidents": "./src/incidents.ts",
-    "./crawl-file-views": "./src/crawl-file-views.ts"
+    "./crawl-file-views": "./src/crawl-file-views.ts",
+    "./render-status": "./src/render-status.ts",
+    "./crawl/basis": "./src/crawl/basis.ts"
   },
   "scripts": {
     "lint": "eslint .",

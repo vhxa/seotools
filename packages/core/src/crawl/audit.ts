@@ -820,6 +820,19 @@ export interface AuditSnapshot {
   languages?: LanguageConfig
   /** The figures the checks compared with, where they differed from the defaults. Absent: none did. */
   thresholds?: ThresholdOverrides
+  /** Present only for rendered crawls; changes the comparison scope of site-dependent findings. */
+  rendering?: 'rendered'
+  documentBasis?: 'rendered-v1'
+  documentCoverage?: {
+    complete: number
+    redirected: number
+    unobserved: number
+    legacyMissing: number
+  }
+  /** Pages without a whole, settled render and whole served HTML; link absence is unknown. */
+  rendersUnobserved?: number
+  /** Counts can overlap; failedOrMissing includes legacy renders without truncation metadata. */
+  renderCoverage?: { failedOrMissing: number; truncated: number; unsettled: number }
   /**
    * Issues this analysis could not see, sorted: their input was not recorded for some page, because
    * the crawl was made before a check could read it (`unobservedIssues`, in the worker). Absent: none,
@@ -843,6 +856,24 @@ const snapshotSchema = z.object({
   semantics: z.number().int().min(1).optional(),
   languages: z.object({ prefixes: z.array(z.string()), unprefixed: z.boolean() }).optional(),
   thresholds: thresholdOverridesSchema.optional(),
+  rendering: z.literal('rendered').optional(),
+  documentBasis: z.literal('rendered-v1').optional(),
+  documentCoverage: z
+    .object({
+      complete: z.number().int().min(0),
+      redirected: z.number().int().min(0),
+      unobserved: z.number().int().min(0),
+      legacyMissing: z.number().int().min(0),
+    })
+    .optional(),
+  rendersUnobserved: z.number().int().min(0).optional(),
+  renderCoverage: z
+    .object({
+      failedOrMissing: z.number().int().min(0),
+      truncated: z.number().int().min(0),
+      unsettled: z.number().int().min(0),
+    })
+    .optional(),
   unobserved: z.array(z.string()).optional(),
   dismissals: z
     .array(
@@ -1000,6 +1031,9 @@ export type ConditionStates = Partial<Record<AuditCondition, ConditionState>>
 
 /** What an analysis concluded about one URL of the site. */
 export interface UrlAuditState {
+  /** Absent on HTML and legacy analyses. Unknown input is retained per URL. */
+  documentObservation?: 'complete' | 'redirected' | 'unobserved'
+  documentUnobserved?: string[]
   participation: AuditParticipation
   /** The rule that decided it. `null`: the default. */
   participationRule: string | null

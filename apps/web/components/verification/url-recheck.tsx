@@ -1,5 +1,5 @@
 import { DismissalAttribution } from '@/components/audit/dismissal-attribution'
-import { isSiteScopedIssue, type VerificationComparison } from '@seotools/core/crawl/verification'
+import { canSettleIssue, type VerificationComparison } from '@seotools/core/crawl/verification'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import { CheckIcon, ClockIcon } from 'lucide-react'
 import { getFormatter, getTranslations } from 'next-intl/server'
@@ -74,7 +74,9 @@ export async function UrlRecheck({ data }: { data: UrlDetailData }) {
   const pending = excluded
     ? []
     : (comparison?.pendingFullCrawl ??
-      data.issues.map(({ issue }) => issue).filter(isSiteScopedIssue))
+      data.issues
+        .map(({ issue }) => issue)
+        .filter((issue) => !canSettleIssue(issue, crawl.rendering?.mode === 'rendered')))
   const detailsOf = (issue: string) => data.issues.find((found) => found.issue === issue)?.details
 
   return (
@@ -86,6 +88,7 @@ export async function UrlRecheck({ data }: { data: UrlDetailData }) {
         <h3 className="text-sm font-medium">{t('title')}</h3>
       </div>
       <p className="text-sm text-muted-foreground">{t('scope')}</p>
+      <p className="text-sm text-muted-foreground">{t('htmlOnly')}</p>
 
       {recheck.waiting && (
         <p role="status" className="flex items-center gap-2 text-sm">

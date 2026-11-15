@@ -12,11 +12,25 @@ Raspberry Pi to a VPS.
   blocks (auditing it is the point), with per-domain scope, depth, rate limits, request headers and
   Basic Auth for staging sites and lists of URLs. The Crawls area brings runs, comparison and
   rechecks together; schedules, in your time zone, live in Settings → Schedules.
-- **137 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
-  references, and page quality (titles, descriptions, headings, content, images, structured data
+- **Optional JavaScript rendering** in a browser container with no network of its own: every
+  request goes through the crawler, and a safety check refuses a browser whose own traffic is not
+  blocked. Choose HTML or Rendered per domain; nothing changes until a browser is connected, and new
+  domains use Rendered only when it is ready. Rendered crawls follow links that only exist after
+  JavaScript and judge document checks on the rendered page, while response and source diagnostics
+  and share previews keep the served HTML. They report what JavaScript adds or changes (text,
+  titles, descriptions, headings, canonicals, directives, structured data, hreflang and social
+  tags), pages linked only by JavaScript, client redirects, blocked resources, failed renders and
+  script errors. Pages that were not observed completely stay unknown, HTML and rendered results
+  are never mixed in comparisons, and HTML-only rechecks cannot settle rendered document findings.
+  Each URL shows what rendering observed and what it could not; see the
+  [setup guide](docs/rendering.md).
+- **161 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
+  references, page quality (titles, descriptions, headings, content, images, structured data
   against Google's rich result requirements, Open Graph and Twitter tags, accessibility, security
-  and HTML). Findings explain why they matter and show the evidence. Each URL has a search-result
-  and share-card preview; a later recheck refreshes it while keeping the crawl's preview available.
+  and HTML, including entities shown as text and very few internal links in the served HTML) and,
+  in rendered crawls, what JavaScript changes. Findings explain why they matter and show the
+  evidence. Each URL has a search-result and share-card preview; a later recheck refreshes it while
+  keeping the crawl's preview available.
 - **Your own rules**: declare which URLs should be indexed, require or forbid directives, sitemap
   membership, a canonical to another URL or the absence of internal links, and leave URLs out of
   the audit. One rule can cover several paths and start from a template. Compact controls show
@@ -97,24 +111,26 @@ Administrators can save an encrypted Google API key in **Administration → Inte
 All configuration is through environment variables. See [`.env.example`](.env.example) for the
 annotated list.
 
-| Variable                         | Default                  | Description                                                              |
-| -------------------------------- | ------------------------ | ------------------------------------------------------------------------ |
-| `BETTER_AUTH_SECRET`             | —                        | **Required.** 32+ chars. Signs sessions.                                 |
-| `BETTER_AUTH_URL`                | `http://localhost:3000`  | Public URL of the app. Must match the browser's address.                 |
-| `TRUSTED_ORIGINS`                | —                        | Extra comma-separated origins allowed to call the auth API.              |
-| `SETTINGS_ENCRYPTION_KEY`        | `BETTER_AUTH_SECRET`     | Key for secrets saved from the admin panel (SMTP password, Resend key).  |
-| `DATABASE_URL`                   | `file:/data/seotools.db` | `file:…` (SQLite) or `postgres://…`.                                     |
-| `DATABASE_DIALECT`               | inferred                 | `sqlite` \| `pg`. Only if it can't be inferred from the URL.             |
-| `RUN_MIGRATIONS`                 | `true`                   | Apply pending migrations at startup.                                     |
-| `PORT`                           | `3000`                   | HTTP port (in Compose: the host port; the container always uses 3000).   |
-| `LOG_LEVEL`                      | `info`                   | `fatal` … `trace`, or `silent`.                                          |
-| `WORKER_CONCURRENCY`             | `2`                      | Jobs processed in parallel.                                              |
-| `WORKER_POLL_INTERVAL_MS`        | `1000`                   | How often an idle worker looks for jobs.                                 |
-| `JOB_LOCK_TIMEOUT_MS`            | `300000`                 | A job running longer than this is assumed orphaned and re-queued.        |
-| `CRAWL_CONCURRENCY`              | `2`                      | Crawls running in parallel, in slots separate from other jobs.           |
-| `CRAWLER_ALLOW_PRIVATE_NETWORKS` | `false`                  | Let the crawler reach private addresses, to audit sites on your network. |
-| `SEOTOOLS_PAUSE_AUTOMATION`      | `false`                  | Staging copies: no scheduled crawls, refreshes, update checks or email.  |
-| `SEOTOOLS_MODE`                  | `all`                    | Docker only: `all`, `web`, `worker` or `migrate` (see below).            |
+| Variable                         | Default                                                                                                             | Description                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET`             | —                                                                                                                   | **Required.** 32+ chars. Signs sessions.                                 |
+| `BETTER_AUTH_URL`                | `http://localhost:3000`                                                                                             | Public URL of the app. Must match the browser's address.                 |
+| `TRUSTED_ORIGINS`                | —                                                                                                                   | Extra comma-separated origins allowed to call the auth API.              |
+| `SETTINGS_ENCRYPTION_KEY`        | `BETTER_AUTH_SECRET`                                                                                                | Key for secrets saved from the admin panel (SMTP password, Resend key).  |
+| `DATABASE_URL`                   | `file:/data/seotools.db`                                                                                            | `file:…` (SQLite) or `postgres://…`.                                     |
+| `DATABASE_DIALECT`               | inferred                                                                                                            | `sqlite` \| `pg`. Only if it can't be inferred from the URL.             |
+| `RUN_MIGRATIONS`                 | `true`                                                                                                              | Apply pending migrations at startup.                                     |
+| `PORT`                           | `3000`                                                                                                              | HTTP port (in Compose: the host port; the container always uses 3000).   |
+| `LOG_LEVEL`                      | `info`                                                                                                              | `fatal` … `trace`, or `silent`.                                          |
+| `WORKER_CONCURRENCY`             | `2`                                                                                                                 | Jobs processed in parallel.                                              |
+| `WORKER_POLL_INTERVAL_MS`        | `1000`                                                                                                              | How often an idle worker looks for jobs.                                 |
+| `JOB_LOCK_TIMEOUT_MS`            | `300000`                                                                                                            | A job running longer than this is assumed orphaned and re-queued.        |
+| `CRAWL_CONCURRENCY`              | `2`                                                                                                                 | Crawls running in parallel, in slots separate from other jobs.           |
+| `RENDER_BROWSER_URL`             | Optional worker DevTools URL (`http://browser:9222`); unset disables rendering. See [the guide](docs/rendering.md). |
+| `RENDER_CONCURRENCY`             | Simultaneous rendered pages per worker (default `2`, range `1–4`; use `1` on Raspberry Pi).                         |
+| `CRAWLER_ALLOW_PRIVATE_NETWORKS` | `false`                                                                                                             | Let the crawler reach private addresses, to audit sites on your network. |
+| `SEOTOOLS_PAUSE_AUTOMATION`      | `false`                                                                                                             | Staging copies: no scheduled crawls, refreshes, update checks or email.  |
+| `SEOTOOLS_MODE`                  | `all`                                                                                                               | Docker only: `all`, `web`, `worker` or `migrate` (see below).            |
 
 ### Accounts
 

@@ -176,7 +176,11 @@ describe('what a recheck can settle', () => {
       const byIssue = (a: { issue: string }, b: { issue: string }) => a.issue.localeCompare(b.issue)
       const expected = (await db.crawls.issuesOf(crawl.id, [url.urlHash]))
         .filter((row) => isUrlScopedIssue(row.issue))
-        .map((row) => ({ issue: row.issue, ...(row.details ? { details: row.details } : {}) }))
+        .map((row) => ({
+          issue: row.issue,
+          ...(row.details ? { details: row.details } : {}),
+          ...(row.evidence ? { evidence: row.evidence } : {}),
+        }))
         .sort(byIssue)
       expect([...(url.outcome?.findings ?? [])].sort(byIssue), url.url).toEqual(expected)
       expect(url.outcome?.unchecked, url.url).toEqual([])

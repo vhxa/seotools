@@ -73,6 +73,8 @@ export interface AnalysedResponse {
 export function analyseResponse(input: {
   item: { url: string; source: CrawlUrlSource }
   response: FetchedResponse
+  /** Browser DOM serialization is already Unicode, independent of the served charset. */
+  renderedHtml?: string
   /** The domain's optional crawl files: a feed or OpenSearch link in a home page is one. */
   optionalFiles: readonly string[]
   /** The domain's custom extractors, run on every HTML page. */
@@ -171,7 +173,7 @@ export function analyseResponse(input: {
   } else if (contentType && HTML.test(contentType)) {
     kind = 'page'
     if (body) {
-      const html = decodeText(body, contentType)
+      const html = input.renderedHtml ?? decodeText(body, contentType)
       const page = extractHtml(html, item.url)
       const extracted = extractCustom(html, input.extractors ?? [])
       if (Object.keys(extracted).length > 0) data.extracted = extracted

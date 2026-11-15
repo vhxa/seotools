@@ -1,0 +1,1 @@
+ALTER TABLE `crawl_url_renders` ADD `truncated` integer;

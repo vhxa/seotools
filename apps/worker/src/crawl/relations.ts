@@ -53,7 +53,9 @@ export const relationsApply = (site: Pick<Site, 'config'>) =>
 const originOnly = (site: Pick<Site, 'config'>) =>
   semanticsOf(site.config) >= ORIGIN_RELATIONS_SEMANTICS
 
-type Declared = Pick<AuditedUrl, 'intent' | 'conditions'> & { indexability: Indexability }
+type Declared = Pick<AuditedUrl, 'intent' | 'conditions' | 'blockersKnown'> & {
+  indexability: Indexability
+}
 
 /** The rules that accept each of these blockers of a URL (see `acceptedBlockers`). */
 function rulesAccepting(
@@ -102,7 +104,7 @@ export function acceptedBlockers(url: Declared): ReadonlySet<IndexabilityBlocker
  * not: expecting a noindex does not make a robots.txt block expected.
  */
 export function isExpectedOut(url: Declared): boolean {
-  if (url.indexability.state !== 'not-indexable') return false
+  if (url.blockersKnown === false || url.indexability.state !== 'not-indexable') return false
   const accepted = acceptedBlockers(url)
   return url.indexability.blockers.every((blocker) => accepted.has(blocker))
 }

@@ -1,5 +1,10 @@
 import type { FindingStateRecord } from '../types'
 import type { BotTestResult } from '../types'
+import {
+  emptyRenderCounts,
+  type RenderCounts,
+  type RenderState,
+} from '@seotools/core/crawl/render-state'
 import { detectIncidents, INCIDENT_STAGES } from '@seotools/core/incidents'
 import { incidentAlertJobId, vitalsAlertJobId } from '../mapping'
 import type { SiteIncident, NewCrawlFile } from '../types'
@@ -168,11 +173,13 @@ import {
   mailDeliveryRow,
   toAlertSubscription,
   toMailDelivery,
+  renderStateSql,
 } from '../mapping'
 import { assertKnownMigrations } from '../migration-guard'
 import * as schema from '../schema/sqlite'
 import type {
   CrawlLink,
+  CrawlUrlRender,
   CrawlUrlAudit,
   CrawlUrlBrief,
   CrawlUrlAcceptedIssue,
@@ -209,6 +216,7 @@ const {
   crawlSettings,
   crawlVitals,
   crawlUrlVitals,
+  crawlUrlRenders,
   crawlSchedules,
   crawls,
   crawlUrls,
@@ -381,7 +389,29 @@ export function createSqliteDatabase(options: {
         .select({ urlHash: crawlUrlAudit.urlHash })
         .from(crawlUrlAudit)
         .where(crawlAuditWhere(crawlUrlAudit, crawlId, filter)),
+    withRender: (states: readonly RenderState[] | null) =>
+      states === null
+        ? db
+            .select({ urlHash: crawlUrlRenders.urlHash })
+            .from(crawlUrlRenders)
+            .where(eq(crawlUrlRenders.crawlId, crawlId))
+        : db
+            .select({ urlHash: crawlUrlRenders.urlHash })
+            .from(crawlUrlRenders)
+            .innerJoin(
+              renderedUrls,
+              and(
+                eq(renderedUrls.crawlId, crawlUrlRenders.crawlId),
+                eq(renderedUrls.urlHash, crawlUrlRenders.urlHash),
+              ),
+            )
+            .where(and(eq(crawlUrlRenders.crawlId, crawlId), inArray(renderState, [...states]))),
   })
+
+  /** The URL of a render, to read whether its served HTML was cut. */
+  const renderedUrls = alias(crawlUrls, 'rendered_urls')
+  const servedLinks = alias(crawlUrlLinks, 'served_links')
+  const renderState = renderStateSql(crawlUrlRenders, renderedUrls.data)
 
   /** The same URL as the other side of a comparison, and the issues of each crawl being compared. */
   const otherUrls = alias(crawlUrls, 'other_urls')
@@ -1577,7 +1607,7 @@ export function createSqliteDatabase(options: {
       async get(id) {
         return db.select().from(companies).where(eq(companies.id, id)).get() ?? null
       },
-      async create({ name, host }) {
+      async create({ name, host, crawlSettings: initialSettings }) {
         const now = new Date()
         const company = { id: randomUUID(), name, createdAt: now }
         const domain = {
@@ -1590,6 +1620,12 @@ export function createSqliteDatabase(options: {
         db.transaction((tx) => {
           tx.insert(companies).values(company).run()
           tx.insert(domains).values(domain).run()
+          tx.insert(crawlSettings)
+            .values({
+              domainId: domain.id,
+              ...crawlSettingsColumns(initialSettings ?? DEFAULT_CRAWL_SETTINGS),
+            })
+            .run()
         })
         return { company, domain }
       },
@@ -1627,7 +1663,7 @@ export function createSqliteDatabase(options: {
           .get()
         return row ? { ...row.domain, company: row.company } : null
       },
-      async add({ companyId, host }) {
+      async add({ companyId, host, crawlSettings: initialSettings }) {
         const domain = {
           id: randomUUID(),
           companyId,
@@ -1635,7 +1671,15 @@ export function createSqliteDatabase(options: {
           createdAt: new Date(),
           archivedAt: null,
         }
-        db.insert(domains).values(domain).run()
+        db.transaction((tx) => {
+          tx.insert(domains).values(domain).run()
+          tx.insert(crawlSettings)
+            .values({
+              domainId: domain.id,
+              ...crawlSettingsColumns(initialSettings ?? DEFAULT_CRAWL_SETTINGS),
+            })
+            .run()
+        })
         return domain
       },
       async archive(id) {
@@ -1809,7 +1853,7 @@ export function createSqliteDatabase(options: {
           db.transaction((tx) => {
             assertNotArchived(tx, domainId)
             const snapshot = tx
-              .select({ ignoredParameters: crawlSettings.ignoredParameters })
+              .select()
               .from(crawlSettings)
               .where(eq(crawlSettings.domainId, domainId))
               .get()
@@ -1830,6 +1874,13 @@ export function createSqliteDatabase(options: {
                 trigger,
                 seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
                 ignoredParameters: snapshot?.ignoredParameters ?? null,
+                rendering: JSON.stringify({
+                  mode: snapshot?.renderingMode === 'headless' ? 'rendered' : 'html',
+                  waitMs: snapshot?.renderWaitMs ?? 5000,
+                  omittedHosts: snapshot?.renderOmittedHosts
+                    ? JSON.parse(snapshot.renderOmittedHosts)
+                    : [],
+                }),
                 jobId,
                 activeKey: domainId,
                 ref: last + 1,
@@ -2110,6 +2161,7 @@ export function createSqliteDatabase(options: {
               .run()
             tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId)).run()
             tx.delete(crawlSitemapHreflang).where(eq(crawlSitemapHreflang.crawlId, crawlId)).run()
+            tx.delete(crawlUrlRenders).where(eq(crawlUrlRenders.crawlId, crawlId)).run()
             tx.delete(crawlUrlVitals).where(eq(crawlUrlVitals.crawlId, crawlId)).run()
             tx.delete(crawlUrls).where(eq(crawlUrls.crawlId, crawlId)).run()
             tx.update(crawls)
@@ -2185,7 +2237,134 @@ export function createSqliteDatabase(options: {
           .all()
       },
 
-      async recordResult({ crawlId, urlHash, result, urls = [], links = [] }) {
+      async renderOf(crawlId, urlHash) {
+        const rows = db
+          .select()
+          .from(crawlUrlRenders)
+          .where(and(eq(crawlUrlRenders.crawlId, crawlId), eq(crawlUrlRenders.urlHash, urlHash)))
+          .all()
+        const row = rows[0]
+        return row ? { ...row, data: JSON.parse(row.data) as CrawlUrlRender['data'] } : null
+      },
+      async renders(crawlId) {
+        const rows = db
+          .select()
+          .from(crawlUrlRenders)
+          .where(eq(crawlUrlRenders.crawlId, crawlId))
+          .all()
+        return rows.map((row) => ({
+          ...row,
+          data: JSON.parse(row.data) as CrawlUrlRender['data'],
+        }))
+      },
+      async renderStatesOf(crawlId, urlHashes) {
+        const states = new Map<string, RenderState>()
+        for (const batch of chunk([...new Set(urlHashes)])) {
+          const rows = db
+            .select({ urlHash: crawlUrlRenders.urlHash, state: renderState })
+            .from(crawlUrlRenders)
+            .innerJoin(
+              renderedUrls,
+              and(
+                eq(renderedUrls.crawlId, crawlUrlRenders.crawlId),
+                eq(renderedUrls.urlHash, crawlUrlRenders.urlHash),
+              ),
+            )
+            .where(
+              and(eq(crawlUrlRenders.crawlId, crawlId), inArray(crawlUrlRenders.urlHash, batch)),
+            )
+            .all()
+          for (const row of rows) states.set(row.urlHash, row.state)
+        }
+        return states
+      },
+      async renderCounts(crawlIds) {
+        const counts = new Map<string, RenderCounts>()
+        for (const batch of chunk([...new Set(crawlIds)])) {
+          const rows = db
+            .select({
+              crawlId: crawlUrlRenders.crawlId,
+              state: renderState,
+              count: sql<number>`count(*)`,
+            })
+            .from(crawlUrlRenders)
+            .innerJoin(
+              renderedUrls,
+              and(
+                eq(renderedUrls.crawlId, crawlUrlRenders.crawlId),
+                eq(renderedUrls.urlHash, crawlUrlRenders.urlHash),
+              ),
+            )
+            .where(inArray(crawlUrlRenders.crawlId, batch))
+            .groupBy(sql`1`, sql`2`)
+            .all()
+          for (const row of rows) {
+            const found = counts.get(row.crawlId) ?? emptyRenderCounts()
+            found[row.state] += Number(row.count)
+            counts.set(row.crawlId, found)
+          }
+        }
+        return counts
+      },
+      async renderedLinksOf(crawlId, urlHash, limit) {
+        const scope = linkScope(crawlId, urlHash)
+        if (!scope) return { served: 0, total: 0, items: [] }
+        const anchors = ['anchor', 'anchor-nofollow'] as const
+        const from = and(
+          eq(crawlUrlLinks.crawlRef, scope.ref),
+          eq(crawlUrlLinks.source, scope.seq),
+          inArray(crawlUrlLinks.kind, anchors),
+          eq(crawlUrls.scope, 'internal'),
+        )
+        const join = crawlLinkJoin(crawlUrlLinks, crawlUrls, 'out', crawlId)
+        // What the served HTML links to, as the targets of the anchors that were not found by rendering.
+        const servedTargets = db
+          .select({ target: servedLinks.target })
+          .from(servedLinks)
+          .where(
+            and(
+              eq(servedLinks.crawlRef, scope.ref),
+              eq(servedLinks.source, scope.seq),
+              inArray(servedLinks.kind, anchors),
+              isNull(servedLinks.rendered),
+            ),
+          )
+        const onlyRendered = and(
+          from,
+          eq(crawlUrlLinks.rendered, 1),
+          notInArray(crawlUrlLinks.target, servedTargets),
+        )
+        const served = db
+          .select({ count: sql<number>`count(distinct ${crawlUrls.urlHash})` })
+          .from(crawlUrlLinks)
+          .innerJoin(crawlUrls, join)
+          .where(and(from, isNull(crawlUrlLinks.rendered)))
+        const total = db
+          .select({ count: sql<number>`count(distinct ${crawlUrls.urlHash})` })
+          .from(crawlUrlLinks)
+          .innerJoin(crawlUrls, join)
+          .where(onlyRendered)
+        const rows = db
+          .selectDistinct({ url: crawlUrls.url, urlHash: crawlUrls.urlHash })
+          .from(crawlUrlLinks)
+          .innerJoin(crawlUrls, join)
+          .where(onlyRendered)
+          .orderBy(asc(crawlUrls.url), asc(crawlUrls.urlHash))
+          .limit(limit)
+        const servedRow = served.get()
+        const totalRow = total.get()
+        const items = rows.all()
+        return {
+          served: Number(servedRow?.count ?? 0),
+          total: Number(totalRow?.count ?? 0),
+          items,
+        }
+      },
+      async saveBrowserWait(crawlId, milliseconds) {
+        db.update(crawls).set({ browserWaitMs: milliseconds }).where(eq(crawls.id, crawlId)).run()
+      },
+
+      async recordResult({ crawlId, urlHash, result, render, urls = [], links = [] }) {
         const columns = crawlResultColumns(result, new Date())
         db.transaction((tx) => {
           for (const batch of chunk(urls)) {
@@ -2215,6 +2394,16 @@ export function createSqliteDatabase(options: {
             for (const batch of chunk(rows)) {
               tx.insert(crawlUrlLinks).values(batch).onConflictDoNothing().run()
             }
+          }
+          if (render) {
+            const values = { crawlId, ...render, data: JSON.stringify(render.data) }
+            tx.insert(crawlUrlRenders)
+              .values(values)
+              .onConflictDoUpdate({
+                target: [crawlUrlRenders.crawlId, crawlUrlRenders.urlHash],
+                set: values,
+              })
+              .run()
           }
           tx.update(crawlUrls)
             .set(columns)
@@ -2628,6 +2817,7 @@ export function createSqliteDatabase(options: {
               sourceHash: sources.urlHash,
               targetHash: targets.urlHash,
               kind: crawlUrlLinks.kind,
+              rendered: crawlUrlLinks.rendered,
             })
             .from(crawlUrlLinks)
             .innerJoin(
@@ -2640,7 +2830,8 @@ export function createSqliteDatabase(options: {
             )
             .where(and(eq(crawlUrlLinks.crawlRef, ref), inArray(sources.urlHash, batch)))
             .all()
-          for (const row of rows as CrawlLink[]) found.push(row)
+          for (const { rendered, ...row } of rows as CrawlLink[])
+            found.push({ ...row, ...(rendered ? { rendered } : {}) })
         }
         return found
       },

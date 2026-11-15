@@ -14,6 +14,7 @@ import {
   type Translate,
 } from '@/lib/pages-export'
 import { listingOf, parseDetailQuery, unappliedFilters } from '@/lib/pages-query'
+import { isRenderedCrawl } from '@/lib/rendering'
 import { requireDomain } from '@/lib/workspace'
 import { dynamicTranslator } from '@/lib/dynamic-translator'
 
@@ -55,7 +56,10 @@ export async function GET(
   if (selection.kind !== 'selected') return text(404, 'Not found')
   const { crawl } = selection
 
-  const unapplied = unappliedFilters(query, { auditData: crawl.pagesAudit != null })
+  const unapplied = unappliedFilters(query, {
+    auditData: crawl.pagesAudit != null,
+    rendered: isRenderedCrawl(crawl),
+  })
   const listing = { crawlId: crawl.id, ...listingOf(query, unapplied) }
   const expected = await db.crawls.countListed(listing)
   const moment = crawlMoment(crawl)
@@ -92,6 +96,7 @@ export async function GET(
       onlyIssue: query.state === 'dismissed' ? null : query.issue,
       onlyAccepted: query.state === 'dismissed' ? (query.issue ?? 'all') : query.accepted,
       analysed: crawl.pagesByWorstIssue !== null,
+      rendered: isRenderedCrawl(crawl),
       translate,
       vitals: new Map(
         (await db.vitals.urls(crawl.id))
