@@ -16,7 +16,7 @@ export interface NuxtSiteOptions {
   pages: number
   shared?: number
   perPage?: number
-  /** Adds `/stuck`, whose DOM never finishes parsing: a classic script in its head never answers. */
+  /** Adds `/stuck`, whose DOM never finishes parsing: a script written into its head never answers. */
   stuck?: boolean
 }
 
@@ -95,7 +95,17 @@ export function nuxtSite(options: NuxtSiteOptions) {
   }
   pages.set('/js-only', document('/js-only', ['/'], []))
   if (options.stuck)
-    pages.set('/stuck', document('/stuck', ['/'], [], '<script src="/_nuxt/stuck.js"></script>'))
+    // Written by a script, so the crawl does not request it as a URL of its own: only the browser
+    // asks for it, and it blocks the parser until it answers.
+    pages.set(
+      '/stuck',
+      document(
+        '/stuck',
+        ['/'],
+        [],
+        `<script>document.write('<script src="/_nuxt/stuck.js"><\\/script>')</script>`,
+      ),
+    )
 
   const requests: string[] = []
   const createFetcher: CrawlEngineOptions['createFetcher'] = (config) => {

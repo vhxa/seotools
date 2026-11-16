@@ -284,7 +284,10 @@ recipe for attaching a second browser to that Application while preserving this 
 network boundary. Do not place the browser on `dokploy-network` or expose its CDP port.
 
 Use a separate Dokploy **Docker Compose** deployment of this repository's compose file for a
-trial, retaining the image-based `seotools` service and `.env` injection. Dokploy documents Compose
+trial, retaining the image-based `seotools` service and `.env` injection. Its environment carries
+the rendering settings like any `.env` (for an 8 GB server: `COMPOSE_PROFILES=rendering`,
+`RENDER_BROWSER_URL=http://browser:9222`, `RENDER_CONCURRENCY=4`, `RENDER_BROWSER_MEMORY=3g`,
+`RENDER_BROWSER_SHM=1g`); Compose substitutes the last two into the browser service. Dokploy documents Compose
 (and separately Swarm Stack), environment files and custom deployment commands. Use Compose,
 not Stack, and enable the rendering profile explicitly in that command. Migrate a backup of the
 existing data volume deliberately; a new deployment's named volume does not automatically contain
@@ -318,11 +321,52 @@ Sources checked for this guide:
 - [ws message limit](https://github.com/websockets/ws/blob/8.22.1/doc/ws.md#new-websocketaddress-protocols-options)
 - [Puppeteer supported browsers](https://pptr.dev/supported-browsers)
 
+## Sizing: concurrency and memory
+
+`RENDER_CONCURRENCY` accepts **1–4**, default **2**: how many pages are rendered at the same time,
+across all crawls. A crawl renders a page while it holds one of the domain's **simultaneous
+requests**, so set that crawl setting to at least `RENDER_CONCURRENCY` for renders to run in
+parallel. Each rendered page fetches up to 6 resources at once, and a crawl up to
+6 × `RENDER_CONCURRENCY`.
+
+The browser container's memory ceiling and shared memory come from `.env`, with the defaults in
+`docker-compose.yml`: `RENDER_BROWSER_MEMORY` (default `1536m`) and `RENDER_BROWSER_SHM` (default
+`256m`). The process limit stays at 256.
+
+| Server                            | `RENDER_CONCURRENCY` | `RENDER_BROWSER_MEMORY` | `RENDER_BROWSER_SHM` | Simultaneous requests |
+| --------------------------------- | -------------------: | ----------------------: | -------------------: | --------------------: |
+| VPS with 8 GB (3–4 GB for Chrome) |                    4 |                    `3g` |                 `1g` |                   4–6 |
+| Default                           |                    2 |                 `1536m` |               `256m` |                     2 |
+| Small Raspberry Pi                |                    1 |                 `1536m` |               `256m` |                     1 |
+
+```dotenv
+COMPOSE_PROFILES=rendering
+RENDER_BROWSER_URL=http://browser:9222
+RENDER_CONCURRENCY=4
+RENDER_BROWSER_MEMORY=3g
+RENDER_BROWSER_SHM=1g
+```
+
+Measured for 0.6.0-rc.2 on Docker Desktop arm64 with the pinned image under the **default**
+ceilings, rendering pages of the Nuxt-like test site (about 75 scripts and stylesheets each, 200–800
+ms per answer, a request that never ends, 5-second window), `3 × concurrency + 1` pages per run
+(`apps/worker/src/render/memory.integration.test.ts`, `RENDER_BENCH=1`):
+
+| Concurrent renders | Peak tasks | Peak summed RSS (MiB) | Peak cgroup memory (MiB) | Limit hits |
+| -----------------: | ---------: | --------------------: | -----------------------: | ---------: |
+|                  1 |         76 |                   417 |                      377 |          0 |
+|                  2 |         91 |                   514 |                      153 |          0 |
+|                  4 |        117 |                   746 |                      220 |          0 |
+
+Four renders fit the default ceilings with these pages, and gave the same figures with `3g`/`1g`.
+Real pages with large JavaScript heaps take more: the 8 GB row leaves room for that; measure your
+own pages before lowering it.
+
 ## Raspberry Pi and verification
 
-`RENDER_CONCURRENCY` accepts **1–4**, default **2**. Use `1` on a small Pi. The browser image
-is approximately 540 MB uncompressed on arm64. Compose sets a ceiling of **1,536 MiB** and
-**256 processes/threads**, with **256 MiB** shared memory. Keep spare memory for the app, database
+Use `RENDER_CONCURRENCY=1` on a small Pi. The browser image is approximately 540 MB uncompressed on
+arm64. Compose sets a ceiling of **1,536 MiB** and **256 processes/threads**, with **256 MiB**
+shared memory by default. Keep spare memory for the app, database
 and operating system. A memory-exhausted page is a failed render, never a successful audit of an
 empty page; no finite limit guarantees every hostile page succeeds.
 

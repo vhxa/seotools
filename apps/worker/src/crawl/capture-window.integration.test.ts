@@ -65,14 +65,14 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
       await db?.close()
     })
 
-    async function crawl(options: { waitMs?: number; stuck?: boolean } = {}) {
+    async function crawl(options: { waitMs?: number; stuck?: boolean; timeoutMs?: number } = {}) {
       await db.crawls.saveSettings(domainId, {
         ...(await db.crawls.settings(domainId)),
         renderingMode: 'headless',
         renderWaitMs: options.waitMs ?? WINDOW_MS,
         requestsPerSecond: 50,
         concurrency: 2,
-        timeoutMs: 15000,
+        timeoutMs: options.timeoutMs ?? 15000,
         maxRetries: 0,
         retainCrawls: null,
       })
@@ -164,7 +164,10 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
     }, 600_000)
 
     it('keeps a page whose DOM never parses unknown for that page only', async () => {
-      const run = await crawl({ stuck: true })
+      // Its script never answers within the crawl (the fetcher's timeout is longer), so the retry
+      // after the drain waits for the same request and fails too. With a shorter timeout the
+      // retry would render the page without that script, as a browser would after its timeout.
+      const run = await crawl({ stuck: true, timeoutMs: 600_000 })
       expect(run.crawl.status).toBe('completed')
       const stuck = crawlUrlHash(`${SITE}/stuck`)
       const render = run.renders.find((row) => row.urlHash === stuck)!
