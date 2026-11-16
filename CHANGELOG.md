@@ -20,6 +20,16 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Fixed
+
+- The overview of a rendered crawl showed "NaN pages rendered in a browser" (and a broken count of
+  pages not observed completely) from 1,000 pages on: it now prints the number.
+- The overview and the crawl list said that the coverage of a rendered crawl "has not been analysed"
+  even when it had been. The coverage is now read from the analysis on its own, and when an analysed
+  crawl did not record it the interface says so, instead of claiming it was never analysed.
+- In a rendered crawl whose coverage is not known, the overview's groups (links, text and tags that
+  appear only after rendering) said "None"; they now say it is not known.
+
 ## [0.6.0-rc.1] - 2026-11-15
 
 ### Added

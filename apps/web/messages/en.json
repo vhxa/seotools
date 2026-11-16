@@ -4108,6 +4108,7 @@
     "help": "This crawl opened its pages in a browser. Here: what only appears after rendering, and how many pages could not be observed completely.",
     "rendered": "{count, plural, one {# page rendered in a browser} other {# pages rendered in a browser}}",
     "coverageUnknown": "How many pages were observed completely is not known yet: this crawl has not been analysed.",
+    "coverageNotRecorded": "How many pages were observed completely was not recorded by the analysis of this crawl.",
     "allObserved": "Every page was observed completely.",
     "someUnobserved": "{count, plural, one {# page} other {# pages}} could not be observed completely.",
     "causes": "Failed or not rendered: {failed} · cut at the size limit: {truncated} · did not settle: {unsettled}. A page can be in several.",
@@ -4128,6 +4129,7 @@
         "rendered": "Pages were opened in a browser that ran their JavaScript."
       },
       "coverageUnknown": "Coverage not analysed yet",
+      "coverageNotRecorded": "Coverage not recorded",
       "allObserved": "All pages observed completely",
       "someUnobserved": "{count, plural, one {# page} other {# pages}} not observed completely",
       "causes": "failed or missing: {failed} · cut: {truncated} · did not settle: {unsettled}",

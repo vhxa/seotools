@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import { InfoHelp } from '@/components/help'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
-import { renderCoverageOf } from '@/lib/rendering'
+import { coverageGapOf, renderCoverageOf } from '@/lib/rendering'
 
 /**
  * What a finding group of the block counts. Each issue is listed on its own: one page can have
@@ -70,16 +70,16 @@ export function RenderingSummary({
         <InfoHelp label={t('title')}>{t('help')}</InfoHelp>
       </h2>
       <div className="grid gap-1 text-sm">
-        {rendered !== null && <p>{t('rendered', { count: format.number(rendered) })}</p>}
+        {rendered !== null && <p>{t('rendered', { count: rendered })}</p>}
         {coverage === null ? (
-          <p className="text-muted-foreground">{t('coverageUnknown')}</p>
+          <p className="text-muted-foreground">
+            {t(coverageGapOf(crawl) === 'not-analysed' ? 'coverageUnknown' : 'coverageNotRecorded')}
+          </p>
         ) : coverage.unobserved === 0 ? (
           <p>{t('allObserved')}</p>
         ) : (
           <>
-            <p className="font-medium">
-              {t('someUnobserved', { count: format.number(coverage.unobserved) })}
-            </p>
+            <p className="font-medium">{t('someUnobserved', { count: coverage.unobserved })}</p>
             {coverage.causes && (
               <p className="text-muted-foreground">
                 {t('causes', {
@@ -104,11 +104,14 @@ export function RenderingSummary({
               <div key={group} className="grid content-start gap-1">
                 <h3 className="text-sm text-muted-foreground">{t(`groups.${group}`)}</h3>
                 {rows.length === 0 ? (
-                  // Pages that could not be observed completely may have what is not listed here.
+                  // Pages that could not be observed completely, or whose coverage is not known, may
+                  // have what is not listed here: never "none" then.
                   <p className="text-sm">
-                    {coverage !== null && coverage.unobserved > 0
-                      ? t(group === 'links' ? 'linksUnknownGroup' : 'noneObserved')
-                      : t('none')}
+                    {coverage === null
+                      ? t('linksUnknownGroup')
+                      : coverage.unobserved > 0
+                        ? t(group === 'links' ? 'linksUnknownGroup' : 'noneObserved')
+                        : t('none')}
                   </p>
                 ) : (
                   <ul className="grid gap-0.5 text-sm">
@@ -134,7 +137,9 @@ export function RenderingSummary({
       ) : (
         <p className="text-sm text-muted-foreground">{t('notChecked')}</p>
       )}
-      {analysed && !anyFinding && <p className="text-xs text-muted-foreground">{t('noneNote')}</p>}
+      {analysed && !anyFinding && coverage?.unobserved === 0 && (
+        <p className="text-xs text-muted-foreground">{t('noneNote')}</p>
+      )}
     </section>
   )
 }

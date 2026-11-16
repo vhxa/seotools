@@ -19,6 +19,7 @@ import type {
   CrawlChange,
   UrlSnapshot,
   AuditSnapshot,
+  RenderObservation,
   AuditValue,
   IndexabilityState,
   IndexIntent,
@@ -422,6 +423,12 @@ export interface Crawl {
   auditVersion: number | null
   /** The rules that analysis used: what it takes to read it, or repeat it, as it was. */
   auditSnapshot: AuditSnapshot | null
+  /**
+   * How many pages of a rendered crawl its analysis saw completely, read from the stored snapshot on
+   * its own (it holds even where the snapshot cannot be read whole). `null`: not rendered, not
+   * analysed or not recorded; always `null` in `portfolio`, which reads no snapshot.
+   */
+  renderObservation: RenderObservation | null
   robots: CrawlRobotsFiles | null
   /** The results per URL were removed by the domain's retention setting; the counts remain. */
   pruned: boolean

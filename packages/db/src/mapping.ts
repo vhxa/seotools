@@ -32,6 +32,7 @@ import {
   isPageIssueId,
   isSecondaryFinding,
   parseAuditSnapshot,
+  parseRenderObservation,
   parseIssueEvidence,
   readUrlAuditState,
   serializeAuditSnapshot,
@@ -280,6 +281,7 @@ export type CrawlRow = Omit<
   | 'pagesWithType'
   | 'pagesAudit'
   | 'auditSnapshot'
+  | 'renderObservation'
 > & {
   rendering: string | null
   ignoredParameters: string | null
@@ -349,6 +351,7 @@ export const toCrawl = ({
       ? null
       : { audited, excluded, indexable, notIndexable, unknownIndexability },
   auditSnapshot: parseAuditSnapshot(auditSnapshot),
+  renderObservation: parseRenderObservation(auditSnapshot),
   ignoredParameters: (parseJson(ignoredParameters) ?? []) as string[],
   seedUrls: seedUrls === null ? null : (JSON.parse(seedUrls) as string[]),
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
