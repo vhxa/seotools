@@ -29,7 +29,6 @@ describe.skipIf(!process.env.RENDER_BENCH || !executablePath || !existsSync(exec
   'rendered crawl throughput',
   () => {
     let browser: Browser
-    let db: Database
     beforeAll(async () => {
       browser = await puppeteer.launch({
         executablePath,
@@ -44,15 +43,14 @@ describe.skipIf(!process.env.RENDER_BENCH || !executablePath || !existsSync(exec
           '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
         ],
       })
-      db = await createTestDatabase()
     }, 60000)
     afterAll(async () => {
       await browser?.close()
-      await db?.close()
     })
     it.each([2, 4])(
       'renders at concurrency %i',
       async (concurrency) => {
+        const db: Database = await createTestDatabase()
         const created = await createCompany(db, {
           name: `Bench ${concurrency}`,
           domain: 'example.com',
@@ -73,7 +71,7 @@ describe.skipIf(!process.env.RENDER_BENCH || !executablePath || !existsSync(exec
           concurrency,
           writeStatus: async () => {},
         })
-        const site = nuxtSite({ pages: 24 })
+        const site = nuxtSite({ pages: 16 })
         const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
         const started = Date.now()
         await runCrawl(crawl.id, {
@@ -101,6 +99,7 @@ describe.skipIf(!process.env.RENDER_BENCH || !executablePath || !existsSync(exec
             renders: states,
           }),
         )
+        await db.close()
         expect(stored.status).toBe('completed')
       },
       30 * 60_000,

@@ -104,7 +104,18 @@ export function nuxtSite(options: NuxtSiteOptions) {
       async fetch(url, { signal }) {
         signal.throwIfAborted()
         requests.push(url)
-        const { pathname, search } = new URL(url)
+        const { origin, pathname, search } = new URL(url)
+        // The site lives on one origin: the others redirect to it, like most sites.
+        if (origin !== SITE) {
+          return {
+            statusCode: 301,
+            headers: { location: `${SITE}${pathname}${search}` },
+            body: null,
+            truncated: false,
+            bytes: 0,
+            responseTimeMs: 1,
+          }
+        }
         const wait = (milliseconds: number) =>
           new Promise<void>((resolve, reject) => {
             const timer = setTimeout(resolve, milliseconds)

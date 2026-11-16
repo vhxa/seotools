@@ -459,7 +459,7 @@ it.each(['failed', 'truncated'] as const)(
       if (!input.url.endsWith('/menu')) return outcome
       // The omitted menu could have followed, indexable links and shorter routes to these pages.
       if (cause === 'failed') return { ...outcome, status: 'failed' as const }
-      return { ...outcome, truncated: cause === 'truncated', settled: cause !== 'unsettled' }
+      return { ...outcome, truncated: true }
     })
     const crawl = await start()
     await runCrawl(

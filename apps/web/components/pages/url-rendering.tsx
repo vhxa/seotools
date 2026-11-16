@@ -274,10 +274,12 @@ export function UrlRendering({
           <p className="text-muted-foreground">
             {view.loading.pending === null
               ? t('loading.unknownPending', { ms: view.loading.windowMs ?? 0 })
-              : t('loading.body', {
-                  ms: view.loading.windowMs ?? 0,
-                  pending: view.loading.pending,
-                })}{' '}
+              : view.loading.pending === 0
+                ? t('loading.bodyNone', { ms: view.loading.windowMs ?? 0 })
+                : t('loading.body', {
+                    ms: view.loading.windowMs ?? 0,
+                    pending: view.loading.pending,
+                  })}{' '}
             {t('loading.findings')}
           </p>
         </div>

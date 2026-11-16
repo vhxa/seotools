@@ -20,6 +20,39 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Changed
+
+- Rendered pages are captured like a search engine snapshots them: the domain's wait setting is now
+  a capture window that starts once the page's HTML is parsed, and the page is captured as it is at
+  the end of the window, or earlier once its network is quiet. A page captured while still loading
+  is an observation: its findings are reported (in rc.1 they were all unknown, so a slow site
+  reported no JavaScript finding at all), the URL detail, the pages table filter, the overview and
+  exports say "Captured while loading" with the requests still pending, and what such a capture
+  does not show is never reported as fixed in comparisons or alerts. Rendered crawls analysed under
+  rc.1 are analysed again at startup with this meaning.
+- A page's JavaScript findings are unknown only for that page when its render failed, was cut or is
+  missing, instead of for the whole crawl. Findings that depend on links between pages stay unknown
+  for the whole crawl in that case, but no longer because a page was captured while loading.
+- Rendered pages load their scripts, stylesheets and data in parallel, up to six at a time per page
+  and six per rendered page slot (`RENDER_CONCURRENCY`) for the whole crawl, and two pages needing
+  the same file share one request. The domain's requests per second now limits only the crawl's own
+  URLs, not what a rendered page loads; a server that asks to slow down still holds both.
+- A render that reaches its request or byte budget is now incomplete (unknown, "Cut at a limit"),
+  whichever request crossed it, so that the order in which parallel requests finish never changes a
+  finding.
+- The browser's memory ceiling and shared memory are set with `RENDER_BROWSER_MEMORY` and
+  `RENDER_BROWSER_SHM` in `.env` (defaults unchanged: `1536m` and `256m`), to render more pages at
+  once on a larger server; see the rendering guide for what to set on an 8 GB server and on a
+  Raspberry Pi.
+
+### Fixed
+
+- A completed rendered crawl could keep internal pages that answered 200 without a render ("Not
+  rendered by this crawl", reason missing). A rendered crawl now crawls such a page again before it
+  ends and, if it still has no render, records it as a failed render, so its findings are unknown
+  instead of read from the HTML.
+- A URL that finished while the crawler was reading its next batch could be crawled twice.
+
 ## [0.6.0-rc.1] - 2026-11-15
 
 ### Added

@@ -330,6 +330,8 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     })
     expect(downloads).toBeLessThanOrEqual(6)
     expect(result.requests.omittedCount).toBeGreaterThan(0)
+    // A budget crossed by any request leaves the whole render incomplete, whichever it was.
+    expect(result.truncated).toBe(true)
   })
   it('does not cache a script truncated by another page remaining budget', async () => {
     const cache = createRenderResourceCache()
@@ -357,8 +359,10 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     const large = small + '<!--' + ' '.repeat(RENDER_LIMITS.pageBytes - small.length - 10) + '-->'
     const first = await render('head', { requester, cache, document: baseDocument(large) })
     expect(first.requests.omitted.some((item) => item.reason === 'limit')).toBe(true)
+    expect(first.truncated).toBe(true)
     const second = await render('head', { requester, cache, document: baseDocument(small) })
     expect(second.html).toContain('<main>complete script</main>')
+    expect(second.truncated).toBe(false)
     expect(second.requests.cached).toBe(1)
     expect(downloads).toBe(1)
   }, 15000)
@@ -377,7 +381,49 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     const result = await render('head', { document, waitMs: 800 })
     expect(result.status).toBe('rendered')
     expect(result.settled).toBe(false)
+    expect(result.pending).toBeGreaterThanOrEqual(1)
     expect(Date.now() - start).toBeLessThan(1800)
+  })
+  it('starts the window once the DOM is parsed, after slow parser-blocking scripts', async () => {
+    const wait = (ms: number, signal?: AbortSignal) =>
+      new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, ms)
+        signal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      })
+    const requester = {
+      ...base.requester,
+      async fetchWithRetries(url: string, options: { signal?: AbortSignal }) {
+        if (url.endsWith('/hang')) {
+          await wait(60_000, options.signal)
+          return baseDocument('')
+        }
+        // Each classic script answers after 600 ms and blocks the parser until it does.
+        await wait(600, options.signal)
+        return {
+          ...baseDocument(
+            url.endsWith('/s2.js')
+              ? "setTimeout(()=>document.querySelector('main').textContent='in the window',300);setTimeout(()=>document.querySelector('main').textContent='too late',3000)"
+              : '',
+          ),
+          headers: { 'content-type': 'application/javascript' },
+        }
+      },
+    }
+    const body = `<main>served</main><script src="/s0.js"></script><script src="/s1.js"></script><script src="/s2.js"></script><script>fetch('/hang').catch(()=>{})</script>`
+    const started = Date.now()
+    const result = await render('head', { requester, document: baseDocument(body), waitMs: 800 })
+    expect(result.status).toBe('rendered')
+    expect(result.settled).toBe(false)
+    expect(result.pending).toBe(1)
+    // The scripts before the DOM was parsed (fetched together, as a browser does) did not eat
+    // into the 800 ms window.
+    expect(result.captureMs).toBeGreaterThanOrEqual(800)
+    expect(result.captureMs).toBeLessThan(1200)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(600 + 800)
+    expect(result.html).toContain('<main>in the window</main>')
   })
   it('closes popup and worker targets before they can alter the page', async () => {
     const body = `<main>unchanged</main><script>
@@ -415,6 +461,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       },
     })
     expect(result.status).toBe('rendered')
+    expect(result.truncated).toBe(true)
     expect(result.requests.made).toBeLessThanOrEqual(RENDER_LIMITS.requests)
     expect(result.requests.omittedCount).toBeGreaterThan(50)
     expect(result.requests.omitted).toHaveLength(RENDER_LIMITS.diagnosticItems)
@@ -487,7 +534,11 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
   it('renders the same page identically twenty times, excluding timing', async () => {
     const outcomes = new Set<string>()
     for (let i = 0; i < 20; i++) {
-      const { durationMs: _duration, ...outcome } = await render('nav', {
+      const {
+        durationMs: _duration,
+        captureMs: _capture,
+        ...outcome
+      } = await render('nav', {
         cache: createRenderResourceCache(),
       })
       outcomes.add(JSON.stringify(outcome))

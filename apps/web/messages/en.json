@@ -4029,7 +4029,8 @@
     "complete": "Rendered whole: captured once the network was quiet, and nothing was cut.",
     "loading": {
       "title": "Captured while still loading",
-      "body": "{pending, plural, =0 {Captured at the end of the {ms} ms window.} one {Captured at the end of the {ms} ms window, with # request still pending.} other {Captured at the end of the {ms} ms window, with # requests still pending.}}",
+      "body": "Captured at the end of the {ms} ms window, with {pending, plural, one {# request} other {# requests}} still pending.",
+      "bodyNone": "Captured at the end of the {ms} ms window.",
       "unknownPending": "Captured at the end of the {ms} ms window, with requests still pending.",
       "findings": "Its findings are reported from this capture. What had not appeared by then is not reported, and nothing it lacks is reported as fixed."
     },

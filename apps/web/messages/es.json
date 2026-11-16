@@ -4029,7 +4029,8 @@
     "complete": "Renderizada entera: capturada con la red en calma y sin cortes.",
     "loading": {
       "title": "Capturada mientras seguía cargando",
-      "body": "{pending, plural, =0 {Capturada al final de la ventana de {ms} ms.} one {Capturada al final de la ventana de {ms} ms, con # petición aún pendiente.} other {Capturada al final de la ventana de {ms} ms, con # peticiones aún pendientes.}}",
+      "body": "Capturada al final de la ventana de {ms} ms, con {pending, plural, one {# petición aún pendiente} other {# peticiones aún pendientes}}.",
+      "bodyNone": "Capturada al final de la ventana de {ms} ms.",
       "unknownPending": "Capturada al final de la ventana de {ms} ms, con peticiones aún pendientes.",
       "findings": "Sus hallazgos se informan a partir de esta captura. Lo que aún no había aparecido no se informa, y nada de lo que le falta se da por corregido."
     },
