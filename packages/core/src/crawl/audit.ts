@@ -850,6 +850,12 @@ export const EMPTY_AUDIT_SNAPSHOT: AuditSnapshot = { version: 0, rules: [] }
 
 export const semanticsOf = (snapshot: Pick<AuditSnapshot, 'semantics'>) => snapshot.semantics ?? 1
 
+const renderCoverageSchema = z.object({
+  failedOrMissing: z.number().int().min(0),
+  truncated: z.number().int().min(0),
+  unsettled: z.number().int().min(0),
+})
+
 const snapshotSchema = z.object({
   version: z.number().int().min(0),
   rules: z.array(ruleSchema),
@@ -867,13 +873,7 @@ const snapshotSchema = z.object({
     })
     .optional(),
   rendersUnobserved: z.number().int().min(0).optional(),
-  renderCoverage: z
-    .object({
-      failedOrMissing: z.number().int().min(0),
-      truncated: z.number().int().min(0),
-      unsettled: z.number().int().min(0),
-    })
-    .optional(),
+  renderCoverage: renderCoverageSchema.optional(),
   unobserved: z.array(z.string()).optional(),
   dismissals: z
     .array(
@@ -934,6 +934,36 @@ export function parseAuditSnapshot(raw: string | null): AuditSnapshot | null {
   try {
     const parsed = snapshotSchema.safeParse(JSON.parse(raw))
     return parsed.success ? (parsed.data as AuditSnapshot) : null
+  } catch {
+    return null
+  }
+}
+
+/** What a rendered crawl's analysis recorded of how many pages it saw completely. */
+export interface RenderObservation {
+  unobserved: number
+  /** Absent in snapshots that kept only the total. */
+  causes: { failedOrMissing: number; truncated: number; unsettled: number } | null
+}
+
+const renderObservationSchema = z.object({
+  rendering: z.literal('rendered'),
+  rendersUnobserved: z.number().int().min(0),
+  renderCoverage: renderCoverageSchema.optional(),
+})
+
+/**
+ * The render coverage of a stored snapshot, read on its own: it does not depend on the rules of the
+ * snapshot being readable. `null`: the crawl was not rendered, was never analysed, or its analysis
+ * did not record it, which is not the same as every page being whole.
+ */
+export function parseRenderObservation(raw: string | null): RenderObservation | null {
+  if (raw === null) return null
+  try {
+    const parsed = renderObservationSchema.safeParse(JSON.parse(raw))
+    return parsed.success
+      ? { unobserved: parsed.data.rendersUnobserved, causes: parsed.data.renderCoverage ?? null }
+      : null
   } catch {
     return null
   }

@@ -1,9 +1,17 @@
-import { createLogger } from '@seotools/core'
+import { createLogger, ISSUE_CATALOG_VERSION } from '@seotools/core'
 import { createCompany, createDatabase, type Database } from '@seotools/db'
+import { currentAuditConfig } from '../../apps/worker/src/crawl/analysis'
 import { runCrawl } from '../../apps/worker/src/crawl/engine'
 import { fakeSite, moved, type Answer } from '../../apps/worker/src/crawl/fake-site'
 import { SITE, page, sitemapOf } from '../../apps/worker/src/crawl/test-site'
-import { DATABASE_URL, HOST, OTHER_HOST } from './env'
+import {
+  DATABASE_URL,
+  HOST,
+  OTHER_HOST,
+  RENDERED_HOST,
+  RENDERED_PAGES,
+  RENDERED_UNOBSERVED,
+} from './env'
 
 const xml = (body: string): Answer => ({
   statusCode: 200,
@@ -38,6 +46,7 @@ export async function seed(): Promise<Database> {
   if (!created.ok) throw new Error('could not create the seed company')
   const other = await createCompany(db, { name: 'Elsewhere', domain: OTHER_HOST })
   if (!other.ok) throw new Error('could not create the second company')
+  await seedRenderedCrawl(db)
   const started = await db.crawls.start({
     domainId: created.domain.id,
     type: 'full',
@@ -54,4 +63,47 @@ export async function seed(): Promise<Database> {
   const crawl = await db.crawls.get(started.id)
   if (crawl?.status !== 'completed') throw new Error(`the seed crawl ended ${crawl?.status}`)
   return db
+}
+
+/**
+ * A rendered crawl that left more than a thousand pages unobserved, analysed with a snapshot that
+ * records it: only that coverage is made up, so that the lists and the dashboard can show it. No
+ * page is stored.
+ */
+async function seedRenderedCrawl(db: Database) {
+  const company = await createCompany(db, { name: 'Browser Ltd', domain: RENDERED_HOST })
+  if (!company.ok) throw new Error('could not create the rendered company')
+  const domainId = company.domain.id
+  await db.crawls.saveSettings(domainId, {
+    ...(await db.crawls.settings(domainId)),
+    renderingMode: 'headless',
+  })
+  const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+  if (!crawl) throw new Error('the rendered crawl did not start')
+  await db.crawls.finish(crawl.id, { status: 'completed' })
+  const config = await currentAuditConfig(db, domainId)
+  await db.crawls.saveAnalysis({
+    crawlId: crawl.id,
+    issues: [],
+    pages: { issue: 0, warning: 0, opportunity: 0 },
+    withType: { issue: 0, warning: 0, opportunity: 0 },
+    catalog: ISSUE_CATALOG_VERSION,
+    audit: {
+      snapshot: {
+        ...config,
+        rendering: 'rendered',
+        documentBasis: 'rendered-v1',
+        rendersUnobserved: RENDERED_UNOBSERVED,
+        renderCoverage: { failedOrMissing: 0, truncated: 0, unsettled: RENDERED_UNOBSERVED },
+      },
+      pages: {
+        audited: RENDERED_PAGES,
+        excluded: 0,
+        indexable: RENDERED_PAGES,
+        notIndexable: 0,
+        unknownIndexability: 0,
+      },
+      urls: [],
+    },
+  })
 }

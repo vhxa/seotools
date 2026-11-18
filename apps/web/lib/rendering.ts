@@ -6,16 +6,14 @@ export const isRenderedCrawl = (crawl: Pick<Crawl, 'rendering'>) =>
 
 /**
  * What a rendered crawl says of how many pages it saw completely (`rendersUnobserved`, `renderCoverage`
- * of the analysis). `null` when the crawl was not rendered, or was never analysed: nothing is then
- * known about coverage, which is not the same as every page being whole.
+ * of the analysis). `null` when the crawl was not rendered, or its analysis did not record it: nothing
+ * is then known about coverage, which is not the same as every page being whole.
  */
-export function renderCoverageOf(crawl: Pick<Crawl, 'rendering' | 'auditSnapshot'>) {
-  if (!isRenderedCrawl(crawl)) return null
-  const snapshot = crawl.auditSnapshot
-  if (!snapshot || snapshot.rendering !== 'rendered' || snapshot.rendersUnobserved === undefined)
-    return null
-  return {
-    unobserved: snapshot.rendersUnobserved,
-    causes: snapshot.renderCoverage ?? null,
-  }
+export function renderCoverageOf(crawl: Pick<Crawl, 'rendering' | 'renderObservation'>) {
+  if (!isRenderedCrawl(crawl) || !crawl.renderObservation) return null
+  return { unobserved: crawl.renderObservation.unobserved, causes: crawl.renderObservation.causes }
 }
+
+/** Why the coverage of a rendered crawl is not known: it was never analysed, or the analysis left it out. */
+export const coverageGapOf = (crawl: Pick<Crawl, 'auditVersion'>) =>
+  crawl.auditVersion === null ? ('not-analysed' as const) : ('not-recorded' as const)

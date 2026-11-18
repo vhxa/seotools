@@ -4113,6 +4113,7 @@
     "help": "Este rastreo abrió sus páginas en un navegador. Aquí: lo que solo aparece tras renderizar y cuántas páginas no pudieron observarse por completo.",
     "rendered": "{count, plural, one {# página renderizada en un navegador} other {# páginas renderizadas en un navegador}}",
     "coverageUnknown": "Aún no se sabe cuántas páginas se observaron por completo: este rastreo no se ha analizado.",
+    "coverageNotRecorded": "El análisis de este rastreo no registró cuántas páginas se observaron por completo.",
     "allObserved": "Todas las páginas se observaron por completo.",
     "someUnobserved": "{count, plural, one {# página no pudo observarse por completo} other {# páginas no pudieron observarse por completo}}.",
     "causes": "Fallidas o sin renderizar: {failed} · cortadas por un límite de tamaño o de peticiones: {truncated}. Una página puede estar en ambas.",
@@ -4134,6 +4135,7 @@
         "rendered": "Las páginas se abrieron en un navegador que ejecutó su JavaScript."
       },
       "coverageUnknown": "Cobertura aún sin analizar",
+      "coverageNotRecorded": "Cobertura no registrada",
       "allObserved": "Todas las páginas observadas por completo",
       "someUnobserved": "{count, plural, one {# página no observada por completo} other {# páginas no observadas por completo}}",
       "causes": "fallidas o ausentes: {failed} · cortadas: {truncated}",

@@ -1182,6 +1182,55 @@ export function describeDatabaseContract(
         })
       })
 
+      it('gives the render coverage of an analysed crawl in every list, and none where no snapshot is read', async () => {
+        const domainId = await domain()
+        const crawl = await finishedCrawl(domainId)
+        const coverage = { failedOrMissing: 2, truncated: 1, unsettled: 3 }
+        await saveIssues({
+          crawlId: crawl.id,
+          issues: [],
+          pages: { issue: 0, warning: 0, opportunity: 0 },
+          withType: { issue: 0, warning: 0, opportunity: 0 },
+          catalog: 'test',
+          audit: {
+            snapshot: {
+              ...EMPTY_AUDIT_SNAPSHOT,
+              rendering: 'rendered',
+              rendersUnobserved: 2033,
+              renderCoverage: coverage,
+            },
+          },
+        })
+        const expected = { unobserved: 2033, causes: coverage }
+        expect((await db.crawls.get(crawl.id))?.renderObservation).toEqual(expected)
+        expect((await db.crawls.getInDomain(domainId, crawl.id))?.renderObservation).toEqual(
+          expected,
+        )
+        expect((await db.crawls.list(domainId))[0]?.renderObservation).toEqual(expected)
+        expect((await db.crawls.list(domainId, { type: 'full' }))[0]?.renderObservation).toEqual(
+          expected,
+        )
+        expect((await db.crawls.latestWithResults(domainId, 'full'))?.renderObservation).toEqual(
+          expected,
+        )
+        // The portfolio reads no snapshot, so it says nothing of coverage instead of a guess.
+        expect((await db.crawls.portfolio()).get(domainId)?.crawls[0]).toMatchObject({
+          auditSnapshot: null,
+          renderObservation: null,
+        })
+        // Not analysed, and analysed without rendering: nothing is known.
+        const plain = await finishedCrawl(domainId)
+        expect((await db.crawls.get(plain.id))?.renderObservation).toBeNull()
+        await saveIssues({
+          crawlId: plain.id,
+          issues: [],
+          pages: { issue: 0, warning: 0, opportunity: 0 },
+          withType: { issue: 0, warning: 0, opportunity: 0 },
+          catalog: 'test',
+        })
+        expect((await db.crawls.get(plain.id))?.renderObservation).toBeNull()
+      })
+
       it('pages through the URLs of the site by hash, leaving external ones out', async () => {
         const domainId = await domain()
         const { id } = await startCrawl(domainId)

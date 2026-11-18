@@ -21,6 +21,7 @@ import {
   parseAuditReason,
   parseAuditSelector,
   parseAuditSnapshot,
+  parseRenderObservation,
   parseLanguagePrefixes,
   reachesRelations,
   readUrlAuditState,
@@ -1503,4 +1504,45 @@ it('round trips dismissal snapshots, omits progress, and reads legacy snapshots 
   expect(parseAuditSnapshot(JSON.stringify(snapshot))?.dismissals).toEqual(snapshot.dismissals)
   expect(snapshot.dismissals).toHaveLength(2)
   expect(parseAuditSnapshot('{"version":0,"rules":[]}')?.dismissals).toBeUndefined()
+})
+
+describe('parseRenderObservation', () => {
+  const coverage = { failedOrMissing: 1, truncated: 0, unsettled: 2 }
+
+  it('reads the coverage of a rendered analysis', () => {
+    const raw = JSON.stringify({
+      version: 3,
+      rules: [],
+      rendering: 'rendered',
+      rendersUnobserved: 2033,
+      renderCoverage: coverage,
+    })
+    expect(parseRenderObservation(raw)).toEqual({ unobserved: 2033, causes: coverage })
+    expect(
+      parseRenderObservation(JSON.stringify({ rendering: 'rendered', rendersUnobserved: 0 })),
+    ).toEqual({
+      unobserved: 0,
+      causes: null,
+    })
+  })
+
+  it('reads it even where the rest of the snapshot cannot be read', () => {
+    const raw = JSON.stringify({
+      rendering: 'rendered',
+      rendersUnobserved: 5,
+      rules: [{ dimension: 'from-the-future' }],
+    })
+    expect(parseAuditSnapshot(raw)).toBeNull()
+    expect(parseRenderObservation(raw)).toEqual({ unobserved: 5, causes: null })
+  })
+
+  it('says nothing for HTML crawls, a missing total, no snapshot or garbage', () => {
+    expect(parseRenderObservation(null)).toBeNull()
+    expect(parseRenderObservation('not json')).toBeNull()
+    expect(parseRenderObservation(JSON.stringify({ version: 1, rules: [] }))).toBeNull()
+    expect(parseRenderObservation(JSON.stringify({ rendering: 'rendered' }))).toBeNull()
+    expect(
+      parseRenderObservation(JSON.stringify({ rendering: 'rendered', rendersUnobserved: -1 })),
+    ).toBeNull()
+  })
 })
