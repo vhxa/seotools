@@ -615,17 +615,24 @@ export async function loadSite(
     }
   }
   let rendersUnobserved = 0
-  const renderCoverage = { failedOrMissing: 0, truncated: 0, unsettled: 0 }
+  const renderCoverage: NonNullable<AuditSnapshot['renderCoverage']> = {
+    failedOrMissing: 0,
+    truncated: 0,
+    unsettled: 0,
+  }
   if (crawl.rendering?.mode === 'rendered') {
     for (const url of internal) {
       if (!url.contentPage) continue
       const render = renders.get(url.url.urlHash)
       url.render = render
       // A missing truncation flag in an older render is missing evidence, never proof of a whole page.
+      const legacyUnsettled =
+        render?.status === 'rendered' &&
+        !render.settled &&
+        !render.data.redirected &&
+        !render.data.capture
       const failedOrMissing =
-        render?.status !== 'rendered' ||
-        render.truncated === null ||
-        (!render.settled && !render.data.redirected && !render.data.capture)
+        render?.status !== 'rendered' || (render.truncated === null && !legacyUnsettled)
       const truncated = url.url.data?.truncated === true || render?.truncated === true
       // Captured while still loading: an observation, counted to say so, not a missing one.
       const unsettled =
@@ -633,10 +640,12 @@ export async function loadSite(
         !render.settled &&
         render.data.redirected !== true &&
         !!render.data.capture
+      if (legacyUnsettled)
+        renderCoverage.legacyUnsettled = (renderCoverage.legacyUnsettled ?? 0) + 1
       if (failedOrMissing) renderCoverage.failedOrMissing++
       if (truncated) renderCoverage.truncated++
       if (unsettled) renderCoverage.unsettled++
-      if (failedOrMissing || truncated) rendersUnobserved++
+      if (failedOrMissing || truncated || legacyUnsettled) rendersUnobserved++
     }
   }
 

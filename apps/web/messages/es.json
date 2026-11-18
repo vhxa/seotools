@@ -620,7 +620,7 @@
         "complete": "Completo",
         "loading": "Capturada mientras cargaba",
         "redirect": "Redirigida por JavaScript",
-        "incomplete": "Incompleta (fallida o cortada)",
+        "incomplete": "Incompleta (fallida, cortada, desconocida o sin estabilizar)",
         "not-rendered": "Sin renderizar"
       }
     },
@@ -4120,8 +4120,8 @@
     "coverageNotRecorded": "El análisis de este rastreo no registró cuántas páginas se observaron por completo.",
     "allObserved": "Todas las páginas se observaron por completo.",
     "someUnobserved": "{count, plural, one {# página no pudo observarse por completo} other {# páginas no pudieron observarse por completo}}.",
-    "causes": "Fallidas o sin renderizar: {failed} · cortadas por un límite de tamaño o de peticiones: {truncated}. Una página puede estar en ambas.",
-    "loading": "{count, plural, one {# página se capturó mientras seguía cargando} other {# páginas se capturaron mientras seguían cargando}}: sus hallazgos se informan.",
+    "causes": "Fallidas o sin renderizar: {failed} · cortadas por un límite de tamaño o de peticiones: {truncated} · no se estabilizaron (renderizados antiguos): {legacyUnsettled}. Las cifras pueden solaparse.",
+    "loading": "{count, plural, one {# página se capturó mientras seguía cargando} other {# páginas se capturaron mientras seguían cargando}}: sus hallazgos se informan. Los hallazgos sobre enlaces entre páginas o que comparan unas páginas con otras no se comparan entre rastreos si una captura no los mostró.",
     "linksUnknown": "Los hallazgos que dependen de qué páginas enlazan a cuáles (páginas huérfanas, páginas enlazadas solo por JavaScript, páginas sin enlaces internos) son desconocidos en este rastreo.",
     "groups": {
       "links": "Enlaces solo tras renderizar",
@@ -4142,7 +4142,7 @@
       "coverageNotRecorded": "Cobertura no registrada",
       "allObserved": "Todas las páginas observadas por completo",
       "someUnobserved": "{count, plural, one {# página no observada por completo} other {# páginas no observadas por completo}}",
-      "causes": "fallidas o ausentes: {failed} · cortadas: {truncated}",
+      "causes": "fallidas o ausentes: {failed} · cortadas: {truncated} · no se estabilizaron: {legacyUnsettled}",
       "linksNotEvaluated": "No se evaluaron los hallazgos que dependen de los enlaces entre páginas.",
       "linksEvaluated": "Se evaluaron los hallazgos que dependen de los enlaces entre páginas."
     },

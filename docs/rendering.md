@@ -15,7 +15,7 @@ The explicit per-check table is `ISSUE_BASIS` in `packages/core/src/crawl/basis.
 A complete document requires whole served HTML, a whole nonredirect render (captured once the
 network was quiet, or at the end of the capture window while still loading) and stored extracted
 values. Unsettled nonredirected rc.1 rows without `data.capture` stay unknown on reanalysis:
-they did not settle and are not capture-window observations. Failed, truncated, missing/legacy and unrendered other-2xx documents are unknown, never
+they did not settle and are not capture-window observations. Coverage counts them separately as "did not settle", rather than failed or not rendered. Failed, truncated, missing/legacy and unrendered other-2xx documents are unknown, never
 judged on an HTML fallback. A document captured while still loading is an observation: its
 findings are reported, and an issue it does not show is unverified for that URL (never "fixed",
 "resolved" or absent in comparisons and alerts), because it may only not have appeared yet
@@ -25,7 +25,7 @@ fail) and the findings about what the page itself links to (`links-to-*`,
 `links-only-after-rendering`). Crawl stamps and URL details state the analysed
 basis and separate document coverage from navigation coverage. Page-local document uncertainty
 applies only to that URL; duplicates, canonical/hreflang targets and other checks involving other
-pages remain unverified crawl-wide. If any page was captured while still loading, an absent graph finding is unobserved for the
+pages remain unverified crawl-wide. If any page was captured while still loading, an absent non-page-local document or graph finding is unobserved for the
 whole crawl, in both comparison directions. Positive findings remain reported; persisted
 `renderCoverage.unsettled` carries this observation limit into comparisons and alerts.
 Between an HTML crawl and a rendered crawl only findings about the server's answer (status,

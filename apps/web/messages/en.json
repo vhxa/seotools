@@ -620,7 +620,7 @@
         "complete": "Complete",
         "loading": "Captured while still loading",
         "redirect": "Redirected by JavaScript",
-        "incomplete": "Incomplete (failed or cut)",
+        "incomplete": "Incomplete (failed, cut, unknown or did not settle)",
         "not-rendered": "Not rendered"
       }
     },
@@ -4120,8 +4120,8 @@
     "coverageNotRecorded": "How many pages were observed completely was not recorded by the analysis of this crawl.",
     "allObserved": "Every page was observed completely.",
     "someUnobserved": "{count, plural, one {# page} other {# pages}} could not be observed completely.",
-    "causes": "Failed or not rendered: {failed} · cut at a size or request limit: {truncated}. A page can be in both.",
-    "loading": "{count, plural, one {# page was captured while still loading} other {# pages were captured while still loading}}: their findings are reported.",
+    "causes": "Failed or not rendered: {failed} · cut at a size or request limit: {truncated} · did not settle (older renders): {legacyUnsettled}. Counts can overlap.",
+    "loading": "{count, plural, one {# page was captured while still loading} other {# pages were captured while still loading}}: their findings are reported. Findings about links between pages, or that compare pages with each other, which a capture did not show are not compared between crawls.",
     "linksUnknown": "Findings that depend on which pages link to which (orphan pages, pages linked only by JavaScript, pages without internal links) are unknown for this crawl.",
     "groups": {
       "links": "Links only after rendering",
@@ -4142,7 +4142,7 @@
       "coverageNotRecorded": "Coverage not recorded",
       "allObserved": "All pages observed completely",
       "someUnobserved": "{count, plural, one {# page} other {# pages}} not observed completely",
-      "causes": "failed or missing: {failed} · cut: {truncated}",
+      "causes": "failed or missing: {failed} · cut: {truncated} · did not settle: {legacyUnsettled}",
       "linksNotEvaluated": "Findings that depend on links between pages were not evaluated.",
       "linksEvaluated": "Findings that depend on links between pages were evaluated."
     },

@@ -528,8 +528,35 @@ it('keeps rc.1 unsettled rows with extracted facts unobserved on reanalysis', as
   expect(site.get(`${SITE}/`)!.renderedAnchorsOut).toBe(0)
   expect(stored.auditSnapshot?.rendersUnobserved).toBe(1)
   expect(stored.auditSnapshot?.renderCoverage).toEqual({
-    failedOrMissing: 1,
+    failedOrMissing: 0,
     truncated: 0,
     unsettled: 0,
+    legacyUnsettled: 1,
   })
+})
+
+it('does not resolve or introduce cross-page document findings when another page is loading', async () => {
+  const title = 'A shared title for both pages'
+  const data = {
+    [`${SITE}/`]: page('/', { title, links: '<a href="/b">B</a>' }),
+    [`${SITE}/b`]: page('/b', { title }),
+  }
+  const run = (loading: boolean) =>
+    crawl(data, async (input) => ({
+      ...renderedOutcome(input),
+      ...(loading && input.url === `${SITE}/b`
+        ? { html: body('/b', { title: 'Loading placeholder' }), settled: false, pending: 1 }
+        : {}),
+    }))
+  const first = await run(false)
+  expect(await ids(first)).toContain('title-duplicate')
+  const second = await run(true)
+  expect(await ids(second)).not.toContain('title-duplicate')
+  const [home] = await db.crawls.auditOf(second.id, [hash('/')])
+  expect(home!.documentLoading).not.toBe(true)
+  const change = await compareWithPrevious({ db, target: second, exact: true })
+  expect(change.byIssue.get('title-duplicate')).toMatchObject({ resolved: 0, unverified: 2 })
+  const third = await run(false)
+  const back = await compareWithPrevious({ db, target: third, exact: true })
+  expect(back.byIssue.get('title-duplicate')).toMatchObject({ fresh: 0, unverified: 2 })
 })

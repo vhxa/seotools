@@ -832,7 +832,12 @@ export interface AuditSnapshot {
   /** Pages without a whole, settled render and whole served HTML; link absence is unknown. */
   rendersUnobserved?: number
   /** Counts can overlap; failedOrMissing includes legacy renders without truncation metadata. */
-  renderCoverage?: { failedOrMissing: number; truncated: number; unsettled: number }
+  renderCoverage?: {
+    failedOrMissing: number
+    truncated: number
+    unsettled: number
+    legacyUnsettled?: number
+  }
   /**
    * Issues this analysis could not see, sorted: their input was not recorded for some page, because
    * the crawl was made before a check could read it (`unobservedIssues`, in the worker). Absent: none,
@@ -854,6 +859,7 @@ const renderCoverageSchema = z.object({
   failedOrMissing: z.number().int().min(0),
   truncated: z.number().int().min(0),
   unsettled: z.number().int().min(0),
+  legacyUnsettled: z.number().int().min(0).optional(),
 })
 
 const snapshotSchema = z.object({
@@ -943,7 +949,7 @@ export function parseAuditSnapshot(raw: string | null): AuditSnapshot | null {
 export interface RenderObservation {
   unobserved: number
   /** Absent in snapshots that kept only the total. */
-  causes: { failedOrMissing: number; truncated: number; unsettled: number } | null
+  causes: NonNullable<AuditSnapshot['renderCoverage']> | null
 }
 
 const renderObservationSchema = z.object({

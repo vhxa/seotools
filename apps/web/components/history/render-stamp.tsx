@@ -45,6 +45,7 @@ export function RenderStamp({
             t('causes', {
               failed: coverage.causes.failedOrMissing,
               truncated: coverage.causes.truncated,
+              legacyUnsettled: coverage.causes.legacyUnsettled ?? 0,
             }) + ' · '}
           {t('linksNotEvaluated')}
         </span>

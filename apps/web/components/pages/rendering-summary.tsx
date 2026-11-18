@@ -85,6 +85,7 @@ export function RenderingSummary({
                 {t('causes', {
                   failed: coverage.causes.failedOrMissing,
                   truncated: coverage.causes.truncated,
+                  legacyUnsettled: coverage.causes.legacyUnsettled ?? 0,
                 })}
               </p>
             )}
