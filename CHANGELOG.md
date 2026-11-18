@@ -29,10 +29,11 @@ which moves the entries of `[Unreleased]` into the new version.
   reported no JavaScript finding at all), the URL detail, the pages table filter, the overview and
   exports say "Captured while loading" with the requests still pending, and what such a capture
   does not show is never reported as fixed in comparisons or alerts. Rendered crawls analysed under
-  rc.1 are analysed again at startup with this meaning.
+  rc.1 are analysed again at startup; older unsettled rows without capture metadata stay unknown.
 - A page's JavaScript findings are unknown only for that page when its render failed, was cut or is
   missing, instead of for the whole crawl. Findings that depend on links between pages stay unknown
-  for the whole crawl in that case, but no longer because a page was captured while loading.
+  for the whole crawl in that case. Captures while loading keep positive graph findings, but an
+  absent graph finding is unverified across the whole crawl, never new or resolved.
 - Rendered pages load their scripts, stylesheets and data in parallel, up to six at a time per page
   and six per rendered page slot (`RENDER_CONCURRENCY`) for the whole crawl, and two pages needing
   the same file share one request. The domain's requests per second now limits only the crawl's own
