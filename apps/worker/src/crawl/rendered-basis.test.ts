@@ -509,7 +509,7 @@ it('does not resolve or introduce graph findings across a missing loading-window
 it('keeps rc.1 unsettled rows with extracted facts unobserved on reanalysis', async () => {
   const result = await crawl({ [`${SITE}/`]: page('/', { title: 'Before' }) }, async (input) => ({
     ...renderedOutcome(input),
-    html: body('/', { title: 'After' }),
+    html: body('/', { title: 'After', links: '<a href="/target">Target</a>' }),
     settled: false,
     pending: 1,
   }))
@@ -521,4 +521,15 @@ it('keeps rc.1 unsettled rows with extracted facts unobserved on reanalysis', as
   const [audit] = await db.crawls.auditOf(result.id, [hash('/')])
   expect(audit!.documentObservation).toBe('unobserved')
   expect(audit!.documentLoading).not.toBe(true)
+  expect(audit!.documentUnobserved).toContain('title-missing')
+  expect((await db.crawls.renderStatesOf(result.id, [hash('/')])).get(hash('/'))).toBe('unknown')
+  const stored = (await db.crawls.get(result.id))!
+  const site = await loadSite(db, stored, stored.auditSnapshot!)
+  expect(site.get(`${SITE}/`)!.renderedAnchorsOut).toBe(0)
+  expect(stored.auditSnapshot?.rendersUnobserved).toBe(1)
+  expect(stored.auditSnapshot?.renderCoverage).toEqual({
+    failedOrMissing: 1,
+    truncated: 0,
+    unsettled: 0,
+  })
 })

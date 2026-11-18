@@ -3997,7 +3997,7 @@
       "unsettled": "Captured at the end of the capture window, with requests still pending. Its findings are reported; what had not appeared by then is never reported as fixed.",
       "truncated": "The rendered page or the served HTML was cut at a size or request limit. Its JavaScript findings are unknown.",
       "failed": "The browser could not render the page. Its JavaScript findings are unknown.",
-      "unknown": "This render was stored before it was recorded whether the page was whole, so its JavaScript findings are unknown.",
+      "unknown": "This older render did not settle, or did not record whether the page was whole. Its JavaScript findings are unknown.",
       "notRendered": "This crawl has no render for this URL: nothing was observed."
     }
   },

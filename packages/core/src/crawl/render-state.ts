@@ -14,7 +14,8 @@
  * The first matching state wins, in this order:
  * - `failed`: the render did not produce a document.
  * - `truncated`: the rendered document, or the served HTML, was cut at the size limit.
- * - `unknown`: a render stored before truncation was recorded, so whether it was whole is unknown.
+ * - `unknown`: a legacy render without truncation metadata, or an unsettled nonredirected render
+ *   without capture metadata (rc.1 did not settle, so its findings stay unknown).
  * - `redirect`: JavaScript sent the page to another address; the abandoned document is not compared.
  * - `unsettled`: captured while still loading: at the end of the capture window, with requests in
  *   flight. An observation.

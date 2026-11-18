@@ -14,7 +14,8 @@ The explicit per-check table is `ISSUE_BASIS` in `packages/core/src/crawl/basis.
 
 A complete document requires whole served HTML, a whole nonredirect render (captured once the
 network was quiet, or at the end of the capture window while still loading) and stored extracted
-values. Failed, truncated, missing/legacy and unrendered other-2xx documents are unknown, never
+values. Unsettled nonredirected rc.1 rows without `data.capture` stay unknown on reanalysis:
+they did not settle and are not capture-window observations. Failed, truncated, missing/legacy and unrendered other-2xx documents are unknown, never
 judged on an HTML fallback. A document captured while still loading is an observation: its
 findings are reported, and an issue it does not show is unverified for that URL (never "fixed",
 "resolved" or absent in comparisons and alerts), because it may only not have appeared yet
@@ -24,7 +25,9 @@ fail) and the findings about what the page itself links to (`links-to-*`,
 `links-only-after-rendering`). Crawl stamps and URL details state the analysed
 basis and separate document coverage from navigation coverage. Page-local document uncertainty
 applies only to that URL; duplicates, canonical/hreflang targets and other checks involving other
-pages remain unverified crawl-wide. Graph absence retains its crawl-wide completeness rule.
+pages remain unverified crawl-wide. If any page was captured while still loading, an absent graph finding is unobserved for the
+whole crawl, in both comparison directions. Positive findings remain reported; persisted
+`renderCoverage.unsettled` carries this observation limit into comparisons and alerts.
 Between an HTML crawl and a rendered crawl only findings about the server's answer (status,
 redirects, timing, headers, robots.txt, sitemaps, vitals) are compared. Document, link and
 served-source findings, including JavaScript ones, are unverified, even if page-local or reported
@@ -81,8 +84,8 @@ never rendered twice on resume. Per-URL render facts and diagnostics are pruned 
 results; HTML is never stored. A page whose render failed, is missing, or was cut at a size or
 request limit (or whose served HTML was) makes link absence unknown for the whole crawl:
 link-dependent findings are then not claimed, and comparisons treat them as unverified. A page
-captured while still loading does not: its links are what it had at the end of the window, and the
-findings about which pages link to which are reported.
+captured while still loading keeps positive graph findings, but a missing graph finding cannot
+be called resolved, fixed or new against that capture.
 
 ## Where it shows in the interface
 
@@ -240,7 +243,7 @@ complement that contract; they cannot make a changing API answer deterministic.
 
 **Capture window.** The domain's wait setting is a capture window (default five seconds, at most
 thirty; some crawlers call it an AJAX timeout). It starts when the page's DOM is parsed
-(`DOMContentLoaded` of the main frame), so neither the document, the scripts it waits for nor the
+(the main target's CDP `Page.domContentEventFired`, independent of loading child frames), so neither the document, the scripts it waits for nor the
 worker's own queues eat into it; the `load` event is not needed. The page is captured as it is at
 the earlier of: no request in flight for 500 ms since the DOM was parsed (`settled`), or the end of
 the window (captured while still loading: `settled` false, with the number of requests still in

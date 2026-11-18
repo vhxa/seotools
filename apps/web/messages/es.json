@@ -3997,7 +3997,7 @@
       "unsettled": "Capturada al final de la ventana de captura, con peticiones aún pendientes. Sus hallazgos se informan; lo que todavía no había aparecido nunca se da por corregido.",
       "truncated": "La página renderizada o el HTML servido se cortó por un límite de tamaño o de peticiones. Sus hallazgos de JavaScript son desconocidos.",
       "failed": "El navegador no pudo renderizar la página. Sus hallazgos de JavaScript son desconocidos.",
-      "unknown": "Este renderizado se guardó antes de registrar si la página estaba entera, así que sus hallazgos de JavaScript son desconocidos.",
+      "unknown": "Este renderizado anterior no terminó de cargar o no registró si la página estaba completa. Sus hallazgos de JavaScript son desconocidos.",
       "notRendered": "Este rastreo no tiene renderizado de esta URL: no se observó nada."
     }
   },

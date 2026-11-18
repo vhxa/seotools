@@ -174,8 +174,8 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       },
       ...extra,
     })
-  it.each([700, 5000])(
-    'starts the main DOM window independently of a %i ms iframe',
+  it.each([700, null])(
+    'starts the main DOM window independently of a %s ms (null = hanging) iframe',
     async (delay) => {
       const result = await render('head', {
         waitMs: 200,
@@ -188,7 +188,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
           async fetchWithRetries(url, options) {
             if (url.endsWith('/frame')) {
               await new Promise<void>((resolve) => {
-                const timer = setTimeout(resolve, delay)
+                const timer = delay === null ? undefined : setTimeout(resolve, delay)
                 options?.signal?.addEventListener(
                   'abort',
                   () => {
