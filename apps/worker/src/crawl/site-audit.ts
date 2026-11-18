@@ -613,11 +613,17 @@ export async function loadSite(
       const render = renders.get(url.url.urlHash)
       url.render = render
       // A missing truncation flag in an older render is missing evidence, never proof of a whole page.
-      const failedOrMissing = render?.status !== 'rendered' || render.truncated === null
+      const failedOrMissing =
+        render?.status !== 'rendered' ||
+        render.truncated === null ||
+        (!render.settled && !render.data.redirected && !render.data.capture)
       const truncated = url.url.data?.truncated === true || render?.truncated === true
       // Captured while still loading: an observation, counted to say so, not a missing one.
       const unsettled =
-        render?.status === 'rendered' && !render.settled && render.data.redirected !== true
+        render?.status === 'rendered' &&
+        !render.settled &&
+        render.data.redirected !== true &&
+        !!render.data.capture
       if (failedOrMissing) renderCoverage.failedOrMissing++
       if (truncated) renderCoverage.truncated++
       if (unsettled) renderCoverage.unsettled++

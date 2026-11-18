@@ -133,8 +133,9 @@ describe('renderViewOf', () => {
     })
     // Captured while still loading is an observation: compared, and says so.
     expect(view({ settled: false })).toMatchObject({
-      kind: 'complete',
-      loading: { windowMs: 5000, pending: null },
+      kind: 'incomplete',
+      state: 'unknown',
+      legacyUnsettled: true,
     })
     expect(
       view({

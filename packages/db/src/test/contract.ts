@@ -216,7 +216,8 @@ export function describeDatabaseContract(
       const cases: { name: string; render: RenderObservation | null }[] = [
         { name: 'complete', render: base },
         { name: 'redirect', render: { ...base, settled: false, redirected: true } },
-        { name: 'unsettled', render: { ...base, settled: false } },
+        { name: 'unsettled', render: { ...base, settled: false, captured: true } },
+        { name: 'rc1-unsettled', render: { ...base, settled: false } },
         { name: 'truncated', render: { ...base, truncated: true } },
         { name: 'served', render: { ...base, servedTruncated: true } },
         { name: 'failed', render: { ...base, status: 'failed', settled: false } },
@@ -270,6 +271,7 @@ export function describeDatabaseContract(
                   failure: render.status === 'failed' ? 'navigation' : null,
                   data: {
                     facts: null,
+                    ...(render.captured ? { capture: { pending: 1, afterMs: 1000 } } : {}),
                     redirected: render.redirected,
                     requests: {},
                     scriptErrors: { count: 0, first: [] },
@@ -314,18 +316,24 @@ export function describeDatabaseContract(
       expect(await listed('redirect')).toEqual(['redirect'])
       // Captured while still loading is an observation, with a filter of its own.
       expect(await listed('loading')).toEqual(['unsettled'])
-      expect(await listed('incomplete')).toEqual(['failed', 'legacy', 'served', 'truncated'])
+      expect(await listed('incomplete')).toEqual([
+        'failed',
+        'legacy',
+        'rc1-unsettled',
+        'served',
+        'truncated',
+      ])
       expect(await listed('not-rendered')).toEqual(['none'])
       expect(
         await db.crawls.countListed({ crawlId: crawl.id, view: 'all', rendering: 'incomplete' }),
-      ).toBe(4)
+      ).toBe(5)
       expect((await db.crawls.renderCounts([crawl.id, 'unknown-crawl'])).get(crawl.id)).toEqual({
         complete: 2,
         redirect: 1,
         unsettled: 1,
         truncated: 2,
         failed: 1,
-        unknown: 1,
+        unknown: 2,
       })
       expect((await db.crawls.renderCounts(['unknown-crawl'])).size).toBe(0)
       expect((await db.crawls.renderOf(crawl.id, hash('failed')))?.failure).toBe('navigation')

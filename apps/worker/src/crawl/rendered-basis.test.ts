@@ -477,3 +477,48 @@ it.each(['required', 'forbidden'] as const)(
       expect(a.served![key], key).toEqual(a[key])
   },
 )
+
+it('does not resolve or introduce graph findings across a missing loading-window edge', async () => {
+  const data = {
+    [`${SITE}/`]: page('/'),
+    [`${SITE}/target`]: page('/target'),
+    [`${SITE}/sitemap.xml`]: xml(sitemapOf(['/target'])),
+  }
+  const run = (link: boolean) =>
+    crawl(data, async (input) => ({
+      ...renderedOutcome(
+        input,
+        link && input.url === `${SITE}/` ? '<a href="/target">Target</a>' : '',
+      ),
+      settled: false,
+      pending: 1,
+    }))
+  const first = await run(true)
+  expect(await ids(first, '/target')).toContain('linked-only-by-javascript')
+  const second = await run(false)
+  const change = await compareWithPrevious({ db, target: second, exact: true })
+  expect(change.byIssue.get('linked-only-by-javascript')).toMatchObject({
+    resolved: 0,
+    unverified: 1,
+  })
+  const third = await run(true)
+  const back = await compareWithPrevious({ db, target: third, exact: true })
+  expect(back.byIssue.get('linked-only-by-javascript')).toMatchObject({ fresh: 0, unverified: 1 })
+})
+
+it('keeps rc.1 unsettled rows with extracted facts unobserved on reanalysis', async () => {
+  const result = await crawl({ [`${SITE}/`]: page('/', { title: 'Before' }) }, async (input) => ({
+    ...renderedOutcome(input),
+    html: body('/', { title: 'After' }),
+    settled: false,
+    pending: 1,
+  }))
+  const [render] = await db.crawls.renders(result.id)
+  const { capture: _capture, ...data } = render!.data
+  await db.crawls.saveRenders(result.id, [{ ...render!, data }])
+  await analyseCrawl(db, result.id, await currentAuditConfig(db, domainId))
+  expect(await ids(result)).not.toContain('title-changed-by-javascript')
+  const [audit] = await db.crawls.auditOf(result.id, [hash('/')])
+  expect(audit!.documentObservation).toBe('unobserved')
+  expect(audit!.documentLoading).not.toBe(true)
+})

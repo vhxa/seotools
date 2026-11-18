@@ -801,7 +801,8 @@ export const renderStateSql = (columns: RenderColumns, servedData: AnyColumn) =>
     when ${columns.truncated} is true or ${servedData} like '%"truncated":true%' then 'truncated'
     when ${columns.truncated} is null then 'unknown'
     when ${columns.data} like '%"redirected":true%' then 'redirect'
-    when not ${columns.settled} then 'unsettled'
+    when not ${columns.settled} and ${columns.data} like '%"capture":{%' then 'unsettled'
+    when not ${columns.settled} then 'unknown'
     else 'complete' end`
 
 /** The URLs whose status is of a class, or that have none. */

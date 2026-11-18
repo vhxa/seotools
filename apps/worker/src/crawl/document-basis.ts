@@ -31,7 +31,8 @@ export function selectDocument(
     url.contentPage &&
     url.url.data?.truncated !== true &&
     render?.status === 'rendered' &&
-    render.truncated === false
+    render.truncated === false &&
+    (render.settled || render.data.redirected === true || !!render.data.capture)
   const complete = whole && !render.data.redirected && !!render.data.facts && !!render.data.page
   url.documentLoading = complete && !render.settled
   url.documentObservation = complete

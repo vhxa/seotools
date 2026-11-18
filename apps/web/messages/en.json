@@ -3977,7 +3977,7 @@
     "failed": "Rendering failed.",
     "redirected": "Redirect observed; the source document was abandoned.",
     "truncated": "The served or rendered document was truncated.",
-    "unsettled": "The page was captured while still loading, and this analysis did not use such captures.",
+    "unsettled": "The page did not settle, and this older render recorded no capture window.",
     "missing": "A complete document observation was not stored.",
     "coverage": "{complete, number} complete documents; {redirected, number} redirects; {unobserved, number} unobserved documents.",
     "dependencies": "Some checks depend on a canonical, stored inputs or other pages that were not completely observed, or on a finding that could not be judged.",
@@ -4100,7 +4100,11 @@
         "navigation": "the navigation failed",
         "not-rendered": "the crawl could not render it"
       },
-      "findingsUnknown": "Its JavaScript findings are unknown for this crawl: nothing is claimed about what JavaScript changes, and nothing is reported as fixed."
+      "findingsUnknown": "Its JavaScript findings are unknown for this crawl: nothing is claimed about what JavaScript changes, and nothing is reported as fixed.",
+      "unsettled": {
+        "title": "The page did not settle",
+        "body": "This older render did not settle and recorded no capture window. Its findings are unknown."
+      }
     },
     "redirect": {
       "title": "JavaScript sent this page to another address",

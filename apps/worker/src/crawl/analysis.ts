@@ -194,7 +194,8 @@ export async function analyseCrawl(
   // An HTML crawl observed no JavaScript. A rendered one keeps what a page's render could not tell
   // on that page (`documentUnobserved`, from `selectDocument`): only the graph, which reads every
   // page's links, is unknown for the whole crawl when a render failed, was cut or is missing.
-  // A page captured while still loading is an observation and leaves nothing unknown here.
+  // Loading captures retain positive findings; their persisted renderCoverage.unsettled makes
+  // absent graph findings unobserved in compare.observe (including alerts).
   if (crawl.rendering?.mode !== 'rendered') unobserved.push(...PAGE_ISSUES_IDS_FOR_RENDERING)
   else if (site.rendersUnobserved > 0) unobserved.push(...RENDERED_GRAPH_ISSUES)
   const saved = await db.crawls.saveAnalysis({

@@ -205,6 +205,7 @@ export function crawlAuditScope(crawl: CrawlLike): string | null {
 
 /** What a crawl can vouch for when its findings are compared with those of another. */
 export interface CrawlFacts {
+  graphLoading?: boolean
   documentBasis?: 'rendered-v1'
   graphBasis?: 'rendered'
   identity?: string
@@ -237,6 +238,7 @@ export interface CrawlFacts {
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
   return {
+    graphLoading: (crawl.auditSnapshot?.renderCoverage?.unsettled ?? 0) > 0,
     documentBasis: crawl.auditSnapshot?.documentBasis,
     graphBasis: crawl.auditSnapshot?.rendering,
     identity: JSON.stringify([...new Set(crawl.ignoredParameters ?? [])].sort()),
@@ -582,6 +584,13 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   )
     return unknown('unobserved')
   if (crawl.unobserved?.has(issue)) return unknown('unobserved')
+  if (
+    crawl.graphLoading &&
+    issueBasisOf(issue) === 'graph' &&
+    !url.issues.has(issue) &&
+    !url.accepted?.has(issue)
+  )
+    return unknown('unobserved')
   // A document captured while still loading shows what it had: an issue it reports is observed,
   // but one it does not may only not have arrived yet. Never "fixed" or "absent" on that.
   if (

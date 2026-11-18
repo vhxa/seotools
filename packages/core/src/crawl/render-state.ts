@@ -32,6 +32,7 @@ export type RenderState = (typeof RENDER_STATES)[number]
 
 export interface RenderObservation {
   status: 'rendered' | 'failed'
+  captured?: boolean
   settled: boolean
   /** `null`: stored before truncation was recorded. */
   truncated: boolean | null
@@ -45,7 +46,7 @@ export function renderStateOf(render: RenderObservation): RenderState {
   if (render.truncated === true || render.servedTruncated) return 'truncated'
   if (render.truncated === null) return 'unknown'
   if (render.redirected) return 'redirect'
-  if (!render.settled) return 'unsettled'
+  if (!render.settled) return render.captured ? 'unsettled' : 'unknown'
   return 'complete'
 }
 

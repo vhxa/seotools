@@ -346,18 +346,35 @@ export async function renderPage(
     // The window starts when the DOM is parsed, so neither the document nor the resources it
     // waited for (nor our own queues) eat into it. The load event is not needed.
     let parsedAt: number | null = null
+    await cdp.send('Page.enable')
+    let onParsed: () => void = () => {}
+    const parsed = new Promise<void>((resolve) => {
+      onParsed = () => {
+        parsedAt = Date.now()
+        resolve()
+      }
+      cdp.once('Page.domContentEventFired', onParsed)
+    })
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
     try {
-      await Promise.race([
-        interrupted,
-        page.goto(input.url, { waitUntil: 'domcontentloaded', timeout: loadGraceMs, signal }),
-      ])
-      parsedAt = Date.now()
+      const grace = new Promise<never>((_resolve, reject) => {
+        graceTimer = setTimeout(() => reject(new Error('load-timeout')), loadGraceMs)
+      })
+      // Puppeteer's lifecycle watcher waits for child frames too. Observe the main target's own
+      // DOM event independently; still consume navigation errors (including stopped redirects).
+      const navigation = page.goto(input.url, { waitUntil: 'domcontentloaded', timeout: 0, signal })
+      await Promise.race([interrupted, parsed, grace, navigation.then(() => parsed)])
     } catch (error) {
       if (!result.redirected)
         fail(
-          error instanceof Error && error.name === 'TimeoutError' ? 'load-timeout' : 'navigation',
+          error instanceof Error && error.message === 'load-timeout'
+            ? 'load-timeout'
+            : 'navigation',
           'The document was not parsed in time.',
         )
+    } finally {
+      clearTimeout(graceTimer)
+      cdp.off('Page.domContentEventFired', onParsed)
     }
     if (signal.aborted) throw new DOMException('Render stopped', 'AbortError')
     if (crashed || !browser.connected) throw new RenderInterruptedError('Browser or page crashed')

@@ -174,6 +174,41 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       },
       ...extra,
     })
+  it.each([700, 5000])(
+    'starts the main DOM window independently of a %i ms iframe',
+    async (delay) => {
+      const result = await render('head', {
+        waitMs: 200,
+        loadGraceMs: 1200,
+        document: baseDocument(
+          `<title>Before</title><iframe src="http://site.test/frame"></iframe><script>setTimeout(()=>document.title='Late',400)</script>`,
+        ),
+        requester: {
+          ...base.requester,
+          async fetchWithRetries(url, options) {
+            if (url.endsWith('/frame')) {
+              await new Promise<void>((resolve) => {
+                const timer = setTimeout(resolve, delay)
+                options?.signal?.addEventListener(
+                  'abort',
+                  () => {
+                    clearTimeout(timer)
+                    resolve()
+                  },
+                  { once: true },
+                )
+              })
+              return baseDocument('<p>Frame</p>')
+            }
+            return base.requester.fetchWithRetries(url, options)
+          },
+        },
+      })
+      expect(result.status).toBe('rendered')
+      expect(result.html).toContain('<title>Before</title>')
+      expect(result.durationMs).toBeLessThan(1000)
+    },
+  )
   it('passes every isolation probe without interception', async () => {
     const status = await checkIsolation(browser)
     expect(status.state, status.detail).toBe('ready')

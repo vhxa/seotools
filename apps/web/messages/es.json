@@ -3977,7 +3977,7 @@
     "failed": "Falló la renderización.",
     "redirected": "Se observó una redirección y no se terminó de observar el documento de origen.",
     "truncated": "El documento recibido o renderizado quedó incompleto.",
-    "unsettled": "La página se capturó mientras seguía cargando, y este análisis no usaba esas capturas.",
+    "unsettled": "La página no terminó de cargar y este renderizado anterior no registró una ventana de captura.",
     "missing": "No se guardó una observación completa del documento.",
     "coverage": "{complete, number} documentos completos; {redirected, number} redirecciones; {unobserved, number} documentos sin observar.",
     "dependencies": "Algunas comprobaciones dependen de una canónica, de datos guardados o de otras páginas que no se observaron por completo, o de un hallazgo que no se pudo evaluar.",
@@ -4100,7 +4100,11 @@
         "navigation": "falló la navegación",
         "not-rendered": "el rastreo no pudo renderizarla"
       },
-      "findingsUnknown": "Sus hallazgos de JavaScript son desconocidos en este rastreo: no se afirma nada sobre lo que cambia JavaScript y nada se da por corregido."
+      "findingsUnknown": "Sus hallazgos de JavaScript son desconocidos en este rastreo: no se afirma nada sobre lo que cambia JavaScript y nada se da por corregido.",
+      "unsettled": {
+        "title": "La página no terminó de cargar",
+        "body": "Este renderizado anterior no terminó de cargar y no registró una ventana de captura. Sus hallazgos son desconocidos."
+      }
     },
     "redirect": {
       "title": "JavaScript llevó esta página a otra dirección",

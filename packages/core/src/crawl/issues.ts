@@ -320,7 +320,7 @@ export const PAGE_ISSUE_IDS = Object.keys(PAGE_ISSUES) as PageIssueId[]
  *   JavaScript findings a page's render could not tell are unknown for that page only, not for the
  *   whole crawl. Rendered crawls analysed under 0.6.0-rc.1 are analysed again with this meaning.
  */
-const CHECKS_REVISION = 16
+const CHECKS_REVISION = 17
 
 /**
  * Identifies this list of issues with their types and importance, and the way they are detected.

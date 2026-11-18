@@ -216,7 +216,7 @@ export function UrlRendering({
         <Alert className="has-[>svg]:grid-cols-[auto_minmax(0,1fr)]">
           <TriangleAlertIcon />
           <AlertTitle className="min-w-0">
-            {t(`incomplete.${view.state as 'failed'}.title`)}
+            {t(`incomplete.${view.legacyUnsettled ? 'unsettled' : (view.state as 'failed')}.title`)}
           </AlertTitle>
           <AlertDescription className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
             <p>
@@ -224,7 +224,7 @@ export function UrlRendering({
                 ? t(
                     `incomplete.truncated.${view.cut.rendered ? (view.cut.served ? 'both' : 'rendered') : 'served'}`,
                   )
-                : t(`incomplete.${view.state}.body`)}
+                : t(`incomplete.${view.legacyUnsettled ? 'unsettled' : view.state}.body`)}
             </p>
             {view.state === 'failed' && failure && (
               <p>

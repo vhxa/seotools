@@ -28,7 +28,8 @@ function completeRender(url: AuditedUrl, site: Site) {
     url.contentPage &&
     url.url.data?.truncated !== true &&
     render?.status === 'rendered' &&
-    render.truncated === false
+    render.truncated === false &&
+    (render.settled || render.data.redirected === true || !!render.data.capture)
     ? render
     : null
 }

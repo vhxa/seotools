@@ -175,6 +175,7 @@ export type RenderView =
   | {
       kind: 'incomplete'
       state: IncompleteState
+      legacyUnsettled: boolean
       /** Which document was cut: the one the browser built, the served HTML, or both. */
       cut: { rendered: boolean; served: boolean }
       failure: string | null
@@ -220,6 +221,7 @@ export function renderViewOf(input: {
   const state = renderStateOf({
     status: render.status,
     settled: render.settled,
+    captured: !!render.data.capture,
     truncated: render.truncated,
     redirected: render.data.redirected === true,
     servedTruncated,
@@ -250,6 +252,7 @@ export function renderViewOf(input: {
   }
   return {
     kind: 'incomplete',
+    legacyUnsettled: state === 'unknown' && !render.settled && !render.data.capture,
     state,
     cut: { rendered: render.truncated === true, served: servedTruncated },
     failure: render.failure,
