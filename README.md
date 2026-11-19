@@ -176,6 +176,8 @@ seo.example.com {
 ### Dokploy / Coolify
 
 Both can deploy either the prebuilt image or this repository's `Dockerfile` (or `docker-compose.yml`).
+With JavaScript rendering on Dokploy, use a Docker Compose service with
+`deploy/dokploy/docker-compose.yml` instead: [docs/deploy-dokploy.md](docs/deploy-dokploy.md).
 
 1. Create an application from the image `ghcr.io/vhxa/seotools:<version>` (or from this Git
    repo), with a version or a patch channel such as `0.2`, not `latest`.

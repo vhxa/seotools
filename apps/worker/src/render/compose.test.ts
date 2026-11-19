@@ -50,3 +50,18 @@ it('forwards resolver rules as one literal argument through the Compose shell en
     rule,
   ])
 })
+
+it('deploys the same browser on Dokploy, with no published port, build or database override', () => {
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
+  const root = read('../../../../docker-compose.yml')
+  const dokploy = read('../../../../deploy/dokploy/docker-compose.yml')
+  const browserOf = (compose: string) =>
+    compose.split('\n  browser:\n')[1]?.split('\nvolumes:')[0]?.trim() ?? ''
+  expect(browserOf(dokploy)).not.toBe('')
+  expect(browserOf(dokploy)).toBe(browserOf(root))
+  const app = dokploy.split('\n  seotools:\n')[1]?.split('\n  browser:\n')[0] ?? ''
+  expect(app).toContain('pull_policy: always')
+  expect(app).toContain('networks: [dokploy-network, render]')
+  for (const forbidden of ['ports:', 'build:', 'DATABASE_URL']) expect(app).not.toContain(forbidden)
+  expect(dokploy).toMatch(/\n {2}render:\n {4}internal: true\n/)
+})

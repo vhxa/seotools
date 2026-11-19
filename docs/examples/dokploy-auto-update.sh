@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Optional automatic updates of a seotools application on Dokploy (docs/updating.md).
+# Optional automatic updates of seotools on Dokploy (docs/updating.md).
 #
 # Run it from OUTSIDE the seotools container: a cron job, or a scheduled CI workflow. It redeploys
-# the Dokploy application when the image behind a compatibility-line tag (0.2, or 1 from 1.0.0 on)
-# changed, and only after the checks below. Dokploy pulls the image reference it has saved when it
-# deploys, so the application must be set to that same tag (for example ghcr.io/vhxa/seotools:0.2).
+# the Dokploy application or Compose service when the image behind a compatibility-line tag (0.2, or
+# 1 from 1.0.0 on) changed, and only after the checks below. Dokploy deploys the image reference it
+# has saved, so it must be set to that same tag: the application's image, or SEOTOOLS_IMAGE in the
+# environment of a Compose service using deploy/dokploy/docker-compose.yml (for example
+# ghcr.io/vhxa/seotools:0.2), whose pull_policy pulls it again on every deployment.
 #
 # Required environment:
 #   DOKPLOY_URL             https://dokploy.example.com
 #   DOKPLOY_API_KEY         an API key of Dokploy (it can do much more than this: keep it private)
-#   DOKPLOY_APPLICATION_ID  the application to redeploy
+#   DOKPLOY_APPLICATION_ID  the application to redeploy, or
+#   DOKPLOY_COMPOSE_ID      the Compose service to redeploy (exactly one of the two)
 #   SEOTOOLS_URL            the public URL of the seotools instance
 #   SEOTOOLS_TAG            the line to follow: 0.2, 1.4 or 1 (never latest, edge, sha-… or a candidate)
 # Optional:
@@ -22,7 +25,15 @@
 # It does not read release notes, and it does not roll back: see "When something goes wrong".
 set -euo pipefail
 
-: "${DOKPLOY_URL:?}" "${DOKPLOY_API_KEY:?}" "${DOKPLOY_APPLICATION_ID:?}" "${SEOTOOLS_URL:?}" "${SEOTOOLS_TAG:?}"
+: "${DOKPLOY_URL:?}" "${DOKPLOY_API_KEY:?}" "${SEOTOOLS_URL:?}" "${SEOTOOLS_TAG:?}"
+if [[ -n "${DOKPLOY_APPLICATION_ID:-}" && -z "${DOKPLOY_COMPOSE_ID:-}" ]]; then
+  deploy_endpoint=application.deploy id_field=applicationId deploy_id="$DOKPLOY_APPLICATION_ID"
+elif [[ -n "${DOKPLOY_COMPOSE_ID:-}" && -z "${DOKPLOY_APPLICATION_ID:-}" ]]; then
+  deploy_endpoint=compose.deploy id_field=composeId deploy_id="$DOKPLOY_COMPOSE_ID"
+else
+  printf 'seotools-auto-update: set exactly one of DOKPLOY_APPLICATION_ID and DOKPLOY_COMPOSE_ID\n' >&2
+  exit 1
+fi
 repository="${SEOTOOLS_IMAGE_REPOSITORY:-vhxa/seotools}"
 state_dir="${STATE_DIR:-${HOME}/.local/state/seotools-auto-update}"
 wait_seconds="${WAIT_SECONDS:-600}"
@@ -77,10 +88,10 @@ if [[ -n "${PRE_UPDATE_COMMAND:-}" ]]; then
 fi
 
 say "Updating ${version_before}: ${repository}:${tag} is now ${remote}."
-curl -fsS -m 60 -X POST "${DOKPLOY_URL%/}/api/application.deploy" \
+curl -fsS -m 60 -X POST "${DOKPLOY_URL%/}/api/${deploy_endpoint}" \
   -H "x-api-key: ${DOKPLOY_API_KEY}" -H 'content-type: application/json' \
-  -d "$(jq -n --arg id "$DOKPLOY_APPLICATION_ID" --arg digest "$remote" \
-    '{applicationId: $id, title: "seotools automatic update", description: $digest}')" > /dev/null ||
+  -d "$(jq -n --arg field "$id_field" --arg id "$deploy_id" --arg digest "$remote" \
+    '{($field): $id, title: "seotools automatic update", description: $digest}')" > /dev/null ||
   die "Dokploy refused the deployment"
 
 # Wait for a different version that is healthy.

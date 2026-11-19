@@ -1,0 +1,71 @@
+# seotools on Dokploy: a Docker Compose service whose source is this repository (Git) or this file
+# pasted as Raw. Guide: docs/deploy-dokploy.md. Differences from ../../docker-compose.yml:
+#   - no published port: Dokploy's Traefik reaches seotools on dokploy-network (domain port 3000);
+#   - never built here: it pulls the published image, and pulls it again on every deployment;
+#   - DATABASE_URL is the one in Dokploy's environment (or SQLite in /data when it is not set);
+#   - the browser is the same service, kept only on the internal render network.
+# Dokploy writes its Environment tab to .env next to this file. Set at least BETTER_AUTH_SECRET,
+# BETTER_AUTH_URL and SEOTOOLS_IMAGE (a version or a line, e.g. ghcr.io/vhxa/seotools:0.6).
+# For JavaScript rendering add COMPOSE_PROFILES=rendering and RENDER_BROWSER_URL=http://browser:9222.
+# Keep Isolated Deployments off, and give a domain only to seotools, never to browser.
+services:
+  seotools:
+    image: ${SEOTOOLS_IMAGE:-ghcr.io/vhxa/seotools:latest}
+    pull_policy: always
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # The container always listens on 3000.
+      PORT: 3000
+    volumes:
+      - seotools-data:/data
+    # Gives the worker time to finish running jobs when Dokploy replaces the container.
+    stop_grace_period: 40s
+    networks: [dokploy-network, render]
+
+  browser:
+    image: chromedp/headless-shell:158.0.8127.18
+    profiles: [rendering]
+    # Upstream run.sh expands $@ unquoted, splitting/globbing the resolver rule.
+    # Preserve its forwarder and Chrome flags, but pass each extra argument intact.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -ex
+        exec socat TCP4-LISTEN:9222,fork TCP4:127.0.0.1:9223 &
+        exec /headless-shell/headless-shell \
+          --no-sandbox \
+          --use-gl=angle \
+          --use-angle=swiftshader \
+          --remote-debugging-address=0.0.0.0 \
+          --remote-debugging-port=9223 \
+          "$$@"
+      - --
+    command:
+      - --proxy-server=http://127.0.0.1:9
+      - --proxy-bypass-list=<-loopback>
+      - --host-resolver-rules=MAP * ~NOTFOUND
+      - --force-webrtc-ip-handling-policy=disable_non_proxied_udp
+    restart: unless-stopped
+    user: '65534:65534'
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Memory for the browser and its shared memory: raise them to render more pages at once
+    # (RENDER_CONCURRENCY), see docs/rendering.md. Set them in .env; these are the defaults.
+    shm_size: ${RENDER_BROWSER_SHM:-256m}
+    mem_limit: ${RENDER_BROWSER_MEMORY:-1536m}
+    pids_limit: 256
+    networks: [render]
+
+volumes:
+  seotools-data:
+
+networks:
+  dokploy-network:
+    external: true
+  render:
+    internal: true
