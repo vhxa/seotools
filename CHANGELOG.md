@@ -20,6 +20,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.6.0-rc.2] - 2026-11-19
+
 ### Changed
 
 - Rendered pages are captured like a search engine snapshots them: the domain's wait setting is now
@@ -54,7 +56,6 @@ which moves the entries of `[Unreleased]` into the new version.
   ends and, if it still has no render, records it as a failed render, so its findings are unknown
   instead of read from the HTML.
 - A URL that finished while the crawler was reading its next batch could be crawled twice.
-
 - The overview of a rendered crawl showed "NaN pages rendered in a browser" (and a broken count of
   pages not observed completely) from 1,000 pages on: it now prints the number.
 - The overview and the crawl list said that the coverage of a rendered crawl "has not been analysed"
