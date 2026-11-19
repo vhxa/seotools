@@ -44,3 +44,22 @@ describe('counts of pages above a thousand', () => {
     expect(t('rendered', { count: 2033 })).not.toContain('NaN')
   })
 })
+
+describe('rendering coverage explanations', () => {
+  it.each([
+    ['en', en, /not compared between crawls/, /compare pages with each other/],
+    ['es', es, /no se comparan entre rastreos/, /comparan unas páginas con otras/],
+  ] as const)(
+    '%s explains loading absences and distinguishes legacy unsettled counts',
+    (locale, messages, comparison, documents) => {
+      const t = createTranslator({ locale, messages, namespace: 'RenderingSummary' })
+      const loading = t('loading', { count: 2 })
+      expect(loading).toMatch(comparison)
+      expect(loading).toMatch(documents)
+      for (const key of ['causes', 'stamp.causes'] as const) {
+        const text = t(key, { failed: 0, truncated: 0, legacyUnsettled: 2033 })
+        expect(text).toContain('2033')
+      }
+    },
+  )
+})
