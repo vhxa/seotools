@@ -281,28 +281,16 @@ Omitted or unread content is unknown, never proof that a declaration is absent.
 
 ## Dokploy
 
-**Deployment on Dokploy is untested.** An existing Dokploy _Application_ using
-`ghcr.io/vhxa/seotools` is a single service. The current documentation does not establish a safe
-recipe for attaching a second browser to that Application while preserving this internal-only
-network boundary. Do not place the browser on `dokploy-network` or expose its CDP port.
-
-Use a separate Dokploy **Docker Compose** deployment of this repository's compose file for a
-trial, retaining the image-based `seotools` service and `.env` injection. Its environment carries
-the rendering settings like any `.env` (for an 8 GB server: `COMPOSE_PROFILES=rendering`,
-`RENDER_BROWSER_URL=http://browser:9222`, `RENDER_CONCURRENCY=4`, `RENDER_BROWSER_MEMORY=3g`,
-`RENDER_BROWSER_SHM=1g`); Compose substitutes the last two into the browser service. Dokploy documents Compose
-(and separately Swarm Stack), environment files and custom deployment commands. Use Compose,
-not Stack, and enable the rendering profile explicitly in that command. Migrate a backup of the
-existing data volume deliberately; a new deployment's named volume does not automatically contain
-the old Application's data.
+Follow [deploy-dokploy.md](deploy-dokploy.md): one Dokploy **Docker Compose** service with
+`deploy/dokploy/docker-compose.yml`, which keeps this browser and its internal-only network as they
+are here. A Dokploy _Application_ is a single service and cannot hold the browser. Never put the
+browser on `dokploy-network`, give it a domain or expose its CDP port.
 
 Dokploy's **Isolated Deployments** is not the same thing as Docker's `internal: true`: it creates a
-stack-specific network and attaches **each service**. Attaching the browser to an extra network
-may give it an outbound route. Before enabling a real crawl, inspect the deployed browser's
-networks, verify only the internal render network remains, and verify the worker reports ready.
-How to prevent Dokploy's network injection for this browser remains untested and must be confirmed
-with the operator; the isolation probe refuses a reachable external endpoint rather than silently
-accepting such a deployment. Configure a public domain only for `seotools`, never `browser`.
+stack-specific network and attaches **each service**, the browser included, which may give it an
+outbound route. Keep it off, and after deploying check that the browser is attached only to the
+internal render network and that the worker reports it ready; the isolation probe refuses a
+reachable external endpoint rather than silently accepting such a deployment.
 
 Sources checked for this guide:
 

@@ -20,6 +20,7 @@ apps/web/            # Next.js app: UI, auth, /api/health, server actions
 apps/worker/         # Job runner and handlers, crawler, schedulers; bootstrap, `recover` and `migrate-db` CLIs
 packages/core/       # Shared logic: env, logger, job types, settings encryption, mail, crawl types and rules
 packages/db/         # Drizzle schemas, migrations and repositories for SQLite and PostgreSQL
+deploy/dokploy/      # Compose file for Dokploy (docs/deploy-dokploy.md); its browser must match docker-compose.yml
 docker/              # Container entrypoint and healthcheck
 docs/                # Guides: updating an installation (docs/updating.md), making a release (docs/releases.md)
 scripts/             # Release tooling (`node scripts/release.mjs`; its logic is in packages/core/src/release)

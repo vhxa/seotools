@@ -148,6 +148,10 @@ release, change the tag. With a channel tag (`0.2`) it brings the new patches.
 
 ## Update with Dokploy
 
+This section is for a Dokploy _Application_ from the image. With JavaScript rendering you run a
+Docker Compose service instead: [deploy-dokploy.md](deploy-dokploy.md#updating) says how it is
+updated, and the automatic updates below work for it too.
+
 Dokploy runs the image as a Docker Swarm service. Set the application up once:
 
 - **Source**: Docker. **Docker Image**: `ghcr.io/vhxa/seotools:<tag>`. **Registry URL**:
@@ -229,7 +233,9 @@ version that breaks, and moving to the next line stays a decision you make by ha
 
 [`docs/examples/dokploy-auto-update.sh`](examples/dokploy-auto-update.sh) is a script for a cron job
 or a scheduled workflow **outside** the seotools container (nothing of this runs inside it). With
-`DOKPLOY_URL`, `DOKPLOY_API_KEY`, `DOKPLOY_APPLICATION_ID` and `SEOTOOLS_URL` set, once a day:
+`DOKPLOY_URL`, `DOKPLOY_API_KEY`, `DOKPLOY_APPLICATION_ID` (or `DOKPLOY_COMPOSE_ID` for a Docker
+Compose service with `deploy/dokploy/docker-compose.yml`, whose `SEOTOOLS_IMAGE` is set to the same
+line) and `SEOTOOLS_URL` set, once a day:
 
 ```cron
 17 4 * * *  DOKPLOY_URL=https://dokploy.example.com DOKPLOY_API_KEY=… DOKPLOY_APPLICATION_ID=… \
