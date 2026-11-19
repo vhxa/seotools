@@ -1,8 +1,11 @@
 import { createRenderResourceCache } from '../render/cache'
+import { RENDER_LIMITS } from '../render/limits'
 import type { RenderService } from '../render/service'
+import { createSlots } from '../render/slots'
 import {
   BrowserWaitExpiredError,
   createBrowserRecovery,
+  notRenderedObservation,
   renderObservation,
   renderRobots,
 } from './rendering'
@@ -65,7 +68,7 @@ const PROGRESS_INTERVAL_MS = 2000
 const EXTERNAL_BODY_BYTES = 1
 
 export interface CrawlEngineOptions {
-  renderService?: Pick<RenderService, 'check' | 'render'>
+  renderService?: Pick<RenderService, 'check' | 'render'> & { concurrency?: number }
   browserMaxWaitMs?: number
   browserPollMs?: number
   settingsSecret?: string
@@ -118,16 +121,27 @@ export async function runCrawl(
   const identity = (url: string) => stripIgnoredParameters(url, settings.ignoredParameters, host)
   const followLinks = crawl.type === 'full'
   const log = parentLog.child({ crawlId, host, crawlType: crawl.type })
+  const rendered = crawl.rendering?.mode === 'rendered'
+  // Rendered pages fetch their resources in parallel, a few per page and a bounded number for the
+  // whole crawl, besides the crawl's own requests: the connections must not be what holds them up.
+  const resourceSlots = createSlots(
+    RENDER_LIMITS.pageResources * Math.max(1, options.renderService?.concurrency ?? 1),
+  )
   const fetcher = options.createFetcher({
     siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
     userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
     timeoutMs: settings.timeoutMs,
-    concurrency: settings.concurrency,
+    concurrency:
+      settings.concurrency +
+      (rendered ? RENDER_LIMITS.pageResources * (options.renderService?.concurrency ?? 1) : 0),
   })
 
   /** Stops every request and wait at once: shutdown, a cancellation or a fatal error. */
   const stop = new AbortController()
   const stopSignal = AbortSignal.any([signal, stop.signal])
+  /** Ends the resource fetches pages share through the cache, when the crawl stops or ends. */
+  const resourcesDone = new AbortController()
+  const resourceSignal = AbortSignal.any([stopSignal, resourcesDone.signal])
 
   /** Every URL of the crawl by hash, with its number (`seq`). */
   const seen = new Map<string, number>()
@@ -269,7 +283,6 @@ export async function runCrawl(
     return { result, found, sitemap }
   }
 
-  const rendered = crawl.rendering?.mode === 'rendered'
   const cache = createRenderResourceCache()
   const recovery = createBrowserRecovery({
     crawl,
@@ -308,6 +321,8 @@ export async function runCrawl(
         allowedByRobots: renderRobots({ robots }),
         waitMs: crawl!.rendering!.waitMs,
         extraOmittedHosts: crawl!.rendering!.omittedHosts,
+        resourceSlots,
+        resourceSignal,
         signal: stopSignal,
       }),
     )
@@ -558,12 +573,16 @@ export async function runCrawl(
     handle: (item: NewCrawlUrl) => Promise<void>,
   ) {
     const queue: NewCrawlUrl[] = []
+    // A URL that finishes while a batch is being read can still be in it: never start one twice.
+    const started = new Set<string>()
     while (!stopSignal.aborted) {
       await heartbeat()
       if (rendered) await recovery.ready()
       if (queue.length === 0) {
         const batch = await next(QUEUE_BATCH)
-        queue.push(...batch.filter((item) => !inFlight.has(item.urlHash)))
+        queue.push(
+          ...batch.filter((item) => !inFlight.has(item.urlHash) && !started.has(item.urlHash)),
+        )
       }
       const item = queue[0]
       if (!item) {
@@ -581,15 +600,13 @@ export async function runCrawl(
         continue
       }
       queue.shift()
+      started.add(item.urlHash)
       start(item, handle)
     }
     await Promise.allSettled(inFlight.values())
   }
 
-  try {
-    if (rendered) await recovery.start()
-    await seed()
-    await drain((limit) => db.crawls.nextQueued(crawlId, limit), processUrl)
+  async function retryFailedRenders() {
     while (retryRenders.length > 0 && !stopSignal.aborted) {
       const retry = retryRenders.shift()!
       const observation = await renderUrl(retry.item, retry.response, retry.links)
@@ -606,6 +623,41 @@ export async function runCrawl(
       }
       await drain((limit) => db.crawls.nextQueued(crawlId, limit), processUrl)
     }
+  }
+
+  /**
+   * A rendered crawl never ends with a page it should have rendered and has no render for: its
+   * findings would be read as observed. Such pages are crawled again once; any still without a render
+   * then get a failed one, so they are unknown (`render-failed`), never silently HTML-only.
+   */
+  async function ensureRendered() {
+    if (stopSignal.aborted) return
+    const requeued = await db.crawls.requeueUnrendered(crawlId)
+    if (requeued > 0) {
+      log.warn({ pages: requeued }, 'pages recorded without a render are crawled again')
+      doneCount -= requeued
+      pagesCount -= requeued
+      await drain((limit) => db.crawls.nextQueued(crawlId, limit), processUrl)
+      await retryFailedRenders()
+    }
+    for (;;) {
+      if (stopSignal.aborted) return
+      const missing = await db.crawls.unrenderedPages(crawlId, QUEUE_BATCH)
+      if (missing.length === 0) return
+      log.warn({ pages: missing.length }, 'pages without a render are recorded as not rendered')
+      await db.crawls.saveRenders(
+        crawlId,
+        missing.map(({ urlHash, url }) => notRenderedObservation(urlHash, url)),
+      )
+    }
+  }
+
+  try {
+    if (rendered) await recovery.start()
+    await seed()
+    await drain((limit) => db.crawls.nextQueued(crawlId, limit), processUrl)
+    await retryFailedRenders()
+    if (rendered) await ensureRendered()
     // Last, with the site done: while it runs, the crawl is still active and can be cancelled.
     if (followLinks) {
       await drain((limit) => db.crawls.pendingExternalLinks(crawlId, limit), checkExternalLink)
@@ -632,6 +684,7 @@ export async function runCrawl(
     if (error instanceof BrowserWaitExpiredError) fatal = error
     else if (!stopSignal.aborted) throw error
   } finally {
+    resourcesDone.abort()
     fetcher.close()
   }
 

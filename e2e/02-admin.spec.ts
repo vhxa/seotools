@@ -245,7 +245,7 @@ test('the crawl settings show the rendering mode, and Rendered is disabled witho
   await expect(page.getByText(/Several times slower/)).toBeVisible()
   await expect(page.getByText(/Rendered mode is unavailable/)).toBeVisible()
   // The options of the Rendered choice are in the page, disabled while HTML is chosen.
-  await expect(page.getByRole('spinbutton', { name: 'Render wait limit (ms)' })).toBeDisabled()
+  await expect(page.getByRole('spinbutton', { name: 'Capture window (ms)' })).toBeDisabled()
   await page.getByLabel('Page rendering').click()
   await expect(page.getByRole('option', { name: 'Rendered' })).toHaveAttribute(
     'aria-disabled',

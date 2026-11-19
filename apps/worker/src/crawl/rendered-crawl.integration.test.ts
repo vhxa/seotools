@@ -306,7 +306,10 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
         const findings = await db.crawls.issuesOf(crawl.id, [hash])
         expect(findings.map((row) => row.issue)).toContain('javascript-redirect')
         expect(findings.map((row) => row.issue)).not.toContain('title-changed-by-javascript')
-        expect(stored.auditSnapshot?.unobserved).toContain('title-changed-by-javascript')
+        // The abandoned DOM is unknown for that page only, never for the whole crawl.
+        expect(stored.auditSnapshot?.unobserved ?? []).not.toContain('title-changed-by-javascript')
+        const [audit] = await db.crawls.auditOf(crawl.id, [hash])
+        expect(audit!.documentUnobserved).toContain('title-changed-by-javascript')
         const result = await htmlBaseline(db, crawl.id)
         if (previous) expect(JSON.stringify(result)).toBe(JSON.stringify(previous))
         previous = result

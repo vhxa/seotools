@@ -216,7 +216,8 @@ export function describeDatabaseContract(
       const cases: { name: string; render: RenderObservation | null }[] = [
         { name: 'complete', render: base },
         { name: 'redirect', render: { ...base, settled: false, redirected: true } },
-        { name: 'unsettled', render: { ...base, settled: false } },
+        { name: 'unsettled', render: { ...base, settled: false, captured: true } },
+        { name: 'rc1-unsettled', render: { ...base, settled: false } },
         { name: 'truncated', render: { ...base, truncated: true } },
         { name: 'served', render: { ...base, servedTruncated: true } },
         { name: 'failed', render: { ...base, status: 'failed', settled: false } },
@@ -270,6 +271,7 @@ export function describeDatabaseContract(
                   failure: render.status === 'failed' ? 'navigation' : null,
                   data: {
                     facts: null,
+                    ...(render.captured ? { capture: { pending: 1, afterMs: 1000 } } : {}),
                     redirected: render.redirected,
                     requests: {},
                     scriptErrors: { count: 0, first: [] },
@@ -312,12 +314,14 @@ export function describeDatabaseContract(
           .sort()
       expect(await listed('complete')).toEqual(['complete', 'quoted'])
       expect(await listed('redirect')).toEqual(['redirect'])
+      // Captured while still loading is an observation, with a filter of its own.
+      expect(await listed('loading')).toEqual(['unsettled'])
       expect(await listed('incomplete')).toEqual([
         'failed',
         'legacy',
+        'rc1-unsettled',
         'served',
         'truncated',
-        'unsettled',
       ])
       expect(await listed('not-rendered')).toEqual(['none'])
       expect(
@@ -329,11 +333,89 @@ export function describeDatabaseContract(
         unsettled: 1,
         truncated: 2,
         failed: 1,
-        unknown: 1,
+        unknown: 2,
       })
       expect((await db.crawls.renderCounts(['unknown-crawl'])).size).toBe(0)
       expect((await db.crawls.renderOf(crawl.id, hash('failed')))?.failure).toBe('navigation')
       expect(await db.crawls.renderOf(crawl.id, hash('none'))).toBeNull()
+    })
+
+    it('finds, queues again and records the pages a rendered crawl has no render for', async () => {
+      const created = await createCompany(db, {
+        name: 'Unrendered',
+        domain: 'example.com',
+        crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, renderingMode: 'headless' },
+      })
+      if (!created.ok) throw new Error('setup failed')
+      const crawl = (await db.crawls.start({
+        domainId: created.domain.id,
+        type: 'full',
+        trigger: 'manual',
+      }))!
+      const url = (name: string) => `https://example.com/${name}`
+      const names = ['rendered', 'missing', 'redirect', 'error', 'queued']
+      await db.crawls.addUrls(
+        crawl.id,
+        names.map((name, index) => ({
+          url: url(name),
+          urlHash: crawlUrlHash(url(name)),
+          seq: index + 1,
+          depth: 0,
+          source: 'seed' as const,
+          scope: 'internal' as const,
+        })),
+      )
+      const result = (statusCode: number, kind: 'page' | 'redirect' = 'page') => ({
+        kind,
+        statusCode,
+        contentType: 'text/html',
+        redirectTo: null,
+        title: null,
+        metaRobots: null,
+        xRobotsTag: null,
+        canonical: null,
+        responseTimeMs: 1,
+        bytes: 1,
+        error: null,
+        data: null,
+      })
+      const render = (name: string) => ({
+        urlHash: crawlUrlHash(url(name)),
+        status: 'rendered' as const,
+        settled: true,
+        truncated: false,
+        finalUrl: url(name),
+        durationMs: 1,
+        failure: null,
+        data: { facts: null, requests: {}, scriptErrors: { count: 0, first: [] } },
+      })
+      const record = (name: string, statusCode: number, kind?: 'page' | 'redirect') =>
+        db.crawls.recordResult({
+          crawlId: crawl.id,
+          urlHash: crawlUrlHash(url(name)),
+          result: result(statusCode, kind),
+          ...(name === 'rendered' ? { render: render(name) } : {}),
+        })
+      await record('rendered', 200)
+      await record('missing', 200)
+      await record('redirect', 301, 'redirect')
+      await record('error', 404)
+      // Only an internal page that answered 200 and was recorded without a render.
+      expect(await db.crawls.unrenderedPages(crawl.id, 10)).toEqual([
+        { urlHash: crawlUrlHash(url('missing')), url: url('missing') },
+      ])
+      expect(await db.crawls.requeueUnrendered(crawl.id)).toBe(1)
+      expect((await db.crawls.getUrl(crawl.id, crawlUrlHash(url('missing'))))?.state).toBe('queued')
+      expect(await db.crawls.unrenderedPages(crawl.id, 10)).toEqual([])
+      await record('missing', 200)
+      await db.crawls.saveRenders(crawl.id, [
+        { ...render('missing'), status: 'failed', settled: false, failure: 'not-rendered' },
+      ])
+      expect(await db.crawls.unrenderedPages(crawl.id, 10)).toEqual([])
+      expect(await db.crawls.requeueUnrendered(crawl.id)).toBe(0)
+      expect((await db.crawls.renderOf(crawl.id, crawlUrlHash(url('missing'))))?.failure).toBe(
+        'not-rendered',
+      )
     })
 
     it('lists the links that only exist after rendering', async () => {

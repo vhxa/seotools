@@ -107,6 +107,8 @@ export interface AuditedUrl {
   /** Immutable served projection, for explicit HTML/response checks. */
   served?: AuditedUrl
   documentObservation?: 'complete' | 'redirected' | 'unobserved'
+  /** The document was captured at the end of the window, still loading: what it lacks is unverified. */
+  documentLoading?: boolean
   documentUnobserved?: string[]
   blockersKnown?: boolean
   canonicalKnown?: boolean
@@ -494,6 +496,15 @@ export async function loadSite(
       db.crawls.sitemapHreflangOf(crawl.id, hashes),
     ])
     for (const { sourceHash, targetHash, kind, rendered } of links) {
+      const sourceRender = renders.get(sourceHash)
+      if (
+        rendered &&
+        sourceRender &&
+        !sourceRender.settled &&
+        !sourceRender.data.redirected &&
+        !sourceRender.data.capture
+      )
+        continue
       // Only rendered anchors feed the audit graph; other rendered declarations stay stored
       // for render details and future checks, never as input to existing HTML checks.
       if (
@@ -604,21 +615,37 @@ export async function loadSite(
     }
   }
   let rendersUnobserved = 0
-  const renderCoverage = { failedOrMissing: 0, truncated: 0, unsettled: 0 }
+  const renderCoverage: NonNullable<AuditSnapshot['renderCoverage']> = {
+    failedOrMissing: 0,
+    truncated: 0,
+    unsettled: 0,
+  }
   if (crawl.rendering?.mode === 'rendered') {
     for (const url of internal) {
       if (!url.contentPage) continue
       const render = renders.get(url.url.urlHash)
       url.render = render
       // A missing truncation flag in an older render is missing evidence, never proof of a whole page.
-      const failedOrMissing = render?.status !== 'rendered' || render.truncated === null
+      const legacyUnsettled =
+        render?.status === 'rendered' &&
+        !render.settled &&
+        !render.data.redirected &&
+        !render.data.capture
+      const failedOrMissing =
+        render?.status !== 'rendered' || (render.truncated === null && !legacyUnsettled)
       const truncated = url.url.data?.truncated === true || render?.truncated === true
+      // Captured while still loading: an observation, counted to say so, not a missing one.
       const unsettled =
-        render?.status === 'rendered' && !render.settled && render.data.redirected !== true
+        render?.status === 'rendered' &&
+        !render.settled &&
+        render.data.redirected !== true &&
+        !!render.data.capture
+      if (legacyUnsettled)
+        renderCoverage.legacyUnsettled = (renderCoverage.legacyUnsettled ?? 0) + 1
       if (failedOrMissing) renderCoverage.failedOrMissing++
       if (truncated) renderCoverage.truncated++
       if (unsettled) renderCoverage.unsettled++
-      if (failedOrMissing || truncated || unsettled) rendersUnobserved++
+      if (failedOrMissing || truncated || legacyUnsettled) rendersUnobserved++
     }
   }
 

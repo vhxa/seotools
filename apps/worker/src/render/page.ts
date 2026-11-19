@@ -10,6 +10,7 @@ import { bestEffort } from './cleanup'
 import { seedPageRandom } from './determinism'
 import { renderRequestHeaders, renderResponseHeaders } from './headers'
 import { addSample, oneLine, RENDER_LIMITS } from './limits'
+import { createSlots, untilAborted } from './slots'
 import { RenderInterruptedError, type RenderInput, type RenderOutcome } from './types'
 
 export async function renderPage(
@@ -22,9 +23,15 @@ export async function renderPage(
     0,
     Math.min(input.waitMs ?? RENDER_LIMITS.waitMs, RENDER_LIMITS.maxWaitMs),
   )
+  const loadGraceMs = Math.max(
+    0,
+    Math.min(input.loadGraceMs ?? RENDER_LIMITS.loadGraceMs, RENDER_LIMITS.loadGraceMs),
+  )
   const result: RenderOutcome = {
     status: 'rendered',
     settled: false,
+    pending: 0,
+    captureMs: null,
     redirected: false,
     finalUrl: input.url,
     html: '',
@@ -53,7 +60,12 @@ export async function renderPage(
   let lastActivity = started
   let requested = 0
   let bytes = input.document.body?.length ?? 0
-  let resourceQueue = Promise.resolve()
+  // Concurrent fetches finish in any order, so which one crosses a budget depends on timing. Any
+  // crossing therefore makes the whole render incomplete (`truncated`), whichever request it was.
+  let overBudget = false
+  const pageSlots = createSlots(RENDER_LIMITS.pageResources)
+  const crawlSlots = input.resourceSlots
+  const resourceSignal = input.resourceSignal ?? input.signal
   let requestBodyBytes = 0
   let supplied = false
   const identity = (value: string) => {
@@ -127,6 +139,7 @@ export async function renderPage(
       }
     })
     const omit = (url: string, reason: RenderOutcome['requests']['omitted'][number]['reason']) => {
+      if (reason === 'limit') overBudget = true
       url = url.slice(0, RENDER_LIMITS.urlChars)
       result.requests.omittedCount++
       addSample(result.requests.omitted, { url, reason }, (value) => `${value.url} ${value.reason}`)
@@ -194,14 +207,12 @@ export async function renderPage(
       }
       inFlight++
       lastActivity = Date.now()
-      let release = () => {}
-      const previous = resourceQueue
-      resourceQueue = new Promise<void>((resolve) => {
-        release = resolve
-      })
+      let slot = false
       try {
-        await previous
-        if (signal.aborted) return abort()
+        // A browser loads a page's resources in parallel, a few at a time; so does this.
+        await pageSlots.acquire(signal)
+        slot = true
+        if (finished || signal.aborted) return abort()
         if (bytes >= RENDER_LIMITS.pageBytes) {
           omit(url, 'limit')
           return abort()
@@ -224,33 +235,48 @@ export async function renderPage(
           )
           return abort()
         }
-        const { answer, cached } = await input.cache.request(
-          url,
-          request.method(),
-          request.resourceType(),
-          async () => {
+        // Scripts and stylesheets may be shared with other pages through the crawl's cache: their
+        // bytes are charged to every page once they arrived, and their fetch is never cut by the
+        // budget or the end of the page that happened to start it.
+        const shared =
+          request.method() === 'GET' && ['script', 'stylesheet'].includes(request.resourceType())
+        const load = async () => {
+          const loadSignal = shared ? resourceSignal : signal
+          await crawlSlots?.acquire(loadSignal)
+          // Held from here: released below, whatever the fetch comes to.
+          try {
             result.requests.made++
-            return input.requester.fetchWithRetries(url, {
-              signal,
+            return await input.requester.fetchWithRetries(url, {
+              signal: loadSignal,
+              // Documents keep the domain's requests per second; resources are bounded by the
+              // slots instead, as a browser loads them.
+              paced: false,
               method: request.method(),
               headers: renderRequestHeaders(request.headers()),
               ...(postData === undefined ? {} : { body: Buffer.from(postData) }),
               readBody: 'force',
               maxBytes: RENDER_LIMITS.resourceBytes,
-              beforeAttempt: () => {
-                if (bytes >= RENDER_LIMITS.pageBytes)
-                  throw new FetchError('BODY_LIMIT', 'Page byte budget exceeded')
-              },
-              onBodyBytes: (size) => {
-                bytes += size
-                const cacheable =
-                  request.method() === 'GET' &&
-                  ['script', 'stylesheet'].includes(request.resourceType())
-                if (!cacheable && bytes > RENDER_LIMITS.pageBytes)
-                  throw new FetchError('BODY_LIMIT', 'Page byte budget exceeded')
-              },
+              ...(shared
+                ? {}
+                : {
+                    beforeAttempt: () => {
+                      if (bytes >= RENDER_LIMITS.pageBytes)
+                        throw new FetchError('BODY_LIMIT', 'Page byte budget exceeded')
+                    },
+                    onBodyBytes: (size: number) => {
+                      bytes += size
+                      if (bytes > RENDER_LIMITS.pageBytes)
+                        throw new FetchError('BODY_LIMIT', 'Page byte budget exceeded')
+                    },
+                  }),
             })
-          },
+          } finally {
+            crawlSlots?.release()
+          }
+        }
+        const { answer, cached } = await untilAborted(
+          input.cache.request(url, request.method(), request.resourceType(), load),
+          signal,
         )
         if (finished || signal.aborted || result.redirected) return abort()
         if (cached) result.requests.cached++
@@ -277,7 +303,7 @@ export async function renderPage(
           return abort()
         }
         const size = answer.body?.length ?? 0
-        if (cached) bytes += size
+        if (shared) bytes += size
         if (bytes > RENDER_LIMITS.pageBytes || answer.truncated) {
           omit(url, 'limit')
           return abort()
@@ -306,7 +332,7 @@ export async function renderPage(
         }
         await abort()
       } finally {
-        release()
+        if (slot) pageSlots.release()
         inFlight--
         lastActivity = Date.now()
       }
@@ -317,37 +343,64 @@ export async function renderPage(
       pending.add(work)
       void work.finally(() => pending.delete(work))
     })
+    // The window starts when the DOM is parsed, so neither the document nor the resources it
+    // waited for (nor our own queues) eat into it. The load event is not needed.
+    let parsedAt: number | null = null
+    await cdp.send('Page.enable')
+    let onParsed: () => void = () => {}
+    const parsed = new Promise<void>((resolve) => {
+      onParsed = () => {
+        parsedAt = Date.now()
+        resolve()
+      }
+      cdp.once('Page.domContentEventFired', onParsed)
+    })
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
     try {
-      await Promise.race([
-        interrupted,
-        page.goto(input.url, {
-          waitUntil: 'load',
-          timeout: waitMs + RENDER_LIMITS.loadGraceMs,
-          signal,
-        }),
-      ])
+      const grace = new Promise<never>((_resolve, reject) => {
+        graceTimer = setTimeout(() => reject(new Error('load-timeout')), loadGraceMs)
+      })
+      // Puppeteer's lifecycle watcher waits for child frames too. Observe the main target's own
+      // DOM event independently; still consume navigation errors (including stopped redirects).
+      const navigation = page.goto(input.url, { waitUntil: 'domcontentloaded', timeout: 0, signal })
+      await Promise.race([interrupted, parsed, grace, navigation.then(() => parsed)])
     } catch (error) {
       if (!result.redirected)
         fail(
-          error instanceof Error && error.name === 'TimeoutError' ? 'load-timeout' : 'navigation',
-          'The document did not finish loading.',
+          error instanceof Error && error.message === 'load-timeout'
+            ? 'load-timeout'
+            : 'navigation',
+          'The document was not parsed in time.',
         )
+    } finally {
+      clearTimeout(graceTimer)
+      cdp.off('Page.domContentEventFired', onParsed)
     }
     if (signal.aborted) throw new DOMException('Render stopped', 'AbortError')
     if (crashed || !browser.connected) throw new RenderInterruptedError('Browser or page crashed')
-    const deadline = started + waitMs
-    while (
-      result.status === 'rendered' &&
-      !result.redirected &&
-      Date.now() < deadline &&
-      !signal.aborted
-    ) {
-      if (inFlight === 0 && Date.now() - lastActivity >= RENDER_LIMITS.quietMs) {
-        result.settled = true
-        break
+    if (parsedAt !== null) {
+      // Quiet means quiet since the DOM was parsed: scripts get to start what they start.
+      lastActivity = Math.max(lastActivity, parsedAt)
+      const deadline = parsedAt + waitMs
+      // Capture at the window's end, or earlier once nothing has been in flight for a while.
+      while (
+        result.status === 'rendered' &&
+        !result.redirected &&
+        Date.now() < deadline &&
+        !signal.aborted
+      ) {
+        if (inFlight === 0 && Date.now() - lastActivity >= RENDER_LIMITS.quietMs) {
+          result.settled = true
+          break
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.max(1, Math.min(25, deadline - Date.now()))),
+        )
+        if (crashed || !browser.connected)
+          throw new RenderInterruptedError('Browser or page crashed')
       }
-      await new Promise((resolve) => setTimeout(resolve, 25))
-      if (crashed || !browser.connected) throw new RenderInterruptedError('Browser or page crashed')
+      result.pending = inFlight
+      result.captureMs = Date.now() - parsedAt
     }
     if (signal.aborted) throw new DOMException('Render stopped', 'AbortError')
     // A redirect is a complete observation of navigation, not of the abandoned DOM.
@@ -393,7 +446,7 @@ export async function renderPage(
       )
         throw new Error('Invalid DOM snapshot')
       result.html = dom.html
-      result.truncated = dom.truncated
+      result.truncated = dom.truncated || overBudget
     } catch {
       if (crashed || !browser.connected) throw new RenderInterruptedError('Browser or page crashed')
       if (!result.redirected) fail('serialization', 'The document could not be serialized.')

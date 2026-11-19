@@ -832,7 +832,12 @@ export interface AuditSnapshot {
   /** Pages without a whole, settled render and whole served HTML; link absence is unknown. */
   rendersUnobserved?: number
   /** Counts can overlap; failedOrMissing includes legacy renders without truncation metadata. */
-  renderCoverage?: { failedOrMissing: number; truncated: number; unsettled: number }
+  renderCoverage?: {
+    failedOrMissing: number
+    truncated: number
+    unsettled: number
+    legacyUnsettled?: number
+  }
   /**
    * Issues this analysis could not see, sorted: their input was not recorded for some page, because
    * the crawl was made before a check could read it (`unobservedIssues`, in the worker). Absent: none,
@@ -854,6 +859,7 @@ const renderCoverageSchema = z.object({
   failedOrMissing: z.number().int().min(0),
   truncated: z.number().int().min(0),
   unsettled: z.number().int().min(0),
+  legacyUnsettled: z.number().int().min(0).optional(),
 })
 
 const snapshotSchema = z.object({
@@ -943,7 +949,7 @@ export function parseAuditSnapshot(raw: string | null): AuditSnapshot | null {
 export interface RenderObservation {
   unobserved: number
   /** Absent in snapshots that kept only the total. */
-  causes: { failedOrMissing: number; truncated: number; unsettled: number } | null
+  causes: NonNullable<AuditSnapshot['renderCoverage']> | null
 }
 
 const renderObservationSchema = z.object({
@@ -1063,6 +1069,12 @@ export type ConditionStates = Partial<Record<AuditCondition, ConditionState>>
 export interface UrlAuditState {
   /** Absent on HTML and legacy analyses. Unknown input is retained per URL. */
   documentObservation?: 'complete' | 'redirected' | 'unobserved'
+  /**
+   * A complete document captured at the end of the window, still loading. What it shows is
+   * observed; an issue it does not show is unverified for this URL (`observe`). Absent: settled, or
+   * an analysis from before 0.6.0-rc.2.
+   */
+  documentLoading?: boolean
   documentUnobserved?: string[]
   participation: AuditParticipation
   /** The rule that decided it. `null`: the default. */

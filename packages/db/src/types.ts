@@ -357,6 +357,11 @@ export interface CrawlUrlRender {
   failure: string | null
   data: {
     facts: CrawlPageFacts | null
+    /**
+     * When the DOM was captured: requests still in flight (`settled` false: at the window's end) and
+     * milliseconds after the DOM was parsed (`null`: it never was). Absent on rows before 0.6.0-rc.2.
+     */
+    capture?: { pending: number; afterMs: number | null }
     /** Absent on older rows. A redirect observes the target, not the abandoned DOM. */
     redirected?: boolean
     /** Absent on older render rows: these extracted values were not retained. */
@@ -798,6 +803,15 @@ export interface CrawlRepository {
     limit: number,
   ): Promise<{ served: number; total: number; items: { url: string; urlHash: string }[] }>
   saveBrowserWait(crawlId: string, milliseconds: number): Promise<void>
+  /**
+   * Internal URLs recorded as pages that answered 200 and have no render, at most `limit`: what a
+   * rendered crawl must never finish with.
+   */
+  unrenderedPages(crawlId: string, limit: number): Promise<{ urlHash: string; url: string }[]>
+  /** Queues those URLs again, so the crawl renders them. Returns how many. */
+  requeueUnrendered(crawlId: string): Promise<number>
+  /** Stores renders of URLs whose result is already recorded, replacing any they had. */
+  saveRenders(crawlId: string, renders: readonly CrawlUrlRender[]): Promise<void>
   recordResult(input: {
     render?: CrawlUrlRender
     crawlId: string

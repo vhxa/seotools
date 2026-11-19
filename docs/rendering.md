@@ -5,19 +5,29 @@ The browser belongs only to an internal Docker network; the worker belongs to th
 its ordinary outbound network. Rendering is disabled unless `RENDER_BROWSER_URL` is configured.
 Choose HTML or Rendered in **Domain settings → Crawling**. New domains choose Rendered only
 when the browser status is ready and fresh; existing domains keep HTML. Each crawl snapshots
-its mode, wait limit (default 5000 ms, range 1000–30000) and omitted host suffixes (up to 50).
+its mode, capture window (default 5000 ms, range 1000–30000) and omitted host suffixes (up to 50).
 Document-dependent checks read the rendered page, including title, headings, description,
 structured data, directives, canonical, hreflang and exact outgoing references. Response facts
 (status, headers, robots.txt, sitemaps, timing and vitals) remain unchanged. Source diagnostics,
 HTML link counts, encoding/placement/structure checks and social previews read served HTML.
 The explicit per-check table is `ISSUE_BASIS` in `packages/core/src/crawl/basis.ts`.
 
-A complete document requires whole served HTML, a whole settled nonredirect render, and stored
-extracted values. Failed, truncated, unsettled, missing/legacy and unrendered other-2xx documents
-are unknown, never judged on an HTML fallback. Crawl stamps and URL details state the analysed
+A complete document requires whole served HTML, a whole nonredirect render (captured once the
+network was quiet, or at the end of the capture window while still loading) and stored extracted
+values. Unsettled nonredirected rc.1 rows without `data.capture` stay unknown on reanalysis:
+they did not settle and are not capture-window observations. Coverage counts them separately as "did not settle", rather than failed or not rendered. Failed, truncated, missing/legacy and unrendered other-2xx documents are unknown, never
+judged on an HTML fallback. A document captured while still loading is an observation: its
+findings are reported, and an issue it does not show is unverified for that URL (never "fixed",
+"resolved" or absent in comparisons and alerts), because it may only not have appeared yet
+(`documentLoading` in the URL's audit state, read by `observe` in `compare.ts`). That covers the
+document findings, the page's JavaScript findings (except `render-failed`: that render did not
+fail) and the findings about what the page itself links to (`links-to-*`,
+`links-only-after-rendering`). Crawl stamps and URL details state the analysed
 basis and separate document coverage from navigation coverage. Page-local document uncertainty
 applies only to that URL; duplicates, canonical/hreflang targets and other checks involving other
-pages remain unverified crawl-wide. Graph absence retains its crawl-wide completeness rule.
+pages remain unverified crawl-wide. If any page was captured while still loading, an absent non-page-local document or graph finding is unobserved for the
+whole crawl, in both comparison directions. Positive findings remain reported; persisted
+`renderCoverage.unsettled` carries this observation limit into comparisons and alerts.
 Between an HTML crawl and a rendered crawl only findings about the server's answer (status,
 redirects, timing, headers, robots.txt, sitemaps, vitals) are compared. Document, link and
 served-source findings, including JavaScript ones, are unverified, even if page-local or reported
@@ -29,10 +39,12 @@ The JavaScript findings compare the served and rendered word counts, title, desc
 canonical, meta robots directives, structured data, hreflang and social tags. They also report
 robots-blocked render resources, uncaught script errors and failed renders. The text check needs
 at least 50 added words and the configured share of rendered words (default 30%; 0 disables it).
-Only a settled, whole render of whole served HTML establishes a DOM difference. Failed, truncated
-or non-redirecting unsettled pages have no difference findings; a failed page can have `render-failed`.
-Comparisons with incomplete observations remain unverified. Earlier render rows without the extracted values
-stay unknown for the new checks, and HTML crawls leave every JavaScript finding unknown.
+Only a whole render of whole served HTML (settled or captured while loading) establishes a DOM
+difference. Failed or truncated pages have no difference findings; a failed page can have
+`render-failed`. Their JavaScript findings are unknown **for that page only** (`documentUnobserved`),
+never for the whole crawl, and so are a JavaScript redirect's abandoned document, an older row
+without extracted values and a page whose canonical declarations do not resolve. Comparisons with
+incomplete observations remain unverified. HTML crawls leave every JavaScript finding unknown.
 
 A main-frame navigation to another URL identity stops the render and records `redirected: true`
 and its target. This is a complete observation of a redirect, even though `settled` remains false
@@ -60,24 +72,32 @@ another one is unknown when that other one is: with an explicit indexable rule,
 incomplete `robots-blocked` is unknown too, in comparisons, alerts and rechecks.
 
 Rendered crawls render internal HTML pages answering exactly 200, using the already fetched
-document. Other 2xx pages keep their served response and unknown document findings. Links
+document. A rendered crawl never ends with such a page without a render: before it ends it looks
+for them, crawls them again once and, if one still has no render, records a failed render
+(`not-rendered`), so its findings are unknown instead of read from the HTML. (A completed rc.1 crawl
+on a real site had some; the cause was not found, so the crawl enforces it and logs a warning with
+how many pages it had to crawl again.) Other 2xx pages keep their served response and unknown document findings. Links
 found only after rendering are followed as ordinary crawl links. Failed pages can be rendered
 once more after the site drain, serially, while their served bodies fit an in-memory limit of
 200 pages and 64 MiB. Committed failures remain failed after a worker restart; done URLs are
 never rendered twice on resume. Per-URL render facts and diagnostics are pruned with the URL
-results; HTML is never stored. A page whose render failed, is missing, neither settled nor
-redirected, or was cut at the size limit (or whose served HTML was) makes link absence unknown for the whole crawl:
-link-dependent findings are then not claimed, and comparisons treat them as unverified.
+results; HTML is never stored. A page whose render failed, is missing, or was cut at a size or
+request limit (or whose served HTML was) makes link absence unknown for the whole crawl:
+link-dependent findings are then not claimed, and comparisons treat them as unverified. A page
+captured while still loading keeps positive graph findings, but a missing graph finding cannot
+be called resolved, fixed or new against that capture.
 
 ## Where it shows in the interface
 
 The JavaScript tab of a URL compares the served HTML with the rendered page (title, description,
 first H1, canonical, robots, word count, structured data, hreflang, Open Graph, and the internal
 links that exist only after rendering), lists the resources that failed, were blocked by `robots.txt`
-or were left out, and the script errors. A page that was not rendered, was redirected by JavaScript
-or has an incomplete render (failed, cut at the size limit, did not settle, or stored before
-completeness was recorded) says so, compares nothing and leaves its JavaScript findings unknown. The
-URLs table and its CSV have a Rendering column and filter; the overview, the crawl list and the
+or were left out, and the script errors. A page captured while still loading says so, with how
+many requests were still pending at the end of the window, and compares like a complete one. A
+page that was not rendered, was redirected by JavaScript or has an incomplete render (failed, cut
+at a size or request limit, or stored before completeness was recorded) says so, compares nothing
+and leaves its JavaScript findings unknown. The URLs table and its CSV have a Rendering column and
+filter (complete, captured while loading, redirected, incomplete, not rendered); the overview, the crawl list and the
 comparison say which mode each crawl ran in and how many pages could not be observed completely.
 Comparing an HTML crawl with a rendered one says that findings about each page's content, link-dependent
 findings and JavaScript findings are not comparable; only findings about the server's answer are.
@@ -174,8 +194,19 @@ The caller supplies the already-fetched document. Its browser response keeps an 
 charset; otherwise the worker adds the charset used by the crawler (the first meta charset in
 2 KiB, or UTF-8). This prevents encoding differences from being attributed to JavaScript. Only GET, HEAD, OPTIONS and POST are requested; POST is sent at most once. Only HTTP(S) documents (subframes), scripts,
 stylesheets, fetch/XHR and CORS preflight requests are eligible. The worker uses the caller's crawl
-requester and guarded fetcher: pacing, safe-method retries, User-Agent, connect-time public-address validation,
-`CRAWLER_ALLOW_PRIVATE_NETWORKS`, and credentials only to the tracked host apply as usual. Site
+requester and guarded fetcher: safe-method retries, a server's `Retry-After` pause, User-Agent,
+connect-time public-address validation, `CRAWLER_ALLOW_PRIVATE_NETWORKS`, and credentials only to
+the tracked host apply as usual.
+
+**Pacing.** The domain's requests per second limits the crawl's own URLs (the documents it audits),
+as in an HTML crawl. What a rendered page loads (scripts, stylesheets, fetch/XHR) is not held to
+it: like a browser, the worker fetches a page's resources in parallel, at most **6 at a time per
+page** and at most **6 × `RENDER_CONCURRENCY`** for the whole crawl, and a script or stylesheet two
+pages ask for at the same time is fetched once (the per-crawl cache also shares requests in
+flight). The fetcher's connections per host are raised by the same amount for a rendered crawl so
+they do not hold resources up. A slow server therefore receives at most that many resource requests
+at once, besides the crawl's simultaneous requests; most of a site's scripts and stylesheets are
+fetched once per crawl. Site
 robots rules block render resources when explicitly disallowed; unknown is not treated as absent.
 This never makes robots rules a reason to skip pages being audited.
 
@@ -210,20 +241,31 @@ installed before document scripts in every frame, including cross-site out-of-pr
 `Date.now()` remains real so pages can display dates. Fresh contexts and sorted diagnostics
 complement that contract; they cannot make a changing API answer deterministic.
 
-The default wait is five seconds (at most thirty). A loaded page with no worker request in flight
-for 500 ms is settled; reaching the wait limit gives a rendered, unsettled snapshot.
-A redirect scheduled after the page settles (for example, a later timer) is outside this
-observation, as with search engines that snapshot the page. Failure to
-load has an additional 25-second hard cap; crashes/disconnections are retried only once.
+**Capture window.** The domain's wait setting is a capture window (default five seconds, at most
+thirty; some crawlers call it an AJAX timeout). It starts when the page's DOM is parsed
+(the main target's CDP `Page.domContentEventFired`, independent of loading child frames), so neither the document, the scripts it waits for nor the
+worker's own queues eat into it; the `load` event is not needed. The page is captured as it is at
+the earlier of: no request in flight for 500 ms since the DOM was parsed (`settled`), or the end of
+the window (captured while still loading: `settled` false, with the number of requests still in
+flight recorded). Then the page is stopped. A DOM that is not parsed within 25 seconds is a failed
+render (`load-timeout`), unknown. What a page does after its capture (a later timer, a redirect,
+content that arrives later) is outside the observation, as with search engines that snapshot the
+page; what it lacks is never reported as fixed. Crashes/disconnections are retried only once.
 Limits in `apps/worker/src/render/limits.ts` bound requests (300), resource bytes (5 MiB), page
 bytes (30 MiB), request bodies (1 MiB), serialized DOM (10 MiB), script errors (count and five
 200-character samples) and resource lists (count and fifty sorted samples). A 64 MiB LRU cache
 created per crawl shares GET scripts/styles, including failures. API calls and documents are
 never cached. Every decoded download byte, including partial/error/truncated responses and retries,
-counts toward the page budget. Resource loads are serialized per page so concurrent loads cannot
-race that budget. A cacheable script/style is fetched with its full 5 MiB resource cap even when
-less page budget remains, cached independently of that page, then omitted if it does not fit.
-This allows at most one resource's bounded overread before the page stops requesting resources.
+counts toward the page budget. Resources load in parallel, so which request crosses a budget
+depends on timing; the render is therefore made independent of it: **any** request left out for a
+limit (the 300 requests, the page bytes, a resource over 5 MiB, a request body) makes the whole
+render incomplete (`truncated`, unknown), whichever request it was. A page well inside its budgets
+is unaffected by the order in which its resources arrive, and one that crosses them is unknown,
+never judged on a DOM that a different order would have changed. A non-cacheable resource (fetch,
+XHR) is charged while it downloads and stopped at the budget; a cacheable script/style is fetched
+with its full 5 MiB resource cap, shared through the cache without being cut by any one page's
+budget or by the end of the page that started it, and charged to every page that uses it once it
+arrived.
 
 Each render and each status check owns a separate CDP connection. The `ws` transport rejects
 messages above 64 MiB **before** parsing JSON or Puppeteer's eager POST decoding: a 10 MiB DOM
@@ -245,7 +287,10 @@ recipe for attaching a second browser to that Application while preserving this 
 network boundary. Do not place the browser on `dokploy-network` or expose its CDP port.
 
 Use a separate Dokploy **Docker Compose** deployment of this repository's compose file for a
-trial, retaining the image-based `seotools` service and `.env` injection. Dokploy documents Compose
+trial, retaining the image-based `seotools` service and `.env` injection. Its environment carries
+the rendering settings like any `.env` (for an 8 GB server: `COMPOSE_PROFILES=rendering`,
+`RENDER_BROWSER_URL=http://browser:9222`, `RENDER_CONCURRENCY=4`, `RENDER_BROWSER_MEMORY=3g`,
+`RENDER_BROWSER_SHM=1g`); Compose substitutes the last two into the browser service. Dokploy documents Compose
 (and separately Swarm Stack), environment files and custom deployment commands. Use Compose,
 not Stack, and enable the rendering profile explicitly in that command. Migrate a backup of the
 existing data volume deliberately; a new deployment's named volume does not automatically contain
@@ -279,11 +324,52 @@ Sources checked for this guide:
 - [ws message limit](https://github.com/websockets/ws/blob/8.22.1/doc/ws.md#new-websocketaddress-protocols-options)
 - [Puppeteer supported browsers](https://pptr.dev/supported-browsers)
 
+## Sizing: concurrency and memory
+
+`RENDER_CONCURRENCY` accepts **1–4**, default **2**: how many pages are rendered at the same time,
+across all crawls. A crawl renders a page while it holds one of the domain's **simultaneous
+requests**, so set that crawl setting to at least `RENDER_CONCURRENCY` for renders to run in
+parallel. Each rendered page fetches up to 6 resources at once, and a crawl up to
+6 × `RENDER_CONCURRENCY`.
+
+The browser container's memory ceiling and shared memory come from `.env`, with the defaults in
+`docker-compose.yml`: `RENDER_BROWSER_MEMORY` (default `1536m`) and `RENDER_BROWSER_SHM` (default
+`256m`). The process limit stays at 256.
+
+| Server                            | `RENDER_CONCURRENCY` | `RENDER_BROWSER_MEMORY` | `RENDER_BROWSER_SHM` | Simultaneous requests |
+| --------------------------------- | -------------------: | ----------------------: | -------------------: | --------------------: |
+| VPS with 8 GB (3–4 GB for Chrome) |                    4 |                    `3g` |                 `1g` |                   4–6 |
+| Default                           |                    2 |                 `1536m` |               `256m` |                     2 |
+| Small Raspberry Pi                |                    1 |                 `1536m` |               `256m` |                     1 |
+
+```dotenv
+COMPOSE_PROFILES=rendering
+RENDER_BROWSER_URL=http://browser:9222
+RENDER_CONCURRENCY=4
+RENDER_BROWSER_MEMORY=3g
+RENDER_BROWSER_SHM=1g
+```
+
+Measured for 0.6.0-rc.2 on Docker Desktop arm64 with the pinned image under the **default**
+ceilings, rendering pages of the Nuxt-like test site (about 75 scripts and stylesheets each, 200–800
+ms per answer, a request that never ends, 5-second window), `3 × concurrency + 1` pages per run
+(`apps/worker/src/render/memory.integration.test.ts`, `RENDER_BENCH=1`):
+
+| Concurrent renders | Peak tasks | Peak summed RSS (MiB) | Peak cgroup memory (MiB) | Limit hits |
+| -----------------: | ---------: | --------------------: | -----------------------: | ---------: |
+|                  1 |         76 |                   417 |                      377 |          0 |
+|                  2 |         91 |                   514 |                      153 |          0 |
+|                  4 |        117 |                   746 |                      220 |          0 |
+
+Four renders fit the default ceilings with these pages, and gave the same figures with `3g`/`1g`.
+Real pages with large JavaScript heaps take more: the 8 GB row leaves room for that; measure your
+own pages before lowering it.
+
 ## Raspberry Pi and verification
 
-`RENDER_CONCURRENCY` accepts **1–4**, default **2**. Use `1` on a small Pi. The browser image
-is approximately 540 MB uncompressed on arm64. Compose sets a ceiling of **1,536 MiB** and
-**256 processes/threads**, with **256 MiB** shared memory. Keep spare memory for the app, database
+Use `RENDER_CONCURRENCY=1` on a small Pi. The browser image is approximately 540 MB uncompressed on
+arm64. Compose sets a ceiling of **1,536 MiB** and **256 processes/threads**, with **256 MiB**
+shared memory by default. Keep spare memory for the app, database
 and operating system. A memory-exhausted page is a failed render, never a successful audit of an
 empty page; no finite limit guarantees every hostile page succeeds.
 

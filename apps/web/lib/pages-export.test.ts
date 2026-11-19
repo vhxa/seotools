@@ -246,7 +246,7 @@ describe('the pages file', () => {
     }
     expect(rendering('complete')).toBe('Complete')
     expect(rendering('redirect')).toBe('Redirected by JavaScript')
-    expect(rendering('truncated')).toBe('Cut at the size limit')
+    expect(rendering('truncated')).toBe('Cut at a limit')
     expect(rendering('failed')).toBe('Failed')
     expect(rendering()).toBe('Not rendered')
   })

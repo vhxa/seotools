@@ -2,6 +2,7 @@ import type { RenderOmitReason } from '@seotools/core'
 import type { FetchedResponse } from '../crawl/fetcher'
 import type { Requester } from '../crawl/requester'
 import type { RenderResourceCache } from './cache'
+import type { Slots } from './slots'
 
 export interface RenderInput {
   url: string
@@ -13,13 +14,28 @@ export interface RenderInput {
   cache: RenderResourceCache
   allowedByRobots: (url: string) => boolean | 'unknown'
   extraOmittedHosts?: readonly string[]
+  /** The capture window in milliseconds, from the moment the DOM is parsed. */
   waitMs?: number
+  /** For tests: how long the DOM may take to be parsed. */
+  loadGraceMs?: number
+  /** Subresource fetches the whole crawl may have at once (`6 × RENDER_CONCURRENCY`). */
+  resourceSlots?: Slots
+  /**
+   * Ends fetches shared through the cache. They outlive the page that started them (another page
+   * may be waiting for the same bundle), so they stop with the crawl, not with that page.
+   */
+  resourceSignal?: AbortSignal
   signal: AbortSignal
 }
 export interface RenderOutcome {
   status: 'rendered' | 'failed'
   failure?: { code: 'load-timeout' | 'crashed' | 'serialization' | 'navigation'; message: string }
+  /** The network was quiet when the DOM was captured. Otherwise it was captured at the window's end. */
   settled: boolean
+  /** Requests still in flight when the DOM was captured. */
+  pending: number
+  /** From the DOM being parsed to its capture; `null` when the DOM was never parsed. */
+  captureMs: number | null
   /** A main-frame navigation to a different crawl identity ended this observation. */
   redirected: boolean
   finalUrl: string

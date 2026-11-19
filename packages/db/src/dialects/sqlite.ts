@@ -412,6 +412,26 @@ export function createSqliteDatabase(options: {
   const renderedUrls = alias(crawlUrls, 'rendered_urls')
   const servedLinks = alias(crawlUrlLinks, 'served_links')
   const renderState = renderStateSql(crawlUrlRenders, renderedUrls.data)
+  /** Internal pages that answered 200 and have no render: a rendered crawl must leave none. */
+  const unrenderedWhere = (crawlId: string) =>
+    and(
+      eq(crawlUrls.crawlId, crawlId),
+      eq(crawlUrls.scope, 'internal'),
+      eq(crawlUrls.state, 'done'),
+      eq(crawlUrls.kind, 'page'),
+      eq(crawlUrls.statusCode, 200),
+      notExists(
+        db
+          .select({ urlHash: crawlUrlRenders.urlHash })
+          .from(crawlUrlRenders)
+          .where(
+            and(
+              eq(crawlUrlRenders.crawlId, crawlUrls.crawlId),
+              eq(crawlUrlRenders.urlHash, crawlUrls.urlHash),
+            ),
+          ),
+      ),
+    )
 
   /** The same URL as the other side of a comparison, and the issues of each crawl being compared. */
   const otherUrls = alias(crawlUrls, 'other_urls')
@@ -2362,6 +2382,40 @@ export function createSqliteDatabase(options: {
       },
       async saveBrowserWait(crawlId, milliseconds) {
         db.update(crawls).set({ browserWaitMs: milliseconds }).where(eq(crawls.id, crawlId)).run()
+      },
+
+      async unrenderedPages(crawlId, limit) {
+        return db
+          .select({ urlHash: crawlUrls.urlHash, url: crawlUrls.url })
+          .from(crawlUrls)
+          .where(unrenderedWhere(crawlId))
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+          .all()
+      },
+
+      async requeueUnrendered(crawlId) {
+        return db
+          .update(crawlUrls)
+          .set({ state: 'queued' })
+          .where(unrenderedWhere(crawlId))
+          .returning({ urlHash: crawlUrls.urlHash })
+          .all().length
+      },
+
+      async saveRenders(crawlId, renders) {
+        db.transaction((tx) => {
+          for (const render of renders) {
+            const values = { crawlId, ...render, data: JSON.stringify(render.data) }
+            tx.insert(crawlUrlRenders)
+              .values(values)
+              .onConflictDoUpdate({
+                target: [crawlUrlRenders.crawlId, crawlUrlRenders.urlHash],
+                set: values,
+              })
+              .run()
+          }
+        })
       },
 
       async recordResult({ crawlId, urlHash, result, render, urls = [], links = [] }) {

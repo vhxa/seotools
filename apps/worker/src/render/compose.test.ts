@@ -5,9 +5,18 @@ import { expect, it } from 'vitest'
 it('keeps shared memory and every non-intercepted transport restriction in the browser service', () => {
   const compose = readFileSync(new URL('../../../../docker-compose.yml', import.meta.url), 'utf8')
   const browser = compose.split('\n  browser:\n')[1]?.split('\nvolumes:')[0] ?? ''
-  expect(browser).toContain('shm_size: 256m')
+  // Overridable from .env, with the defaults the budget test measured.
+  expect(browser).toContain('shm_size: ${RENDER_BROWSER_SHM:-256m}')
   expect(browser).toContain('pids_limit: 256')
-  expect(browser).toContain('mem_limit: 1536m')
+  expect(browser).toContain('mem_limit: ${RENDER_BROWSER_MEMORY:-1536m}')
+  for (const flag of [
+    'user:',
+    'init: true',
+    'read_only: true',
+    'cap_drop: [ALL]',
+    'no-new-privileges',
+  ])
+    expect(browser).toContain(flag)
   for (const flag of [
     '--proxy-server=http://127.0.0.1:9',
     '--proxy-bypass-list=<-loopback>',
