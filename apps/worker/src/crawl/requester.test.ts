@@ -57,3 +57,46 @@ it('charges bodies from retries and bytes received before a network error', asyn
   })
   expect(sizes).toEqual([7, 7, 7])
 })
+
+it('holds documents to the requests per second, never unpaced resources, which still obey a pause', async () => {
+  let slow = true
+  const fetch = vi.fn(async (): Promise<FetchedResponse> => {
+    if (slow) {
+      slow = false
+      return { ...answer, headers: { 'retry-after': '1' } }
+    }
+    return { ...answer, statusCode: 200 }
+  })
+  const requester = createRequester({
+    fetcher: { fetch, close() {} },
+    settings: { requestsPerSecond: 20, maxRetries: 0 },
+    signal: new AbortController().signal,
+    retryBaseMs: 0,
+    log: createLogger('test', 'silent'),
+  })
+  const time = async (paced: boolean) => {
+    const started = Date.now()
+    await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        requester.fetchWithRetries(`http://site.test/${i}`, { paced }),
+      ),
+    )
+    return Date.now() - started
+  }
+  // The first answer is a 503 with Retry-After: with no retries left it is returned as it is.
+  slow = false
+  expect(await time(true)).toBeGreaterThanOrEqual(180)
+  expect(await time(false)).toBeLessThan(100)
+  // A server that asks to slow down holds unpaced requests too.
+  slow = true
+  const requesterWithRetry = createRequester({
+    fetcher: { fetch, close() {} },
+    settings: { requestsPerSecond: 1000, maxRetries: 1 },
+    signal: new AbortController().signal,
+    retryBaseMs: 0,
+    log: createLogger('test', 'silent'),
+  })
+  const started = Date.now()
+  await requesterWithRetry.fetchWithRetries('http://site.test/a', { paced: false })
+  expect(Date.now() - started).toBeGreaterThanOrEqual(900)
+})

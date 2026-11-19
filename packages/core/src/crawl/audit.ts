@@ -832,7 +832,12 @@ export interface AuditSnapshot {
   /** Pages without a whole, settled render and whole served HTML; link absence is unknown. */
   rendersUnobserved?: number
   /** Counts can overlap; failedOrMissing includes legacy renders without truncation metadata. */
-  renderCoverage?: { failedOrMissing: number; truncated: number; unsettled: number }
+  renderCoverage?: {
+    failedOrMissing: number
+    truncated: number
+    unsettled: number
+    legacyUnsettled?: number
+  }
   /**
    * Issues this analysis could not see, sorted: their input was not recorded for some page, because
    * the crawl was made before a check could read it (`unobservedIssues`, in the worker). Absent: none,
@@ -849,6 +854,13 @@ export interface AuditSnapshot {
 export const EMPTY_AUDIT_SNAPSHOT: AuditSnapshot = { version: 0, rules: [] }
 
 export const semanticsOf = (snapshot: Pick<AuditSnapshot, 'semantics'>) => snapshot.semantics ?? 1
+
+const renderCoverageSchema = z.object({
+  failedOrMissing: z.number().int().min(0),
+  truncated: z.number().int().min(0),
+  unsettled: z.number().int().min(0),
+  legacyUnsettled: z.number().int().min(0).optional(),
+})
 
 const snapshotSchema = z.object({
   version: z.number().int().min(0),
@@ -867,13 +879,7 @@ const snapshotSchema = z.object({
     })
     .optional(),
   rendersUnobserved: z.number().int().min(0).optional(),
-  renderCoverage: z
-    .object({
-      failedOrMissing: z.number().int().min(0),
-      truncated: z.number().int().min(0),
-      unsettled: z.number().int().min(0),
-    })
-    .optional(),
+  renderCoverage: renderCoverageSchema.optional(),
   unobserved: z.array(z.string()).optional(),
   dismissals: z
     .array(
@@ -934,6 +940,36 @@ export function parseAuditSnapshot(raw: string | null): AuditSnapshot | null {
   try {
     const parsed = snapshotSchema.safeParse(JSON.parse(raw))
     return parsed.success ? (parsed.data as AuditSnapshot) : null
+  } catch {
+    return null
+  }
+}
+
+/** What a rendered crawl's analysis recorded of how many pages it saw completely. */
+export interface RenderObservation {
+  unobserved: number
+  /** Absent in snapshots that kept only the total. */
+  causes: NonNullable<AuditSnapshot['renderCoverage']> | null
+}
+
+const renderObservationSchema = z.object({
+  rendering: z.literal('rendered'),
+  rendersUnobserved: z.number().int().min(0),
+  renderCoverage: renderCoverageSchema.optional(),
+})
+
+/**
+ * The render coverage of a stored snapshot, read on its own: it does not depend on the rules of the
+ * snapshot being readable. `null`: the crawl was not rendered, was never analysed, or its analysis
+ * did not record it, which is not the same as every page being whole.
+ */
+export function parseRenderObservation(raw: string | null): RenderObservation | null {
+  if (raw === null) return null
+  try {
+    const parsed = renderObservationSchema.safeParse(JSON.parse(raw))
+    return parsed.success
+      ? { unobserved: parsed.data.rendersUnobserved, causes: parsed.data.renderCoverage ?? null }
+      : null
   } catch {
     return null
   }
@@ -1033,6 +1069,12 @@ export type ConditionStates = Partial<Record<AuditCondition, ConditionState>>
 export interface UrlAuditState {
   /** Absent on HTML and legacy analyses. Unknown input is retained per URL. */
   documentObservation?: 'complete' | 'redirected' | 'unobserved'
+  /**
+   * A complete document captured at the end of the window, still loading. What it shows is
+   * observed; an issue it does not show is unverified for this URL (`observe`). Absent: settled, or
+   * an analysis from before 0.6.0-rc.2.
+   */
+  documentLoading?: boolean
   documentUnobserved?: string[]
   participation: AuditParticipation
   /** The rule that decided it. `null`: the default. */

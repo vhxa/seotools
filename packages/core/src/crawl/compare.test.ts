@@ -18,6 +18,7 @@ import {
   isPageLocalIssue,
   issueTimelines,
   observe,
+  readsOwnDocument,
   orderPair,
   reportedIssues,
   type CrawlFacts,
@@ -1141,6 +1142,48 @@ it('keeps document uncertainty URL-local and refuses unknown or cross-basis hist
   expect(classifyFinding('title-missing', { base: absent, target: reported })).toMatchObject({
     kind: 'new',
   })
+})
+
+it('never reads what a page captured while still loading lacks as fixed, and reports what it shows', () => {
+  const rendered = facts({ documentBasis: 'rendered-v1', graphBasis: 'rendered' })
+  const settled = (issues: string[]) => seen(issues, { documentObservation: 'complete' }, rendered)
+  const loading = (issues: string[]) =>
+    seen(issues, { documentObservation: 'complete', documentLoading: true }, rendered)
+  for (const issue of [
+    'h1-changed-by-javascript',
+    'links-only-after-rendering',
+    'title-missing',
+    'render-script-errors',
+  ]) {
+    // Gone from a capture made while loading: it may only not have arrived yet.
+    expect(
+      classifyFinding(issue, { base: settled([issue]), target: loading([]) }),
+      issue,
+    ).toMatchObject({ kind: 'unverified', reasons: ['unobserved'] })
+    expect(observe(issue, loading([]))).toEqual({ presence: 'unknown', reason: 'unobserved' })
+    // What it shows is observed: reported as usual.
+    expect(
+      classifyFinding(issue, { base: loading([issue]), target: loading([issue]) }),
+    ).toMatchObject({
+      kind: 'persistent',
+    })
+    expect(classifyFinding(issue, { base: settled([]), target: loading([issue]) })).toMatchObject({
+      kind: 'new',
+    })
+    // A settled capture still says it is gone.
+    expect(classifyFinding(issue, { base: loading([issue]), target: settled([]) })).toMatchObject({
+      kind: 'resolved',
+    })
+  }
+  // The render did not fail: that much a capture while loading does say.
+  expect(
+    classifyFinding('render-failed', { base: settled(['render-failed']), target: loading([]) }),
+  ).toMatchObject({ kind: 'resolved' })
+  // A response finding does not read the document.
+  expect(
+    classifyFinding('server-error', { base: settled(['server-error']), target: loading([]) }),
+  ).toMatchObject({ kind: 'resolved' })
+  expect(readsOwnDocument('server-error')).toBe(false)
 })
 
 it('retains cross-basis and crawl-wide unknown rows even when both crawls report a finding', () => {

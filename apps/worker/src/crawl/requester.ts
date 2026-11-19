@@ -7,6 +7,11 @@ export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   signal?: AbortSignal
   /** Rechecked before every attempt, after pacing. */
   beforeAttempt?: () => void
+  /**
+   * `false`: not held to the requests per second (a rendered page's resources, which their own
+   * parallelism bounds). A server that asked to slow down still holds it.
+   */
+  paced?: boolean
 }
 
 /**
@@ -40,9 +45,16 @@ export function createRequester(options: {
     }
   }
 
+  /** Only a server that asked to slow down holds an unpaced request. */
+  async function waitForPause(signal: AbortSignal) {
+    while (Date.now() < pausedUntil && !signal.aborted) {
+      await abortableSleep(pausedUntil - Date.now(), signal)
+    }
+  }
+
   async function fetchWithRetries(
     url: string,
-    fetchOptions: RequestOptions,
+    { paced = true, ...fetchOptions }: RequestOptions,
   ): Promise<FetchedResponse | FetchError> {
     const signal = fetchOptions.signal
       ? AbortSignal.any([stopSignal, fetchOptions.signal])
@@ -51,7 +63,7 @@ export function createRequester(options: {
       ? settings.maxRetries
       : 0
     for (let attempt = 0; ; attempt++) {
-      await waitForSlot(signal)
+      await (paced ? waitForSlot(signal) : waitForPause(signal))
       if (signal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
       const backoff = retryBaseMs * 2 ** attempt
       try {

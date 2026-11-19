@@ -206,15 +206,22 @@ it.each([
   },
 )
 
-it.each([
-  'failed',
-  'truncated',
-  'unsettled',
-  'missing',
-  'legacy',
-  'redirected',
-  'other-2xx',
-] as const)(
+it('judges the rendered document of a page captured while still loading', async () => {
+  const source = page('/', { title: null, head: '<meta name="robots" content="noindex">' })
+  const result = await crawl({ [`${SITE}/`]: source }, async (input) => ({
+    ...renderedOutcome(input),
+    settled: false,
+    pending: 2,
+  }))
+  // An observation: what it shows is reported, and it is marked as captured while loading.
+  expect(await ids(result)).toContain('title-missing')
+  const audit = (await db.crawls.auditOf(result.id, [hash('/')]))[0]!
+  expect(audit.documentObservation).toBe('complete')
+  expect(audit.documentLoading).toBe(true)
+  expect(audit.indexability).toBe('not-indexable')
+})
+
+it.each(['failed', 'truncated', 'missing', 'legacy', 'redirected', 'other-2xx'] as const)(
   'never judges the served document after %s; preserves known response blockers',
   async (cause) => {
     const source = page('/', { title: null, head: '<meta name="robots" content="noindex">' })
@@ -225,7 +232,6 @@ it.each([
         ? { status: 'failed', failure: { code: 'serialization', message: 'test' } }
         : {}),
       ...(cause === 'truncated' ? { truncated: true } : {}),
-      ...(cause === 'unsettled' ? { settled: false } : {}),
       ...(cause === 'redirected'
         ? { redirected: true, settled: false, finalUrl: `${SITE}/target` }
         : {}),
@@ -471,3 +477,86 @@ it.each(['required', 'forbidden'] as const)(
       expect(a.served![key], key).toEqual(a[key])
   },
 )
+
+it('does not resolve or introduce graph findings across a missing loading-window edge', async () => {
+  const data = {
+    [`${SITE}/`]: page('/'),
+    [`${SITE}/target`]: page('/target'),
+    [`${SITE}/sitemap.xml`]: xml(sitemapOf(['/target'])),
+  }
+  const run = (link: boolean) =>
+    crawl(data, async (input) => ({
+      ...renderedOutcome(
+        input,
+        link && input.url === `${SITE}/` ? '<a href="/target">Target</a>' : '',
+      ),
+      settled: false,
+      pending: 1,
+    }))
+  const first = await run(true)
+  expect(await ids(first, '/target')).toContain('linked-only-by-javascript')
+  const second = await run(false)
+  const change = await compareWithPrevious({ db, target: second, exact: true })
+  expect(change.byIssue.get('linked-only-by-javascript')).toMatchObject({
+    resolved: 0,
+    unverified: 1,
+  })
+  const third = await run(true)
+  const back = await compareWithPrevious({ db, target: third, exact: true })
+  expect(back.byIssue.get('linked-only-by-javascript')).toMatchObject({ fresh: 0, unverified: 1 })
+})
+
+it('keeps rc.1 unsettled rows with extracted facts unobserved on reanalysis', async () => {
+  const result = await crawl({ [`${SITE}/`]: page('/', { title: 'Before' }) }, async (input) => ({
+    ...renderedOutcome(input),
+    html: body('/', { title: 'After', links: '<a href="/target">Target</a>' }),
+    settled: false,
+    pending: 1,
+  }))
+  const [render] = await db.crawls.renders(result.id)
+  const { capture: _capture, ...data } = render!.data
+  await db.crawls.saveRenders(result.id, [{ ...render!, data }])
+  await analyseCrawl(db, result.id, await currentAuditConfig(db, domainId))
+  expect(await ids(result)).not.toContain('title-changed-by-javascript')
+  const [audit] = await db.crawls.auditOf(result.id, [hash('/')])
+  expect(audit!.documentObservation).toBe('unobserved')
+  expect(audit!.documentLoading).not.toBe(true)
+  expect(audit!.documentUnobserved).toContain('title-missing')
+  expect((await db.crawls.renderStatesOf(result.id, [hash('/')])).get(hash('/'))).toBe('unknown')
+  const stored = (await db.crawls.get(result.id))!
+  const site = await loadSite(db, stored, stored.auditSnapshot!)
+  expect(site.get(`${SITE}/`)!.renderedAnchorsOut).toBe(0)
+  expect(stored.auditSnapshot?.rendersUnobserved).toBe(1)
+  expect(stored.auditSnapshot?.renderCoverage).toEqual({
+    failedOrMissing: 0,
+    truncated: 0,
+    unsettled: 0,
+    legacyUnsettled: 1,
+  })
+})
+
+it('does not resolve or introduce cross-page document findings when another page is loading', async () => {
+  const title = 'A shared title for both pages'
+  const data = {
+    [`${SITE}/`]: page('/', { title, links: '<a href="/b">B</a>' }),
+    [`${SITE}/b`]: page('/b', { title }),
+  }
+  const run = (loading: boolean) =>
+    crawl(data, async (input) => ({
+      ...renderedOutcome(input),
+      ...(loading && input.url === `${SITE}/b`
+        ? { html: body('/b', { title: 'Loading placeholder' }), settled: false, pending: 1 }
+        : {}),
+    }))
+  const first = await run(false)
+  expect(await ids(first)).toContain('title-duplicate')
+  const second = await run(true)
+  expect(await ids(second)).not.toContain('title-duplicate')
+  const [home] = await db.crawls.auditOf(second.id, [hash('/')])
+  expect(home!.documentLoading).not.toBe(true)
+  const change = await compareWithPrevious({ db, target: second, exact: true })
+  expect(change.byIssue.get('title-duplicate')).toMatchObject({ resolved: 0, unverified: 2 })
+  const third = await run(false)
+  const back = await compareWithPrevious({ db, target: third, exact: true })
+  expect(back.byIssue.get('title-duplicate')).toMatchObject({ fresh: 0, unverified: 2 })
+})

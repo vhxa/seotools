@@ -2196,7 +2196,6 @@ describe('HTML/render differences', () => {
       for (const render of [
         undefined,
         { ...original, status: 'failed' as const },
-        { ...original, settled: false, data: { ...original.data, redirected: false } },
         { ...original, truncated: true },
         { ...original, truncated: null },
         ...(id === 'javascript-redirect'
@@ -2207,6 +2206,11 @@ describe('HTML/render differences', () => {
         if (id === 'render-failed') continue
         expect(CHECKS[id](url, site)).toBe(false)
       }
+      // Captured at the end of the window while still loading: judged like a settled capture.
+      url.render = original
+      const settled = CHECKS[id](url, site)
+      url.render = { ...original, settled: false }
+      expect(CHECKS[id](url, site)).toEqual(settled)
       // Equal facts, with different whitespace/case in every textual value, cannot be a change.
       const noise = (value: string | null | undefined) =>
         value ? ` \n ${value.toUpperCase().replaceAll(' ', ' \t ')}  ` : null

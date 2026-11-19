@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from './support/test'
-import { ADMIN, ADMIN_STATE, HOST } from './support/env'
+import { ADMIN, ADMIN_STATE, HOST, RENDERED_HOST, RENDERED_UNOBSERVED } from './support/env'
 import { signIn } from './support/helpers'
 
 const domain = `/domains/${HOST}`
@@ -245,7 +245,7 @@ test('the crawl settings show the rendering mode, and Rendered is disabled witho
   await expect(page.getByText(/Several times slower/)).toBeVisible()
   await expect(page.getByText(/Rendered mode is unavailable/)).toBeVisible()
   // The options of the Rendered choice are in the page, disabled while HTML is chosen.
-  await expect(page.getByRole('spinbutton', { name: 'Render wait limit (ms)' })).toBeDisabled()
+  await expect(page.getByRole('spinbutton', { name: 'Capture window (ms)' })).toBeDisabled()
   await page.getByLabel('Page rendering').click()
   await expect(page.getByRole('option', { name: 'Rendered' })).toHaveAttribute(
     'aria-disabled',
@@ -534,4 +534,26 @@ test('a rule starts from a template, is saved with its paths, and shows in the l
   await expect(listed.getByText('and 1 more')).toBeVisible()
   await expect(listed.getByText(/not indexable · noindex indifferent/)).toBeVisible()
   await expect(listed.getByText(/not in a sitemap/)).toBeVisible()
+})
+
+test('a rendered crawl of over a thousand pages shows its number and coverage in the dashboard and the list', async ({
+  page,
+}) => {
+  const unobserved = RENDERED_UNOBSERVED.toLocaleString('en-US')
+  await page.goto(`/domains/${RENDERED_HOST}`)
+  const block = page.getByRole('region', { name: 'JavaScript rendering' })
+  await expect(block).toBeVisible()
+  // Not "NaN", and not "not analysed": the crawl is analysed and recorded its coverage.
+  await expect(
+    block.getByText(`${unobserved} pages could not be observed completely.`),
+  ).toBeVisible()
+  await expect(block.getByText(/not known yet/)).toHaveCount(0)
+  await expect(block.getByText(/NaN/)).toHaveCount(0)
+  // With pages unobserved, a group with no findings never claims "None".
+  await expect(block.getByText('None', { exact: true })).toHaveCount(0)
+
+  await page.goto(`/domains/${RENDERED_HOST}/crawls`)
+  const row = page.getByRole('row').filter({ hasText: 'Rendered' }).first()
+  await expect(row.getByText(`${unobserved} pages not observed completely`)).toBeVisible()
+  await expect(row.getByText('Coverage not analysed yet')).toHaveCount(0)
 })

@@ -3,18 +3,23 @@
  * filters in SQL with the same precedence), the worker's coverage figures and the pages that show it
  * (client components included) agree on it.
  *
- * A page is **completely observed** (`complete`, `redirect`) only when its render finished, was not
- * cut at the size limit (nor was the served HTML) and either settled or was explicitly stopped by
- * a main-frame navigation to another address. Everything else says which part is missing and leaves
- * what depends on it unknown, never "no difference".
+ * A page is **observed** (`complete`, `unsettled`, `redirect`) when its render produced a whole DOM:
+ * not cut at the size limit (nor was the served HTML) or by a request or byte budget, captured when
+ * the network went quiet or at the end of the capture window (still loading), or explicitly stopped
+ * by a main-frame navigation to another address. Findings are raised from it. What a capture made
+ * while still loading does not show is unverified for that page, never "fixed" (`documentLoading`).
+ * The other states say which part is missing and leave what depends on it unknown, never "no
+ * difference".
  *
  * The first matching state wins, in this order:
  * - `failed`: the render did not produce a document.
  * - `truncated`: the rendered document, or the served HTML, was cut at the size limit.
- * - `unknown`: a render stored before truncation was recorded, so whether it was whole is unknown.
+ * - `unknown`: a legacy render without truncation metadata, or an unsettled nonredirected render
+ *   without capture metadata (rc.1 did not settle, so its findings stay unknown).
  * - `redirect`: JavaScript sent the page to another address; the abandoned document is not compared.
- * - `unsettled`: the page was still loading when the wait limit ended.
- * - `complete`: whole, settled.
+ * - `unsettled`: captured while still loading: at the end of the capture window, with requests in
+ *   flight. An observation.
+ * - `complete`: whole, captured once the network was quiet.
  */
 export const RENDER_STATES = [
   'complete',
@@ -28,6 +33,7 @@ export type RenderState = (typeof RENDER_STATES)[number]
 
 export interface RenderObservation {
   status: 'rendered' | 'failed'
+  captured?: boolean
   settled: boolean
   /** `null`: stored before truncation was recorded. */
   truncated: boolean | null
@@ -41,26 +47,33 @@ export function renderStateOf(render: RenderObservation): RenderState {
   if (render.truncated === true || render.servedTruncated) return 'truncated'
   if (render.truncated === null) return 'unknown'
   if (render.redirected) return 'redirect'
-  if (!render.settled) return 'unsettled'
+  if (!render.settled) return render.captured ? 'unsettled' : 'unknown'
   return 'complete'
 }
 
-/** Whether the observation is whole: what a JavaScript finding or a missing link may rest on. */
-export const isCompleteRender = (state: RenderState) => state === 'complete' || state === 'redirect'
+/** Whether the render is an observation findings are raised from (a whole DOM, or a redirect). */
+export const isObservedRender = (state: RenderState) =>
+  state === 'complete' || state === 'unsettled' || state === 'redirect'
 
-/** The states a page can be in when its render did not give a whole observation. */
+/** The states a page can be in when its render did not give an observation: unknown. */
 export const INCOMPLETE_RENDER_STATES = [
-  'unsettled',
   'truncated',
   'failed',
   'unknown',
 ] as const satisfies readonly RenderState[]
 
 /**
- * What the pages table filters by. `not-rendered` is a page the crawl has no render for (an HTML
- * crawl, an older crawl, a page the browser was never asked about).
+ * What the pages table filters by. `loading` is a page captured while still loading. `not-rendered`
+ * is a page the crawl has no render for (an HTML crawl, an older crawl, a page the browser was never
+ * asked about).
  */
-export const RENDER_FILTERS = ['complete', 'redirect', 'incomplete', 'not-rendered'] as const
+export const RENDER_FILTERS = [
+  'complete',
+  'loading',
+  'redirect',
+  'incomplete',
+  'not-rendered',
+] as const
 export type RenderFilter = (typeof RENDER_FILTERS)[number]
 export const isRenderFilter = (value: unknown): value is RenderFilter =>
   typeof value === 'string' && (RENDER_FILTERS as readonly string[]).includes(value)
@@ -70,6 +83,8 @@ export function renderFilterStates(filter: RenderFilter): readonly RenderState[]
   switch (filter) {
     case 'complete':
       return ['complete']
+    case 'loading':
+      return ['unsettled']
     case 'redirect':
       return ['redirect']
     case 'incomplete':

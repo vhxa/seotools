@@ -39,6 +39,8 @@ export function createRenderService(options: {
   }
   return {
     check: connection.check,
+    /** Pages rendered at the same time (`RENDER_CONCURRENCY`). */
+    concurrency: options.concurrency,
     async render(input: RenderInput): Promise<RenderOutcome> {
       await acquire(input.signal)
       try {
@@ -56,6 +58,8 @@ export function createRenderService(options: {
               status: 'failed',
               failure: { code: 'crashed', message: 'The browser or page crashed twice.' },
               settled: false,
+              pending: 0,
+              captureMs: null,
               redirected: false,
               finalUrl: input.url,
               html: '',

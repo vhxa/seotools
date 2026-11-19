@@ -168,13 +168,14 @@ export type NotRenderedReason =
   /** A rendered crawl, a page it should have rendered, and no observation. Its findings are unknown. */
   | 'missing'
 
-export type IncompleteState = Exclude<RenderState, 'complete' | 'redirect'>
+export type IncompleteState = Exclude<RenderState, 'complete' | 'unsettled' | 'redirect'>
 
 export type RenderView =
   | { kind: 'not-rendered'; reason: NotRenderedReason; statusCode: number | null }
   | {
       kind: 'incomplete'
       state: IncompleteState
+      legacyUnsettled: boolean
       /** Which document was cut: the one the browser built, the served HTML, or both. */
       cut: { rendered: boolean; served: boolean }
       failure: string | null
@@ -184,6 +185,11 @@ export type RenderView =
   | { kind: 'redirect'; target: string; durationMs: number }
   | {
       kind: 'complete'
+      /**
+       * Captured at the end of the window while still loading: what it shows is reported, what it
+       * does not is unverified. `pending`: requests still in flight, `null` when not recorded.
+       */
+      loading: { windowMs: number | null; pending: number | null } | null
       rows: ComparisonRow[]
       durationMs: number
       requests: RenderRequests | null
@@ -215,6 +221,7 @@ export function renderViewOf(input: {
   const state = renderStateOf({
     status: render.status,
     settled: render.settled,
+    captured: !!render.data.capture,
     truncated: render.truncated,
     redirected: render.data.redirected === true,
     servedTruncated,
@@ -222,10 +229,18 @@ export function renderViewOf(input: {
   if (state === 'redirect') {
     return { kind: 'redirect', target: render.finalUrl, durationMs: render.durationMs }
   }
-  if (state === 'complete') {
+  if (state === 'complete' || state === 'unsettled') {
     const scriptErrors = render.data.scriptErrors
+    const pending = render.data.capture?.pending
     return {
       kind: 'complete',
+      loading:
+        state === 'unsettled'
+          ? {
+              windowMs: crawl.rendering.waitMs ?? null,
+              pending: typeof pending === 'number' && pending >= 0 ? pending : null,
+            }
+          : null,
       rows: comparisonRows(url, render),
       durationMs: render.durationMs,
       requests: requestsOf(render.data.requests),
@@ -237,6 +252,7 @@ export function renderViewOf(input: {
   }
   return {
     kind: 'incomplete',
+    legacyUnsettled: state === 'unknown' && !render.settled && !render.data.capture,
     state,
     cut: { rendered: render.truncated === true, served: servedTruncated },
     failure: render.failure,

@@ -1,7 +1,7 @@
 import type { Crawl } from '@seotools/db'
 import { useTranslations } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
-import { isRenderedCrawl, renderCoverageOf } from '@/lib/rendering'
+import { coverageGapOf, isRenderedCrawl, renderCoverageOf } from '@/lib/rendering'
 
 /**
  * Which way a crawl looked at the site: the served HTML only, or every page opened in a browser. For
@@ -13,7 +13,7 @@ export function RenderStamp({
   crawl,
   detailed = true,
 }: {
-  crawl: Pick<Crawl, 'rendering' | 'auditSnapshot' | 'type'>
+  crawl: Pick<Crawl, 'rendering' | 'renderObservation' | 'auditVersion' | 'type'>
   detailed?: boolean
 }) {
   const t = useTranslations('RenderingSummary.stamp')
@@ -28,7 +28,11 @@ export function RenderStamp({
         {rendered && detailed && (
           <span className="text-xs text-muted-foreground">
             {coverage === null
-              ? t('coverageUnknown')
+              ? t(
+                  coverageGapOf(crawl) === 'not-analysed'
+                    ? 'coverageUnknown'
+                    : 'coverageNotRecorded',
+                )
               : coverage.unobserved === 0
                 ? t('allObserved')
                 : t('someUnobserved', { count: coverage.unobserved })}
@@ -41,7 +45,7 @@ export function RenderStamp({
             t('causes', {
               failed: coverage.causes.failedOrMissing,
               truncated: coverage.causes.truncated,
-              unsettled: coverage.causes.unsettled,
+              legacyUnsettled: coverage.causes.legacyUnsettled ?? 0,
             }) + ' · '}
           {t('linksNotEvaluated')}
         </span>

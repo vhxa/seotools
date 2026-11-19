@@ -23,6 +23,7 @@ const crawl = (id: string, overrides: Partial<Crawl> = {}): Crawl => ({
   pagesAudit: { audited: 1, excluded: 0, indexable: 1, notIndexable: 0, unknownIndexability: 0 },
   auditVersion: 1,
   auditSnapshot: auditSnapshotOf(1, []),
+  renderObservation: null,
   robots: null,
   pruned: false,
   history: false,

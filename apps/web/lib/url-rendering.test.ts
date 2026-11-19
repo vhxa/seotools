@@ -131,7 +131,19 @@ describe('renderViewOf', () => {
       state: 'truncated',
       cut: { rendered: false, served: true },
     })
-    expect(view({ settled: false })).toMatchObject({ state: 'unsettled', waitMs: 5000 })
+    // Captured while still loading is an observation: compared, and says so.
+    expect(view({ settled: false })).toMatchObject({
+      kind: 'incomplete',
+      state: 'unknown',
+      legacyUnsettled: true,
+    })
+    expect(
+      view({
+        settled: false,
+        data: { ...render({}).data, capture: { pending: 3, afterMs: 5010 } },
+      }),
+    ).toMatchObject({ kind: 'complete', loading: { windowMs: 5000, pending: 3 } })
+    expect(view({})).toMatchObject({ kind: 'complete', loading: null })
     expect(view({ truncated: null })).toMatchObject({ state: 'unknown' })
   })
 

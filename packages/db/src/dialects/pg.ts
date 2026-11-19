@@ -392,6 +392,26 @@ export function createPgDatabase(options: {
   const renderedUrls = alias(crawlUrls, 'rendered_urls')
   const servedLinks = alias(crawlUrlLinks, 'served_links')
   const renderState = renderStateSql(crawlUrlRenders, renderedUrls.data)
+  /** Internal pages that answered 200 and have no render: a rendered crawl must leave none. */
+  const unrenderedWhere = (crawlId: string) =>
+    and(
+      eq(crawlUrls.crawlId, crawlId),
+      eq(crawlUrls.scope, 'internal'),
+      eq(crawlUrls.state, 'done'),
+      eq(crawlUrls.kind, 'page'),
+      eq(crawlUrls.statusCode, 200),
+      notExists(
+        db
+          .select({ urlHash: crawlUrlRenders.urlHash })
+          .from(crawlUrlRenders)
+          .where(
+            and(
+              eq(crawlUrlRenders.crawlId, crawlUrls.crawlId),
+              eq(crawlUrlRenders.urlHash, crawlUrls.urlHash),
+            ),
+          ),
+      ),
+    )
 
   /** The same URL as the other side of a comparison, and the issues of each crawl being compared. */
   const otherUrls = alias(crawlUrls, 'other_urls')
@@ -2298,6 +2318,39 @@ export function createPgDatabase(options: {
       },
       async saveBrowserWait(crawlId, milliseconds) {
         await db.update(crawls).set({ browserWaitMs: milliseconds }).where(eq(crawls.id, crawlId))
+      },
+
+      async unrenderedPages(crawlId, limit) {
+        return db
+          .select({ urlHash: crawlUrls.urlHash, url: crawlUrls.url })
+          .from(crawlUrls)
+          .where(unrenderedWhere(crawlId))
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+      },
+
+      async requeueUnrendered(crawlId) {
+        const rows = await db
+          .update(crawlUrls)
+          .set({ state: 'queued' })
+          .where(unrenderedWhere(crawlId))
+          .returning({ urlHash: crawlUrls.urlHash })
+        return rows.length
+      },
+
+      async saveRenders(crawlId, renders) {
+        await db.transaction(async (tx) => {
+          for (const render of renders) {
+            const values = { crawlId, ...render, data: JSON.stringify(render.data) }
+            await tx
+              .insert(crawlUrlRenders)
+              .values(values)
+              .onConflictDoUpdate({
+                target: [crawlUrlRenders.crawlId, crawlUrlRenders.urlHash],
+                set: values,
+              })
+          }
+        })
       },
 
       async recordResult({ crawlId, urlHash, result, render, urls = [], links = [] }) {

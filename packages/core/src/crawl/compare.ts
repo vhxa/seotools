@@ -32,7 +32,7 @@ import {
   THRESHOLD_ISSUES,
   type AuditThresholds,
 } from './thresholds'
-import { compareIssueSeverity, isPageIssueId, type PageIssueId } from './issues'
+import { PAGE_ISSUES, compareIssueSeverity, isPageIssueId, type PageIssueId } from './issues'
 import type { CrawlStatus, CrawlUrlKind, CrawlUrlState } from './types'
 
 // --- what is compared per URL ----------------------------------------------------------------------
@@ -205,6 +205,7 @@ export function crawlAuditScope(crawl: CrawlLike): string | null {
 
 /** What a crawl can vouch for when its findings are compared with those of another. */
 export interface CrawlFacts {
+  capturesLoading?: boolean
   documentBasis?: 'rendered-v1'
   graphBasis?: 'rendered'
   identity?: string
@@ -237,6 +238,7 @@ export interface CrawlFacts {
 
 export function crawlFactsOf(crawl: CrawlLike): CrawlFacts {
   return {
+    capturesLoading: (crawl.auditSnapshot?.renderCoverage?.unsettled ?? 0) > 0,
     documentBasis: crawl.auditSnapshot?.documentBasis,
     graphBasis: crawl.auditSnapshot?.rendering,
     identity: JSON.stringify([...new Set(crawl.ignoredParameters ?? [])].sort()),
@@ -478,6 +480,28 @@ const PAGE_LOCAL: ReadonlySet<string> = new Set(PAGE_LOCAL_LIST)
 /** Whether an issue only depends on the URL's own answer. See `PAGE_LOCAL_LIST`. */
 export const isPageLocalIssue = (issue: string) => PAGE_LOCAL.has(issue)
 
+/** Graph findings about what the URL itself links to: its own document holds the references. */
+const OWN_REFERENCE_ISSUES: ReadonlySet<string> = new Set([
+  'links-only-after-rendering',
+  'links-to-broken',
+  'links-to-redirect',
+  'links-to-canonicalised',
+  'links-tracking-parameters',
+])
+
+/**
+ * Whether an issue is read from the URL's own rendered document, including the references it holds:
+ * what a capture made while the page was still loading can show but not rule out. `render-failed`
+ * is not: that render did not fail.
+ */
+export const readsOwnDocument = (issue: string) =>
+  issueBasisOf(issue) === 'document' ||
+  OWN_REFERENCE_ISSUES.has(issue) ||
+  (isPageIssueId(issue) &&
+    PAGE_ISSUES[issue].category === 'javascript' &&
+    isPageLocalIssue(issue) &&
+    issue !== 'render-failed')
+
 /** Why a crawl cannot say whether a URL has an issue. */
 export type UnknownReason =
   | 'dismissed'
@@ -496,6 +520,8 @@ export type UnknownReason =
 /** What one crawl says about a URL, for the findings it reports. */
 export interface UrlEvidence {
   documentObservation?: 'complete' | 'redirected' | 'unobserved'
+  /** Its document was captured while still loading (`UrlAuditState.documentLoading`). */
+  documentLoading?: boolean
   documentUnobserved?: readonly string[]
   /** The crawl requested it (and so has its answer). */
   requested: boolean
@@ -558,6 +584,23 @@ export function observe(issue: string, { crawl, url }: Evidence): Observation {
   )
     return unknown('unobserved')
   if (crawl.unobserved?.has(issue)) return unknown('unobserved')
+  if (
+    crawl.capturesLoading &&
+    !isPageLocalIssue(issue) &&
+    (issueBasisOf(issue) === 'document' || issueBasisOf(issue) === 'graph') &&
+    !url.issues.has(issue) &&
+    !url.accepted?.has(issue)
+  )
+    return unknown('unobserved')
+  // A document captured while still loading shows what it had: an issue it reports is observed,
+  // but one it does not may only not have arrived yet. Never "fixed" or "absent" on that.
+  if (
+    url.documentLoading &&
+    readsOwnDocument(issue) &&
+    !url.issues.has(issue) &&
+    !url.accepted?.has(issue)
+  )
+    return unknown('unobserved')
   // An incomplete crawl lacks pages that others link from, copy or point to: it can report what is
   // not there, and miss what is.
   if (!crawl.complete && !isPageLocalIssue(issue)) return unknown('incomplete')
@@ -823,6 +866,7 @@ export interface TraceLike {
     intent: RecordedIntent
     conditions: ConditionStates
     documentObservation?: 'complete' | 'redirected' | 'unobserved'
+    documentLoading?: boolean
     documentUnobserved?: readonly string[]
   } | null
 }
@@ -831,6 +875,7 @@ export interface TraceLike {
 export function urlEvidenceOf(trace: TraceLike): UrlEvidence {
   return {
     documentObservation: trace.audit?.documentObservation,
+    documentLoading: trace.audit?.documentLoading,
     documentUnobserved: trace.audit?.documentUnobserved,
     requested: trace.snapshot.state === 'done',
     participation: trace.audit?.participation ?? null,
