@@ -154,6 +154,28 @@ describe('paired answers', () => {
       JSON.stringify(baseline),
     )
   })
+  it('keeps full link digests when both stored samples are capped', async () => {
+    const links = Array.from({ length: 66 }, (_, i) => '/article/' + i)
+    let draws = 0
+    const { pair } = await run(() => {
+      const targets = draws++ ? [...links.slice(1), '/new'] : links
+      return html(targets.map((target) => `<a href="${target}"></a>`).join(''))
+    })
+    expect(pair?.changed).toEqual(['anchors'])
+    for (const answer of [pair?.original, pair?.repeat]) {
+      expect(answer?.html?.anchors.count).toBe(66)
+      expect(answer?.html?.anchors.hashes).toHaveLength(64)
+    }
+    expect(pair?.examples).toEqual([])
+    expect(Buffer.byteLength(JSON.stringify(pair))).toBeLessThanOrEqual(16 * 1024)
+  })
+
+  it('observes a changed footer on a short page', async () => {
+    let draws = 0
+    const { pair } = await run(() => html(`<footer>Offer ${++draws}</footer>`))
+    expect(pair?.changed).toEqual(['text'])
+  })
+
   it.each([
     ['redirect', moved('/elsewhere'), ['status'], null],
     ['missing', notFound, ['status', 'title', 'text'], null],

@@ -13,11 +13,12 @@ export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   signal?: AbortSignal
   /** Rechecked before every attempt, after pacing. */
   beforeAttempt?: () => void
+  /** Each paired observation permits exactly one wire attempt. */
+  singleAttempt?: boolean
   /**
    * `false`: not held to the requests per second (a rendered page's resources, which their own
    * parallelism bounds). A server that asked to slow down still holds it.
    */
-  singleAttempt?: boolean
   paced?: boolean
 }
 
@@ -90,7 +91,8 @@ export function createRequester(options: {
         if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
         if (!RETRYABLE_STATUS.has(response.statusCode)) return response
         const delay = parseRetryAfter(response.headers['retry-after'], Infinity)
-        if (delay !== null && delay > MAX_RETRY_AFTER_MS) unsupportedUntil = Date.now() + delay
+        if (delay !== null && delay > MAX_RETRY_AFTER_MS)
+          unsupportedUntil = Math.max(unsupportedUntil, Date.now() + delay)
         if (attempt >= maxRetries && delay === null) return response
         // The server asked to slow down: every request of the domain waits, not just this one.
         const wait = parseRetryAfter(response.headers['retry-after']) ?? backoff

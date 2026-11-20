@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './support/test'
-import { ADMIN_STATE, HOST } from './support/env'
+import { ADMIN_STATE, HOST, RENDERED_HOST } from './support/env'
 test.use({ storageState: ADMIN_STATE })
 test('opens the paired answers from a completed crawl', async ({ page }) => {
   const screenshots = process.env.PAIRED_SCREENSHOTS
@@ -12,6 +12,7 @@ test('opens the paired answers from a completed crawl', async ({ page }) => {
       'This site answered 1 of 5 checked pages differently when requested twice during this crawl.',
     ),
   ).toBeVisible()
+  if (screenshots) await page.screenshot({ path: join(screenshots, 'overview.png') })
   await page.goto(`/domains/${HOST}/crawls`)
   await page.getByText('Paired requests', { exact: true }).last().click()
   await page.getByText('Show examples', { exact: true }).click()
@@ -32,4 +33,13 @@ test('opens the paired answers from a completed crawl', async ({ page }) => {
   ).toHaveCount(2)
   await expect(page.getByText('A different product listing', { exact: true })).toBeVisible()
   if (screenshots) await page.screenshot({ path: join(screenshots, 'url-detail.png') })
+})
+
+test('retains the measured total after removing page evidence', async ({ page }) => {
+  await page.goto(`/domains/${RENDERED_HOST}/crawls`)
+  const row = page.getByRole('row').filter({ hasText: 'Results pruned' })
+  await row.getByText('Paired requests', { exact: true }).click()
+  await expect(row.getByText('No difference observed in 1 paired check.')).toBeVisible()
+  await expect(row.getByText('Retention removed the per-page evidence.')).toBeVisible()
+  await expect(row.getByText('Show examples')).toHaveCount(0)
 })

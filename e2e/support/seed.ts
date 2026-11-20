@@ -101,6 +101,14 @@ async function seedRenderedCrawl(db: Database) {
   const company = await createCompany(db, { name: 'Browser Ltd', domain: RENDERED_HOST })
   if (!company.ok) throw new Error('could not create the rendered company')
   const domainId = company.domain.id
+  const older = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+  if (!older) throw new Error('could not start the retention fixture')
+  await runCrawl(older.id, {
+    db,
+    log: createLogger('e2e-seed', 'silent'),
+    signal: new AbortController().signal,
+    createFetcher: fakeSite({ [`https://${RENDERED_HOST}/`]: page('/') }).createFetcher,
+  })
   await db.crawls.saveSettings(domainId, {
     ...(await db.crawls.settings(domainId)),
     renderingMode: 'headless',
@@ -108,6 +116,7 @@ async function seedRenderedCrawl(db: Database) {
   const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
   if (!crawl) throw new Error('the rendered crawl did not start')
   await db.crawls.finish(crawl.id, { status: 'completed' })
+  await db.crawls.prune({ domainId, type: 'full', keep: 1 })
   const config = await currentAuditConfig(db, domainId)
   await db.crawls.saveAnalysis({
     crawlId: crawl.id,

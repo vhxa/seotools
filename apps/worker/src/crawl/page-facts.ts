@@ -35,7 +35,7 @@ const HEAD_ELEMENTS = new Set([
 /** What `<noscript>` may hold in a head. */
 const HEAD_NOSCRIPT_ELEMENTS = new Set(['link', 'meta', 'style'])
 
-/** Where the text is not the content of the page: code, or what every page repeats. */
+/** Block boundaries separate adjacent words in served text. */
 const TEXT_BLOCKS = new Set([
   'p',
   'br',
@@ -52,6 +52,9 @@ const TEXT_BLOCKS = new Set([
   'section',
   'article',
 ])
+// Visible navigation and footers count in paired answers, even though duplicate-content
+// analysis excludes text shared across a site's pages.
+const NOT_SERVED_TEXT = new Set(['head', 'title', 'script', 'style', 'noscript', 'template', 'svg'])
 const NOT_CONTENT = new Set([
   'head',
   'title',
@@ -295,6 +298,7 @@ export class PageFactsCollector {
   private jsonLdBlocks: unknown[] = []
   // The fetcher's decoded body cap bounds these chunks. Join parser callbacks before
   // normalizing so entity encoding and inline markup do not change a word.
+  private excludedTextDepth = 0
   private readonly bodyChunks: string[] = []
   private readonly anchorLabels = new Set<string>()
   private labelChunks: string[] = []
@@ -327,7 +331,10 @@ export class PageFactsCollector {
   }
 
   open(name: string, attributes: Record<string, string>) {
-    if (TEXT_BLOCKS.has(name)) this.bodyChunks.push(' ')
+    if (!this.excludedTextDepth && TEXT_BLOCKS.has(name)) {
+      ;(this.anchorDepth ? this.labelChunks : this.bodyChunks).push(' ')
+    }
+    if (NOT_SERVED_TEXT.has(name)) this.excludedTextDepth++
     this.trackHead(name)
     if (NOT_CONTENT.has(name)) this.notContentDepth++
     if (name === 'script' || name === 'style') this.codeDepth++
@@ -385,7 +392,7 @@ export class PageFactsCollector {
     if (this.codeDepth > 0) return
     if (this.heading) this.heading.text += chunk
     if (this.anchor && this.anchor.text.length < MAX_ANCHOR_TEXT) this.anchor.text += chunk
-    if (this.notContentDepth === 0) {
+    if (!this.excludedTextDepth) {
       if (this.anchorDepth) this.labelChunks.push(chunk)
       else this.bodyChunks.push(chunk)
     }
@@ -396,7 +403,10 @@ export class PageFactsCollector {
   }
 
   close(name: string) {
-    if (TEXT_BLOCKS.has(name)) this.bodyChunks.push(' ')
+    if (!this.excludedTextDepth && TEXT_BLOCKS.has(name)) {
+      ;(this.anchorDepth ? this.labelChunks : this.bodyChunks).push(' ')
+    }
+    if (NOT_SERVED_TEXT.has(name) && this.excludedTextDepth > 0) this.excludedTextDepth--
     if (NOT_CONTENT.has(name) && this.notContentDepth > 0) this.notContentDepth--
     if ((name === 'script' || name === 'style') && this.codeDepth > 0) this.codeDepth--
     if (name === 'svg' && this.svgDepth > 0) this.svgDepth--
