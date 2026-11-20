@@ -20,6 +20,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-20
+
 ### Added
 
 - The sidebar has the crawl controls: a Full Crawl button that shows the crawl live (Starting, then pages crawled out of pages found, then Processing with a spinner while the findings are analysed) and a menu for the other crawl actions. Both are disabled while a crawl runs. The overview and the crawl list say Processing too, instead of staying at 100%.
