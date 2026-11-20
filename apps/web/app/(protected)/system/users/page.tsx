@@ -40,10 +40,10 @@ export default async function UsersPage() {
   return (
     <main className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         <InviteUserButton targets={targets} />
       </div>
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-xl border bg-card shadow-card [&_thead]:bg-muted/50">
         <Table>
           <TableHeader>
             <TableRow>

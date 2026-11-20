@@ -9,10 +9,13 @@ export function ResultsTable({
   children,
   footer,
   fill = false,
+  overlay = null,
 }: {
   children: ReactNode
   footer: ReactNode
   fill?: boolean
+  /** Covers the header row, after its first (checkbox) column, while it is set. */
+  overlay?: ReactNode
 }) {
   const t = useTranslations('ResultsTable')
   const viewport = useRef<HTMLDivElement>(null)
@@ -36,7 +39,7 @@ export function ResultsTable({
   return (
     <div
       className={cn(
-        'results-table flex min-h-0 min-w-0 flex-col rounded-md border',
+        'results-table relative flex min-h-0 min-w-0 flex-col rounded-xl border bg-card shadow-card',
         fill && 'flex-1',
       )}
     >
@@ -46,13 +49,18 @@ export function ResultsTable({
         aria-label={t('rows')}
         tabIndex={0}
         className={cn(
-          'min-h-0 overflow-auto overscroll-contain rounded-t-md outline-none focus-visible:ring-2 focus-visible:ring-ring [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-20 [&_thead]:bg-muted',
+          'min-h-0 overflow-auto overscroll-contain rounded-t-xl outline-none focus-visible:ring-2 focus-visible:ring-ring [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-20 [&_thead]:bg-muted',
           fill ? 'flex-1' : 'max-h-[calc(100svh-18rem)]',
         )}
       >
         {children}
       </div>
-      <div className="shrink-0 rounded-b-md border-t bg-muted/40 px-3 py-2">{footer}</div>
+      {overlay && (
+        <div className="absolute top-0 right-0 left-10 z-30 h-10 overflow-x-auto rounded-tr-xl bg-muted pr-2 pl-1">
+          {overlay}
+        </div>
+      )}
+      <div className="shrink-0 rounded-b-xl border-t bg-muted/40 px-4 py-2.5">{footer}</div>
     </div>
   )
 }

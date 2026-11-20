@@ -19,7 +19,7 @@ export async function CrawlsHeader({
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         {actions}
       </div>
       <CrawlsNav host={host} />

@@ -8,12 +8,15 @@ export async function Incidents({
   open: SiteIncident[]
   history?: SiteIncident[]
 }) {
-  if (!open.length && !history) return null
+  if (!open.length && !history?.length) return null
   const t = await getTranslations('Incidents'),
     format = await getFormatter()
   const rows = (items: SiteIncident[]) =>
     items.map((i) => (
-      <li key={i.id} className="grid gap-1 rounded border p-3 text-sm">
+      <li
+        key={i.id}
+        className="grid gap-1 rounded-xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/10"
+      >
         <p className="font-medium">
           {t(`kinds.${i.kind}`)}
           {i.kind === 'certificate' ? ` · ${t(`stages.${i.stage}`)}` : ''}
@@ -44,16 +47,24 @@ export async function Incidents({
     ))
   return (
     <section className="grid gap-3">
-      <h2 className="text-lg font-medium">{t('title')}</h2>
-      <p className="text-sm text-muted-foreground">{t('daily')}</p>
-      {open.length ? (
-        <ul className="grid gap-2">{rows(open)}</ul>
-      ) : (
-        <p className="text-sm text-muted-foreground">{t('none')}</p>
+      {open.length > 0 && (
+        <>
+          <h2 className="text-base font-medium">{t('title')}</h2>
+          <p className="text-sm text-muted-foreground">{t('daily')}</p>
+          <ul className="grid gap-2">{rows(open)}</ul>
+        </>
       )}
       {history && history.length > 0 && (
         <>
-          <h3 className="font-medium">{t('history')}</h3>
+          <h2
+            className={
+              open.length > 0
+                ? 'text-sm font-medium text-muted-foreground'
+                : 'text-base font-medium'
+            }
+          >
+            {t('history')}
+          </h2>
           <ul className="grid gap-2">{rows(history)}</ul>
         </>
       )}

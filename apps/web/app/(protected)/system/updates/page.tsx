@@ -165,7 +165,7 @@ export default async function UpdatesPage() {
   return (
     <main className="grid gap-6">
       <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 

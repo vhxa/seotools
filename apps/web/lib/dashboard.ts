@@ -51,3 +51,8 @@ export function dashboardDifference(
 ): number | null {
   return before == null || after == null ? null : after - before
 }
+
+/** The reference instant of the period switch; the page is dynamic, so it is read per request. */
+export function trendNow(): number {
+  return Date.now()
+}

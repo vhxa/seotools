@@ -6,9 +6,10 @@ import {
   FileCode2Icon,
   FileTextIcon,
   FolderTreeIcon,
-  LayoutDashboardIcon,
-  RadarIcon,
-  SettingsIcon,
+  LayoutGridIcon,
+  LayoutListIcon,
+  Settings2Icon,
+  TargetIcon,
   ShieldIcon,
   type LucideIcon,
 } from 'lucide-react'
@@ -16,7 +17,9 @@ import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
-import { type SwitcherCompany } from '@/components/domain-switcher'
+import { CrawlActionsPlaceholder } from '@/components/crawl/sidebar-crawl-actions'
+import { DomainSwitcher, type SwitcherCompany } from '@/components/domain-switcher'
+import { NavUser, type NavUserData } from '@/components/nav-user'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Sidebar,
@@ -24,14 +27,18 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  useSidebar,
 } from '@/components/ui/sidebar'
-import { isNavActive, isSectionOpen, type SectionOverride } from '@/lib/sidebar-nav'
+import { SYSTEM_SECTIONS } from '@/components/system-sections'
+import { CRAWL_SLOT_ID, isNavActive, isSectionOpen, type SectionOverride } from '@/lib/sidebar-nav'
 import { cn } from '@/lib/utils'
 
 interface NavLink {
@@ -54,19 +61,29 @@ type NavItem = NavLink | NavSection
 
 const isActive = isNavActive
 
+/** Rows of the design: 32px high, medium text, 8px apart (the menu's gap). */
+const NAV_BUTTON = 'h-8 gap-2.5 px-2 text-sm font-medium'
+
 /** Options that unfold in place. */
 function NavCollapsible({ section, pathname }: { section: NavSection; pathname: string }) {
   const active = section.links.some((link) => isActive(link, pathname))
   const [override, setOverride] = useState<SectionOverride | null>(null)
   const open = isSectionOpen(active, override, pathname)
+  const { state, setOpen } = useSidebar()
 
   return (
     <Collapsible
       open={open}
-      onOpenChange={(next) => setOverride({ pathname, open: next })}
+      onOpenChange={(next) => {
+        // Folded to icons the options have no room: open the sidebar to show them.
+        if (state === 'collapsed') setOpen(true)
+        setOverride({ pathname, open: next || state === 'collapsed' })
+      }}
       render={<SidebarMenuItem />}
     >
-      <CollapsibleTrigger render={<SidebarMenuButton />}>
+      <CollapsibleTrigger
+        render={<SidebarMenuButton className={NAV_BUTTON} tooltip={section.label} />}
+      >
         <section.icon />
         <span>{section.label}</span>
         <ChevronRightIcon className={cn('ml-auto transition-transform', open && 'rotate-90')} />
@@ -89,17 +106,30 @@ function NavCollapsible({ section, pathname }: { section: NavSection; pathname: 
   )
 }
 
-function NavGroup({ items, pathname }: { items: NavItem[]; pathname: string }) {
+function NavGroup({
+  items,
+  pathname,
+  label,
+}: {
+  items: NavItem[]
+  pathname: string
+  label?: string
+}) {
   return (
-    <SidebarGroup>
+    <SidebarGroup className="p-0">
+      {label && (
+        <SidebarGroupLabel className="mb-1 px-2 text-[13px] font-normal">{label}</SidebarGroupLabel>
+      )}
       <SidebarGroupContent>
-        <SidebarMenu>
+        <SidebarMenu className="gap-2">
           {items.map((item) =>
             'links' in item ? (
               <NavCollapsible key={item.label} section={item} pathname={pathname} />
             ) : (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
+                  className={NAV_BUTTON}
+                  tooltip={item.label}
                   render={<Link href={item.href} />}
                   isActive={isActive(item, pathname)}
                 >
@@ -116,19 +146,25 @@ function NavGroup({ items, pathname }: { items: NavItem[]; pathname: string }) {
 }
 
 /**
- * App navigation, under the header, only while a domain is open (`/domains/[host]`): its options
- * and, for administrators, the administration at the bottom. The domain selector and the user are in the
- * header. Always in view on wide screens; on narrow ones it opens from the header's button.
+ * The inset sidebar of every page: the domain selector at the top, the options of the domain
+ * while one is open (`/domains/[host]`) or the sections of Administration, and at the bottom the
+ * administration link and the user. On narrow screens
+ * it is a sheet that the button of the page's header opens.
  */
 export function AppSidebar({
+  favouriteDomainId,
   isAdmin,
   companies,
+  user,
 }: {
+  favouriteDomainId: string | null
   isAdmin: boolean
   companies: SwitcherCompany[]
+  user: NavUserData
 }) {
   const t = useTranslations('Sidebar')
   const tFiles = useTranslations('CrawlFiles.extra.kinds')
+  const tSystem = useTranslations('SystemNav')
   const pathname = usePathname()
   const { host } = useParams<{ host?: string }>()
   // Only a tracked domain counts: a 404 host must not get links of its own.
@@ -142,7 +178,7 @@ export function AppSidebar({
         {
           label: t('overview'),
           href: `/domains/${activeHost}`,
-          icon: LayoutDashboardIcon,
+          icon: LayoutGridIcon,
           exact: true,
         },
         { label: t('issues'), href: `/domains/${activeHost}/issues`, icon: CircleAlertIcon },
@@ -153,7 +189,7 @@ export function AppSidebar({
         },
         { label: t('structure'), href: `/domains/${activeHost}/structure`, icon: FolderTreeIcon },
         // One link: the list, the comparison and the rechecks are tabs of the area.
-        { label: t('crawls'), href: `/domains/${activeHost}/crawls`, icon: RadarIcon },
+        { label: t('crawls'), href: `/domains/${activeHost}/crawls`, icon: TargetIcon },
         {
           label: t('crawlFiles'),
           icon: FileCode2Icon,
@@ -168,41 +204,79 @@ export function AppSidebar({
             })),
           ],
         },
-        { label: t('settings'), href: `/domains/${activeHost}/settings`, icon: SettingsIcon },
       ]
     : []
+  const settingsItems: NavItem[] = activeHost
+    ? [{ label: t('settings'), href: `/domains/${activeHost}/settings`, icon: Settings2Icon }]
+    : []
 
-  // Outside a domain (System, the account, adding a domain) there is nothing to navigate here.
-  if (!activeHost) return null
+  // Outside a domain the sidebar keeps the same frame: the way to the portfolio and, inside
+  // Administration, its sections (they are the sidebar's entries, not tabs of the page).
+  const generalItems: NavItem[] = activeHost
+    ? []
+    : [{ label: t('domains'), href: '/domains', icon: LayoutListIcon, exact: true }]
+  const inSystem = pathname === '/system' || pathname.startsWith('/system/')
+  const systemItems: NavItem[] =
+    !activeHost && isAdmin && inSystem
+      ? SYSTEM_SECTIONS.map(({ id, href, icon, exact }) => ({
+          label: tSystem(id),
+          href,
+          icon,
+          exact,
+        }))
+      : []
 
   return (
-    <nav aria-label={t('navLabel')} className="contents">
-      {/* Starts below the header (`h-16`) instead of at the top of the screen, and has no
-          background or border of its own: it sits on the page like the header does. */}
-      <Sidebar className="top-16 h-[calc(100svh-4rem)] group-data-[side=left]:border-r-0 [&_[data-slot=sidebar-inner]]:bg-transparent">
-        <div className="flex min-h-0 flex-1 flex-col">
-          <SidebarContent>
-            <NavGroup items={domainItems} pathname={pathname} />
-          </SidebarContent>
-        </div>
-        {isAdmin && (
-          <SidebarFooter>
-            <nav aria-label={t('administration')}>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    render={<Link href="/system" />}
-                    isActive={pathname === '/system' || pathname.startsWith('/system/')}
-                  >
-                    <ShieldIcon />
-                    <span>{t('administration')}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </nav>
-          </SidebarFooter>
+    <Sidebar variant="inset" collapsible="icon">
+      <SidebarHeader className="gap-4 p-3 pb-0 group-data-[collapsible=icon]:p-2">
+        <DomainSwitcher
+          favouriteDomainId={favouriteDomainId}
+          canManage={isAdmin}
+          companies={companies}
+        />
+        {/* The domain layout puts the crawl buttons here (it knows the permissions and the active
+            crawl): the slot keeps its height so nothing moves when they arrive. */}
+        {activeHost && (
+          <div
+            id={CRAWL_SLOT_ID}
+            className="min-h-8 [&>[data-placeholder]:not(:only-child)]:hidden"
+          >
+            {activeDomain?.canCrawl && <CrawlActionsPlaceholder />}
+          </div>
         )}
-      </Sidebar>
-    </nav>
+      </SidebarHeader>
+      <SidebarContent className="px-3 pt-2 group-data-[collapsible=icon]:px-2">
+        <nav aria-label={t('navLabel')} className="grid gap-6">
+          {generalItems.length > 0 && <NavGroup items={generalItems} pathname={pathname} />}
+          {systemItems.length > 0 && (
+            <NavGroup label={t('administration')} items={systemItems} pathname={pathname} />
+          )}
+          {domainItems.length > 0 && <NavGroup items={domainItems} pathname={pathname} />}
+          {settingsItems.length > 0 && (
+            <NavGroup label={t('domain')} items={settingsItems} pathname={pathname} />
+          )}
+        </nav>
+      </SidebarContent>
+      <SidebarFooter className="gap-2 p-3 group-data-[collapsible=icon]:p-2">
+        {isAdmin && (
+          <nav aria-label={t('administration')}>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className={NAV_BUTTON}
+                  tooltip={t('administration')}
+                  render={<Link href="/system" />}
+                  isActive={pathname === '/system' || pathname.startsWith('/system/')}
+                >
+                  <ShieldIcon />
+                  <span>{t('administration')}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </nav>
+        )}
+        <NavUser user={user} isAdmin={isAdmin} />
+      </SidebarFooter>
+    </Sidebar>
   )
 }

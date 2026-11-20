@@ -38,8 +38,7 @@ test.describe('a member with a viewer grant on one domain', () => {
   test('sees the domain they were given, read only', async ({ page }) => {
     await page.goto(domain)
     await expect(page.getByRole('heading', { name: HOST, level: 1 })).toBeVisible()
-    await expect(page.getByText(/Last full crawl finished/)).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Run full crawl' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Full Crawl' })).toHaveCount(0)
 
     await page.goto(`${domain}/urls`)
     await expect(page.getByRole('heading', { name: 'URLs', level: 1 })).toBeVisible()

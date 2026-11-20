@@ -60,7 +60,7 @@ export default async function ParametersPage({
       <Link href={base} className="text-sm text-muted-foreground hover:underline">
         {t('back')}
       </Link>
-      <h1 className="text-2xl font-semibold">{t('title')}</h1>
+      <h1 className="text-xl font-semibold">{t('title')}</h1>
       {selection.kind === 'selected' && (
         <p className="text-sm text-muted-foreground">
           {t('crawl', {
@@ -121,7 +121,7 @@ export default async function ParametersPage({
       <p className="text-sm text-muted-foreground">{t('ignoredHelp')}</p>
 
       <section aria-labelledby="parameters" className="grid gap-2">
-        <h2 id="parameters" className="text-lg font-medium">
+        <h2 id="parameters" className="text-base font-medium">
           {t('names')}
         </h2>
         {(bounded || recent.some((item) => item.bounded)) && (
@@ -192,7 +192,7 @@ export default async function ParametersPage({
       </section>
 
       <section aria-labelledby="entries" className="grid gap-2">
-        <h2 id="entries" className="text-lg font-medium">
+        <h2 id="entries" className="text-base font-medium">
           {t('entries')}
         </h2>
         <p className="text-sm text-muted-foreground">{t('entriesHelp')}</p>

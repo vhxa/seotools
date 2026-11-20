@@ -33,8 +33,7 @@ import {
   ChevronDownIcon,
   Columns3Icon,
   ListFilterIcon,
-  PanelRightCloseIcon,
-  PanelRightOpenIcon,
+  PanelRightIcon,
   RefreshCwIcon,
   EyeOffIcon,
   ExternalLinkIcon,
@@ -47,6 +46,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import {
+  useEffect,
   useMemo,
   useOptimistic,
   useState,
@@ -98,6 +98,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { ShellSlot } from '@/components/shell-slot'
+import { Separator } from '@/components/ui/separator'
+import { HEADER_SLOT_ID, SECONDARY_SLOT_ID } from '@/lib/sidebar-nav'
 import { findingCounters } from '@/lib/finding-counters'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useLocalStorage } from '@/hooks/use-local-storage'
@@ -555,7 +558,7 @@ function Search({ host, query }: { host: string; query: DetailQuery }) {
   }
 
   return (
-    <form onSubmit={onSearch} role="search" className="relative w-full shrink-0 sm:w-56 2xl:w-80">
+    <form onSubmit={onSearch} role="search" className="relative w-full shrink-0">
       <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         name="q"
@@ -587,9 +590,13 @@ export function PagesTable({
   filters,
   status,
   issues,
-  analysis,
+  views,
+  tools,
 }: {
-  analysis: ReactNode
+  /** The views of the crawl (pages, resources, errors…), at the left of the toolbar. */
+  views: ReactNode
+  /** Links that belong with the table's controls. */
+  tools?: ReactNode
   filters: ReactNode
   status: ReactNode
   issues: ReactNode
@@ -614,6 +621,35 @@ export function PagesTable({
   const [stored, saveColumns] = useLocalStorage(STORAGE_KEY)
   const [panelState, savePanel] = useLocalStorage(PANEL_KEY)
   const panelOpen = panelState !== 'folded'
+  // The side panel's slot belongs to the shell: this opens or folds it (its width animates) and
+  // leaves it shut when the page goes. The first state of the page is set without animating.
+  useEffect(() => {
+    const slot = document.getElementById(SECONDARY_SLOT_ID)
+    if (!slot) return
+    const first = slot.dataset.state === undefined
+    if (first) slot.dataset.instant = ''
+    slot.dataset.state = panelOpen ? 'open' : 'closed'
+    slot.inert = !panelOpen
+    if (!first) return
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => delete slot.dataset.instant)
+    })
+    return () => {
+      cancelAnimationFrame(outer)
+      cancelAnimationFrame(inner)
+    }
+  }, [panelOpen])
+  useEffect(
+    () => () => {
+      const slot = document.getElementById(SECONDARY_SLOT_ID)
+      if (!slot) return
+      slot.dataset.instant = ''
+      delete slot.dataset.state
+      slot.inert = false
+    },
+    [],
+  )
   const columnVisibility = useMemo(() => parseVisibility(stored), [stored])
   const detail: IssueDetailKind | undefined =
     query.issue && isPageIssueId(query.issue) ? PAGE_ISSUES[query.issue].detail : undefined
@@ -684,6 +720,75 @@ export function PagesTable({
       router.refresh()
     })
 
+  /** What the selection offers, over the table's header while rows are selected: it adds no line. */
+  const selectionBar = (
+    <div
+      role="group"
+      aria-label={t('selected', { count: selected.length })}
+      className="flex h-full min-w-0 items-center gap-1"
+    >
+      <span className="px-1 text-sm font-medium whitespace-nowrap">
+        {t('selected', { count: selected.length })}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={t('clearSelection')}
+        title={t('clearSelection')}
+        onClick={() => setSelection({})}
+      >
+        <XIcon />
+      </Button>
+      {canEdit && query.issue && selectedInternal.length > 0 && (
+        <FindingStateActions
+          host={host}
+          issue={query.issue}
+          hashes={selectedInternal.map((row) => row.urlHash)}
+        />
+      )}
+      {canEdit && (selectedPages.length > 0 || selectedInternal.length > 0) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" size="sm" disabled={pending} />}>
+            {t('actionsMenu.label')}
+            <ChevronDownIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-52">
+            {selectedPages.length > 0 && (
+              <>
+                <DropdownMenuItem onClick={() => mark(true)}>
+                  <StarIcon className="fill-current" />
+                  {t('bulk.mark')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => mark(false)}>
+                  <StarIcon />
+                  {t('bulk.unmark')}
+                </DropdownMenuItem>
+              </>
+            )}
+            {selectedPages.length > 0 && selectedInternal.length > 0 && <DropdownMenuSeparator />}
+            {selectedInternal.length > 0 && (
+              <>
+                <DropdownMenuItem onClick={() => setAuditDialogOpen(true)}>
+                  <SlidersHorizontalIcon />
+                  {t('bulk.configureAudit')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={selectedInternal.length > MAX_VERIFICATION_URLS}
+                  onClick={recheck}
+                >
+                  <RefreshCwIcon />
+                  {selectedInternal.length > MAX_VERIFICATION_URLS
+                    ? tRecheck('bulk.recheckLimit', { max: MAX_VERIFICATION_URLS })
+                    : tRecheck('bulk.recheck')}
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  )
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       {recheckError && (
@@ -691,164 +796,90 @@ export function PagesTable({
           <AlertDescription>{recheckError}</AlertDescription>
         </Alert>
       )}
-      <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,1fr)_21rem]">
-        {/* Search, selection and table controls share the toolbar above the scroll surface. */}
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Search host={host} query={query} />
-          {
-            <div
-              role="group"
-              aria-label={t('selected', { count: selected.length })}
-              className={cn(
-                'order-last flex h-8 basis-full items-center gap-1',
-                selected.length === 0 && 'invisible',
-              )}
-            >
-              <span className="px-1 text-sm font-medium whitespace-nowrap">
-                {t('selected', { count: selected.length })}
-              </span>
+      {/* The views, the selection and the table's controls share the toolbar above the table. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {views}
+        <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+          {tools}
+          <TableFilters>
+            <Search host={host} query={query} />
+            {filters}
+          </TableFilters>
+          {/* On wide screens the issues sit in a panel beside the page, which the header's
+                button folds away to give the columns the room: the choice stays in this
+                browser. */}
+          <ShellSlot id={HEADER_SLOT_ID}>
+            <div className="hidden items-center gap-2 xl:flex">
+              <Separator
+                orientation="vertical"
+                className="data-vertical:h-4 data-vertical:self-center"
+              />
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={t('clearSelection')}
-                title={t('clearSelection')}
-                onClick={() => setSelection({})}
+                aria-pressed={panelOpen}
+                aria-label={t(panelOpen ? 'issuesPanel.hide' : 'issuesPanel.show')}
+                title={t(panelOpen ? 'issuesPanel.hide' : 'issuesPanel.show')}
+                onClick={() => savePanel(panelOpen ? 'folded' : null)}
               >
-                <XIcon />
+                <PanelRightIcon />
               </Button>
-              {canEdit && query.issue && selectedInternal.length > 0 && (
-                <FindingStateActions
-                  host={host}
-                  issue={query.issue}
-                  hashes={selectedInternal.map((row) => row.urlHash)}
-                />
-              )}
-              {canEdit && (selectedPages.length > 0 || selectedInternal.length > 0) && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={<Button variant="outline" size="sm" disabled={pending} />}
-                  >
-                    {t('actionsMenu.label')}
-                    <ChevronDownIcon />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-52">
-                    {selectedPages.length > 0 && (
-                      <>
-                        <DropdownMenuItem onClick={() => mark(true)}>
-                          <StarIcon className="fill-current" />
-                          {t('bulk.mark')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => mark(false)}>
-                          <StarIcon />
-                          {t('bulk.unmark')}
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                    {selectedPages.length > 0 && selectedInternal.length > 0 && (
-                      <DropdownMenuSeparator />
-                    )}
-                    {selectedInternal.length > 0 && (
-                      <>
-                        <DropdownMenuItem onClick={() => setAuditDialogOpen(true)}>
-                          <SlidersHorizontalIcon />
-                          {t('bulk.configureAudit')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={selectedInternal.length > MAX_VERIFICATION_URLS}
-                          onClick={recheck}
-                        >
-                          <RefreshCwIcon />
-                          {selectedInternal.length > MAX_VERIFICATION_URLS
-                            ? tRecheck('bulk.recheckLimit', { max: MAX_VERIFICATION_URLS })
-                            : tRecheck('bulk.recheck')}
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
             </div>
-          }
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <TableFilters>{filters}</TableFilters>
-            {/* On wide screens the issues sit in a panel beside the table, which can be folded
-                away to give the columns the room: the choice stays in this browser. */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="hidden xl:inline-flex"
-              aria-pressed={panelOpen}
-              title={t(panelOpen ? 'issuesPanel.hide' : 'issuesPanel.show')}
-              onClick={() => savePanel(panelOpen ? 'folded' : null)}
-            >
-              {panelOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+          </ShellSlot>
+          <Sheet>
+            <SheetTrigger render={<Button variant="outline" size="sm" className="xl:hidden" />}>
+              <ListFilterIcon />
               {t('issuesMenu')}
-            </Button>
-            <Sheet>
-              <SheetTrigger render={<Button variant="outline" size="sm" className="xl:hidden" />}>
-                <ListFilterIcon />
-                {t('issuesMenu')}
-              </SheetTrigger>
-              <SheetContent showCloseButton={false} className="gap-0">
-                <SheetHeader className="flex-row items-center justify-between">
-                  <SheetTitle>{t('issuesMenu')}</SheetTitle>
-                  <SheetClose
-                    render={<Button variant="ghost" size="icon-sm" aria-label={tCommon('close')} />}
-                  >
-                    <XIcon />
-                  </SheetClose>
-                </SheetHeader>
-                <div className="min-h-0 flex-1 p-3 pt-0">{issues}</div>
-              </SheetContent>
-            </Sheet>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-                <Columns3Icon />
-                {t('columnsMenu.label')}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-52">
-                {table
-                  .getAllLeafColumns()
-                  .filter(
-                    (column) => column.getCanHide() && (rendered || column.id !== 'rendering'),
-                  )
-                  .map((column) => (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) => column.toggleVisibility(value)}
-                    >
-                      {t(`columns.${column.id as 'title'}`)}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    saveColumns(null)
-                    saveWidths(null)
-                    savePanel(null)
-                  }}
+            </SheetTrigger>
+            <SheetContent showCloseButton={false} className="gap-0">
+              <SheetHeader className="flex-row items-center justify-between">
+                <SheetTitle>{t('issuesMenu')}</SheetTitle>
+                <SheetClose
+                  render={<Button variant="ghost" size="icon-sm" aria-label={tCommon('close')} />}
                 >
-                  {t('columnsMenu.reset')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <ExportMenu host={host} query={query} analysed={analysed} />
-          </div>
-        </div>
-        <div className="flex min-w-0 items-center [&_[data-slot=select-trigger]]:w-full">
-          {analysis}
+                  <XIcon />
+                </SheetClose>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 p-3 pt-0">{issues}</div>
+            </SheetContent>
+          </Sheet>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+              <Columns3Icon />
+              {t('columnsMenu.label')}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-52">
+              {table
+                .getAllLeafColumns()
+                .filter((column) => column.getCanHide() && (rendered || column.id !== 'rendering'))
+                .map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) => column.toggleVisibility(value)}
+                  >
+                    {t(`columns.${column.id as 'title'}`)}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  saveColumns(null)
+                  saveWidths(null)
+                  savePanel(null)
+                }}
+              >
+                {t('columnsMenu.reset')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ExportMenu host={host} query={query} analysed={analysed} />
         </div>
       </div>
-      <div
-        className={cn(
-          'grid min-h-0 flex-1 gap-3',
-          panelOpen && 'xl:grid-cols-[minmax(0,1fr)_21rem]',
-        )}
-      >
-        <div className="flex min-h-0 min-w-0 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           {status && <div className="shrink-0">{status}</div>}
-          <ResultsTable footer={footer} fill>
+          <ResultsTable footer={footer} fill overlay={selected.length > 0 ? selectionBar : null}>
             <table
               className="w-full table-fixed text-sm"
               style={{ width: visibleColumns.reduce((sum, column) => sum + widthOf(column.id), 0) }}
@@ -994,8 +1025,10 @@ export function PagesTable({
             </table>
           </ResultsTable>
         </div>
-        {panelOpen && <div className="hidden min-h-0 xl:block">{issues}</div>}
       </div>
+      <ShellSlot id={SECONDARY_SLOT_ID}>
+        <div className="h-full w-80">{issues}</div>
+      </ShellSlot>
       <AuditDialog
         host={host}
         urls={selectedInternal.map((row) => row.url)}

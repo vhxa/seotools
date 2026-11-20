@@ -44,7 +44,7 @@ export async function DomainRow({
             aria-label={t('open', { host })}
             className="flex min-w-0 items-center gap-2 rounded-md font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
-            <DomainIcon host={host} version={faviconVersion} size="sm" />
+            <DomainIcon host={host} version={faviconVersion} size="lg" />
             <span className="truncate">{host}</span>
           </Link>
         </div>

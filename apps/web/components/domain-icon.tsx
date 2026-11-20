@@ -12,6 +12,13 @@ const SIZES = {
     fallback: 'rounded-lg bg-sidebar-primary text-sidebar-primary-foreground',
     globe: 'size-4',
   },
+  /** The tile of a domain in the selector's list: as big as the one of the sidebar, but quiet. */
+  lg: {
+    root: 'size-8 rounded-lg after:rounded-lg',
+    image: 'rounded-lg',
+    fallback: 'rounded-lg bg-muted text-muted-foreground',
+    globe: 'size-4',
+  },
   /** Next to the name of a domain in a list: the globe is a quiet glyph, not a dark tile. */
   sm: {
     root: 'size-4 rounded-sm after:hidden',

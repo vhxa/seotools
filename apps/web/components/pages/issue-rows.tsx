@@ -29,12 +29,12 @@ export function IssueRows({
   const tIssues = useTranslations('PageIssues')
   const tCatalog = useTranslations('IssueCatalog')
   return (
-    <ul className="grid divide-y">
+    <ul className="grid divide-y rounded-xl bg-card px-4 shadow-card ring-1 ring-foreground/10">
       {rows.map(({ issue, pages, secondary }) => (
         <li key={issue} className="flex items-center gap-1">
           <Link
             href={hrefOf(issue)}
-            className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 rounded-md py-2 text-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 rounded-md py-3 text-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <IssueMark issue={issue} />
             <span className="min-w-0 font-medium">{tIssues(`${issue}.name`)}</span>

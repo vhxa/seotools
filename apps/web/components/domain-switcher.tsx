@@ -2,6 +2,7 @@
 
 import type { ExtraCrawlFileKind } from '@seotools/core'
 import {
+  ApertureIcon,
   LayoutListIcon,
   StarIcon,
   BuildingIcon,
@@ -22,7 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Button } from '@/components/ui/button'
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 
 export interface SwitcherDomain {
   id: string
@@ -31,6 +32,8 @@ export interface SwitcherDomain {
   archived: boolean
   /** Hash of the stored favicon, or `null` when the site has none (yet). */
   faviconVersion: string | null
+  /** Whether the viewer can start crawls of it (an editor, and the domain is not archived). */
+  canCrawl: boolean
   /** The extra crawl files the domain turned on: each one is an entry of the sidebar. */
   extraFiles: ExtraCrawlFileKind[]
 }
@@ -42,7 +45,7 @@ export interface SwitcherCompany {
 }
 
 /**
- * Domain picker in the header, grouped by company (like Search Console's property
+ * Domain picker at the top of the sidebar, grouped by company (like Search Console's property
  * selector). The active domain comes from the `/domains/[host]` route, so it is always shareable
  * and each browser tab can sit on a different domain.
  */
@@ -81,8 +84,12 @@ export function DomainSwitcher({
     company.domains.filter((domain) => domain.archived),
   )
   const domainItem = (domain: SwitcherDomain) => (
-    <DropdownMenuItem key={domain.id} render={<Link href={hrefFor(domain.host)} />}>
-      <DomainIcon host={domain.host} version={domain.faviconVersion} size="sm" />
+    <DropdownMenuItem
+      key={domain.id}
+      render={<Link href={hrefFor(domain.host)} />}
+      className="h-12 gap-3 rounded-lg px-2 text-sm font-medium"
+    >
+      <DomainIcon host={domain.host} version={domain.faviconVersion} size="lg" />
       <span className="flex-1 truncate">{domain.host}</span>
       {domain.id === favouriteDomainId && (
         <StarIcon className="size-3 fill-current text-amber-600" aria-label={t('favourite')} />
@@ -92,85 +99,90 @@ export function DomainSwitcher({
   )
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            aria-label={t('label')}
-            className="h-10 min-w-0 gap-2 px-2 data-popup-open:bg-muted"
-          />
-        }
-      >
-        {current && currentHost ? (
-          <span className="grid min-w-0 text-left text-sm leading-tight">
-            <span className="truncate font-medium">{currentHost}</span>
-            <span className="truncate text-xs font-normal text-muted-foreground">
-              {current.name}
-            </span>
-          </span>
-        ) : (
-          <span className="truncate text-muted-foreground">{t('placeholder')}</span>
-        )}
-        <ChevronsUpDownIcon className="text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        className="max-h-(--available-height) w-72 overflow-y-auto"
-        align="start"
-        side="bottom"
-        sideOffset={4}
-      >
-        <DropdownMenuGroup>
-          <DropdownMenuItem render={<Link href="/domains" />}>
-            <LayoutListIcon />
-            {t('allDomains')}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        {withActive.map((company, index) => (
-          <DropdownMenuGroup key={company.id}>
-            {index > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
-            {company.domains.map((domain) => domainItem(domain))}
-          </DropdownMenuGroup>
-        ))}
-        {archivedDomains.length > 0 && (
-          <DropdownMenuGroup>
-            {withActive.length > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel>{t('archived')}</DropdownMenuLabel>
-            {archivedDomains.map((domain) => domainItem(domain))}
-          </DropdownMenuGroup>
-        )}
-        {canManage && (
-          <>
-            <DropdownMenuSeparator />
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <SidebarMenuButton
+                size="lg"
+                aria-label={t('label')}
+                className="gap-3 px-2 data-popup-open:bg-sidebar-accent"
+              />
+            }
+          >
+            <ApertureIcon className="size-8! shrink-0 stroke-[1.75]" />
+            {current && currentHost ? (
+              <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">{currentHost}</span>
+                <span className="truncate text-xs font-normal text-sidebar-foreground/70">
+                  {current.name}
+                </span>
+              </span>
+            ) : (
+              <span className="truncate text-muted-foreground">{t('placeholder')}</span>
+            )}
+            <ChevronsUpDownIcon className="ml-auto text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="max-h-(--available-height) w-(--anchor-width) origin-top overflow-y-auto"
+            align="start"
+            side="bottom"
+            sideOffset={4}
+          >
             <DropdownMenuGroup>
-              <DropdownMenuItem
-                render={
-                  <Link
-                    href={
-                      current
-                        ? `/domains/new?company=${encodeURIComponent(current.id)}`
-                        : '/domains/new'
-                    }
-                  />
-                }
-              >
-                <PlusIcon />
-                {t('addDomain')}
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/system/companies/new" />}>
-                <PlusIcon />
-                {t('addCompany')}
-              </DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/system/companies" />}>
-                <BuildingIcon />
-                {t('manageCompanies')}
+              <DropdownMenuItem render={<Link href="/domains" />}>
+                <LayoutListIcon />
+                {t('allDomains')}
               </DropdownMenuItem>
             </DropdownMenuGroup>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <DropdownMenuSeparator />
+            {withActive.map((company, index) => (
+              <DropdownMenuGroup key={company.id}>
+                {index > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
+                {company.domains.map((domain) => domainItem(domain))}
+              </DropdownMenuGroup>
+            ))}
+            {archivedDomains.length > 0 && (
+              <DropdownMenuGroup>
+                {withActive.length > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuLabel>{t('archived')}</DropdownMenuLabel>
+                {archivedDomains.map((domain) => domainItem(domain))}
+              </DropdownMenuGroup>
+            )}
+            {canManage && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem
+                    render={
+                      <Link
+                        href={
+                          current
+                            ? `/domains/new?company=${encodeURIComponent(current.id)}`
+                            : '/domains/new'
+                        }
+                      />
+                    }
+                  >
+                    <PlusIcon />
+                    {t('addDomain')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/system/companies/new" />}>
+                    <PlusIcon />
+                    {t('addCompany')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem render={<Link href="/system/companies" />}>
+                    <BuildingIcon />
+                    {t('manageCompanies')}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }

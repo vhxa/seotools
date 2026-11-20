@@ -39,6 +39,7 @@ import {
 } from '@/lib/pages-query'
 import { isRenderedCrawl } from '@/lib/rendering'
 import { loadUrlDetail } from '@/lib/url-detail'
+import { cn } from '@/lib/utils'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
@@ -203,28 +204,14 @@ export default async function PagesDetailsPage({
   const tParameters = await getTranslations('Parameters')
   return (
     <main
-      data-wide
       className={
         browsable
-          ? 'flex h-[calc(100svh-5rem)] min-h-0 flex-col gap-4 md:h-[calc(100svh-7rem)]'
+          ? 'flex h-[calc(100svh-5.75rem)] min-h-0 flex-col gap-3 md:-mb-4 md:h-[calc(100svh-6.25rem)]'
           : 'grid gap-6'
       }
     >
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
-        <div className="grid gap-1">
-          <h1 className="text-2xl font-semibold">{t('title')}</h1>
-          {!selected && <p className="text-sm text-muted-foreground">{t('neverCrawled')}</p>}
-        </div>
-        {selected && (
-          <Link
-            href={`/domains/${host}/urls/parameters${browsable ? `?crawl=${browsable.id}` : ''}`}
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          >
-            <FilterIcon />
-            {tParameters('title')}
-          </Link>
-        )}
-      </div>
+      <h1 className="sr-only">{t('title')}</h1>
+      {!selected && <p className="text-sm text-muted-foreground">{t('neverCrawled')}</p>}
       {selected && (
         <>
           <CrawlBanner
@@ -269,36 +256,6 @@ export default async function PagesDetailsPage({
 
       {browsable && (
         <>
-          <TooltipProvider delay={1200} timeout={800}>
-            <nav aria-label={t('viewsLabel')} className="flex shrink-0 flex-wrap gap-1">
-              {/* Addresses made when "other" was a view of its own still open it, and it shows. */}
-              {[...DETAIL_VIEWS, ...(query.view === 'other' ? (['other'] as const) : [])].map(
-                (view) => (
-                  <Tooltip key={view}>
-                    <TooltipTrigger
-                      render={
-                        <Link
-                          href={detailHref(host, query, { view, page: 1, url: null })}
-                          scroll={false}
-                          aria-current={view === query.view ? 'page' : undefined}
-                          className={buttonVariants({
-                            variant: view === query.view ? 'secondary' : 'ghost',
-                            size: 'sm',
-                          })}
-                        />
-                      }
-                    >
-                      {t(`views.${view}`)}
-                      <span className="text-muted-foreground tabular-nums">
-                        {format.number(viewCounts?.[view] ?? 0)}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>{t(`viewHints.${view}`)}</TooltipContent>
-                  </Tooltip>
-                ),
-              )}
-            </nav>
-          </TooltipProvider>
           <UrlDrawer
             host={domain.host}
             query={{ ...query, page }}
@@ -359,13 +316,50 @@ export default async function PagesDetailsPage({
               query={{ ...query, page }}
               analysed={browsable.pagesByWorstIssue !== null}
               rendered={isRenderedCrawl(browsable)}
-              analysis={
-                <CrawlSwitcher
-                  crawls={history}
-                  selected={browsable}
-                  latestId={latestId}
-                  hrefFor={(crawl) => hrefForCrawl(crawl.id)}
-                />
+              views={
+                <TooltipProvider delay={1200} timeout={800}>
+                  <nav
+                    aria-label={t('viewsLabel')}
+                    className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-[3px]"
+                  >
+                    {/* Addresses made when "other" was a view of its own still open it, and it shows. */}
+                    {[...DETAIL_VIEWS, ...(query.view === 'other' ? (['other'] as const) : [])].map(
+                      (view) => (
+                        <Tooltip key={view}>
+                          <TooltipTrigger
+                            render={
+                              <Link
+                                href={detailHref(host, query, { view, page: 1, url: null })}
+                                scroll={false}
+                                aria-current={view === query.view ? 'page' : undefined}
+                                className={cn(
+                                  'inline-flex h-[26px] items-center rounded-md px-2 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+                                  view === query.view
+                                    ? 'bg-background shadow-xs'
+                                    : 'text-muted-foreground hover:text-foreground',
+                                )}
+                              />
+                            }
+                          >
+                            {t(`views.${view}`)}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {t(`viewHints.${view}`)} · {format.number(viewCounts?.[view] ?? 0)}
+                          </TooltipContent>
+                        </Tooltip>
+                      ),
+                    )}
+                  </nav>
+                </TooltipProvider>
+              }
+              tools={
+                <Link
+                  href={`/domains/${host}/urls/parameters?crawl=${browsable.id}`}
+                  className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+                >
+                  <FilterIcon />
+                  {tParameters('title')}
+                </Link>
               }
               filters={
                 <>
@@ -419,6 +413,14 @@ export default async function PagesDetailsPage({
                   counts={issueCounts}
                   hasAccepted={hasAccepted}
                   checked={browsable.pagesByWorstIssue !== null}
+                  analysis={
+                    <CrawlSwitcher
+                      crawls={history}
+                      selected={browsable}
+                      latestId={latestId}
+                      hrefFor={(crawl) => hrefForCrawl(crawl.id)}
+                    />
+                  }
                 />
               }
               footer={

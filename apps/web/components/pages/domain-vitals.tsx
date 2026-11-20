@@ -1,7 +1,8 @@
 import { loadVitalsKey } from '@seotools/core'
 import { vitalFailure } from '@seotools/core/vitals-state'
 import type { Crawl } from '@seotools/db'
-import { getFormatter, getTranslations } from 'next-intl/server'
+import { getTranslations } from 'next-intl/server'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getDb } from '@/lib/db'
 import { getSettings } from '@/lib/settings'
 import { vitalsPoints } from '@/lib/vitals'
@@ -13,7 +14,6 @@ export async function DomainVitals({ crawls, domainId }: { crawls: Crawl[]; doma
   if (!key) return null
   const db = await getDb()
   if (!(await db.crawls.settings(domainId)).collectVitals) return null
-  const format = await getFormatter()
   const latest = await db.vitals.latestCrawl(domainId)
   if (!latest) return null
   const candidates = crawls.some((crawl) => crawl.id === latest.id) ? crawls : [latest, ...crawls]
@@ -30,24 +30,26 @@ export async function DomainVitals({ crawls, domainId }: { crawls: Crawl[]; doma
   const rows = selected.rows
   const state = rows.find((row) => row.formFactor === 'all')
   return (
-    <section className="grid gap-4 rounded-lg border p-4">
-      <h2 className="text-lg font-medium">{t('title')}</h2>
-      <p>
-        {t('crawlSource', {
-          ref: selected.crawl.ref ?? '—',
-          date: format.dateTime(selected.crawl.finishedAt ?? selected.crawl.createdAt),
-        })}
-      </p>
-      {state?.status === 'failed' && (
-        <p>{t('failed', { reason: t(`results.${vitalFailure(state.error)}`) })}</p>
-      )}
-      {(['PHONE', 'DESKTOP'] as const).map((factor) => (
-        <div key={factor}>
-          <h3>{t(factor)}</h3>
-          <VitalsValues metrics={rows.find((row) => row.formFactor === factor)} />
-        </div>
-      ))}
-      <VitalsTrend points={vitalsPoints(history)} />
+    <section aria-labelledby="vitals">
+      <Card>
+        <CardHeader>
+          <CardTitle id="vitals">{t('title')}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-6">
+          {state?.status === 'failed' && (
+            <p className="text-sm text-destructive">
+              {t('failed', { reason: t(`results.${vitalFailure(state.error)}`) })}
+            </p>
+          )}
+          {(['PHONE', 'DESKTOP'] as const).map((factor) => (
+            <div key={factor} className="grid gap-3">
+              <h3 className="text-sm text-muted-foreground">{t(factor)}</h3>
+              <VitalsValues metrics={rows.find((row) => row.formFactor === factor)} />
+            </div>
+          ))}
+          <VitalsTrend points={vitalsPoints(history)} />
+        </CardContent>
+      </Card>
     </section>
   )
 }

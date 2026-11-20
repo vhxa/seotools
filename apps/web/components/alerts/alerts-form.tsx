@@ -43,7 +43,7 @@ export function AlertsForm({ groups }: { groups: AlertsGroup[] }) {
         <fieldset key={group.id} className="grid gap-4">
           <legend className="text-sm font-medium">{group.name}</legend>
           {group.domains.map((domain) => (
-            <div key={domain.id} className="grid gap-3 rounded-lg border p-3">
+            <div key={domain.id} className="grid gap-3 rounded-xl border p-3">
               <p className="font-medium break-all">{domain.host}</p>
               {ALERT_KINDS.map((kind) => {
                 const key = `${domain.id}:${kind}`

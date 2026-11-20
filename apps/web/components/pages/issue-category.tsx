@@ -3,12 +3,15 @@
 import { ChevronRightIcon } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 
 /**
  * A category of the issues list that opens and closes. The server renders what is inside it; this
  * only holds whether it is open. It is controlled, because it stays mounted while the address
  * changes: choosing an issue of a closed category (a link in the overview, the back button) opens
- * it, and closing one by hand is respected until the selection moves into it again.
+ * it, and closing one by hand is respected until the selection moves into it again. It looks like
+ * a section of the main sidebar.
  */
 export function IssueCategory({
   holdsSelection,
@@ -29,11 +32,13 @@ export function IssueCategory({
   }
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="group/category flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50">
+    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+      <CollapsibleTrigger
+        render={<SidebarMenuButton className="h-8 gap-2.5 px-2 text-sm font-medium" />}
+      >
         <ChevronRightIcon
           aria-hidden
-          className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-panel-open/category:rotate-90"
+          className={cn('shrink-0 transition-transform', open && 'rotate-90')}
         />
         {header}
       </CollapsibleTrigger>

@@ -65,7 +65,7 @@ export function RenderingSummary({
 
   return (
     <section aria-labelledby="rendering" className="grid gap-3">
-      <h2 id="rendering" className="flex items-center text-lg font-medium">
+      <h2 id="rendering" className="flex items-center text-base font-medium">
         {t('title')}
         <InfoHelp label={t('title')}>{t('help')}</InfoHelp>
       </h2>
