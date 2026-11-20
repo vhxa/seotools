@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { lastOfEachDay, type TrendPoint } from '@/lib/dashboard'
+import { lastOfEachDay, segmentTrend, type TrendPoint } from '@/lib/dashboard'
 import { TrendChart, type TrendSeries } from './trend-chart'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -52,8 +52,12 @@ export function TrendCard({
 }) {
   const t = useTranslations('Dashboard')
   const format = useFormatter()
-  const points = lastOfEachDay(crawlPoints, (at) =>
-    format.dateTime(at, { year: 'numeric', month: 'numeric', day: 'numeric' }),
+  // A break is judged between the points drawn, over the whole history: the period only chooses
+  // which of them are visible.
+  const points = segmentTrend(
+    lastOfEachDay(crawlPoints, (at) =>
+      format.dateTime(at, { year: 'numeric', month: 'numeric', day: 'numeric' }),
+    ),
   )
   const [chosen, setChosen] = useState<RangeId | null>(null)
   const range = chosen ?? defaultRange(points, now)

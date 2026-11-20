@@ -24,6 +24,10 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - Crawls record their discovery settings and the builds that queued, ran and analysed them. Administration flags workers on mixed builds and workers or web apps that do not recognize the database's migrations.
 
+### Changed
+
+- The trend charts on the overview no longer draw one line through crawls that did not measure the same thing. When the rendering mode, the ignored parameters, the crawl settings, the issue checks or the audit rules differ from the crawl before, the line breaks and the first point after the change is ringed, with what changed in its tooltip.
+
 ### Fixed
 
 - A worker left running through a database update stops claiming jobs when it detects migrations its image does not recognize.

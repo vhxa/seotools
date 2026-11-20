@@ -3563,7 +3563,38 @@
       "month": "Rastreos completos del último mes",
       "quarter": "Rastreos completos de los últimos 3 meses"
     },
-    "rangeEmpty": "Ningún rastreo completo en este periodo."
+    "rangeEmpty": "Ningún rastreo completo en este periodo.",
+    "basis": {
+      "legend": "Un punto con aro marca dónde cambió lo que miden los rastreos (renderizado, parámetros ignorados, ajustes del rastreo o reglas de auditoría). La línea se corta ahí: las cifras de un lado y otro no son comparables.",
+      "column": "Cambio de base",
+      "rendering": {
+        "rendered": "Renderizado en lugar de HTML",
+        "html": "HTML en lugar de renderizado"
+      },
+      "ignoredAdded": "Ahora ignora {count, plural, one {el parámetro} other {los parámetros}} {parameters}{more, plural, =0 {} other { y # más}}",
+      "ignoredRemoved": "Ya no ignora {count, plural, one {el parámetro} other {los parámetros}} {parameters}{more, plural, =0 {} other { y # más}}",
+      "settings": "Cambiaron los ajustes del rastreo: {settings}",
+      "catalog": "Cambiaron las comprobaciones de problemas",
+      "rules": "Cambiaron las reglas",
+      "setting": {
+        "includePrefixes": "rutas incluidas",
+        "excludePrefixes": "rutas excluidas",
+        "maxDepth": "profundidad máxima",
+        "maxUrls": "límite de URLs",
+        "userAgent": "user agent",
+        "requestCredentialsSet": "credenciales de las peticiones",
+        "optionalFiles": "archivos opcionales",
+        "indexNowKey": "clave de IndexNow",
+        "concurrency": "peticiones simultáneas",
+        "requestsPerSecond": "peticiones por segundo",
+        "timeoutMs": "tiempo de espera",
+        "maxRetries": "reintentos",
+        "renderWaitMs": "espera del renderizado",
+        "renderOmittedHosts": "hosts excluidos del renderizado",
+        "renderingMode": "renderizado",
+        "ignoredParameters": "parámetros ignorados"
+      }
+    }
   },
   "Issues": {
     "metaTitle": "Problemas · {host} · seotools",
