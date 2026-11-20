@@ -35,6 +35,8 @@ apps/worker/         # Background job runner + handlers (example.echo, mail.send
 
 ## Jobs
 
+- Check the migration journal before claiming work, sharing a short cache across all lanes and periodic tasks. A worker that sees an unknown migration stops starting work and reports itself outdated in its heartbeat. Keep the normal lock handling for jobs it already holds.
+
 - Jobs that may outlast `JOB_LOCK_TIMEOUT_MS` are safe: the runner renews the locks of what it is running. Handlers must still be resumable, since a job can be retried after a crash; throw `JobInterruptedError` to hand one back on shutdown without spending an attempt.
 - `cwv.collect` runs in its own lane (concurrency 1) after the full crawl analysis is saved; persist each measurement for resume, honour pause/archive/key removal, and reanalyse the same crawl. Field data alone raises performance findings; collection queues `vitals.alerts` after reanalysis when origin field metrics regress to poor.
 - Crawls run in their own lane (`CRAWL_CONCURRENCY`, `crawl.run` jobs), so that they cannot hold up other jobs.

@@ -16,16 +16,19 @@ import {
   type SQL,
   type SQLWrapper,
 } from 'drizzle-orm'
+import { snapshotCrawlDiscovery } from '@seotools/core/crawl/discovery'
 import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/acceptance'
 import { renderFilterStates, type RenderState } from '@seotools/core/crawl/render-state'
 import {
   ALERT_KINDS,
+  DEFAULT_CRAWL_SETTINGS,
   JOB_TYPES,
   LINK_CONTEXT_LIMITS,
   LINK_REGIONS,
   MAX_DELIVERY_ERROR_LENGTH,
   MAX_VERIFICATION_URLS,
   alertLocaleOf,
+  buildIdentity,
   crawlUrlHash,
   enabledExtraFiles,
   extractorsSchema,
@@ -40,6 +43,7 @@ import {
   statusRange,
   type AccessGrant,
   type AlertKind,
+  type BuildInfo,
   type AlertLocale,
   type MailKind,
   type MailStatus,
@@ -68,6 +72,8 @@ import {
 import type {
   AlertSubscription,
   MailDelivery,
+  Heartbeat,
+  CrawlRunBuilds,
   Company,
   CompanyWithDomains,
   UserRecord,
@@ -273,6 +279,10 @@ export function foldUsage(
 
 export type CrawlRow = Omit<
   Crawl,
+  | 'startedBuild'
+  | 'runBuilds'
+  | 'analysisBuild'
+  | 'discoverySettings'
   | 'rendering'
   | 'ignoredParameters'
   | 'seedUrls'
@@ -283,6 +293,10 @@ export type CrawlRow = Omit<
   | 'auditSnapshot'
   | 'renderObservation'
 > & {
+  startedBuild: string | null
+  runBuilds: string | null
+  analysisBuild: string | null
+  discoverySettings: string | null
   rendering: string | null
   ignoredParameters: string | null
   seedUrls: string | null
@@ -314,6 +328,10 @@ export type CrawlUrlRow = Omit<
 export type CrawlScheduleRow = CrawlSchedule & { updatedAt: Date }
 
 export const toCrawl = ({
+  startedBuild,
+  runBuilds,
+  analysisBuild,
+  discoverySettings,
   rendering,
   ignoredParameters,
   seedUrls,
@@ -332,6 +350,10 @@ export const toCrawl = ({
   auditSnapshot,
   ...row
 }: CrawlRow): Crawl => ({
+  startedBuild: parseJson(startedBuild) as Crawl['startedBuild'],
+  runBuilds: parseJson(runBuilds) as Crawl['runBuilds'],
+  analysisBuild: parseJson(analysisBuild) as Crawl['analysisBuild'],
+  discoverySettings: parseJson(discoverySettings) as Crawl['discoverySettings'],
   rendering: parseJson(rendering) as Crawl['rendering'],
   ...row,
   pagesByWorstIssue:
@@ -352,10 +374,54 @@ export const toCrawl = ({
       : { audited, excluded, indexable, notIndexable, unknownIndexability },
   auditSnapshot: parseAuditSnapshot(auditSnapshot),
   renderObservation: parseRenderObservation(auditSnapshot),
-  ignoredParameters: (parseJson(ignoredParameters) ?? []) as string[],
+  ignoredParameters: (parseJson(ignoredParameters) ?? undefined) as string[] | undefined,
   seedUrls: seedUrls === null ? null : (JSON.parse(seedUrls) as string[]),
   robots: robots === null ? null : (parseJson(robots) as CrawlRobotsFiles),
 })
+
+export function crawlStartColumns(row: CrawlSettingsRow | undefined, build?: BuildInfo) {
+  const settings = row ? toCrawlSettings(row) : DEFAULT_CRAWL_SETTINGS
+  return {
+    startedBuild: build ? JSON.stringify(build) : null,
+    discoverySettings: JSON.stringify(
+      snapshotCrawlDiscovery(settings, row?.requestSecrets != null, build?.version),
+    ),
+    ignoredParameters: JSON.stringify(settings.ignoredParameters),
+    rendering: JSON.stringify({
+      mode: settings.renderingMode === 'headless' ? 'rendered' : 'html',
+      waitMs: settings.renderWaitMs,
+      omittedHosts: settings.renderOmittedHosts,
+    }),
+  }
+}
+
+/** Keep the first few distinct builds, even if one of them returns after a different one. */
+export function recordRunBuild(
+  recorded: string | null,
+  build: BuildInfo,
+  earlierRunUnrecorded: boolean,
+): string {
+  const history = (parseJson(recorded) as CrawlRunBuilds | null) ?? {
+    builds: [],
+    overflow: false,
+    earlierRunUnrecorded,
+  }
+  if (
+    recorded !== null &&
+    history.builds.some((seen) => buildIdentity(seen) === buildIdentity(build))
+  )
+    return recorded
+  if (history.builds.length < 3) history.builds.push(build)
+  else history.overflow = true
+  return JSON.stringify(history)
+}
+
+export function toHeartbeat({
+  build,
+  ...row
+}: Omit<Heartbeat, 'build'> & { build: string | null }): Heartbeat {
+  return { ...row, build: parseJson(build) as BuildInfo | null }
+}
 
 /** Groups the rows `portfolio` reads (newest first) and the domains with an active crawl. */
 export function foldPortfolio(rows: CrawlRow[], active: { domainId: string }[]) {

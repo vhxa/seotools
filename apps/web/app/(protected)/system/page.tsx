@@ -1,6 +1,7 @@
-import { type JobStatus } from '@seotools/core'
-import { getFormatter, getTranslations } from 'next-intl/server'
-import { ChevronRightIcon, PauseIcon } from 'lucide-react'
+import { buildIdentity, type BuildInfo, type JobStatus } from '@seotools/core'
+import { isUnknownMigrationError } from '@seotools/db'
+import { getFormatter, getNow, getTranslations } from 'next-intl/server'
+import { ChevronRightIcon, PauseIcon, TriangleAlertIcon } from 'lucide-react'
 import { AutoRefresh } from '@/components/auto-refresh'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Stat } from '@/components/stat'
@@ -29,6 +30,8 @@ export async function generateMetadata() {
   return { title: t('metaTitle') }
 }
 
+const RECENT_WORKER_MS = 3 * 60_000
+
 const statusVariant: Record<JobStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   pending: 'outline',
   running: 'secondary',
@@ -39,13 +42,47 @@ const statusVariant: Record<JobStatus, 'default' | 'secondary' | 'destructive' |
 /** Instance-wide status (database, worker, job queue): it does not belong to any domain. */
 export default async function SystemPage() {
   await requireAdmin()
-  const [t, format] = await Promise.all([getTranslations('System'), getFormatter()])
+  const [t, format, now] = await Promise.all([getTranslations('System'), getFormatter(), getNow()])
   const db = await getDb()
-  const [{ report }, counts, jobs] = await Promise.all([
+  const [{ report }, counts, jobs, recent, webOutdated] = await Promise.all([
     getHealth(async () => db),
     db.jobs.countByStatus(),
     db.jobs.list({ limit: 10 }),
+    db.heartbeats.recent(new Date(now.getTime() - RECENT_WORKER_MS)),
+    db.checkMigrations().then(
+      () => false,
+      (error: unknown) => {
+        if (isUnknownMigrationError(error)) return true
+        console.error('Could not check database migrations for the Status page', error)
+        return false
+      },
+    ),
   ])
+  const builds = new Map<string, BuildInfo>()
+  const outdated = new Map<string, BuildInfo>()
+  for (const beat of recent) {
+    if (!beat.build) continue
+    const key = buildIdentity(beat.build)
+    builds.set(key, beat.build)
+    if (beat.outdated) outdated.set(key, beat.build)
+  }
+  const buildList = (group: Map<string, BuildInfo>) =>
+    format.list(
+      [...group.values()].map((build) => {
+        const version =
+          build.channel === 'development'
+            ? t('buildWarnings.development', { version: build.version })
+            : build.version
+        return build.commit ? `${version} (${build.commit.slice(0, 7)})` : version
+      }),
+      { type: 'conjunction' },
+    )
+  const warnings = [
+    builds.size > 1 ? t('buildWarnings.mixed', { builds: buildList(builds) }) : null,
+    outdated.size > 0 ? t('buildWarnings.workerOutdated', { builds: buildList(outdated) }) : null,
+    recent.some((beat) => !beat.build) ? t('buildWarnings.unreported') : null,
+    webOutdated ? t('buildWarnings.webOutdated') : null,
+  ]
   const workerAlive = report.worker.ok
   const lastSeen = report.worker.lastSeen ? new Date(report.worker.lastSeen) : null
   const ago = (date: Date | null) => (date ? format.relativeTime(date) : t('never'))
@@ -61,6 +98,15 @@ export default async function SystemPage() {
           <AlertTitle>{t('paused.title')}</AlertTitle>
           <AlertDescription>{t('paused.description')}</AlertDescription>
         </Alert>
+      )}
+
+      {warnings.map((message) =>
+        message ? (
+          <Alert key={message} variant="destructive">
+            <TriangleAlertIcon />
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        ) : null,
       )}
 
       <section aria-labelledby="health" className="grid gap-3">

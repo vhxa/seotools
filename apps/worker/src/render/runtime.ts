@@ -10,6 +10,7 @@ export async function startRenderRuntime(options: {
   concurrency: number
   settings: Settings
   paused: boolean
+  canStart: () => Promise<boolean>
   onError: (error: unknown) => void
 }) {
   const writeStatus = createRenderStatusWriter(options.settings)
@@ -26,11 +27,16 @@ export async function startRenderRuntime(options: {
     service
       ? service.check()
       : writeStatus({ state: 'not-configured', checkedAt: new Date().toISOString() })
-  await check()
+  if (await options.canStart()) await check()
   const timer =
     service && !options.paused
       ? setInterval(() => {
-          void check().catch(options.onError)
+          void options
+            .canStart()
+            .then(async (current) => {
+              if (current) await check()
+            })
+            .catch(options.onError)
         }, RENDER_LIMITS.checkIntervalMs)
       : undefined
   const handler: JobHandler = async (job) => {
@@ -44,7 +50,7 @@ export async function startRenderRuntime(options: {
       if (timer) clearInterval(timer)
       await service?.close()
       // A stopped worker cannot claim the browser is still connected.
-      await options.settings.delete(RENDER_STATUS_KEY)
+      if (await options.canStart()) await options.settings.delete(RENDER_STATUS_KEY)
     },
   }
 }

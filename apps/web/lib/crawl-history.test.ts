@@ -13,6 +13,10 @@ let counter = 0
 function crawl(overrides: Partial<Crawl> & { id: string }): Crawl {
   counter++
   return {
+    startedBuild: null,
+    runBuilds: null,
+    analysisBuild: null,
+    discoverySettings: null,
     rendering: null,
     browserWaitMs: 0,
     domainId: 'd1',

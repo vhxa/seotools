@@ -137,6 +137,9 @@ import {
   newVerificationUrlRows,
   priorityUrlRow,
   toCrawl,
+  toHeartbeat,
+  crawlStartColumns,
+  recordRunBuild,
   toCrawlSchedule,
   toCrawlUrl,
   toCrawlFile,
@@ -1137,11 +1140,16 @@ export function createPgDatabase(options: {
     },
 
     heartbeats: {
-      async beat({ workerId, startedAt, now = new Date() }) {
+      async beat({ workerId, startedAt, build, outdated, now = new Date() }) {
+        const values = {
+          lastSeenAt: now,
+          build: build ? JSON.stringify(build) : null,
+          outdated: outdated ?? null,
+        }
         await db
           .insert(workerHeartbeats)
-          .values({ workerId, startedAt, lastSeenAt: now })
-          .onConflictDoUpdate({ target: workerHeartbeats.workerId, set: { lastSeenAt: now } })
+          .values({ workerId, startedAt, ...values })
+          .onConflictDoUpdate({ target: workerHeartbeats.workerId, set: values })
         await db
           .delete(workerHeartbeats)
           .where(lt(workerHeartbeats.lastSeenAt, new Date(now.getTime() - 24 * 3600_000)))
@@ -1152,7 +1160,15 @@ export function createPgDatabase(options: {
           .from(workerHeartbeats)
           .orderBy(desc(workerHeartbeats.lastSeenAt))
           .limit(1)
-        return row ?? null
+        return row ? toHeartbeat(row) : null
+      },
+      async recent(since) {
+        const rows = await db
+          .select()
+          .from(workerHeartbeats)
+          .where(gte(workerHeartbeats.lastSeenAt, since))
+          .orderBy(desc(workerHeartbeats.lastSeenAt))
+        return rows.map(toHeartbeat)
       },
     },
 
@@ -1812,7 +1828,7 @@ export function createPgDatabase(options: {
           .onConflictDoUpdate({ target: crawlSettings.domainId, set: { ...values, updatedAt } })
       },
 
-      async start({ domainId, type, trigger, seedUrls }) {
+      async start({ domainId, type, trigger, seedUrls, build }) {
         const now = new Date()
         const id = randomUUID()
         const jobId = randomUUID()
@@ -1835,14 +1851,7 @@ export function createPgDatabase(options: {
                   type,
                   trigger,
                   seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
-                  ignoredParameters: snapshot?.ignoredParameters ?? null,
-                  rendering: JSON.stringify({
-                    mode: snapshot?.renderingMode === 'headless' ? 'rendered' : 'html',
-                    waitMs: snapshot?.renderWaitMs ?? 5000,
-                    omittedHosts: snapshot?.renderOmittedHosts
-                      ? JSON.parse(snapshot.renderOmittedHosts)
-                      : [],
-                  }),
+                  ...crawlStartColumns(snapshot, build),
                   jobId,
                   activeKey: domainId,
                   ref: (last?.ref ?? 0) + 1,
@@ -1989,18 +1998,24 @@ export function createPgDatabase(options: {
         return rows.map(toCrawl)
       },
 
-      async markRunning(id) {
-        const startedAt = new Date()
-        await db
-          .update(crawls)
-          .set({ status: 'running', startedAt })
-          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey), isNull(crawls.startedAt)))
-        await db
-          .update(crawls)
-          .set({ status: 'running' })
-          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
-        const crawl = await this.get(id)
-        return crawl && crawl.status === 'running' ? crawl : null
+      async markRunning(id, build) {
+        return db.transaction(async (tx) => {
+          const active = and(eq(crawls.id, id), isNotNull(crawls.activeKey))
+          const [current] = await tx.select().from(crawls).where(active).for('update')
+          if (!current) return null
+          const [row] = await tx
+            .update(crawls)
+            .set({
+              status: 'running',
+              startedAt: current.startedAt ?? new Date(),
+              runBuilds: build
+                ? recordRunBuild(current.runBuilds, build, current.startedAt !== null)
+                : current.runBuilds,
+            })
+            .where(active)
+            .returning()
+          return row ? toCrawl(row) : null
+        })
       },
 
       async updateCounts(id, counts) {
@@ -2881,7 +2896,16 @@ export function createPgDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveAnalysis({ crawlId, issues, accepted = [], pages, withType, catalog, audit }) {
+      async saveAnalysis({
+        crawlId,
+        issues,
+        accepted = [],
+        pages,
+        withType,
+        catalog,
+        audit,
+        build,
+      }) {
         const issueRows = crawlIssueRows(crawlId, issues)
         const acceptedRows = crawlAcceptedRows(crawlId, accepted)
         const auditRows = crawlAuditRows(crawlId, audit.urls)
@@ -2907,15 +2931,16 @@ export function createPgDatabase(options: {
           for (const batch of chunk(auditRows)) await tx.insert(crawlUrlAudit).values(batch)
           await tx
             .update(crawls)
-            .set(
-              crawlAnalysisColumns({
+            .set({
+              ...crawlAnalysisColumns({
                 pages,
                 withType,
                 catalog,
                 snapshot: audit.snapshot,
                 audit: audit.pages,
               }),
-            )
+              analysisBuild: build ? JSON.stringify(build) : null,
+            })
             .where(eq(crawls.id, crawlId))
           return true
         })

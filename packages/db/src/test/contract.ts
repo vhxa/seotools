@@ -774,6 +774,25 @@ export function describeDatabaseContract(
         expect(latest?.workerId).toBe('w1')
         expect(Date.now() - latest!.lastSeenAt.getTime()).toBeLessThan(2000)
       })
+
+      it('reports build and compatibility of recent workers, including legacy heartbeats', async () => {
+        const now = new Date()
+        const build = { version: '1.2.3', channel: 'release', commit: null } as const
+        const beat = { workerId: 'current', startedAt: now, build, now }
+        await db.heartbeats.beat({ ...beat, outdated: false })
+        await db.heartbeats.beat({ ...beat, outdated: true })
+        await db.heartbeats.beat({ workerId: 'legacy', startedAt: now, now })
+        const old = new Date(now.getTime() - minutes(5))
+        await db.heartbeats.beat({ workerId: 'old', startedAt: old, now: old })
+
+        expect(await db.heartbeats.recent(new Date(now.getTime() - minutes(3)))).toEqual(
+          expect.arrayContaining([
+            { workerId: 'current', build, outdated: true, startedAt: now, lastSeenAt: now },
+            { workerId: 'legacy', build: null, outdated: null, startedAt: now, lastSeenAt: now },
+          ]),
+        )
+        expect(await db.heartbeats.recent(new Date(now.getTime() - minutes(3)))).toHaveLength(2)
+      })
     })
 
     describe('settings', () => {
@@ -1084,6 +1103,58 @@ export function describeDatabaseContract(
           payload: { crawlId: crawl.id },
         })
         expect((await db.crawls.active(domainId))?.id).toBe(crawl.id)
+      })
+
+      it('snapshots discovery at creation and records distinct runs and the committed analysis', async () => {
+        const domainId = await domain()
+        const initial = { version: '1.2.3', channel: 'release', commit: null } as const
+        const resumed = { version: '1.2.4', channel: 'release', commit: null } as const
+        await db.crawls.saveSettings(domainId, {
+          ...DEFAULT_CRAWL_SETTINGS,
+          includePrefixes: ['/shop'],
+          maxDepth: 2,
+          optionalFiles: ['feed'],
+        })
+        await db.crawls.saveRequestSecrets(domainId, 'v1:encrypted')
+        const crawl = await db.crawls.start({
+          domainId,
+          type: 'full',
+          trigger: 'manual',
+          build: initial,
+        })
+        expect(crawl).toMatchObject({
+          startedBuild: initial,
+          runBuilds: null,
+          analysisBuild: null,
+          ignoredParameters: [],
+          discoverySettings: {
+            includePrefixes: ['/shop'],
+            maxDepth: 2,
+            optionalFiles: ['feed'],
+            requestCredentialsSet: true,
+            userAgent: expect.stringContaining('SeoToolsBot/1.2.3'),
+          },
+        })
+        expect(JSON.stringify(crawl)).not.toContain('v1:encrypted')
+        await db.crawls.saveSettings(domainId, DEFAULT_CRAWL_SETTINGS)
+        await db.crawls.markRunning(crawl!.id, initial)
+        await db.crawls.markRunning(crawl!.id, resumed)
+        await db.crawls.markRunning(crawl!.id, initial)
+        await db.crawls.finish(crawl!.id, { status: 'completed' })
+        await saveIssues({
+          crawlId: crawl!.id,
+          issues: [],
+          pages: { issue: 0, warning: 0, opportunity: 0 },
+          withType: { issue: 0, warning: 0, opportunity: 0 },
+          catalog: 'test',
+          build: resumed,
+        })
+        expect(await db.crawls.get(crawl!.id)).toMatchObject({
+          startedBuild: initial,
+          runBuilds: { builds: [initial, resumed], earlierRunUnrecorded: false, overflow: false },
+          analysisBuild: resumed,
+          discoverySettings: crawl!.discoverySettings,
+        })
       })
 
       it('allows one active crawl per domain, whatever its type', async () => {

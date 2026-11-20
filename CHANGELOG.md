@@ -20,6 +20,18 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Added
+
+- Crawls record their discovery settings and the builds that queued, ran and analysed them. Administration flags workers on mixed builds and workers or web apps that do not recognize the database's migrations.
+
+### Fixed
+
+- A worker left running through a database update stops claiming jobs when it detects migrations its image does not recognize.
+
+### Upgrade notes
+
+- This version adds a database migration. Going back requires restoring the backup taken before updating, together with the previous image. Stop older deployments when updating, especially workers from versions that only check migrations at startup.
+
 ## [0.7.1] - 2026-11-20
 
 ### Fixed

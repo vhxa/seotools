@@ -140,6 +140,11 @@ export interface BuildInfo {
   commit: string | null
 }
 
+/** Identifies reported build metadata, including the source commit when it is available. */
+export function buildIdentity(build: BuildInfo): string {
+  return JSON.stringify([build.version, build.channel, build.commit])
+}
+
 export type BuildKind = 'release' | 'candidate' | 'development'
 
 /** A release, a release candidate or a development build; a version nobody published is the last. */

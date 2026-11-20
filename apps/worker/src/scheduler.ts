@@ -1,3 +1,4 @@
+import { getWorkerBuildInfo } from './build-info'
 import { nextScheduledRun, type Logger } from '@seotools/core'
 import {
   DomainArchivedError,
@@ -19,6 +20,7 @@ async function fire(db: Database, schedule: CrawlSchedule): Promise<CrawlSchedul
       domainId: schedule.domainId,
       type: schedule.type,
       trigger: 'schedule',
+      build: getWorkerBuildInfo(),
     })
     return crawl ? 'started' : 'skipped-active'
   } catch (error) {

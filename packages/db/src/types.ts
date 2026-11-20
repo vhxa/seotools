@@ -1,3 +1,4 @@
+import type { CrawlDiscoverySettings } from '@seotools/core/crawl/discovery'
 import type { AcceptanceKind } from '@seotools/core/crawl/acceptance'
 import type { BotAnswer, BotVerdict } from '@seotools/core/bot-access'
 import type { RuleEditing, RuleSelectors } from './audit'
@@ -8,6 +9,7 @@ import type { RenderCounts, RenderFilter, RenderState } from '@seotools/core/cra
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
 import type {
   AccessGrant,
+  BuildInfo,
   AlertKind,
   AlertLocale,
   MailKind,
@@ -108,11 +110,20 @@ export interface Heartbeat {
   workerId: string
   startedAt: Date
   lastSeenAt: Date
+  build: BuildInfo | null
+  outdated: boolean | null
 }
 
 export interface HeartbeatRepository {
-  beat(input: { workerId: string; startedAt: Date; now?: Date }): Promise<void>
+  beat(input: {
+    workerId: string
+    startedAt: Date
+    build?: BuildInfo
+    outdated?: boolean
+    now?: Date
+  }): Promise<void>
   latest(): Promise<Heartbeat | null>
+  recent(since: Date): Promise<Heartbeat[]>
 }
 
 export interface AdminAccount {
@@ -385,7 +396,19 @@ export interface CrawlUrlRender {
   }
 }
 
+export interface CrawlRunBuilds {
+  builds: BuildInfo[]
+  /** The crawl ran before build metadata was recorded. */
+  earlierRunUnrecorded: boolean
+  /** More distinct builds participated than we keep individually. */
+  overflow: boolean
+}
+
 export interface Crawl {
+  startedBuild: BuildInfo | null
+  runBuilds: CrawlRunBuilds | null
+  analysisBuild: BuildInfo | null
+  discoverySettings: CrawlDiscoverySettings | null
   rendering: CrawlRendering | null
   browserWaitMs: number
   ignoredParameters?: string[]
@@ -724,6 +747,7 @@ export interface CrawlRepository {
     type: CrawlType
     trigger: CrawlTrigger
     seedUrls?: string[]
+    build?: BuildInfo
   }): Promise<Crawl | null>
   get(id: string): Promise<Crawl | null>
   /** The crawl with this id if it belongs to the domain; `null` for any other domain's, or none. */
@@ -750,7 +774,7 @@ export interface CrawlRepository {
     page: { after: string | null; limit: number },
   ): Promise<StructureUrl[]>
   /** Moves an active crawl to `running`. `null` when it is no longer active (e.g. cancelled). */
-  markRunning(id: string): Promise<Crawl | null>
+  markRunning(id: string, build?: BuildInfo): Promise<Crawl | null>
   updateCounts(id: string, counts: CrawlCounts): Promise<void>
   saveRobots(id: string, robots: CrawlRobotsFiles): Promise<void>
   /** Ends an active crawl, recounting its URLs. `false` if it had already ended. */
@@ -935,6 +959,7 @@ export interface CrawlRepository {
     /** `ISSUE_CATALOG_VERSION`, to find the analyses a later catalog leaves out of date. */
     catalog: string
     audit: CrawlAuditAnalysis
+    build?: BuildInfo
   }): Promise<boolean>
   /**
    * Crawls that were analysed with another version of the catalog than `catalog`, and still have

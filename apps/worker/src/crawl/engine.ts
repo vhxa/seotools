@@ -1,3 +1,4 @@
+import { getWorkerBuildInfo } from '../build-info'
 import { createRenderResourceCache } from '../render/cache'
 import { RENDER_LIMITS } from '../render/limits'
 import type { RenderService } from '../render/service'
@@ -39,7 +40,7 @@ import type {
   Database,
   NewCrawlUrl,
 } from '@seotools/db'
-import { JobInterruptedError } from '../types'
+import { JobInterruptedError, PermanentJobError } from '../types'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import type { ParsedSitemap } from './extract'
 import {
@@ -109,14 +110,18 @@ export async function runCrawl(
   const { db, log: parentLog, signal } = options
   const retryBaseMs = options.retryBaseMs ?? RETRY_BASE_MS
 
-  const crawl = await db.crawls.markRunning(crawlId)
+  const crawl = await db.crawls.markRunning(crawlId, getWorkerBuildInfo())
   // Cancelled before it got to run. Its job has nothing left to do.
   if (!crawl) return null
   const domain = await db.domains.get(crawl.domainId)
   if (!domain) return null
 
-  const settings: CrawlSettings = await db.crawls.settings(crawl.domainId)
-  settings.ignoredParameters = crawl.ignoredParameters ?? []
+  const snapshot = crawl.discoverySettings
+  const settings: CrawlSettings = {
+    ...(await db.crawls.settings(crawl.domainId)),
+    ...snapshot,
+    ignoredParameters: crawl.ignoredParameters ?? [],
+  }
   const { host } = domain
   const identity = (url: string) => stripIgnoredParameters(url, settings.ignoredParameters, host)
   const followLinks = crawl.type === 'full'
@@ -127,8 +132,15 @@ export async function runCrawl(
   const resourceSlots = createSlots(
     RENDER_LIMITS.pageResources * Math.max(1, options.renderService?.concurrency ?? 1),
   )
+  const headers =
+    snapshot?.requestCredentialsSet === false
+      ? undefined
+      : await siteHeaders(db, domain.id, domain.host, options.settingsSecret)
+  if (snapshot?.requestCredentialsSet && !headers) {
+    throw new PermanentJobError('request-credentials-unavailable')
+  }
   const fetcher = options.createFetcher({
-    siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
+    siteHeaders: headers,
     userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
     timeoutMs: settings.timeoutMs,
     concurrency:

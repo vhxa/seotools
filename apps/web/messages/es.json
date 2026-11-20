@@ -131,6 +131,13 @@
     "skipToContent": "Saltar al contenido principal"
   },
   "System": {
+    "buildWarnings": {
+      "development": "compilación de desarrollo ({version})",
+      "mixed": "Los procesos de trabajo de esta base de datos han notificado distintas compilaciones: {builds}. Detén los procesos de despliegues anteriores.",
+      "workerOutdated": "Los procesos de trabajo desactualizados ({builds}) han dejado de aceptar tareas nuevas. Detenlos e inicia la compilación que corresponde a la base de datos.",
+      "unreported": "Un proceso de trabajo se ha conectado sin indicar su versión. Comprueba si sigue activo algún proceso de un despliegue anterior.",
+      "webOutdated": "Esta aplicación web no reconoce el historial de migraciones de la base de datos. Usa la compilación que aplicó la última migración."
+    },
     "metaTitle": "Estado · Administración · seotools",
     "title": "Estado",
     "health": "Salud",
@@ -3659,6 +3666,15 @@
     }
   },
   "Crawls": {
+    "build": {
+      "development": "compilación de desarrollo",
+      "unrecorded": "sin registrar",
+      "multiple": "varias compilaciones",
+      "version": "Versión: {version}",
+      "withUnrecordedRun": "{version} (ejecución anterior sin registrar)",
+      "withDifferentAnalysis": "Versión: {version} · Analizado con otra compilación ({analysis})",
+      "withAnalysis": "Versión: {version} · Análisis: {analysis}"
+    },
     "metaTitle": "Rastreos · {host} · seotools",
     "description": "Todos los rastreos de este dominio, del más reciente al más antiguo. Un dominio ejecuta un solo rastreo a la vez. Un rastreo completo conserva las reglas con las que se analizó y sus resultados por URL hasta que la retención los elimina.",
     "columns": {
@@ -3702,6 +3718,7 @@
     },
     "started": "Inicio: {when}",
     "finished": "Fin: {when}",
+    "requestCredentialsUnavailable": "Ya no están disponibles las credenciales de acceso que había al poner este rastreo en cola.",
     "browserUnavailable": "El navegador de renderizado no estuvo disponible durante el plazo de recuperación del rastreo."
   },
   "Schedules": {

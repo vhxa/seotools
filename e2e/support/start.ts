@@ -33,6 +33,8 @@ const server = spawn(process.execPath, ['server.js'], {
   env: {
     ...process.env,
     NODE_ENV: 'production',
+    // The standalone output includes the migration files needed by Administration.
+    MIGRATIONS_DIR: undefined,
     PORT: String(PORT),
     HOSTNAME: '127.0.0.1',
     DATABASE_URL,

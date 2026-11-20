@@ -21,6 +21,8 @@ export async function dataStamp(db: Database, domainId: string): Promise<string>
       crawl.finishedAt?.getTime() ?? null,
       crawl.auditVersion,
       crawl.issueCatalog,
+      crawl.runBuilds,
+      crawl.analysisBuild,
     ]),
     rechecks.map((recheck) => [recheck.id, recheck.status, recheck.finishedAt?.getTime() ?? null]),
     config.version,

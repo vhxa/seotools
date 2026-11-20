@@ -1,6 +1,17 @@
-import { readFile } from 'node:fs/promises'
+import { createDatabase } from '@seotools/db'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from './support/test'
-import { ADMIN, ADMIN_STATE, HOST, RENDERED_HOST, RENDERED_UNOBSERVED } from './support/env'
+import {
+  ADMIN,
+  ADMIN_STATE,
+  DATABASE_URL,
+  HOST,
+  RENDERED_HOST,
+  RENDERED_UNOBSERVED,
+} from './support/env'
 import { signIn } from './support/helpers'
 
 const domain = `/domains/${HOST}`
@@ -187,6 +198,59 @@ test('the pages export downloads a CSV with its header row', async ({ page }) =>
   expect(rows.join('\n')).toContain('https://example.com/about')
 })
 
+test('Administration identifies different builds and a database that is newer than the web app', async ({
+  page,
+}) => {
+  const db = await createDatabase({ url: DATABASE_URL, dialect: 'sqlite' })
+  const migrations = await mkdtemp(join(tmpdir(), 'seotools-e2e-newer-'))
+  try {
+    const startedAt = new Date()
+    await db.heartbeats.beat({
+      workerId: 'previous-deployment',
+      startedAt,
+      build: { version: '0.5.0', channel: 'release', commit: null },
+      outdated: true,
+    })
+    await db.heartbeats.beat({
+      workerId: 'current-deployment',
+      startedAt,
+      build: { version: '0.6.0', channel: 'release', commit: null },
+      outdated: false,
+    })
+
+    await page.goto('/system')
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'recently reported different builds' }),
+    ).toContainText(/0\.5\.0.*0\.6\.0|0\.6\.0.*0\.5\.0/)
+    await expect(page.getByRole('alert').filter({ hasText: 'Outdated workers' })).toContainText(
+      '0.5.0',
+    )
+    await expect(page.getByText('This web app does not recognize')).toHaveCount(0)
+
+    // Advance only the throwaway smoke database's journal, leaving the web build as it was.
+    const source = fileURLToPath(new URL('../packages/db/migrations/sqlite/', import.meta.url))
+    await cp(source, migrations, { recursive: true })
+    const journalPath = join(migrations, 'meta/_journal.json')
+    const journal: { entries: { idx: number; when: number; tag: string; breakpoints: boolean }[] } =
+      JSON.parse(await readFile(journalPath, 'utf8'))
+    journal.entries.push({
+      idx: journal.entries.length,
+      when: journal.entries.at(-1)!.when + 1,
+      tag: 'future',
+      breakpoints: true,
+    })
+    await writeFile(journalPath, JSON.stringify(journal))
+    await writeFile(join(migrations, 'future.sql'), 'CREATE TABLE future_probe (id integer)')
+    await db.migrate(migrations)
+
+    expect((await page.reload())?.status()).toBe(200)
+    await expect(page.getByText('This web app does not recognize')).toBeVisible()
+  } finally {
+    await db.close()
+    await rm(migrations, { recursive: true, force: true })
+  }
+})
+
 test('the Crawls area lists the crawls, with the run actions and its own sections', async ({
   page,
 }) => {
@@ -200,6 +264,7 @@ test('the Crawls area lists the crawls, with the run actions and its own section
   const crawls = page.getByRole('table')
   await expect(crawls.getByText('Full crawl').first()).toBeVisible()
   await expect(crawls.getByText('completed')).toBeVisible()
+  await expect(crawls.getByText('Version: development build', { exact: true })).toBeVisible()
   await expect(crawls.getByRole('link', { name: 'View', exact: true })).toBeVisible()
 
   // One entry in the sidebar, and tabs in the page.

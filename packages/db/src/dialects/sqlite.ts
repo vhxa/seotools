@@ -140,6 +140,9 @@ import {
   newVerificationUrlRows,
   priorityUrlRow,
   toCrawl,
+  toHeartbeat,
+  crawlStartColumns,
+  recordRunBuild,
   toCrawlSchedule,
   toCrawlUrl,
   toCrawlFile,
@@ -1169,10 +1172,15 @@ export function createSqliteDatabase(options: {
     },
 
     heartbeats: {
-      async beat({ workerId, startedAt, now = new Date() }) {
+      async beat({ workerId, startedAt, build, outdated, now = new Date() }) {
+        const values = {
+          lastSeenAt: now,
+          build: build ? JSON.stringify(build) : null,
+          outdated: outdated ?? null,
+        }
         db.insert(workerHeartbeats)
-          .values({ workerId, startedAt, lastSeenAt: now })
-          .onConflictDoUpdate({ target: workerHeartbeats.workerId, set: { lastSeenAt: now } })
+          .values({ workerId, startedAt, ...values })
+          .onConflictDoUpdate({ target: workerHeartbeats.workerId, set: values })
           .run()
         db.delete(workerHeartbeats)
           .where(lt(workerHeartbeats.lastSeenAt, new Date(now.getTime() - 24 * 3600_000)))
@@ -1185,7 +1193,16 @@ export function createSqliteDatabase(options: {
           .orderBy(desc(workerHeartbeats.lastSeenAt))
           .limit(1)
           .get()
-        return row ?? null
+        return row ? toHeartbeat(row) : null
+      },
+      async recent(since) {
+        const rows = db
+          .select()
+          .from(workerHeartbeats)
+          .where(gte(workerHeartbeats.lastSeenAt, since))
+          .orderBy(desc(workerHeartbeats.lastSeenAt))
+          .all()
+        return rows.map(toHeartbeat)
       },
     },
 
@@ -1865,7 +1882,7 @@ export function createSqliteDatabase(options: {
           .run()
       },
 
-      async start({ domainId, type, trigger, seedUrls }) {
+      async start({ domainId, type, trigger, seedUrls, build }) {
         const now = new Date()
         const id = randomUUID()
         const jobId = randomUUID()
@@ -1893,14 +1910,7 @@ export function createSqliteDatabase(options: {
                 type,
                 trigger,
                 seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
-                ignoredParameters: snapshot?.ignoredParameters ?? null,
-                rendering: JSON.stringify({
-                  mode: snapshot?.renderingMode === 'headless' ? 'rendered' : 'html',
-                  waitMs: snapshot?.renderWaitMs ?? 5000,
-                  omittedHosts: snapshot?.renderOmittedHosts
-                    ? JSON.parse(snapshot.renderOmittedHosts)
-                    : [],
-                }),
+                ...crawlStartColumns(snapshot, build),
                 jobId,
                 activeKey: domainId,
                 ref: last + 1,
@@ -2045,18 +2055,28 @@ export function createSqliteDatabase(options: {
         return rows.map(toCrawl)
       },
 
-      async markRunning(id) {
-        const startedAt = new Date()
-        db.update(crawls)
-          .set({ status: 'running', startedAt })
-          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey), isNull(crawls.startedAt)))
-          .run()
-        db.update(crawls)
-          .set({ status: 'running' })
-          .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
-          .run()
-        const crawl = await this.get(id)
-        return crawl && crawl.status === 'running' ? crawl : null
+      async markRunning(id, build) {
+        return db.transaction(
+          (tx) => {
+            const active = and(eq(crawls.id, id), isNotNull(crawls.activeKey))
+            const current = tx.select().from(crawls).where(active).get()
+            if (!current) return null
+            const row = tx
+              .update(crawls)
+              .set({
+                status: 'running',
+                startedAt: current.startedAt ?? new Date(),
+                runBuilds: build
+                  ? recordRunBuild(current.runBuilds, build, current.startedAt !== null)
+                  : current.runBuilds,
+              })
+              .where(active)
+              .returning()
+              .get()
+            return toCrawl(row)
+          },
+          { behavior: 'immediate' },
+        )
       },
 
       async updateCounts(id, counts) {
@@ -2958,7 +2978,16 @@ export function createSqliteDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveAnalysis({ crawlId, issues, accepted = [], pages, withType, catalog, audit }) {
+      async saveAnalysis({
+        crawlId,
+        issues,
+        accepted = [],
+        pages,
+        withType,
+        catalog,
+        audit,
+        build,
+      }) {
         const issueRows = crawlIssueRows(crawlId, issues)
         const acceptedRows = crawlAcceptedRows(crawlId, accepted)
         const auditRows = crawlAuditRows(crawlId, audit.urls)
@@ -2983,15 +3012,16 @@ export function createSqliteDatabase(options: {
             tx.delete(crawlUrlAudit).where(eq(crawlUrlAudit.crawlId, crawlId)).run()
             for (const batch of chunk(auditRows)) tx.insert(crawlUrlAudit).values(batch).run()
             tx.update(crawls)
-              .set(
-                crawlAnalysisColumns({
+              .set({
+                ...crawlAnalysisColumns({
                   pages,
                   withType,
                   catalog,
                   snapshot: audit.snapshot,
                   audit: audit.pages,
                 }),
-              )
+                analysisBuild: build ? JSON.stringify(build) : null,
+              })
               .where(eq(crawls.id, crawlId))
               .run()
             return true

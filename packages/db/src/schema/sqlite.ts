@@ -110,6 +110,8 @@ export const workerHeartbeats = sqliteTable('worker_heartbeats', {
   workerId: text('worker_id').primaryKey(),
   startedAt: ts('started_at').notNull(),
   lastSeenAt: ts('last_seen_at').notNull(),
+  build: text('build'),
+  outdated: integer('outdated', { mode: 'boolean' }),
 })
 
 export const settings = sqliteTable('settings', {
@@ -243,6 +245,10 @@ export const crawls = sqliteTable(
     jobId: text('job_id').notNull(),
     /** The domain id while the crawl is active, `null` after: unique, so one per domain at most. */
     seedUrls: text('seed_urls'),
+    startedBuild: text('started_build'),
+    runBuilds: text('run_builds'),
+    analysisBuild: text('analysis_build'),
+    discoverySettings: text('discovery_settings'),
     ignoredParameters: text('ignored_parameters'),
     activeKey: text('active_key').unique(),
     pagesCount: integer('pages_count').notNull().default(0),
