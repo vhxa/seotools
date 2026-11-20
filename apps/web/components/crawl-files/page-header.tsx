@@ -33,7 +33,7 @@ export async function CrawlFilesHeader({
       {(pending || crawling) && <AutoRefresh />}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="grid gap-1">
-          <h1 className="text-2xl font-semibold">{title}</h1>
+          <h1 className="text-xl font-semibold">{title}</h1>
           <HelpDisclosure title={t('aboutFile')}>{description}</HelpDisclosure>
           <p className="text-sm text-muted-foreground">
             {newest

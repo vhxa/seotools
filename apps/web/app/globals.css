@@ -5,6 +5,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Between Tailwind's shadow-card and shadow-sm. */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07);
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -49,19 +51,19 @@
 
 :root {
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: #222222;
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: #222222;
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --popover-foreground: #222222;
+  --primary: #222222;
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
+  --secondary-foreground: #222222;
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.5 0 0);
   --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent-foreground: #222222;
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -74,11 +76,11 @@
   --chart-5: #e87ba4;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-foreground: #222222;
+  --sidebar-primary: #222222;
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-accent-foreground: #222222;
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 }
@@ -118,6 +120,10 @@
 }
 
 @layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
   * {
     @apply border-border outline-ring/50;
   }
@@ -139,5 +145,42 @@
     left: 0;
     z-index: 1;
     box-shadow: 1px 0 var(--border);
+  }
+}
+
+/* Outside any layer on purpose: the shadcn menu, select and combobox items carry `cursor-default`
+   as a utility, and an unlayered rule wins over every layer, so they survive `shadcn add --overwrite`. */
+[role='menuitem']:not([data-disabled]),
+[role='menuitemcheckbox']:not([data-disabled]),
+[role='menuitemradio']:not([data-disabled]),
+[role='option']:not([data-disabled]),
+[role='tab']:not([data-disabled]),
+[role='switch']:not([data-disabled]),
+[role='checkbox']:not([data-disabled]),
+[role='radio']:not([data-disabled]),
+summary {
+  cursor: pointer;
+}
+
+/* A text rolling to the next one: the old one goes up and out, the new one comes from below. */
+@keyframes roll-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes roll-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
   }
 }

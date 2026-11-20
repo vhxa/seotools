@@ -1,7 +1,7 @@
 'use client'
 
 import { useFormatter, useTranslations } from 'next-intl'
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, CartesianGrid, XAxis } from 'recharts'
 import {
   ChartContainer,
   ChartLegend,
@@ -89,13 +89,6 @@ export function TrendChart({
             tickMargin={8}
             minTickGap={32}
             tickFormatter={(at: number) => format.dateTime(at, { month: 'short', day: 'numeric' })}
-          />
-          <YAxis
-            tickLine={false}
-            axisLine={false}
-            width={44}
-            allowDecimals={false}
-            tickFormatter={(value: number) => format.number(value)}
           />
           <ChartTooltip
             content={

@@ -20,6 +20,18 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Added
+
+- The sidebar has the crawl controls: a Full Crawl button that shows the crawl live (Starting, then pages crawled out of pages found, then Processing with a spinner while the findings are analysed) and a menu for the other crawl actions. Both are disabled while a crawl runs. The overview and the crawl list say Processing too, instead of staying at 100%.
+- The overview trend charts have a period switch (week, month, quarter) and open on the narrowest period that has a line to draw.
+- The URLs page has a secondary sidebar with every issue (count and criticality per issue, grouped by category, with the analysis picker on top) that folds with a button in the header; the search by URL or title is inside Filters.
+- The Issues page opens with summary cards.
+
+### Changed
+
+- Redesign: inside a domain the navigation is an inset sidebar that holds the domain selector (larger rows and favicons, opening downward at the width of its button), the administration link and the user menu, and that can be folded (button in the page header or Ctrl/Cmd+B). The page header keeps the URL search. Pages use a full-width layout with the same cards, figures and sidebar-like lists: overview, Issues, URLs, crawls and comparison, structure, settings, System, account and portfolio.
+- Core Web Vitals show a state dot and a threshold bar per metric, including FCP and TTFB.
+
 ## [0.6.0] - 2026-11-19
 
 ### Added

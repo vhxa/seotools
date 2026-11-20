@@ -58,9 +58,12 @@ function NumberField({
 }) {
   return (
     <div className="grid content-start gap-2">
-      <div className="flex items-center gap-1">
+      {/* One height for every label row, with or without a help button, so fields line up. */}
+      <div className="flex h-6 items-center gap-1">
         <Label htmlFor={name}>{label}</Label>
-        <InfoHelp label={label}>{hint}</InfoHelp>
+        <InfoHelp label={label} compact>
+          {hint}
+        </InfoHelp>
       </div>
       <Input
         id={name}
@@ -230,7 +233,7 @@ export function CrawlSettingsForm({
             <div
               role="group"
               aria-label={t('rendering.options')}
-              className="grid gap-4 rounded-lg border p-4"
+              className="grid gap-4 rounded-xl border p-4"
             >
               <p className="text-xs text-muted-foreground">
                 {t(mode === 'headless' ? 'rendering.optionsRendered' : 'rendering.optionsHtml')}
@@ -242,9 +245,11 @@ export function CrawlSettingsForm({
                 </>
               )}
               <div className="grid content-start gap-2">
-                <div className="flex items-center gap-1">
+                <div className="flex h-6 items-center gap-1">
                   <Label htmlFor="renderWaitMs">{t('rendering.wait')}</Label>
-                  <InfoHelp label={t('rendering.wait')}>{t('rendering.waitHint')}</InfoHelp>
+                  <InfoHelp label={t('rendering.wait')} compact>
+                    {t('rendering.waitHint')}
+                  </InfoHelp>
                 </div>
                 <Input
                   id="renderWaitMs"
@@ -397,7 +402,9 @@ export function CrawlSettingsForm({
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="grid content-start gap-2">
-            <Label htmlFor="retention">{t('retention.label')}</Label>
+            <div className="flex h-6 items-center">
+              <Label htmlFor="retention">{t('retention.label')}</Label>
+            </div>
             <Select
               name="retention"
               items={retentions}

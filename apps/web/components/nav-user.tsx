@@ -1,6 +1,6 @@
 'use client'
 
-import { LogOutIcon, ShieldIcon, UserIcon } from 'lucide-react'
+import { ChevronsUpDownIcon, LogOutIcon, ShieldIcon, UserIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -14,6 +14,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@/components/ui/sidebar'
 import { ThemeChoices } from '@/components/theme-choices'
 import { authClient } from '@/lib/auth-client'
 import { getInitials } from '@/lib/initials'
@@ -39,54 +45,64 @@ function UserSummary({ user }: { user: NavUserData }) {
   )
 }
 
-/** Signed-in user in the header: their picture or initials, and a menu with theme and sign out. */
+/**
+ * The signed-in user, the row at the foot of the sidebar: their picture or initials, and a menu
+ * with theme and sign out.
+ */
 export function NavUser({ user, isAdmin = false }: { user: NavUserData; isAdmin?: boolean }) {
+  const { isMobile } = useSidebar()
   const t = useTranslations('Common')
   const router = useRouter()
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={user.name}
-        className="shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:ring-3 data-popup-open:ring-ring/30"
-      >
-        <Avatar>
-          {user.image && <AvatarImage src={user.image} alt="" />}
-          <AvatarFallback>{getInitials(user.name, user.email)}</AvatarFallback>
-        </Avatar>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="min-w-56" align="end" side="bottom" sideOffset={8}>
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="flex items-center gap-2 p-1.5 font-normal text-foreground">
-            <UserSummary user={user} />
-          </DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <ThemeChoices />
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem render={<Link href="/account" />}>
-            <UserIcon />
-            {t('account')}
-          </DropdownMenuItem>
-          {isAdmin && (
-            <DropdownMenuItem render={<Link href="/system" />}>
-              <ShieldIcon />
-              {t('administration')}
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuItem
-            onClick={async () => {
-              await authClient.signOut()
-              router.push('/login')
-              router.refresh()
-            }}
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<SidebarMenuButton size="lg" className="data-popup-open:bg-sidebar-accent" />}
           >
-            <LogOutIcon />
-            {t('signOut')}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <UserSummary user={user} />
+            <ChevronsUpDownIcon className="ml-auto text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="min-w-56"
+            align="start"
+            side={isMobile ? 'top' : 'right'}
+            sideOffset={8}
+          >
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="flex items-center gap-2 p-1.5 font-normal text-foreground">
+                <UserSummary user={user} />
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <ThemeChoices />
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem render={<Link href="/account" />}>
+                <UserIcon />
+                {t('account')}
+              </DropdownMenuItem>
+              {isAdmin && (
+                <DropdownMenuItem render={<Link href="/system" />}>
+                  <ShieldIcon />
+                  {t('administration')}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                onClick={async () => {
+                  await authClient.signOut()
+                  router.push('/login')
+                  router.refresh()
+                }}
+              >
+                <LogOutIcon />
+                {t('signOut')}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }

@@ -192,7 +192,7 @@ export default async function StructurePage({
   return (
     <main className="grid gap-8">
       <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 
@@ -214,7 +214,7 @@ export default async function StructurePage({
           )}
           {structure && top && (
             <section aria-labelledby="tree" className="grid gap-3">
-              <h2 id="tree" className="flex items-center text-lg font-medium">
+              <h2 id="tree" className="flex items-center text-base font-medium">
                 {t('tree')}
                 <InfoHelp label={t('tree')}>{t('treeHelp', { depth: STRUCTURE_DEPTH })}</InfoHelp>
               </h2>
@@ -246,11 +246,11 @@ export default async function StructurePage({
                 </ol>
               </nav>
               {top.counts.pages === 0 && top.counts.errors === 0 && top.children.length === 0 ? (
-                <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
                   {t('emptyPath')}
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border">
+                <div className="overflow-x-auto rounded-xl border bg-card shadow-card [&_thead]:bg-muted/50">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -283,11 +283,11 @@ export default async function StructurePage({
 
           {structure && structure.languages.some(({ prefix }) => prefix !== null) && (
             <section aria-labelledby="languages" className="grid gap-3">
-              <h2 id="languages" className="flex items-center text-lg font-medium">
+              <h2 id="languages" className="flex items-center text-base font-medium">
                 {t('languages')}
                 <InfoHelp label={t('languages')}>{t('languagesHelp')}</InfoHelp>
               </h2>
-              <div className="overflow-x-auto rounded-lg border">
+              <div className="overflow-x-auto rounded-xl border bg-card shadow-card [&_thead]:bg-muted/50">
                 <Table>
                   <TableHeader>
                     <TableRow>

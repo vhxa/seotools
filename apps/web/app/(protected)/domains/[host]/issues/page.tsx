@@ -11,11 +11,13 @@ import {
   PAGE_ISSUES,
 } from '@seotools/core/crawl/issues'
 import { compareWithPrevious } from '@seotools/db'
+import { SearchIcon } from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { InfoHelp } from '@/components/help'
 import { IssueRows } from '@/components/pages/issue-rows'
+import { Stat } from '@/components/stat'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,9 +50,10 @@ export default async function IssuesPage({
 }) {
   const { host } = await params
   const { domain } = await requireDomain(host)
-  const [t, tCatalog] = await Promise.all([
+  const [t, tCatalog, tDashboard] = await Promise.all([
     getTranslations('Issues'),
     getTranslations('IssueCatalog'),
+    getTranslations('Dashboard'),
   ])
   const db = await getDb()
   const incidents = await db.incidents.list(
@@ -134,99 +137,125 @@ export default async function IssuesPage({
   return (
     <main className="grid gap-8">
       <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
+
+      {latest && checked && (
+        <section aria-labelledby="summary" className="@container grid gap-3">
+          <h2 id="summary" className="sr-only">
+            {t('summary')}
+          </h2>
+          <div className="grid gap-4 @xl:grid-cols-3">
+            {(['issue', 'warning', 'opportunity'] as const).map((type) => (
+              <Stat
+                key={type}
+                label={tDashboard(
+                  `series.${type === 'issue' ? 'issues' : type === 'warning' ? 'warnings' : 'opportunities'}`,
+                )}
+                value={format.number(
+                  counts.filter(
+                    (row) =>
+                      isPageIssueId(row.issue) &&
+                      PAGE_ISSUES[row.issue].type === type &&
+                      row.pages > 0,
+                  ).length,
+                )}
+                hint={t('summaryHint', { count: latest.pagesWithType?.[type] ?? 0 })}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <Incidents
         open={incidents.filter((i) => !i.resolvedAt)}
         history={incidents.filter((i) => i.resolvedAt !== null)}
       />
-      <section className="grid gap-2" aria-labelledby="site-findings">
-        <h2 id="site-findings" className="text-lg font-medium">
-          {t('site.title')}
-        </h2>
-        <p className="text-sm text-muted-foreground">{t('site.description')}</p>
-        {site.length === 0 && <p className="text-sm text-muted-foreground">{t('site.none')}</p>}
-        <ul className="divide-y">
-          {site.map((row) => (
-            <li key={`${row.file}-${row.finding}`} className="py-2 text-sm">
-              {row.severe && (
-                <Badge variant="destructive" className="mr-2">
-                  {t('site.severe')}
-                </Badge>
-              )}
-              <Link
-                className="font-medium hover:underline"
-                href={`/domains/${domain.host}/crawl-files/${row.file}`}
-              >
-                {filesText(
-                  `${row.file === 'security' ? 'extra.security' : row.file}.findings.${row.finding}.title` as Parameters<
-                    typeof filesText
-                  >[0],
+      {site.length > 0 && (
+        <section className="grid gap-3" aria-labelledby="site-findings">
+          <h2 id="site-findings" className="text-base font-medium">
+            {t('site.title')}
+          </h2>
+          <p className="text-sm text-muted-foreground">{t('site.description')}</p>
+          <ul className="divide-y rounded-xl bg-card px-4 shadow-card ring-1 ring-foreground/10">
+            {site.map((row) => (
+              <li key={`${row.file}-${row.finding}`} className="py-3 text-sm">
+                {row.severe && (
+                  <Badge variant="destructive" className="mr-2">
+                    {t('site.severe')}
+                  </Badge>
                 )}
-              </Link>
-              <p className="text-muted-foreground">
-                {filesText(
-                  `${row.file === 'security' ? 'extra.security' : row.file}.findings.${row.finding}.description` as Parameters<
-                    typeof filesText
-                  >[0],
-                )}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t('site.read', {
-                  when: row.readAt
-                    ? format.dateTime(row.readAt, { dateStyle: 'medium', timeStyle: 'short' })
-                    : t('site.never'),
-                })}
-              </p>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <form className="flex flex-wrap items-end gap-3" method="get">
-        <label className="grid gap-1 text-sm">
-          {t('filters.type')}
-          <select
-            aria-label={t('filters.type')}
-            className={NATIVE_SELECT}
-            name="type"
-            defaultValue={type}
-          >
-            <option value="">{t('filters.all')}</option>
-            {(['issue', 'warning', 'opportunity'] as const).map((value) => (
-              <option key={value} value={value}>
-                {tCatalog(`types.${value}`)}
-              </option>
+                <Link
+                  className="font-medium hover:underline"
+                  href={`/domains/${domain.host}/crawl-files/${row.file}`}
+                >
+                  {filesText(
+                    `${row.file === 'security' ? 'extra.security' : row.file}.findings.${row.finding}.title` as Parameters<
+                      typeof filesText
+                    >[0],
+                  )}
+                </Link>
+                <p className="text-muted-foreground">
+                  {filesText(
+                    `${row.file === 'security' ? 'extra.security' : row.file}.findings.${row.finding}.description` as Parameters<
+                      typeof filesText
+                    >[0],
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('site.read', {
+                    when: row.readAt
+                      ? format.dateTime(row.readAt, { dateStyle: 'medium', timeStyle: 'short' })
+                      : t('site.never'),
+                  })}
+                </p>
+              </li>
             ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm">
-          {t('filters.group')}
-          <select
-            aria-label={t('filters.group')}
-            className={NATIVE_SELECT}
-            name="group"
-            defaultValue={group?.id ?? ''}
-          >
-            <option value="">{t('filters.all')}</option>
-            {ISSUE_GROUPS.map((value) => (
-              <option key={value.id} value={value.id}>
-                {tCatalog(`groups.${value.id}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm">
-          {t('filters.search')}
+          </ul>
+        </section>
+      )}
+      <form className="flex flex-wrap items-center gap-2" method="get" role="search">
+        <div className="relative w-full sm:w-64">
+          <SearchIcon
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+          />
           <Input
             aria-label={t('filters.search')}
+            placeholder={t('filters.search')}
             name="q"
             defaultValue={search}
             maxLength={200}
-            className="w-56"
+            className="pl-8"
           />
-        </label>
+        </div>
+        <select
+          aria-label={t('filters.type')}
+          className={NATIVE_SELECT}
+          name="type"
+          defaultValue={type}
+        >
+          <option value="">{t('filters.allTypes')}</option>
+          {(['issue', 'warning', 'opportunity'] as const).map((value) => (
+            <option key={value} value={value}>
+              {tCatalog(`types.${value}`)}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={t('filters.group')}
+          className={NATIVE_SELECT}
+          name="group"
+          defaultValue={group?.id ?? ''}
+        >
+          <option value="">{t('filters.allGroups')}</option>
+          {ISSUE_GROUPS.map((value) => (
+            <option key={value.id} value={value.id}>
+              {tCatalog(`groups.${value.id}`)}
+            </option>
+          ))}
+        </select>
         <Button type="submit" variant="outline">
           {t('filters.apply')}
         </Button>
@@ -247,10 +276,14 @@ export default async function IssuesPage({
               .filter(({ issue }) => PAGE_ISSUES[issue].importance === importance)
               .sort((a, b) => Number(a.pages === 0) - Number(b.pages === 0))
             return (
-              <section key={importance} aria-labelledby={`importance-${importance}`}>
+              <section
+                key={importance}
+                aria-labelledby={`importance-${importance}`}
+                className="grid gap-3"
+              >
                 <h2
                   id={`importance-${importance}`}
-                  className="mb-2 flex items-center text-lg font-medium"
+                  className="flex items-center text-base font-medium"
                 >
                   {t(`importance.${importance}`)}
                   {importance === 'high' && (
@@ -351,7 +384,7 @@ export default async function IssuesPage({
           })}
           {dismissedCounts.some((r) => matches(r.issue)) && (
             <section className="grid gap-2">
-              <h2 className="text-lg font-medium">{decisions('dismissed')}</h2>
+              <h2 className="text-base font-medium">{decisions('dismissed')}</h2>
               <IssueRows
                 rows={rankIssueCounts(dismissedCounts.filter((r) => matches(r.issue)))}
                 hrefOf={(issue) => detailHref(host, query, { issue, state: 'dismissed' })}
@@ -366,7 +399,7 @@ export default async function IssuesPage({
           />
           {accepted.length > 0 && (
             <section aria-labelledby="accepted">
-              <h2 id="accepted" className="mb-2 flex items-center text-lg font-medium">
+              <h2 id="accepted" className="flex items-center text-base font-medium">
                 {t('accepted.title')}
                 <InfoHelp label={t('accepted.title')}>{t('accepted.help')}</InfoHelp>
               </h2>

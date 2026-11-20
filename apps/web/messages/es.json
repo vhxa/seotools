@@ -102,8 +102,7 @@
     "searchOpen": "Buscar",
     "searchClose": "Cerrar la búsqueda",
     "searching": "Buscando…",
-    "noResults": "Ninguna URL coincide.",
-    "domainOverview": "Resumen de {host}"
+    "noResults": "Ninguna URL coincide."
   },
   "Sidebar": {
     "toggle": "Alternar barra lateral",
@@ -119,8 +118,14 @@
     "urls": "URLs",
     "crawls": "Rastreos",
     "administration": "Administración",
+    "fullCrawl": "Rastreo completo",
+    "domains": "Dominios",
     "navLabel": "Principal",
-    "structure": "Estructura"
+    "domain": "Dominio",
+    "structure": "Estructura",
+    "crawlProgress": "{done, number}/{total, number}",
+    "processing": "Procesando",
+    "starting": "Iniciando"
   },
   "ProtectedShell": {
     "skipToContent": "Saltar al contenido principal"
@@ -274,6 +279,7 @@
       "priority": "Lanzar rastreo prioritario"
     },
     "cancel": "Cancelar",
+    "moreCrawls": "Más formas de rastrear",
     "progressLabel": "Progreso del rastreo",
     "progress": "{done, number} de {total, number} URLs pedidas · {pages, plural, one {# página} other {# páginas}} · {external, plural, one {# externa} other {# externas}}",
     "status": {
@@ -291,6 +297,10 @@
       "invalidSchedule": "Revisa la frecuencia, el día y la hora de la programación.",
       "listLimit": "Introduce entre 1 y 1000 URL.",
       "listInvalid": "{count} URL no son válidas o no pertenecen a este dominio."
+    },
+    "processing": {
+      "label": "Procesando",
+      "hint": "Ya se han solicitado todas las páginas. Ahora se comprueban y se guardan los resultados; en un sitio grande puede tardar unos minutos."
     }
   },
   "Verification": {
@@ -3491,35 +3501,27 @@
   },
   "Dashboard": {
     "metaTitle": "{host} · seotools",
-    "lastCrawl": "Último rastreo completo terminado {when}.",
-    "neverCrawled": "Este dominio todavía no se ha rastreado.",
     "firstCrawl": {
       "title": "Todavía no se ha rastreado nada",
       "description": "Lanza el primer rastreo completo para encontrar las URLs de este sitio y comprobarlas. Las cifras, la evolución y los hallazgos que revisar aparecen aquí cuando termine.",
       "viewerDescription": "Todavía no se ha rastreado nada. Las cifras y los hallazgos aparecen aquí cuando alguien que pueda editar este dominio lance el primer rastreo completo."
     },
-    "lastAttempt": "Intento de rastreo completo más reciente:",
-    "jobs": "Ver rastreos",
     "incomplete": {
       "title": "El último rastreo se detuvo en su límite de URL",
       "description": "Pidió {urls, number} URL y había más. Estas cifras no cubren todo el sitio.",
       "settings": "Sube el límite en los ajustes de rastreo."
     },
     "figures": "Último rastreo completo",
-    "figuresHelp": "Las páginas indexables se cuentan entre todas las páginas rastreadas y solo dicen lo que vio el rastreo: no dependen de la auditoría. Las páginas con problemas, avisos y oportunidades se cuentan solo entre las auditadas, y una página cuenta en cada grupo del que tenga algo.",
     "tiles": {
       "crawled": "Páginas rastreadas",
       "indexable": "Páginas indexables",
-      "issues": "Páginas con problemas",
-      "warnings": "Páginas con avisos",
-      "opportunities": "Páginas con oportunidades"
+      "issues": "Con problemas",
+      "warnings": "Con avisos",
+      "opportunities": "Con oportunidades"
     },
-    "ofCrawled": "de {count, number} rastreadas",
-    "ofAudited": "de {count, number} auditadas",
     "notChecked": "Aún sin comprobar",
     "notAvailable": "No disponible para este rastreo",
     "unknownIndexability": "{count, plural, one {# página tiene} other {# páginas tienen}} pocos datos para saber si se puede indexar.",
-    "trend": "Evolución",
     "trendFindings": "Páginas con hallazgos",
     "trendFindingsHelp": "Páginas auditadas que tienen algo de cada tipo tras cada rastreo completo. Una página puede estar en varios.",
     "trendIndexable": "Páginas indexables",
@@ -3541,10 +3543,20 @@
     "affectedUrls": "{count, plural, one {# URL} other {# URL}}",
     "allIssues": "Todos los problemas",
     "notCheckedFindings": "Este rastreo no tiene el análisis necesario para mostrar hallazgos. Inicia un nuevo rastreo completo para obtener datos actuales.",
-    "changesTitle": "Qué ha cambiado desde el rastreo anterior",
-    "configurationChanged": "La configuración ha cambiado",
     "renderingAvailable": "El renderizado de JavaScript está disponible para este dominio.",
-    "renderingAvailableLink": "Cámbialo en los ajustes de rastreo"
+    "renderingAvailableLink": "Cámbialo en los ajustes de rastreo",
+    "range": {
+      "label": "Periodo",
+      "week": "Últimos 7 días",
+      "month": "Último mes",
+      "quarter": "Últimos 3 meses"
+    },
+    "rangeDescription": {
+      "week": "Rastreos completos de los últimos 7 días",
+      "month": "Rastreos completos del último mes",
+      "quarter": "Rastreos completos de los últimos 3 meses"
+    },
+    "rangeEmpty": "Ningún rastreo completo en este periodo."
   },
   "Issues": {
     "metaTitle": "Problemas · {host} · seotools",
@@ -3572,16 +3584,16 @@
       "type": "Tipo",
       "group": "Grupo",
       "search": "Nombre del hallazgo",
-      "all": "Todos",
-      "apply": "Aplicar"
+      "apply": "Aplicar",
+      "allTypes": "Todos los tipos",
+      "allGroups": "Todos los grupos"
     },
     "site": {
       "title": "Sitio",
       "description": "Hallazgos actuales de los archivos, independientes de los rastreos y excluidos de los totales del panel.",
       "read": "Última lectura: {when}",
       "never": "nunca",
-      "severe": "Roto",
-      "none": "Nada que señalar en los archivos que publica el sitio."
+      "severe": "Roto"
     },
     "template": {
       "label": "Plantilla",
@@ -3592,10 +3604,11 @@
       "fresh": "{count} nuevos",
       "resolved": "{count} resueltos",
       "cut": "Han cambiado demasiadas URL para contarlas aquí: abre la comparación para verlas."
-    }
+    },
+    "summary": "Resumen",
+    "summaryHint": "{count, plural, one {# URL afectada} other {# URLs afectadas}}"
   },
   "SystemNav": {
-    "label": "Secciones de administración",
     "status": "Estado",
     "companies": "Empresas",
     "users": "Usuarios",
@@ -3796,6 +3809,22 @@
     "lab": "Medición de laboratorio (PageSpeed Insights)",
     "noField": "Sin datos de usuarios reales: Google tiene muy poco tráfico para esta URL.",
     "failed": "Error de recopilación: {reason}",
+    "names": {
+      "lcp": "Largest Contentful Paint",
+      "inp": "Interaction to Next Paint",
+      "cls": "Cumulative Layout Shift",
+      "fcp": "First Contentful Paint",
+      "ttfb": "Time to First Byte",
+      "tbt": "Total Blocking Time"
+    },
+    "help": {
+      "lcp": "Cuánto tarda en aparecer el elemento más grande a la vista (normalmente una imagen principal o un titular). Bueno es hasta 2,5 s.",
+      "inp": "Con qué rapidez reacciona la página a clics, toques y teclas, en su interacción más lenta habitual. Bueno es hasta 200 ms.",
+      "cls": "Cuánto se mueve el contenido mientras carga la página. Bueno es 0,1 o menos.",
+      "fcp": "Cuánto tarda en aparecer el primer texto o imagen en pantalla. Bueno es hasta 1,8 s.",
+      "ttfb": "Cuánto tarda el servidor en empezar a responder. Bueno es hasta 800 ms.",
+      "tbt": "Tiempo total que la página estuvo bloqueada y no pudo reaccionar al usuario mientras cargaba."
+    },
     "metrics": {
       "lcp": "LCP",
       "inp": "INP",
@@ -3826,8 +3855,7 @@
       "unchanged": "No hay cambios que guardar.",
       "throttled": "Espera 10 segundos antes de volver a probar."
     },
-    "unreadable": "Guardada pero ilegible; introduce la clave de nuevo.",
-    "crawlSource": "Rastreo n.º {ref} · {date}"
+    "unreadable": "Guardada pero ilegible; introduce la clave de nuevo."
   },
   "FavouriteDomain": {
     "set": "Marcar {host} como favorito",
@@ -3896,7 +3924,6 @@
     "daily": "Se comprueba aproximadamente una vez al día. No es un monitor de disponibilidad.",
     "since": "Abierta el {when}",
     "resolved": "Resuelta el {when}",
-    "none": "No hay incidencias.",
     "kinds": {
       "robots-unreachable": "No se pudo leer robots.txt",
       "robots-blocks-site": "robots.txt bloquea todo el sitio",

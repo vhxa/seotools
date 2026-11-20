@@ -34,7 +34,7 @@ export default async function SchedulesSettingsPage({
   return (
     <>
       <div className="grid gap-1">
-        <h2 className="text-lg font-semibold">{t('title')}</h2>
+        <h2 className="text-base font-medium">{t('title')}</h2>
         <p className="text-sm text-muted-foreground">
           {t('description')}{' '}
           <Link href={`/domains/${domain.host}/crawls`} className="underline">

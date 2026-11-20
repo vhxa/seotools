@@ -54,7 +54,7 @@ export default async function AccountPage({
 
   return (
     <main className="grid min-w-0 gap-8">
-      <h1 className="text-2xl font-semibold">{t('title')}</h1>
+      <h1 className="text-xl font-semibold">{t('title')}</h1>
       <AccountTabs active={tab}>
         {tab === 'profile' && (
           <>

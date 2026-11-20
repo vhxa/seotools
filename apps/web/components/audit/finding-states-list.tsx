@@ -39,9 +39,15 @@ export async function FindingStatesList({
   )
   return (
     <section className="grid gap-3">
-      {!compact && <h2 className="text-lg font-medium">{t('title')}</h2>}
+      {!compact && <h2 className="text-base font-medium">{t('title')}</h2>}
       {!rows.length && <p className="text-sm text-muted-foreground">{t('empty')}</p>}
-      <ul className="divide-y">
+      <ul
+        className={
+          rows.length > 0
+            ? 'divide-y rounded-xl bg-card px-4 shadow-card ring-1 ring-foreground/10'
+            : undefined
+        }
+      >
         {rows.map((row) => (
           <li key={row.id} className="grid gap-1 py-3 text-sm">
             {!compact && <IssueLabel issue={row.issue} />}

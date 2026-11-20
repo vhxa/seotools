@@ -58,14 +58,7 @@ export default async function LlmsPage({ params }: { params: Promise<{ host: str
           <div className="grid gap-4 sm:grid-cols-3">
             <Stat label={t('stats.sections')} value={format.number(parsed.sections.length)} />
             <Stat label={t('stats.links')} value={format.number(parsed.linkCount)} />
-            <Card>
-              <CardHeader>
-                <CardDescription>{t('stats.size')}</CardDescription>
-                <CardTitle className="text-3xl tabular-nums">
-                  <FileSize file={file} />
-                </CardTitle>
-              </CardHeader>
-            </Card>
+            <Stat label={t('stats.size')} value={<FileSize file={file} />} />
           </div>
 
           <Card>

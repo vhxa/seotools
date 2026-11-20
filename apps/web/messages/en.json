@@ -102,8 +102,7 @@
     "searchOpen": "Search",
     "searchClose": "Close search",
     "searching": "Searching…",
-    "noResults": "No URLs match.",
-    "domainOverview": "Overview of {host}"
+    "noResults": "No URLs match."
   },
   "Sidebar": {
     "toggle": "Toggle sidebar",
@@ -119,8 +118,14 @@
     "urls": "URLs",
     "crawls": "Crawls",
     "administration": "Administration",
+    "fullCrawl": "Full Crawl",
+    "domains": "Domains",
     "navLabel": "Main",
-    "structure": "Structure"
+    "domain": "Domain",
+    "structure": "Structure",
+    "crawlProgress": "{done, number}/{total, number}",
+    "processing": "Processing",
+    "starting": "Starting"
   },
   "ProtectedShell": {
     "skipToContent": "Skip to main content"
@@ -273,6 +278,7 @@
       "full": "Run full crawl",
       "priority": "Run priority crawl"
     },
+    "moreCrawls": "More ways to crawl",
     "cancel": "Cancel",
     "progressLabel": "Crawl progress",
     "progress": "{done, number} of {total, number} URLs requested · {pages, plural, one {# page} other {# pages}} · {external, number} external",
@@ -291,6 +297,10 @@
       "invalidSchedule": "Check the frequency, day and time of the schedule.",
       "listLimit": "Enter between 1 and 1000 URLs.",
       "listInvalid": "{count} URLs are invalid or outside this domain."
+    },
+    "processing": {
+      "label": "Processing",
+      "hint": "Every page has been requested. The results are now being checked and saved; on a large site this can take a few minutes."
     }
   },
   "Verification": {
@@ -3491,35 +3501,27 @@
   },
   "Dashboard": {
     "metaTitle": "{host} · seotools",
-    "lastCrawl": "Last full crawl finished {when}.",
-    "neverCrawled": "This domain has not been crawled yet.",
     "firstCrawl": {
       "title": "Nothing has been crawled yet",
       "description": "Run the first full crawl to find the URLs of this site and check them. The figures, the trend and the findings to review appear here when it finishes.",
       "viewerDescription": "Nothing has been crawled yet. The figures and findings appear here once someone who can edit this domain runs the first full crawl."
     },
-    "lastAttempt": "Most recent full crawl attempt:",
-    "jobs": "View crawls",
     "incomplete": {
       "title": "The last crawl stopped at its URL limit",
       "description": "It requested {urls, number} URLs and there were more. These figures do not cover the whole site.",
       "settings": "Raise the limit in the crawl settings."
     },
     "figures": "Last full crawl",
-    "figuresHelp": "Indexable pages are counted among every page crawled and only say what the crawl saw: they do not depend on the audit. Pages with issues, warnings and opportunities are counted among audited pages only, and a page counts in every group it has something of.",
     "tiles": {
       "crawled": "Pages crawled",
       "indexable": "Indexable pages",
-      "issues": "Pages with issues",
-      "warnings": "Pages with warnings",
-      "opportunities": "Pages with opportunities"
+      "issues": "With issues",
+      "warnings": "With warnings",
+      "opportunities": "With opportunities"
     },
-    "ofCrawled": "of {count, number} crawled",
-    "ofAudited": "of {count, number} audited",
     "notChecked": "Not checked yet",
     "notAvailable": "Not available for this crawl",
     "unknownIndexability": "{count, plural, one {# page has} other {# pages have}} too little data to tell if it is indexable.",
-    "trend": "Trend",
     "trendFindings": "Pages with findings",
     "trendFindingsHelp": "Audited pages that have something of each type after every full crawl. A page can be in several.",
     "trendIndexable": "Indexable pages",
@@ -3541,10 +3543,20 @@
     "affectedUrls": "{count, plural, one {# URL} other {# URLs}}",
     "allIssues": "All issues",
     "notCheckedFindings": "This crawl does not have the analysis needed to show findings. Run a new full crawl to collect current data.",
-    "changesTitle": "What changed since the previous crawl",
-    "configurationChanged": "Configuration changed",
     "renderingAvailable": "JavaScript rendering is available for this domain.",
-    "renderingAvailableLink": "Change it in the crawl settings"
+    "renderingAvailableLink": "Change it in the crawl settings",
+    "range": {
+      "label": "Period",
+      "week": "Last 7 days",
+      "month": "Last month",
+      "quarter": "Last 3 months"
+    },
+    "rangeDescription": {
+      "week": "Full crawls of the last 7 days",
+      "month": "Full crawls of the last month",
+      "quarter": "Full crawls of the last 3 months"
+    },
+    "rangeEmpty": "No full crawl in this period."
   },
   "Issues": {
     "metaTitle": "Issues · {host} · seotools",
@@ -3572,16 +3584,16 @@
       "type": "Type",
       "group": "Group",
       "search": "Issue name",
-      "all": "All",
-      "apply": "Apply"
+      "apply": "Apply",
+      "allTypes": "All types",
+      "allGroups": "All groups"
     },
     "site": {
       "title": "Site",
       "description": "Current file findings, independent of crawls and excluded from dashboard totals.",
       "read": "Last read: {when}",
       "never": "never",
-      "severe": "Broken",
-      "none": "Nothing to report in the files the site publishes."
+      "severe": "Broken"
     },
     "template": {
       "label": "Template",
@@ -3592,10 +3604,11 @@
       "fresh": "{count} new",
       "resolved": "{count} resolved",
       "cut": "Too many URLs changed to count them here: open the comparison to see them."
-    }
+    },
+    "summary": "Summary",
+    "summaryHint": "{count, plural, one {# URL affected} other {# URLs affected}}"
   },
   "SystemNav": {
-    "label": "Administration sections",
     "status": "Status",
     "companies": "Companies",
     "users": "Users",
@@ -3796,6 +3809,22 @@
     "lab": "Lab measurement (PageSpeed Insights)",
     "noField": "No field data: Google has too little traffic for this URL",
     "failed": "Collection failed: {reason}",
+    "names": {
+      "lcp": "Largest Contentful Paint",
+      "inp": "Interaction to Next Paint",
+      "cls": "Cumulative Layout Shift",
+      "fcp": "First Contentful Paint",
+      "ttfb": "Time to First Byte",
+      "tbt": "Total Blocking Time"
+    },
+    "help": {
+      "lcp": "How long the largest element in view (usually a hero image or a headline) takes to appear. Good is up to 2.5 s.",
+      "inp": "How quickly the page reacts to clicks, taps and key presses, at its slowest typical interaction. Good is up to 200 ms.",
+      "cls": "How much the content jumps around while the page loads. Good is 0.1 or less.",
+      "fcp": "How long until the first text or image appears on screen. Good is up to 1.8 s.",
+      "ttfb": "How long the server takes to start answering. Good is up to 800 ms.",
+      "tbt": "Total time the page was blocked and could not react to the user while loading."
+    },
     "metrics": {
       "lcp": "LCP",
       "inp": "INP",
@@ -3826,8 +3855,7 @@
       "unchanged": "No changes to save.",
       "throttled": "Wait 10 seconds before testing again."
     },
-    "unreadable": "Saved but unreadable; enter the key again.",
-    "crawlSource": "Crawl #{ref} · {date}"
+    "unreadable": "Saved but unreadable; enter the key again."
   },
   "FavouriteDomain": {
     "set": "Set {host} as favourite",
@@ -3896,7 +3924,6 @@
     "daily": "Checks run about once a day. This is not an uptime monitor.",
     "since": "Opened {when}",
     "resolved": "Resolved {when}",
-    "none": "No incidents.",
     "kinds": {
       "robots-unreachable": "robots.txt could not be read",
       "robots-blocks-site": "robots.txt blocks the whole site",

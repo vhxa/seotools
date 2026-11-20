@@ -23,7 +23,7 @@ export default async function CrawlSettingsPage({ params }: { params: Promise<{ 
   return (
     <>
       <div className="grid gap-1">
-        <h2 className="text-lg font-semibold">{t('title')}</h2>
+        <h2 className="text-base font-medium">{t('title')}</h2>
         <p className="text-sm text-muted-foreground">{t('description', { host: domain.host })}</p>
       </div>
       <CrawlSettingsForm

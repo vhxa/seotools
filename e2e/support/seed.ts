@@ -62,7 +62,18 @@ export async function seed(): Promise<Database> {
   })
   const crawl = await db.crawls.get(started.id)
   if (crawl?.status !== 'completed') throw new Error(`the seed crawl ended ${crawl?.status}`)
+  await settleJobs(db)
   return db
+}
+
+/**
+ * The seed crawls run without a worker, so their jobs would stay queued and the interface would say
+ * the crawl is still being processed. Completes them as a worker would have.
+ */
+async function settleJobs(db: Database) {
+  const workerId = 'e2e-seed'
+  const jobs = await db.jobs.claim({ workerId, limit: 100 })
+  for (const job of jobs) await db.jobs.complete({ id: job.id, workerId })
 }
 
 /**

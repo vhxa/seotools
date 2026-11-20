@@ -3,6 +3,7 @@ import { getFormatter, getTranslations } from 'next-intl/server'
 import { ChevronRightIcon, PauseIcon } from 'lucide-react'
 import { AutoRefresh } from '@/components/auto-refresh'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Stat } from '@/components/stat'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -52,7 +53,7 @@ export default async function SystemPage() {
   return (
     <main className="grid min-w-0 gap-8">
       <AutoRefresh />
-      <h1 className="text-2xl font-semibold">{t('title')}</h1>
+      <h1 className="text-xl font-semibold">{t('title')}</h1>
 
       {getEnv().SEOTOOLS_PAUSE_AUTOMATION && (
         <Alert>
@@ -63,44 +64,32 @@ export default async function SystemPage() {
       )}
 
       <section aria-labelledby="health" className="grid gap-3">
-        <h2 id="health" className="text-lg font-medium">
+        <h2 id="health" className="text-base font-medium">
           {t('health')}
         </h2>
-        <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
-          <div className="grid gap-0.5">
-            <dt className="text-sm text-muted-foreground">{t('database')}</dt>
-            <dd className="text-sm font-medium">{t('databaseOk', { dialect: db.dialect })}</dd>
-          </div>
-          <div className="grid gap-0.5">
-            <dt className="text-sm text-muted-foreground">{t('worker')}</dt>
-            <dd className="flex flex-wrap items-center gap-2 text-sm">
-              {workerAlive ? (
-                <span className="font-medium">{t('workerOk')}</span>
-              ) : (
-                <Badge variant="destructive">{t('workerDown')}</Badge>
-              )}
-              <span className="text-muted-foreground">
-                {t('heartbeat', { when: ago(lastSeen) })}
-              </span>
-            </dd>
-          </div>
-        </dl>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Stat label={t('database')} value={t('databaseOk', { dialect: db.dialect })} />
+          <Stat
+            label={t('worker')}
+            value={workerAlive ? t('workerOk') : t('workerDown')}
+            hint={t('heartbeat', { when: ago(lastSeen) })}
+          />
+        </div>
       </section>
 
       <section aria-labelledby="jobs" className="grid gap-3">
-        <h2 id="jobs" className="text-lg font-medium">
+        <h2 id="jobs" className="text-base font-medium">
           {t('jobs')}
         </h2>
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(['pending', 'running', 'completed', 'failed'] as const).map((state) => (
-            <div key={state} className="grid gap-0.5">
-              <dt className="text-sm text-muted-foreground">{t(`jobStates.${state}`)}</dt>
-              <dd className="text-2xl font-semibold tabular-nums">
-                {format.number(counts[state])}
-              </dd>
-            </div>
+            <Stat
+              key={state}
+              label={t(`jobStates.${state}`)}
+              value={format.number(counts[state])}
+            />
           ))}
-        </dl>
+        </div>
       </section>
 
       <Collapsible className="grid min-w-0 gap-3">

@@ -2,8 +2,8 @@ import { CRAWL_TYPES } from '@seotools/core'
 import type { Crawl, CrawlSchedule } from '@seotools/db'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
-import { cancelCrawlAction } from '@/app/(protected)/domains/[host]/actions'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
+import { CancelCrawlButton } from '@/components/crawl/cancel-crawl-button'
 import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { CrawlsHeader } from '@/components/crawl/crawls-header'
 import { ListCrawlDialog } from '@/components/crawl/list-crawl-dialog'
@@ -12,7 +12,6 @@ import { rulesStateOf } from '@/lib/rules-state'
 import { crawlConfigVersion, crawlMoment } from '@/components/history/crawl-stamp'
 import { RecheckBanner } from '@/components/verification/recheck-banner'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
@@ -24,6 +23,7 @@ import {
 } from '@/components/ui/table'
 import { compareHref, parseCompareQuery } from '@/lib/compare-query'
 import { HISTORY_CRAWLS } from '@/lib/crawl-history'
+import { crawlActivity } from '@/lib/crawl-activity'
 import { getDb } from '@/lib/db'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
@@ -51,8 +51,9 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
     getFormatter(),
   ])
   const db = await getDb()
-  const [active, crawls, latest, config, schedules] = await Promise.all([
+  const [active, activity, crawls, latest, config, schedules] = await Promise.all([
     db.crawls.active(domain.id),
+    crawlActivity(db, domain.id),
     db.crawls.list(domain.id, { limit: HISTORY_CRAWLS }),
     db.crawls.latestWithResults(domain.id, 'full'),
     db.audit.config(domain.id),
@@ -107,7 +108,9 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
         }
       />
 
-      {active && <ActiveCrawl host={domain.host} crawl={active} />}
+      {activity.state.kind !== 'idle' && (
+        <ActiveCrawl host={domain.host} crawl={active} activity={activity.state} />
+      )}
       <RecheckBanner host={domain.host} domainId={domain.id} />
 
       <p className="text-sm text-muted-foreground">
@@ -124,10 +127,10 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
         </Link>
       </p>
 
-      <Card>
-        <CardContent className="overflow-x-auto">
+      <Card className="gap-0 py-0">
+        <CardContent className="overflow-x-auto px-0 [&_td:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:first-child]:pl-4 [&_th:last-child]:pr-4">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/50">
               <TableRow>
                 <TableHead>{t('columns.crawl')}</TableHead>
                 <TableHead>{t('columns.results')}</TableHead>
@@ -217,11 +220,14 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                           )}
                           {canEdit &&
                             (crawl.status === 'pending' || crawl.status === 'running') && (
-                              <form action={cancelCrawlAction.bind(null, domain.host, crawl.id)}>
-                                <Button type="submit" variant="ghost" size="xs">
-                                  {tCrawl('cancel')}
-                                </Button>
-                              </form>
+                              <CancelCrawlButton
+                                host={domain.host}
+                                crawlId={crawl.id}
+                                variant="ghost"
+                                size="xs"
+                              >
+                                {tCrawl('cancel')}
+                              </CancelCrawlButton>
                             )}
                         </span>
                       </div>

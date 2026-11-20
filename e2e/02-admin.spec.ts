@@ -11,12 +11,14 @@ test.use({ storageState: ADMIN_STATE })
 test('the overview shows the figures and priorities of the last full crawl', async ({ page }) => {
   await page.goto(domain)
   await expect(page.getByRole('heading', { name: HOST, level: 1 })).toBeVisible()
-  await expect(page.getByText(/Last full crawl finished/)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Run full crawl' })).toBeVisible()
+  // The crawl buttons are in the sidebar, not in the page.
+  await expect(
+    page.locator('[data-slot=sidebar]').getByRole('button', { name: 'Full Crawl' }),
+  ).toBeVisible()
 
   const figures = page.getByRole('region', { name: /^Last full crawl/ })
   await expect(figures.getByText('Pages crawled')).toBeVisible()
-  await expect(figures.getByText('of 5 crawled')).toBeVisible()
+  await expect(figures.getByText('5', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('region', { name: 'Findings to review first' })).toBeVisible()
 })
 
@@ -34,15 +36,13 @@ test('the issues page lists what the crawl found, and each issue opens the URLs 
   ).toBeVisible()
 })
 
-test('the URLs table has its views with counts, and a search', async ({ page }) => {
+test('the URLs table has its views, and a search among its filters', async ({ page }) => {
   await page.goto(`${domain}/urls`)
   await expect(page.getByRole('heading', { name: 'URLs', level: 1 })).toBeVisible()
 
   const views = page.getByRole('navigation', { name: 'Views' })
-  await expect(views.getByRole('link', { name: /^Pages 5$/ })).toBeVisible()
-  await expect(views.getByRole('link', { name: /^Redirects 1$/ })).toBeVisible()
-  await expect(views.getByRole('link', { name: /^Resources \d+$/ })).toBeVisible()
-  await expect(views.getByRole('link', { name: /^External \d+$/ })).toBeVisible()
+  for (const name of ['Pages', 'Resources', 'Redirects', 'Errors', 'External', 'All'])
+    await expect(views.getByRole('link', { name, exact: true })).toBeVisible()
 
   await views.getByRole('link', { name: /^Redirects/ }).click()
   await expect(page).toHaveURL(/view=redirects/)
@@ -52,7 +52,8 @@ test('the URLs table has its views with counts, and a search', async ({ page }) 
 
   await views.getByRole('link', { name: /^Pages/ }).click()
   await expect(page).not.toHaveURL(/view=redirects/)
-  await page.getByRole('searchbox', { name: 'Search URLs' }).fill('products')
+  await page.getByRole('button', { name: 'Filters', exact: true }).click()
+  await page.getByRole('dialog').getByRole('searchbox').fill('products')
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/q=products/)
   await expect(
@@ -136,15 +137,19 @@ test('the structure page adds the crawl up by directory and opens each one throu
   await expect(page.getByText('There are no URLs in this directory.')).toBeVisible()
 })
 
-test('System and the account have no sidebar; the account has its tabs', async ({ page }) => {
+test('System and the account have no domain pages in the sidebar; the account has its tabs', async ({
+  page,
+}) => {
   await page.goto(domain)
-  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+  const main = page.getByRole('navigation', { name: 'Main' })
+  await expect(main.getByRole('link', { name: 'Overview' })).toBeVisible()
   await page.getByRole('link', { name: 'Administration' }).click()
   await expect(page).toHaveURL(/\/system$/)
-  await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0)
+  await expect(main.getByRole('link', { name: 'Companies' })).toBeVisible()
+  await expect(main.getByRole('link', { name: 'Overview' })).toHaveCount(0)
 
   await page.goto('/account')
-  await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0)
+  await expect(main.getByRole('link', { name: 'Overview' })).toHaveCount(0)
   await expect(page.getByRole('tab', { name: 'Profile' })).toBeVisible()
   await page.getByRole('tab', { name: 'Password' }).click()
   await expect(page).toHaveURL(/\/account\?tab=password$/)
@@ -274,15 +279,14 @@ test('the addresses of earlier versions still work, and keep their query', async
 
 test('the issues panel of the URLs table can be folded, and stays folded', async ({ page }) => {
   await page.goto(`${domain}/urls`)
-  const toggle = page.getByRole('button', { name: 'Issues', exact: true }).first()
+  const toggle = page.getByRole('banner').getByRole('button', { name: /issues panel/i })
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'false')
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Issues', exact: true }).first()).toHaveAttribute(
-    'aria-pressed',
-    'false',
-  )
+  await expect(
+    page.getByRole('banner').getByRole('button', { name: /issues panel/i }),
+  ).toHaveAttribute('aria-pressed', 'false')
 })
 
 test('every legacy route preserves query parameters in its redirect', async ({ request }) => {
@@ -338,7 +342,7 @@ test('issues filters stay in the address, with current site findings above them'
   await page.getByLabel('Group', { exact: true }).selectOption('crawling')
   await page.getByLabel('Issue name', { exact: true }).fill('no-such-issue-name')
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
-  await expect(page).toHaveURL(/type=issue&group=crawling&q=no-such-issue-name/)
+  await expect(page).toHaveURL(/(?=.*type=issue)(?=.*group=crawling)(?=.*q=no-such-issue-name)/)
   await expect(page.getByLabel('Type', { exact: true })).toHaveValue('issue')
   await expect(page.getByLabel('Group', { exact: true })).toHaveValue('crawling')
   await expect(page.getByLabel('Issue name', { exact: true })).toHaveValue('no-such-issue-name')

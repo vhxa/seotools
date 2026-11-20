@@ -58,7 +58,7 @@ export default async function CompaniesPage() {
   return (
     <main className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         <Link href="/system/companies/new" className={buttonVariants({ variant: 'outline' })}>
           <PlusIcon />
           {t('addCompany')}

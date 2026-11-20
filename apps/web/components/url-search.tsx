@@ -83,6 +83,7 @@ export function UrlSearch({ host }: { host: string }) {
         <SearchIcon />
       </Button>
       <div
+        data-slot="url-search"
         className={cn(
           'items-center gap-2',
           expanded ? 'absolute inset-0 z-30 flex bg-background px-4' : 'hidden',

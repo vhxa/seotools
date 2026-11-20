@@ -6,23 +6,21 @@ import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { ActiveCrawl } from '@/components/crawl/active-crawl'
-import { CrawlStatusBadge } from '@/components/crawl/crawl-status-badge'
 import { StartCrawlButton } from '@/components/crawl/start-crawl-button'
-import { FavouriteDomainButton } from '@/components/favourite-domain-button'
-import { InfoHelp } from '@/components/help'
+import { Stat } from '@/components/stat'
 import { DomainVitals } from '@/components/pages/domain-vitals'
 import { RenderingSummary } from '@/components/pages/rendering-summary'
 import { renderBrowserStatus } from '@/lib/render-browser'
 import { isRenderedCrawl } from '@/lib/rendering'
 import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
-import { TrendChart } from '@/components/pages/trend-chart'
+import { TrendCard } from '@/components/pages/trend-card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { compareHref, parseCompareQuery } from '@/lib/compare-query'
-import { dashboardDifference, trendFigures, trendPoints } from '@/lib/dashboard'
+import { dashboardDifference, trendFigures, trendNow, trendPoints } from '@/lib/dashboard'
+import { crawlActivity } from '@/lib/crawl-activity'
 import { getDb } from '@/lib/db'
 import { homePriorities } from '@/lib/domain-home'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
-import { requireViewer } from '@/lib/session'
+import { cn } from '@/lib/utils'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
@@ -47,10 +45,9 @@ export default async function DomainDashboardPage({
   const [t, format] = await Promise.all([getTranslations('Dashboard'), getFormatter()])
   const db = await getDb()
   const incidents = await db.incidents.list(domain.id)
-  const viewer = await requireViewer()
-  const favouriteDomainId = await db.userPreferences.favouriteDomainId(viewer.session.user.id)
-  const [active, latest, crawls, config] = await Promise.all([
+  const [active, activity, latest, crawls, config] = await Promise.all([
     db.crawls.active(domain.id),
+    crawlActivity(db, domain.id),
     db.crawls.latestWithResults(domain.id, 'full'),
     db.crawls.list(domain.id, { type: 'full', limit: HISTORY_CRAWLS }),
     db.audit.config(domain.id),
@@ -61,7 +58,6 @@ export default async function DomainDashboardPage({
       ? await compareWithPrevious({ db, target: latest, findings: false })
       : null
   const previousFigures = comparison?.base ? trendFigures(comparison.base) : null
-  const compareText = await getTranslations('CrawlCompare')
   const delta = (
     key: 'crawled' | 'indexable' | 'issues' | 'warnings' | 'opportunities',
     value: number | null,
@@ -70,9 +66,6 @@ export default async function DomainDashboardPage({
     return dashboardDifference(before, value)
   }
   const state = auditResultsState(latest, config)
-  const lastAttempt = crawls[0]
-  const unsuccessful =
-    lastAttempt && (lastAttempt.status === 'failed' || lastAttempt.status === 'cancelled')
   const figures = latest ? trendFigures(latest) : null
   const points = trendPoints(crawls)
   const counts =
@@ -87,64 +80,31 @@ export default async function DomainDashboardPage({
   const renderingAvailable =
     (await db.crawls.settings(domain.id)).renderingMode === 'http' &&
     (await renderBrowserStatus())?.state === 'ready'
+  const now = trendNow()
   const query = parseDetailQuery({})
   const base = `/domains/${domain.host}`
   const number = (value: number | null | undefined) =>
     value === null || value === undefined ? '—' : format.number(value)
-  const audited = latest?.pagesAudit?.audited ?? null
 
   const tiles = [
-    { key: 'crawled', value: latest ? latest.pagesCount : null, base: null },
-    { key: 'indexable', value: figures?.indexable ?? null, base: latest?.pagesCount ?? null },
-    { key: 'issues', value: figures?.issues ?? null, base: audited },
-    { key: 'warnings', value: figures?.warnings ?? null, base: audited },
-    { key: 'opportunities', value: figures?.opportunities ?? null, base: audited },
+    { key: 'crawled', value: latest ? latest.pagesCount : null },
+    { key: 'indexable', value: figures?.indexable ?? null },
+    { key: 'issues', value: figures?.issues ?? null },
+    { key: 'warnings', value: figures?.warnings ?? null },
+    { key: 'opportunities', value: figures?.opportunities ?? null },
   ] as const
 
   return (
     <main className="grid gap-8">
       <Incidents open={incidents} />
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="grid min-w-0 gap-1">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold break-words">{domain.host}</h1>
-            <FavouriteDomainButton host={domain.host} favourite={domain.id === favouriteDomainId} />
-          </div>
-          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            {latest ? (
-              <>
-                <CrawlStatusBadge status={latest.status} />
-                {t('lastCrawl', {
-                  when: format.relativeTime(latest.finishedAt ?? latest.createdAt),
-                })}
-              </>
-            ) : (
-              t('neverCrawled')
-            )}
-          </p>
-          {unsuccessful && (
-            <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              {t('lastAttempt')}
-              <CrawlStatusBadge status={lastAttempt.status} />
-              <Link href={`${base}/crawls`} className="underline">
-                {t('jobs')}
-              </Link>
-            </p>
-          )}
-        </div>
-        <StartCrawlButton
-          host={domain.host}
-          type="full"
-          disabled={active !== null || domain.archivedAt !== null}
-        />
-      </div>
+      <h1 className="sr-only">{domain.host}</h1>
 
-      {!latest && crawls.length === 0 && !active && (
+      {!latest && crawls.length === 0 && activity.state.kind === 'idle' && (
         <section
           aria-labelledby="first-crawl"
           className="grid justify-items-center gap-3 rounded-lg border border-dashed px-4 py-10 text-center"
         >
-          <h2 id="first-crawl" className="text-lg font-medium">
+          <h2 id="first-crawl" className="text-base font-medium">
             {t('firstCrawl.title')}
           </h2>
           <p className="max-w-prose text-sm text-muted-foreground">
@@ -158,7 +118,9 @@ export default async function DomainDashboardPage({
         </section>
       )}
 
-      {active && <ActiveCrawl host={domain.host} crawl={active} />}
+      {activity.state.kind !== 'idle' && (
+        <ActiveCrawl host={domain.host} crawl={active} activity={activity.state} />
+      )}
 
       {latest?.status === 'incomplete' && (
         <Alert>
@@ -177,35 +139,45 @@ export default async function DomainDashboardPage({
 
       <AuditResultsNotice host={domain.host} state={state} />
 
-      <section aria-labelledby="figures" className="grid gap-3">
-        <h2 id="figures" className="flex items-center text-lg font-medium">
+      <section aria-labelledby="figures" className="@container grid gap-3">
+        <h2 id="figures" className="sr-only">
           {t('figures')}
-          <InfoHelp label={t('figures')}>{t('figuresHelp')}</InfoHelp>
         </h2>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-5">
-          {tiles.map(({ key, value, base: of }) => (
-            <div key={key} className="grid min-w-0 content-start gap-0.5">
-              <dt className="text-sm text-muted-foreground">{t(`tiles.${key}`)}</dt>
-              <dd className="text-3xl font-semibold tabular-nums">{number(value)}</dd>
-              {delta(key, value) !== null && (
-                <dd
-                  className={`text-xs tabular-nums ${key === 'crawled' || key === 'indexable' ? 'text-muted-foreground' : delta(key, value)! < 0 ? 'text-green-700 dark:text-green-400' : delta(key, value)! > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
-                >
-                  {format.number(delta(key, value)!, { signDisplay: 'exceptZero' })}
-                </dd>
-              )}
-              <dd className="text-xs text-muted-foreground">
-                {latest && !figures && key !== 'crawled'
-                  ? t('notChecked')
-                  : value === null && key !== 'crawled'
-                    ? t('notAvailable')
-                    : of === null
-                      ? null
-                      : t(key === 'indexable' ? 'ofCrawled' : 'ofAudited', { count: of })}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <div className="grid grid-cols-2 gap-4 @2xl:grid-cols-3 @4xl:grid-cols-5">
+          {tiles.map(({ key, value }) => {
+            const change = delta(key, value)
+            return (
+              <Stat
+                key={key}
+                label={t(`tiles.${key}`)}
+                value={number(value)}
+                change={
+                  change !== null && (
+                    <dd
+                      className={cn(
+                        'text-sm tabular-nums',
+                        key === 'crawled' || key === 'indexable' || change === 0
+                          ? 'text-muted-foreground'
+                          : change < 0
+                            ? 'text-green-700 dark:text-green-400'
+                            : 'text-destructive',
+                      )}
+                    >
+                      {format.number(change, { signDisplay: 'exceptZero' })}
+                    </dd>
+                  )
+                }
+                hint={
+                  latest && !figures && key !== 'crawled'
+                    ? t('notChecked')
+                    : value === null && key !== 'crawled'
+                      ? t('notAvailable')
+                      : null
+                }
+              />
+            )
+          })}
+        </div>
         {latest?.pagesAudit && latest.pagesAudit.unknownIndexability > 0 && (
           <p className="text-xs text-muted-foreground">
             {t('unknownIndexability', { count: latest.pagesAudit.unknownIndexability })}
@@ -232,74 +204,24 @@ export default async function DomainDashboardPage({
         </p>
       )}
 
-      {comparison?.base && latest && (
-        <section className="grid gap-2">
-          <h2 className="text-lg font-medium">{t('changesTitle')}</h2>
-          {comparison.notes.some((note) => note === 'catalog' || note === 'audit') && (
-            <p
-              className="text-xs text-muted-foreground"
-              title={comparison.notes
-                .filter((note) => note === 'catalog' || note === 'audit')
-                .map((note) => compareText(`notes.${note}.description`))
-                .join(' ')}
-            >
-              {t('configurationChanged')}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground">{compareText('totals.description')}</p>
-          <div className="flex flex-wrap gap-4 text-sm">
-            {(['added', 'missing', 'gained', 'lost'] as const).map((change) => (
-              <Link
-                key={change}
-                className="underline"
-                href={compareHref(domain.host, parseCompareQuery({}), {
-                  from: comparison.base!.id,
-                  to: latest.id,
-                  change,
-                })}
-              >
-                {compareText(`changes.${change}`)}:{' '}
-                {number(
-                  change === 'added'
-                    ? comparison.urls.added
-                    : change === 'missing'
-                      ? comparison.urls.missing
-                      : comparison.urls[change],
-                )}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       <DomainVitals crawls={crawls} domainId={domain.id} />
 
       {latest && figures && (
-        <section aria-labelledby="trend" className="grid gap-4">
-          <h2 id="trend" className="text-lg font-medium">
-            {t('trend')}
-          </h2>
-          <div className="grid gap-2">
-            <h3 className="flex items-center text-sm font-medium">
-              {t('trendFindings')}
-              <InfoHelp label={t('trendFindings')}>{t('trendFindingsHelp')}</InfoHelp>
-            </h3>
-            <TrendChart series={['issues', 'warnings', 'opportunities']} points={points} />
-          </div>
+        <>
           {points.some((point) => point.indexable !== null) && (
-            <div className="grid gap-2">
-              <h3 className="flex items-center text-sm font-medium">
-                {t('trendIndexable')}
-                <InfoHelp label={t('trendIndexable')}>{t('trendIndexableHelp')}</InfoHelp>
-              </h3>
-              <TrendChart series={['indexable']} points={points} compact />
-            </div>
+            <TrendCard kind="indexable" series={['indexable']} points={points} now={now} compact />
           )}
-        </section>
+          <TrendCard
+            kind="findings"
+            series={['issues', 'warnings', 'opportunities']}
+            points={points}
+            now={now}
+          />
+        </>
       )}
 
-      <section aria-labelledby="priorities" className="grid gap-2">
-        <h2 id="priorities" className="text-lg font-medium">
+      <section aria-labelledby="priorities" className="grid gap-3">
+        <h2 id="priorities" className="text-base font-medium">
           {t('prioritiesTitle')}
         </h2>
         {!latest ? (
@@ -317,7 +239,7 @@ export default async function DomainDashboardPage({
         ) : priorities.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noPriorities')}</p>
         ) : (
-          <ul className="grid divide-y">
+          <ul className="grid divide-y rounded-xl bg-card px-4 shadow-card ring-1 ring-foreground/10">
             {priorities.map(({ issue, pages }) => (
               <li key={issue}>
                 <Link

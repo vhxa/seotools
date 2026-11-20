@@ -82,7 +82,7 @@ export async function UrlRecheck({ data }: { data: UrlDetailData }) {
   return (
     <section
       id={`url-recheck-${crawl.id}-${data.url.urlHash}`}
-      className="grid scroll-mt-4 gap-3 rounded-lg border bg-muted/20 p-4"
+      className="grid scroll-mt-4 gap-3 rounded-xl border bg-muted/20 p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{t('title')}</h3>

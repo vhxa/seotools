@@ -11,7 +11,6 @@ import {
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 /** The sections of a domain's settings. Each one is a route under `/domains/[host]/settings`. */
@@ -31,7 +30,10 @@ export function SettingsNav({ host }: { host: string }) {
   const t = useTranslations('DomainSettings')
   const pathname = usePathname()
   return (
-    <nav aria-label={t('navLabel')} className="flex gap-1 overflow-x-auto md:flex-col">
+    <nav
+      aria-label={t('navLabel')}
+      className="flex gap-1 overflow-x-auto md:sticky md:top-20 md:flex-col"
+    >
       {SECTIONS.map(({ id, icon: Icon }) => {
         const href = `/domains/${host}/settings/${id}`
         const active = pathname === href
@@ -41,8 +43,9 @@ export function SettingsNav({ host }: { host: string }) {
             href={href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              buttonVariants({ variant: active ? 'secondary' : 'ghost' }),
-              'shrink-0 md:justify-start',
+              // The rows of the sidebar, so a list of sections reads like the main navigation.
+              'flex h-8 shrink-0 items-center gap-2.5 rounded-lg px-2 text-sm font-medium whitespace-nowrap outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 [&_svg]:size-4 [&_svg]:shrink-0',
+              active && 'bg-muted',
             )}
           >
             <Icon />

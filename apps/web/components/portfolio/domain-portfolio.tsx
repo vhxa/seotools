@@ -26,7 +26,7 @@ export async function DomainPortfolio({
   return (
     <main className="grid gap-8">
       <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
         <p className="text-sm text-muted-foreground">{t('description')}</p>
       </div>
 
@@ -40,14 +40,14 @@ export async function DomainPortfolio({
           >
             <h2
               id={`company-${section.id}`}
-              className="flex items-baseline gap-2 text-lg font-medium"
+              className="flex items-baseline gap-2 text-base font-medium"
             >
               {section.name}
               <span className="text-sm font-normal text-muted-foreground">
                 {t('domainsCount', { count: section.active.length })}
               </span>
             </h2>
-            <ul className="divide-y rounded-lg border">
+            <ul className="divide-y rounded-xl border bg-card shadow-card">
               {section.active.map((domain) => (
                 <DomainRow
                   key={domain.id}
@@ -62,7 +62,7 @@ export async function DomainPortfolio({
         ))}
 
       {archived.length > 0 && (
-        <details className="grid gap-3 rounded-lg border px-4 py-3">
+        <details className="grid gap-3 rounded-xl border bg-card px-4 py-3 shadow-card">
           <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
             {t('archived')}
           </summary>
@@ -70,7 +70,7 @@ export async function DomainPortfolio({
           {archived.map((section) => (
             <div key={section.id} className="grid gap-1">
               <h3 className="text-sm font-medium">{section.name}</h3>
-              <ul className="divide-y rounded-lg border">
+              <ul className="divide-y rounded-xl border bg-card shadow-card">
                 {section.archived.map((domain) => (
                   <DomainRow
                     key={domain.id}

@@ -23,7 +23,7 @@ export default async function IntegrationsPage() {
   const browser = readRenderStatus(stored)
   return (
     <main className="grid gap-6">
-      <h1 className="text-2xl font-semibold">{t('integrations')}</h1>
+      <h1 className="text-xl font-semibold">{t('integrations')}</h1>
       <RenderBrowserCard status={browser} />
       <IntegrationsForm
         configured={key.state === 'ready'}

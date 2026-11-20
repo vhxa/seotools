@@ -42,6 +42,30 @@ function ListCrawlForm({ host, onStarted }: { host: string; onStarted: () => voi
   )
 }
 
+/** The dialog itself, for a caller that opens it from somewhere else (a menu). */
+export function ListCrawlDialogPanel({
+  host,
+  open,
+  onOpenChange,
+}: {
+  host: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const t = useTranslations('Crawls.list')
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
+        </DialogHeader>
+        <ListCrawlForm host={host} onStarted={() => onOpenChange(false)} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /** "Crawl a URL list": the form to crawl only the URLs of a list, in a dialog. */
 export function ListCrawlDialog({ host, disabled }: { host: string; disabled?: boolean }) {
   const t = useTranslations('Crawls.list')
@@ -54,15 +78,7 @@ export function ListCrawlDialog({ host, disabled }: { host: string; disabled?: b
         <ListIcon />
         {t('open')}
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{t('title')}</DialogTitle>
-            <DialogDescription>{t('description')}</DialogDescription>
-          </DialogHeader>
-          <ListCrawlForm host={host} onStarted={() => setOpen(false)} />
-        </DialogContent>
-      </Dialog>
+      <ListCrawlDialogPanel host={host} open={open} onOpenChange={setOpen} />
     </>
   )
 }

@@ -17,7 +17,10 @@ test('a personal favourite opens on home, with overview and all-domains navigati
     await page.goto('/')
     await expect(page).toHaveURL(new RegExp(`/domains/${HOST.replaceAll('.', '\\.')}$`))
     await page.goto(`/domains/${HOST}/urls`)
-    await page.getByRole('link', { name: `Overview of ${HOST}`, exact: true }).click()
+    await page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('link', { name: 'Overview', exact: true })
+      .click()
     await expect(page).toHaveURL(new RegExp(`/domains/${HOST.replaceAll('.', '\\.')}$`))
     await page.getByRole('button', { name: 'Switch domain' }).click()
     await page.getByRole('menuitem', { name: 'All domains', exact: true }).click()

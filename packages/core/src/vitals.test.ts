@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createVitalsClient, emptyVitals, parseCrux, parsePsi } from './vitals'
-import { vitalState } from './vitals-state'
+import { vitalPosition, vitalState } from './vitals-state'
 
 afterEach(() => vi.useRealTimers())
 describe('recorded Google responses', () => {
@@ -109,11 +109,20 @@ it.each([
   ['lcp', 2500, 4000],
   ['inp', 200, 500],
   ['cls', 0.1, 0.25],
+  ['fcp', 1800, 3000],
+  ['ttfb', 800, 1800],
 ] as const)('classifies %s threshold edges and unknown values', (metric, good, poor) => {
   expect(vitalState(metric, good)).toBe('good')
   expect(vitalState(metric, poor)).toBe('needs-improvement')
   expect(vitalState(metric, poor + 0.001)).toBe('poor')
   expect(vitalState(metric, null)).toBe('no-data')
+})
+
+it('places a value on the bar by the band it falls in', () => {
+  expect(vitalPosition('lcp', 0)).toBe(0)
+  expect(vitalPosition('lcp', 2500)).toBeCloseTo(0.6)
+  expect(vitalPosition('lcp', 4000)).toBeCloseTo(0.75)
+  expect(vitalPosition('lcp', 100000)).toBe(1)
 })
 
 it('times out without propagating request details', async () => {

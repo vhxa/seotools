@@ -20,7 +20,7 @@ export default function ProtectedError({
   return (
     <main className="grid justify-items-center gap-4 py-16 text-center">
       <TriangleAlertIcon className="size-10 text-muted-foreground" aria-hidden />
-      <h1 className="text-2xl font-semibold">{t('title')}</h1>
+      <h1 className="text-xl font-semibold">{t('title')}</h1>
       <p className="max-w-prose text-sm text-muted-foreground">{t('description')}</p>
       {error.digest && (
         <p className="text-xs text-muted-foreground">{t('reference', { digest: error.digest })}</p>

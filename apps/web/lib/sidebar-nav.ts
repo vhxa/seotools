@@ -31,3 +31,12 @@ export function isSectionOpen(
 ): boolean {
   return override && override.pathname === pathname ? override.open : active
 }
+
+/** Where the domain layout puts the crawl buttons inside the sidebar (`SidebarCrawlActions`). */
+export const CRAWL_SLOT_ID = 'sidebar-crawl-slot'
+
+/** Where a page draws its own side panel, to the right of the main panel. */
+export const SECONDARY_SLOT_ID = 'secondary-sidebar-slot'
+
+/** Where a page draws its own buttons in the main panel's header, at its right edge. */
+export const HEADER_SLOT_ID = 'header-actions-slot'

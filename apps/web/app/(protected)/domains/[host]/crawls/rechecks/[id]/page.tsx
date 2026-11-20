@@ -108,9 +108,7 @@ export default async function RecheckPage({
           {t('back')}
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">
-            {t('title', { count: verification.urlsCount })}
-          </h1>
+          <h1 className="text-xl font-semibold">{t('title', { count: verification.urlsCount })}</h1>
           <RecheckStatusBadge status={verification.status} />
           {active && canEdit && (
             <form action={cancelRecheckAction.bind(null, domain.host, verification.id)}>

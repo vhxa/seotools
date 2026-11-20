@@ -175,7 +175,7 @@ export default async function ComparePage({
   }
 
   return (
-    <main data-wide className="grid gap-6">
+    <main className="grid gap-6">
       {header}
 
       <PairPicker
@@ -250,7 +250,7 @@ export default async function ComparePage({
       </Card>
 
       {counts && (
-        <Card className="flex h-[calc(100svh-5rem)] min-h-[32rem] flex-col">
+        <Card className="flex h-[calc(100svh-5.75rem)] min-h-[32rem] flex-col md:-mb-4 md:h-[calc(100svh-6.25rem)]">
           <CardHeader className="shrink-0 gap-3">
             <nav aria-label={t('changesLabel')} className="flex flex-wrap gap-1">
               {CRAWL_CHANGES.map((change) => (

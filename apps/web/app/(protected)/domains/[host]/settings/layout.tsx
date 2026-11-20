@@ -16,9 +16,7 @@ export default async function DomainSettingsLayout({
   const t = await getTranslations('DomainSettings')
   return (
     <main className="grid gap-6">
-      <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
-      </div>
+      <h1 className="sr-only">{t('title')}</h1>
       <div className="grid items-start gap-6 md:grid-cols-[12rem_minmax(0,1fr)]">
         <SettingsNav host={domain.host} />
         {/* What changes the domain is inert while archived: see `(config)/layout.tsx`. */}
