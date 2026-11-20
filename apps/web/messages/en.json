@@ -974,6 +974,18 @@
       "unread": "The crawl did not read this URL, so what it links to is not known.",
       "note": "A URL counts once for each type of link this page uses to point at it, however many times it repeats it."
     },
+    "viaRedirects": {
+      "title": "Through redirects",
+      "count": "{count, plural, one {# URL redirects here} other {# URLs redirect here}}",
+      "note": "These URLs redirect to this one. The links under each point to the redirecting URL, not to this one: people and crawlers only get here because the redirect sends them on.",
+      "noLinks": "No page of this crawl links to it.",
+      "more": "and {count, plural, one {# more link} other {# more links}}: open the redirecting URL to see them all",
+      "errors": {
+        "unavailable": "These links cannot be shown: the crawl is not available.",
+        "pruned": "The results of this crawl were removed, so its links are no longer stored.",
+        "failed": "The links could not be loaded. Try again."
+      }
+    },
     "count": "{count, plural, one {# link} other {# links}}",
     "groupsLabel": "Types of link",
     "groups": {

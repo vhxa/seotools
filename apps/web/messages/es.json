@@ -974,6 +974,18 @@
       "unread": "El rastreo no leyó esta URL, así que no se sabe a qué enlaza.",
       "note": "Una URL cuenta una vez por cada tipo de enlace con el que esta página apunta a ella, aunque lo repita."
     },
+    "viaRedirects": {
+      "title": "A través de redirecciones",
+      "count": "{count, plural, one {# URL redirige aquí} other {# URLs redirigen aquí}}",
+      "note": "Estas URLs redirigen a esta. Los enlaces de debajo apuntan a la URL que redirige, no a esta: personas y rastreadores solo llegan aquí porque la redirección los envía.",
+      "noLinks": "Ninguna página de este rastreo enlaza a ella.",
+      "more": "y {count, plural, one {# enlace más} other {# enlaces más}}: abre la URL que redirige para verlos todos",
+      "errors": {
+        "unavailable": "No se pueden mostrar estos enlaces: el rastreo no está disponible.",
+        "pruned": "Los resultados de este rastreo se eliminaron, así que sus enlaces ya no se conservan.",
+        "failed": "No se pudieron cargar los enlaces. Inténtalo de nuevo."
+      }
+    },
     "count": "{count, plural, one {# enlace} other {# enlaces}}",
     "groupsLabel": "Tipos de enlace",
     "groups": {

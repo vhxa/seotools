@@ -31,6 +31,7 @@ import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { UrlSharePreview } from '@/components/pages/share-preview'
+import { RedirectLinksPanel } from '@/components/pages/redirect-links-panel'
 import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRendering } from '@/components/pages/url-rendering'
 import { UrlRecheck } from '@/components/verification/url-recheck'
@@ -40,6 +41,7 @@ import { documentFindingsState, groupDetailFindings } from '@/lib/url-detail-fin
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { sharePreview } from '@/lib/share-preview'
 import { formatBytes } from '@/lib/format'
+import { hrefPattern } from '@/lib/url-links'
 import type { UrlDetailData } from '@/lib/url-detail'
 
 function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
@@ -546,6 +548,17 @@ export async function UrlDetail({
           <div id="inbound-links">
             <UrlLinks host={host} data={data} direction="in" hrefFor={hrefFor} />
           </div>
+          {data.links.viaRedirects.total > 0 && (
+            <RedirectLinksPanel
+              // A different URL or crawl is a different list, not the same one with other props.
+              key={`${crawl.id}:${url.urlHash}:redirects`}
+              host={host}
+              crawlId={crawl.id}
+              urlHash={url.urlHash}
+              initial={data.links.viaRedirects}
+              hrefs={hrefPattern(hrefFor)}
+            />
+          )}
           <UrlLinks host={host} data={data} direction="out" hrefFor={hrefFor} />
         </TabsContent>
       </Tabs>
