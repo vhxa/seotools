@@ -91,7 +91,11 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
     ) {
       return t('build.version', { version })
     }
-    const different = run.some((build) => buildIdentity(analysis) !== buildIdentity(build))
+    const different =
+      first &&
+      !crawl.runBuilds?.overflow &&
+      !crawl.runBuilds?.earlierRunUnrecorded &&
+      run.every((build) => buildIdentity(analysis) !== buildIdentity(build))
     return t(different ? 'build.withDifferentAnalysis' : 'build.withAnalysis', {
       version,
       analysis: buildLabel(analysis),
