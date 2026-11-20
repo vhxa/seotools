@@ -17,52 +17,92 @@ export function SkeletonPage({ children, className }: { children: ReactNode; cla
   )
 }
 
-/** The title of a page, with the line under it when it has one. */
+/** The title of a page, with the line under it when it has one: as tall as the real `h1` + `p`. */
 export function TitleSkeleton({ line = true }: { line?: boolean }) {
   return (
-    <div className="grid gap-2">
-      <Skeleton className="h-8 w-56 max-w-full" />
-      {line && <Skeleton className="h-4 w-72 max-w-full" />}
+    <div className="grid gap-1">
+      <Skeleton className="h-7 w-40 max-w-full" />
+      {line && <Skeleton className="h-5 w-72 max-w-full" />}
     </div>
   )
 }
 
-/** The title of a section. */
-export function SectionTitleSkeleton() {
-  return <Skeleton className="h-5 w-40" />
+/** Lines of text (`text-sm`, 20px each); the last one is short, as the end of a paragraph is. */
+export function TextSkeleton({ lines = 2 }: { lines?: number }) {
+  return (
+    <div className="grid">
+      {Array.from({ length: lines }, (_, index) => (
+        <Skeleton
+          key={index}
+          className={cn('my-0.5 h-4', index === lines - 1 && lines > 1 ? 'w-2/3' : 'w-full')}
+        />
+      ))}
+    </div>
+  )
 }
 
-/** A row of pill-shaped tabs or links. */
+/** The title of a section: as tall as an `h2` in `text-base`. */
+export function SectionTitleSkeleton() {
+  return (
+    <div className="flex h-6 items-center">
+      <Skeleton className="h-5 w-40" />
+    </div>
+  )
+}
+
+/** A row of navigation buttons (the tabs of the Crawls area). */
 export function TabsSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-1">
       {Array.from({ length: count }, (_, index) => (
-        <Skeleton key={index} className="h-7 w-24 rounded-full" />
+        <Skeleton key={index} className="h-8 w-24 rounded-lg" />
       ))}
     </div>
   )
 }
 
-/** A row of `Stat` cards. */
+/**
+ * A row of `Stat` cards, in the same card and with the same columns as the page (a container
+ * query: the page has a sidebar). `hint`: the line under the figure that some tiles have.
+ */
 export function StatCardsSkeleton({
   count = 5,
-  className,
+  columns = 'grid-cols-2 @2xl:grid-cols-3 @4xl:grid-cols-5',
+  hint = false,
 }: {
   count?: number
-  className?: string
+  columns?: string
+  hint?: boolean
 }) {
   return (
-    <div className={cn('grid grid-cols-2 gap-3 sm:grid-cols-3', className)}>
-      {Array.from({ length: count }, (_, index) => (
-        <Card key={index} size="sm">
-          <CardContent className="grid gap-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-8 w-20" />
-            <Skeleton className="h-4 w-12" />
-          </CardContent>
-        </Card>
-      ))}
+    <div className="@container">
+      <div className={cn('grid gap-4', columns)}>
+        {Array.from({ length: count }, (_, index) => (
+          <Card key={index}>
+            <CardContent className="grid content-start gap-1">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-9 w-20" />
+              {hint && <Skeleton className="h-4 w-32" />}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
+  )
+}
+
+/** A trend card: title and period switch, a line under the title, and the chart. */
+export function TrendCardSkeleton({ compact = false }: { compact?: boolean }) {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-[22px] w-44" />
+        <Skeleton className="h-5 w-56" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className={compact ? 'h-[170px] w-full' : 'h-[266px] w-full'} />
+      </CardContent>
+    </Card>
   )
 }
 
@@ -71,7 +111,7 @@ export function BlockCardSkeleton({ height = 'h-48' }: { height?: string }) {
   return (
     <Card>
       <CardHeader>
-        <Skeleton className="h-4 w-44" />
+        <Skeleton className="h-[22px] w-44" />
       </CardHeader>
       <CardContent>
         <Skeleton className={cn('w-full', height)} />

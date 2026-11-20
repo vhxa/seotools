@@ -98,7 +98,7 @@
   "Header": {
     "home": "seotools home",
     "searchLabel": "Search the URLs of this domain",
-    "searchPlaceholder": "Search by URL or title",
+    "searchPlaceholder": "Inspect any URL in \"{host}\"",
     "searchOpen": "Search",
     "searchClose": "Close search",
     "searching": "Searching…",
@@ -4143,6 +4143,7 @@
     "title": "JavaScript rendering",
     "help": "This crawl opened its pages in a browser. Here: what only appears after rendering, and how many pages could not be observed completely.",
     "rendered": "{count, plural, one {# page rendered in a browser} other {# pages rendered in a browser}}",
+    "unknownTitle": "What this leaves unknown",
     "coverageUnknown": "How many pages were observed completely is not known yet: this crawl has not been analysed.",
     "coverageNotRecorded": "How many pages were observed completely was not recorded by the analysis of this crawl.",
     "allObserved": "Every page was observed completely.",

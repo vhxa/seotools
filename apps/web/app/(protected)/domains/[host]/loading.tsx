@@ -1,10 +1,11 @@
 import {
-  BlockCardSkeleton,
   ListCardSkeleton,
   SectionTitleSkeleton,
   SkeletonPage,
   StatCardsSkeleton,
+  TrendCardSkeleton,
 } from '@/components/skeletons'
+import { Skeleton } from '@/components/ui/skeleton'
 
 /**
  * Shown while the overview of a domain loads (the other pages have a `loading.tsx` of their own,
@@ -17,18 +18,13 @@ import {
 export default function OverviewLoading() {
   return (
     <SkeletonPage className="gap-8">
-      <section className="grid gap-3">
-        <SectionTitleSkeleton />
-        <StatCardsSkeleton className="lg:grid-cols-5" />
-      </section>
-      <section className="grid gap-3">
-        <SectionTitleSkeleton />
-        <BlockCardSkeleton height="h-64" />
-        <BlockCardSkeleton height="h-40" />
-      </section>
+      <StatCardsSkeleton />
+      <TrendCardSkeleton compact />
+      <TrendCardSkeleton />
       <section className="grid gap-3">
         <SectionTitleSkeleton />
         <ListCardSkeleton />
+        <Skeleton className="h-5 w-28" />
       </section>
     </SkeletonPage>
   )

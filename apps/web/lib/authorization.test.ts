@@ -42,6 +42,7 @@ const READ_ONLY_DOMAIN_ACTIONS = new Set([
   'loadLinksAction',
   'searchUrlsAction',
   'crawlActivityAction',
+  'dataStampAction',
 ])
 /** About the person's own account. */
 const OWN_ACCOUNT_ACTIONS = new Set([

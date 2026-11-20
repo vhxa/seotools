@@ -67,6 +67,8 @@ export function DomainSwitcher({
     company.domains.some((domain) => domain.host === currentHost),
   )
 
+  const currentDomain = current?.domains.find((domain) => domain.host === currentHost)
+
   // Switching keeps the section you are in: /domains/a.com/audits → /domains/b.com/audits.
   const currentBase = `/domains/${currentHost}`
   const section =
@@ -111,7 +113,11 @@ export function DomainSwitcher({
               />
             }
           >
-            <ApertureIcon className="size-8! shrink-0 stroke-[1.75]" />
+            {currentDomain ? (
+              <DomainIcon host={currentDomain.host} version={currentDomain.faviconVersion} />
+            ) : (
+              <ApertureIcon className="size-8! shrink-0 stroke-[1.75]" />
+            )}
             {current && currentHost ? (
               <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{currentHost}</span>

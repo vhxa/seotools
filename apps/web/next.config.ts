@@ -41,6 +41,10 @@ const config: NextConfig = {
   serverExternalPackages: ['better-sqlite3', 'postgres', 'pino', 'nodemailer', 'resend'],
   env: { APP_VERSION: pkg.version },
   poweredByHeader: false,
+  // The browser keeps the pages it has visited for a minute, so going back to Issues, URLs or the
+  // overview does not load them again. The actions revalidate what the user changes and
+  // `DataFreshness` drops the lot when the worker finishes something.
+  experimental: { staleTimes: { dynamic: 60 } },
   // The same on every response, static files included. The Content-Security-Policy and HSTS depend
   // on the request or on run-time settings, so `proxy.ts` sets them.
   async headers() {

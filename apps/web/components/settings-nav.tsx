@@ -32,7 +32,8 @@ export function SettingsNav({ host }: { host: string }) {
   return (
     <nav
       aria-label={t('navLabel')}
-      className="flex gap-1 overflow-x-auto md:sticky md:top-20 md:flex-col"
+      // Sticks where it rests (header 4rem + page padding 0.75rem): a larger offset moves it down.
+      className="flex gap-1 overflow-x-auto md:sticky md:top-19 md:flex-col"
     >
       {SECTIONS.map(({ id, icon: Icon }) => {
         const href = `/domains/${host}/settings/${id}`

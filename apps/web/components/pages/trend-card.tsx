@@ -1,6 +1,6 @@
 'use client'
 
-import { useTranslations } from 'next-intl'
+import { useFormatter, useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { InfoHelp } from '@/components/help'
 import {
@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import type { TrendPoint } from '@/lib/dashboard'
+import { lastOfEachDay, type TrendPoint } from '@/lib/dashboard'
 import { TrendChart, type TrendSeries } from './trend-chart'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -40,7 +40,7 @@ function defaultRange(points: TrendPoint[], now: number): RangeId {
 export function TrendCard({
   kind,
   series,
-  points,
+  points: crawlPoints,
   now,
   compact = false,
 }: {
@@ -51,6 +51,10 @@ export function TrendCard({
   compact?: boolean
 }) {
   const t = useTranslations('Dashboard')
+  const format = useFormatter()
+  const points = lastOfEachDay(crawlPoints, (at) =>
+    format.dateTime(at, { year: 'numeric', month: 'numeric', day: 'numeric' }),
+  )
   const [chosen, setChosen] = useState<RangeId | null>(null)
   const range = chosen ?? defaultRange(points, now)
   const days = RANGES.find((entry) => entry.id === range)?.days ?? 90
