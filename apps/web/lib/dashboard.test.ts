@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dashboardDifference, trendFigures, trendPoints } from './dashboard'
+import { dashboardDifference, lastOfEachDay, trendFigures, trendPoints } from './dashboard'
 
 const crawl = (at: number, over: Record<string, unknown> = {}) => ({
   status: 'completed' as const,
@@ -38,5 +38,13 @@ describe('dashboardDifference', () => {
     expect(dashboardDifference(10, 7)).toBe(-3)
     expect(dashboardDifference(0, 12)).toBe(12)
     expect(dashboardDifference(10, 10)).toBe(0)
+  })
+})
+
+describe('lastOfEachDay', () => {
+  it('keeps the last point of each day, oldest first', () => {
+    const dayOf = (at: number) => String(Math.floor(at / 100))
+    const points = [{ at: 250 }, { at: 110 }, { at: 190 }, { at: 205 }]
+    expect(lastOfEachDay(points, dayOf)).toEqual([{ at: 190 }, { at: 250 }])
   })
 })

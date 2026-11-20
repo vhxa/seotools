@@ -20,6 +20,14 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Fixed
+
+- The JavaScript rendering block of the overview is a card like the rest of the dashboard; its long explanations are folded under "What this leaves unknown".
+- The trend charts (overview and Core Web Vitals) draw one point per day, the last crawl of that day, so a week or more of history is no longer full of repeated points.
+- Pages already visited open at once: the browser keeps them for a minute and drops them as soon as a crawl, an analysis, a recheck or a change of rules finishes.
+- The list of settings sections no longer moves a few pixels when the page loads, and the loading skeletons of the overview, Issues, URLs, Crawls and the comparison match the pages they stand for.
+- The domain selector shows the favicon of the selected domain, and the search box reads "Inspect any URL in" followed by the domain.
+
 ## [0.7.0] - 2026-11-20
 
 ### Added

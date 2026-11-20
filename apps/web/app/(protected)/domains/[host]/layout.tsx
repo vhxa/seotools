@@ -2,7 +2,9 @@ import type { ReactNode } from 'react'
 import { ArchivedNotice } from '@/components/archived-notice'
 import { DomainAccessProvider } from '@/components/domain-access'
 import { SidebarCrawlActions } from '@/components/crawl/sidebar-crawl-actions'
+import { DataFreshness } from '@/components/data-freshness'
 import { crawlActivity, IDLE } from '@/lib/crawl-activity'
+import { dataStamp } from '@/lib/data-stamp'
 import { getDb } from '@/lib/db'
 import { requireDomain } from '@/lib/workspace'
 
@@ -21,9 +23,14 @@ export default async function DomainLayout({
   const { host } = await params
   const { domain, canEdit, role } = await requireDomain(host)
   // Only an editor sees the sidebar's crawl buttons, so only then is the state worth reading.
-  const activity = canEdit ? await crawlActivity(await getDb(), domain.id) : IDLE
+  const db = await getDb()
+  const [activity, stamp] = await Promise.all([
+    canEdit ? crawlActivity(db, domain.id) : IDLE,
+    dataStamp(db, domain.id),
+  ])
   return (
     <DomainAccessProvider canEdit={canEdit}>
+      <DataFreshness host={domain.host} initial={stamp} />
       {canEdit && !domain.archivedAt && (
         <SidebarCrawlActions host={domain.host} initial={activity} />
       )}

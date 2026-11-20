@@ -115,7 +115,7 @@ export function UrlSearch({ host }: { host: string }) {
             ref={inputRef}
             showTrigger={false}
             className="flex-1"
-            placeholder={t('searchPlaceholder')}
+            placeholder={t('searchPlaceholder', { host })}
             aria-label={t('searchLabel')}
             onKeyDown={(event) => {
               if (event.key === 'Escape' && !open) close()

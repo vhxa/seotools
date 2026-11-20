@@ -1,10 +1,15 @@
 'use client'
-import { useTranslations } from 'next-intl'
+import { useFormatter, useTranslations } from 'next-intl'
 import { Line, LineChart, XAxis } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+import { lastOfEachDay } from '@/lib/dashboard'
 import type { VitalsPoint } from '@/lib/vitals'
-export function VitalsTrend({ points }: { points: VitalsPoint[] }) {
+export function VitalsTrend({ points: crawlPoints }: { points: VitalsPoint[] }) {
   const t = useTranslations('Vitals')
+  const format = useFormatter()
+  const points = lastOfEachDay(crawlPoints, (at) =>
+    format.dateTime(at, { year: 'numeric', month: 'numeric', day: 'numeric' }),
+  )
   return (
     <div className="grid gap-4 border-t pt-4 sm:grid-cols-3">
       {(['lcp', 'inp', 'cls'] as const).map((metric) => (

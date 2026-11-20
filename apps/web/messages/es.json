@@ -98,7 +98,7 @@
   "Header": {
     "home": "Inicio de seotools",
     "searchLabel": "Buscar entre las URLs de este dominio",
-    "searchPlaceholder": "Buscar por URL o título",
+    "searchPlaceholder": "Inspecciona cualquier URL de \"{host}\"",
     "searchOpen": "Buscar",
     "searchClose": "Cerrar la búsqueda",
     "searching": "Buscando…",
@@ -4143,6 +4143,7 @@
     "title": "Renderizado de JavaScript",
     "help": "Este rastreo abrió sus páginas en un navegador. Aquí: lo que solo aparece tras renderizar y cuántas páginas no pudieron observarse por completo.",
     "rendered": "{count, plural, one {# página renderizada en un navegador} other {# páginas renderizadas en un navegador}}",
+    "unknownTitle": "Qué queda sin saber",
     "coverageUnknown": "Aún no se sabe cuántas páginas se observaron por completo: este rastreo no se ha analizado.",
     "coverageNotRecorded": "El análisis de este rastreo no registró cuántas páginas se observaron por completo.",
     "allObserved": "Todas las páginas se observaron por completo.",

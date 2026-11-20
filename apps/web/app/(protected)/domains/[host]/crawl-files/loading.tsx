@@ -14,7 +14,7 @@ export default function CrawlFilesLoading() {
         <TitleSkeleton />
         <Skeleton className="h-8 w-32" />
       </div>
-      <StatCardsSkeleton count={3} />
+      <StatCardsSkeleton count={3} columns="grid-cols-1 sm:grid-cols-3" />
       <BlockCardSkeleton height="h-64" />
     </SkeletonPage>
   )

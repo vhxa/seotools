@@ -44,6 +44,16 @@ export function trendPoints(
     .sort((a, b) => a.at - b.at)
 }
 
+/** One point per calendar day (as `dayOf` tells it): the last one of that day, oldest first. */
+export function lastOfEachDay<T extends { at: number }>(
+  points: T[],
+  dayOf: (at: number) => string,
+): T[] {
+  const days = new Map<string, T>()
+  for (const point of [...points].sort((a, b) => a.at - b.at)) days.set(dayOf(point.at), point)
+  return [...days.values()]
+}
+
 /** A missing measurement is unknown, including an analysis that predates the metric. */
 export function dashboardDifference(
   before: number | null | undefined,
