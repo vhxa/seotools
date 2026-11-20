@@ -622,7 +622,9 @@ test('a rendered crawl of over a thousand pages shows its number and coverage in
   await expect(block.getByText('None', { exact: true })).toHaveCount(0)
 
   await page.goto(`/domains/${RENDERED_HOST}/crawls`)
+  // The short row says the crawl was rendered; the coverage is in its details.
   const row = page.getByRole('row').filter({ hasText: 'Rendered' }).first()
-  await expect(row.getByText(`${unobserved} pages not observed completely`)).toBeVisible()
-  await expect(row.getByText('Coverage not analysed yet')).toHaveCount(0)
+  await row.getByRole('button', { name: 'Details' }).click()
+  await expect(page.getByText(`${unobserved} pages not observed completely`)).toBeVisible()
+  await expect(page.getByText('Coverage not analysed yet')).toHaveCount(0)
 })
