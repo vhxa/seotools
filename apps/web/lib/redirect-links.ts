@@ -34,7 +34,12 @@ export interface RedirectLinksPage {
 /** Every type of link but the redirect itself: a redirect is the step, not a link people follow. */
 const LINK_KINDS = linkKindsOf('all').filter((kind) => kind !== 'redirect')
 
-export const EMPTY_REDIRECT_LINKS: RedirectLinksPage = { total: 0, page: 1, pageCount: 1, items: [] }
+export const EMPTY_REDIRECT_LINKS: RedirectLinksPage = {
+  total: 0,
+  page: 1,
+  pageCount: 1,
+  items: [],
+}
 
 export async function loadRedirectLinks(
   source: LinkSource,

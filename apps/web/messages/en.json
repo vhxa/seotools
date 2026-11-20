@@ -3753,10 +3753,12 @@
     "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the rules it was analysed with, and its results per URL until the retention setting removes them.",
     "columns": {
       "crawl": "Crawl",
-      "results": "Results",
-      "found": "Found",
-      "findings": "Pages with findings",
-      "rules": "Rules"
+      "started": "Started by",
+      "mode": "Mode",
+      "state": "State",
+      "found": "{pages} pages · {urls} URLs",
+      "findings": "{issues} issues · {warnings} warnings",
+      "actions": "Actions"
     },
     "trigger": {
       "manual": "Manual",
@@ -3765,6 +3767,20 @@
     "latest": "Latest",
     "found": "{pages} pages · {urls} URLs · {external} external",
     "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
+    "foundMore": "{pages} pages · {urls} URLs · {external} external URLs",
+    "findingsAll": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
+    "cancelledNotAnalysed": "Cancelled — not analysed",
+    "details": {
+      "toggle": "Details",
+      "started": "Started",
+      "finished": "Finished",
+      "found": "Found",
+      "findings": "Pages with findings",
+      "rules": "Rules",
+      "results": "Results",
+      "rendering": "Rendering",
+      "error": "Error"
+    },
     "view": "View",
     "compareWithPrevious": "Compare with previous",
     "retention": "How many crawls keep their results per URL is set in the crawl settings; older ones keep only their totals.",
@@ -4260,6 +4276,7 @@
         "html": "Read the served HTML only: no page was opened in a browser.",
         "rendered": "Pages were opened in a browser that ran their JavaScript."
       },
+      "cancelledNotAnalysed": "Cancelled — not analysed",
       "coverageUnknown": "Coverage not analysed yet",
       "coverageNotRecorded": "Coverage not recorded",
       "allObserved": "All pages observed completely",

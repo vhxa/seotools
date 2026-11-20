@@ -34,7 +34,10 @@ describe('discoverySentences', () => {
   })
 
   it('keeps a missing kind as null', () => {
-    const { sentences } = discoverySentences([step('https://a.test/', null), step('https://a.test/z', null)])
+    const { sentences } = discoverySentences([
+      step('https://a.test/', null),
+      step('https://a.test/z', null),
+    ])
     expect(sentences[0]?.kind).toBeNull()
   })
 })
