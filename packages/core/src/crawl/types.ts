@@ -254,6 +254,7 @@ export interface CrawlPageFacts {
   /** Facts from the original served response used for a paired check. */
   servedAt?: string
   servedTextDigest?: string
+  servedLinkNormalizedDigest?: string
   requestContext?: string
   servedTitleDigest?: string
   servedAnchors?: { count: number; digest: string }

@@ -5138,6 +5138,28 @@ export function describeDatabaseContract(
         expect((await db.crawls.latestWithResults(domainId, 'full'))?.id).toBe(running.id)
       })
 
+      it('ranks parsed pagination names first and keeps the longest retry deadline', async () => {
+        const crawl = await startCrawl(await domain())
+        const queries = ['?value=?page=2', '?%70age', '?x=1&PAGED=3']
+        const pages = queries.map((query, i) =>
+          newUrl('https://acme.com/' + query, { urlHash: String(i) }),
+        )
+        await db.crawls.addUrls(crawl.id, pages)
+        for (const page of pages)
+          await db.crawls.recordResult({
+            crawlId: crawl.id,
+            urlHash: page.urlHash,
+            result: result('page'),
+          })
+        expect((await db.crawls.pairedCandidates(crawl.id)).rows.map((row) => row.urlHash)).toEqual(
+          ['1', '2', '0'],
+        )
+        const until = new Date(Date.now() + 60000)
+        await db.crawls.extendRetryAfter(crawl.id, until)
+        await db.crawls.extendRetryAfter(crawl.id, new Date(until.getTime() - 1000))
+        expect((await db.crawls.get(crawl.id))?.retryAfterUntil).toEqual(until)
+      })
+
       it('publishes pairs with completion, keeps their counts after pruning, and leaves legacy crawls unknown', async () => {
         const domainId = await domain()
         const crawl = await startCrawl(domainId)

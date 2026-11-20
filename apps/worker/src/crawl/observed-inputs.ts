@@ -32,6 +32,7 @@ export const OPTIONAL_FACT_ISSUES: Record<OptionalFact, readonly PageIssueId[]> 
   // Only the samples of findings that already exist: the finding itself does not depend on it.
   evidence: [],
   servedTextDigest: [],
+  servedLinkNormalizedDigest: [],
   servedTitleDigest: [],
   requestContext: [],
   servedAt: [],

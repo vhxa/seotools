@@ -91,6 +91,7 @@ export async function repeatAnswers(input: {
         title: row.title?.slice(0, 160) ?? null,
         titleDigest: facts.servedTitleDigest,
         textDigest: facts.servedTextDigest,
+        linkNormalizedDigest: facts.servedLinkNormalizedDigest,
         anchors: matched ? stored : { ...facts.servedAnchors, hashes: [] },
       }
     }
@@ -153,6 +154,7 @@ export async function repeatAnswers(input: {
             title: page.title?.slice(0, 160) ?? null,
             titleDigest: page.facts.servedTitleDigest!,
             textDigest: page.facts.servedTextDigest!,
+            linkNormalizedDigest: page.facts.servedLinkNormalizedDigest,
             anchors: repeated.finish(),
           }
         }

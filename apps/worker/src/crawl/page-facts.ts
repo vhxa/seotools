@@ -300,6 +300,7 @@ export class PageFactsCollector {
   // normalizing so entity encoding and inline markup do not change a word.
   private excludedTextDepth = 0
   private readonly bodyChunks: string[] = []
+  private readonly visibleChunks: string[] = []
   private readonly anchorRun: string[] = []
 
   private flushAnchors() {
@@ -312,6 +313,7 @@ export class PageFactsCollector {
   }
 
   private servedText(chunk: string) {
+    this.visibleChunks.push(chunk)
     if (this.anchorDepth) this.labelChunks.push(chunk)
     else {
       if (this.anchorRun.length && !chunk.trim()) {
@@ -468,6 +470,9 @@ export class PageFactsCollector {
     const normalized = words.join(' ').toLowerCase()
     this.flushAnchors()
     facts.servedTextDigest = createHash('sha256')
+      .update(collapse(this.visibleChunks.join('')))
+      .digest('hex')
+    facts.servedLinkNormalizedDigest = createHash('sha256')
       .update(collapse(this.bodyChunks.join('')))
       .digest('hex')
     facts.servedTitleDigest = createHash('sha256').update(JSON.stringify(page.title)).digest('hex')

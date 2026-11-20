@@ -9,6 +9,7 @@ import {
   type CrawlFileRequest,
   type CrawlSettings,
 } from '@seotools/core'
+import type { Requester } from './requester'
 import type { NewCrawlFile } from '@seotools/db'
 import {
   extractHtml,
@@ -164,6 +165,7 @@ export async function fetchCrawlFiles(input: {
   host: string
   settings: CrawlSettings
   fetcher: Fetcher
+  requester?: Requester
   signal: AbortSignal
   now: () => Date
   /** Scales the waits between retries down in tests. */
@@ -177,6 +179,7 @@ export async function fetchCrawlFiles(input: {
     url: string,
     options: { readBody?: 'auto' | 'force'; maxBytes?: number },
   ): Promise<FetchedResponse | FetchError> {
+    if (input.requester) return input.requester.fetchWithRetries(url, options)
     for (let attempt = 0; ; attempt++) {
       await abortableSleep(interval, signal)
       if (signal.aborted) throw new DOMException('Refresh stopped', 'AbortError')

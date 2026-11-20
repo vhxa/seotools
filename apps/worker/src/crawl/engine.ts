@@ -193,6 +193,10 @@ export async function runCrawl(
       settings.maxUrls !== null &&
       Math.max(internalCount, externalCount) >= settings.maxUrls)
   let admissionWrite: Promise<void> | undefined
+  function persistAdmissionDrop() {
+    if (truncated && !crawl?.admissionDropped)
+      return (admissionWrite ??= db.crawls.markAdmissionDropped(crawlId))
+  }
 
   /** Adds a URL to the crawl unless it is known, or the limit says otherwise. `false` if dropped. */
   function admit(
@@ -208,7 +212,6 @@ export async function runCrawl(
     const scope = isInternalUrl(url, host) ? 'internal' : 'external'
     const current = scope === 'internal' ? internalCount : externalCount
     if (!crawl!.seedUrls && settings.maxUrls !== null && current >= settings.maxUrls) {
-      if (!truncated) admissionWrite = db.crawls.markAdmissionDropped(crawlId)
       truncated = true
       return false
     }
@@ -272,7 +275,7 @@ export async function runCrawl(
       (await db.priorityUrls.list(crawl!.domainId))) {
       admit(url, 'priority', 0, urls)
     }
-    await admissionWrite
+    await persistAdmissionDrop()
     await db.crawls.addUrls(crawlId, urls)
   }
 
@@ -537,7 +540,7 @@ export async function runCrawl(
     }
     if (rendered) await recovery.ready()
     stopSignal.throwIfAborted()
-    await admissionWrite
+    await persistAdmissionDrop()
     await db.crawls.recordResult({ crawlId, urlHash: item.urlHash, result, render, ...found })
     doneCount++
     // What counts as a page: HTML that answered 2xx (a page that fails is an error).
@@ -676,7 +679,7 @@ export async function runCrawl(
       if (observation.render.status === 'rendered') {
         await recovery.ready()
         stopSignal.throwIfAborted()
-        await admissionWrite
+        await persistAdmissionDrop()
         await db.crawls.recordResult({
           crawlId,
           urlHash: retry.item.urlHash,
@@ -729,8 +732,12 @@ export async function runCrawl(
     }
     // Done URLs survive a shutdown; the in-memory file batch does not. Re-acquire a complete
     // observation on resumed attempts before publishing or pruning any current file rows.
-    if (counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
+    if (counts.urlsDoneCount > 0 && requester.excessiveDelay()) {
+      // A resumed attempt has only a partial file batch and cannot refresh it during backoff.
+      observedFiles.length = 0
+    } else if (counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
       const fresh = await fetchCrawlFiles({
+        requester,
         host,
         settings,
         fetcher,

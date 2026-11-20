@@ -14,6 +14,7 @@ export interface Answer {
     title: string | null
     titleDigest: string
     textDigest: string
+    linkNormalizedDigest?: string
     anchors: AnchorObservation
   } | null
 }
@@ -44,7 +45,11 @@ export function changedFields(a: Answer, b: Answer): ChangedField[] {
   if (a.media !== null && b.media !== null && a.media !== b.media) changes.push('media')
   if (a.status !== 206 && b.status !== 206 && a.html && b.html) {
     if (a.html.titleDigest !== b.html.titleDigest) changes.push('title')
-    if (a.html.textDigest !== b.html.textDigest) changes.push('text')
+    if (
+      a.html.textDigest !== b.html.textDigest &&
+      !(a.html.linkNormalizedDigest && a.html.linkNormalizedDigest === b.html.linkNormalizedDigest)
+    )
+      changes.push('text')
     if (a.html.anchors.digest !== b.html.anchors.digest) changes.push('anchors')
   }
   return changes

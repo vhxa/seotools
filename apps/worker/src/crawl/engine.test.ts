@@ -245,6 +245,13 @@ describe('paired answers', () => {
       JSON.stringify(baseline),
     )
   })
+  it('preserves visible prose when inline markup divides a word across links', async () => {
+    let calls = 0
+    const { pair } = await run(() =>
+      html(++calls === 1 ? '<a href="/a">Wo</a><a href="/a">rd</a>' : '<a href="/a">Word</a>'),
+    )
+    expect(pair?.changed).toEqual([])
+  })
   it('keeps full link digests when both stored samples are capped', async () => {
     const links = Array.from({ length: 66 }, (_, i) => '/article/' + i)
     let draws = 0
