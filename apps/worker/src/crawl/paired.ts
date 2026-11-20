@@ -131,7 +131,13 @@ export async function repeatAnswers(input: {
         }
         pair.repeat = repeat
         const repeated = new Targets()
-        if (html && response.body && !response.truncated) {
+        if (
+          html &&
+          response.body &&
+          !response.truncated &&
+          response.statusCode !== 206 &&
+          response.headers['content-range'] === undefined
+        ) {
           const page = extractHtml(
             decodeText(response.body, response.headers['content-type']),
             row.url,

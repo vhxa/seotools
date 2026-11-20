@@ -4202,7 +4202,7 @@
   },
   "PairedAnswers": {
     "title": "Dos solicitudes a la misma página",
-    "notice": "Durante este rastreo se solicitó cada página dos veces y el sitio respondió de forma distinta en {different} de las {total} páginas comprobadas.",
+    "notice": "Durante este rastreo, el sitio respondió de forma distinta en {different} de las {total} páginas que se solicitaron dos veces.",
     "same": "No se observaron diferencias en {total, plural, one {# comprobación doble} other {# comprobaciones dobles}}.",
     "unavailable": "No hay pares de respuestas que se puedan comparar.",
     "unknown": "{count, plural, one {# comprobación no concluyente} other {# comprobaciones no concluyentes}}.",

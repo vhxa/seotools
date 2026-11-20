@@ -42,7 +42,7 @@ export function changedFields(a: Answer, b: Answer): ChangedField[] {
   const changes: ChangedField[] = []
   if (a.status !== null && b.status !== null && a.status !== b.status) changes.push('status')
   if (a.media !== null && b.media !== null && a.media !== b.media) changes.push('media')
-  if (a.html && b.html) {
+  if (a.status !== 206 && b.status !== 206 && a.html && b.html) {
     if (a.html.titleDigest !== b.html.titleDigest) changes.push('title')
     if (a.html.textDigest !== b.html.textDigest) changes.push('text')
     if (a.html.anchors.digest !== b.html.anchors.digest) changes.push('anchors')
@@ -77,6 +77,8 @@ export function discoveryLinkVaried(input: {
     !['anchor', 'anchor-nofollow'].includes(discovery.kind) ||
     discovery.targetHash !== targetHash ||
     discovery.sourceHash !== missing.pair.sourceHash ||
+    missing.pair.original.status === 206 ||
+    missing.pair.repeat?.status === 206 ||
     missing.pair.unknown ||
     !missing.pair.changed.includes('anchors')
   )

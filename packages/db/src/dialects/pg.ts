@@ -132,6 +132,7 @@ import {
   foldViewCounts,
   groupDomains,
   newCrawlLinkRow,
+  pairedQueryHashes,
   newCrawlUrlRow,
   newestPerUrl,
   newestVerifiedPerUrl,
@@ -1852,6 +1853,7 @@ export function createPgDatabase(options: {
                   domainId,
                   type,
                   trigger,
+                  admissionDropped: false,
                   seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
                   ...crawlStartColumns(snapshot, build),
                   jobId,
@@ -2199,6 +2201,21 @@ export function createPgDatabase(options: {
         }
       },
 
+      async markAdmissionDropped(crawlId) {
+        await db.update(crawls).set({ admissionDropped: true }).where(eq(crawls.id, crawlId))
+      },
+      async extendRetryAfter(crawlId, until) {
+        await db
+          .update(crawls)
+          .set({ retryAfterUntil: until })
+          .where(
+            and(
+              eq(crawls.id, crawlId),
+              or(isNull(crawls.retryAfterUntil), lt(crawls.retryAfterUntil, until)),
+            ),
+          )
+      },
+
       async pairedCandidates(crawlId) {
         const eligible = and(
           eq(crawlUrls.crawlId, crawlId),
@@ -2206,6 +2223,7 @@ export function createPgDatabase(options: {
           eq(crawlUrls.state, 'done'),
           eq(crawlUrls.kind, 'page'),
           gte(crawlUrls.statusCode, 200),
+          ne(crawlUrls.statusCode, 206),
           lt(crawlUrls.statusCode, 300),
           sql`coalesce(${crawlUrls.data}::jsonb ->> 'truncated', 'false') = 'false'`,
         )
@@ -2213,16 +2231,21 @@ export function createPgDatabase(options: {
           .select({ count: sql<number>`count(*)` })
           .from(crawlUrls)
           .where(eligible)
-        const query = await db
-          .select()
-          .from(crawlUrls)
-          .where(and(eligible, like(crawlUrls.url, '%?%')))
-          .orderBy(
-            sql`case when lower(${crawlUrls.url}) like '%?page=%' or lower(${crawlUrls.url}) like '%&page=%' or lower(${crawlUrls.url}) like '%?paged=%' or lower(${crawlUrls.url}) like '%&paged=%' then 0 else 1 end`,
-            asc(crawlUrls.urlHash),
-            asc(crawlUrls.url),
-          )
-          .limit(8)
+        const hashes = await pairedQueryHashes((after) =>
+          db
+            .select({ urlHash: crawlUrls.urlHash, url: crawlUrls.url })
+            .from(crawlUrls)
+            .where(and(eligible, like(crawlUrls.url, '%?%'), gt(crawlUrls.urlHash, after)))
+            .orderBy(asc(crawlUrls.urlHash))
+            .limit(256),
+        )
+        const queryRows = hashes.length
+          ? await db
+              .select()
+              .from(crawlUrls)
+              .where(and(eligible, inArray(crawlUrls.urlHash, hashes)))
+          : []
+        const query = hashes.map((hash) => queryRows.find((row) => row.urlHash === hash)!)
         const general = await db
           .select()
           .from(crawlUrls)

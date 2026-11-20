@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8a21ebab-0c3b-4d05-ab73-4fd22b048a6d",
+  "id": "37bebd48-b3d7-4bef-af3a-5d5d6cc29bce",
   "prevId": "c7359c36-4b69-49e4-83eb-7fa25fa9012e",
   "tables": {
     "account": {
@@ -2674,6 +2674,20 @@
         "paired_summary": {
           "name": "paired_summary",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "retry_after_until": {
+          "name": "retry_after_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "admission_dropped": {
+          "name": "admission_dropped",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

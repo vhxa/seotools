@@ -1,5 +1,5 @@
 {
-  "id": "ba96f1cd-1278-4939-95a3-078d797bc2e5",
+  "id": "749819a1-e800-4b97-b712-cb0a5bbb7053",
   "prevId": "57933df7-d21e-43cc-aaed-00a7347d1c68",
   "version": "7",
   "dialect": "postgresql",
@@ -2749,6 +2749,18 @@
         "paired_summary": {
           "name": "paired_summary",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retry_after_until": {
+          "name": "retry_after_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admission_dropped": {
+          "name": "admission_dropped",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         },

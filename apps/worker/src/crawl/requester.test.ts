@@ -100,3 +100,27 @@ it('holds documents to the requests per second, never unpaced resources, which s
   await requesterWithRetry.fetchWithRetries('http://site.test/a', { paced: false })
   expect(Date.now() - started).toBeGreaterThanOrEqual(900)
 })
+
+it('paces ordinary dispatch after a repeat has a slow cancellation check', async () => {
+  const times: number[] = []
+  const requester = createRequester({
+    fetcher: {
+      close() {},
+      async fetch() {
+        times.push(Date.now())
+        return answer
+      },
+    },
+    settings: { requestsPerSecond: 20, maxRetries: 0 },
+    signal: new AbortController().signal,
+    retryBaseMs: 0,
+    log: createLogger('test', 'silent'),
+  })
+  await Promise.all([
+    requester.fetchWithRetries('https://site.test/repeat', {
+      beforeAttempt: () => new Promise((resolve) => setTimeout(resolve, 55)),
+    }),
+    requester.fetchWithRetries('https://site.test/ordinary', {}),
+  ])
+  expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(49)
+})

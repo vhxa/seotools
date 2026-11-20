@@ -206,7 +206,8 @@ export function analyseResponse(input: {
   } else if (contentType && CSS.test(contentType) && body) {
     addAll(extractCssUrls(decodeText(body, contentType), item.url))
   }
-  if (response.truncated) data.truncated = true
+  if (response.truncated || headers['content-range'] !== undefined || statusCode === 206)
+    data.truncated = true
 
   return {
     sitemap,

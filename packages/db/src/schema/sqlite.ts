@@ -255,6 +255,8 @@ export const crawls = sqliteTable(
     pagesCount: integer('pages_count').notNull().default(0),
     urlsCount: integer('urls_count').notNull().default(0),
     pairedSummary: text('paired_summary'),
+    retryAfterUntil: ts('retry_after_until'),
+    admissionDropped: integer('admission_dropped', { mode: 'boolean' }),
     urlsDoneCount: integer('urls_done_count').notNull().default(0),
     externalCount: integer('external_count').notNull().default(0),
     robots: text('robots'),

@@ -24,7 +24,7 @@ it.each([2000, 100000])(
           for (let i = 0; i < size; i++) {
             const n = reverse ? size - 1 - i : i
             const key = String(n).padStart(8, '0')
-            const query = n % 4 === 0 ? '?page=2' : n % 4 === 1 ? '?sort=date' : ''
+            const query = n % 4 === 0 ? '?%70age' : n % 4 === 1 ? '?next=?page=2' : ''
             insert.run(crawl.id, key, 'https://example.com/' + key + query)
           }
         })()

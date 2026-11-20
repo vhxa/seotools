@@ -257,6 +257,8 @@ export const crawls = pgTable(
     pagesCount: integer('pages_count').notNull().default(0),
     urlsCount: integer('urls_count').notNull().default(0),
     pairedSummary: text('paired_summary'),
+    retryAfterUntil: ts('retry_after_until'),
+    admissionDropped: boolean('admission_dropped'),
     urlsDoneCount: integer('urls_done_count').notNull().default(0),
     externalCount: integer('external_count').notNull().default(0),
     robots: text('robots'),

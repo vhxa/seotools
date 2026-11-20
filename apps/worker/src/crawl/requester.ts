@@ -34,6 +34,8 @@ export function createRequester(options: {
   settings: Pick<CrawlSettings, 'requestsPerSecond' | 'maxRetries'>
   /** Ends every wait and request at once. */
   signal: AbortSignal
+  retryAfterUntil?: number
+  persistRetryAfter?: (until: number) => Promise<void>
   retryBaseMs: number
   log: Logger
 }) {
@@ -41,23 +43,29 @@ export function createRequester(options: {
 
   const interval = 1000 / settings.requestsPerSecond
   let nextSlot = 0
-  let unsupportedUntil = 0
-  let pausedUntil = 0
-  async function waitForSlot(signal = stopSignal) {
-    const now = Date.now()
-    const at = Math.max(now, nextSlot, pausedUntil)
-    nextSlot = at + interval
-    await abortableSleep(at - now, signal)
-    // A pause may have started while this request was waiting its turn.
-    while (Date.now() < pausedUntil && !signal.aborted) {
-      await abortableSleep(pausedUntil - Date.now(), signal)
-    }
-  }
+  let retryAfterUntil = options.retryAfterUntil ?? 0
+  let unsupportedUntil = retryAfterUntil > Date.now() + MAX_RETRY_AFTER_MS ? retryAfterUntil : 0
+  let pausedUntil = Math.min(retryAfterUntil, Date.now() + MAX_RETRY_AFTER_MS)
 
-  /** Only a server that asked to slow down holds an unpaced request. */
-  async function waitForPause(signal: AbortSignal) {
-    while (Date.now() < pausedUntil && !signal.aborted) {
-      await abortableSleep(pausedUntil - Date.now(), signal)
+  async function waitForSlot(
+    signal = stopSignal,
+    paced = true,
+    beforeAttempt?: RequestOptions['beforeAttempt'],
+  ) {
+    for (;;) {
+      signal.throwIfAborted()
+      const wait = Math.max(paced ? nextSlot : 0, pausedUntil) - Date.now()
+      if (wait > 0) {
+        await abortableSleep(wait, signal)
+        continue
+      }
+      if (beforeAttempt) {
+        await beforeAttempt()
+        signal.throwIfAborted()
+        if (Date.now() < Math.max(paced ? nextSlot : 0, pausedUntil)) continue
+      }
+      if (paced) nextSlot = Date.now() + interval
+      return
     }
   }
 
@@ -73,14 +81,10 @@ export function createRequester(options: {
         ? settings.maxRetries
         : 0
     for (let attempt = 0; ; attempt++) {
-      await (paced ? waitForSlot(signal) : waitForPause(signal))
+      await waitForSlot(signal, paced, fetchOptions.beforeAttempt)
       if (signal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
       const backoff = retryBaseMs * 2 ** attempt
       try {
-        if (fetchOptions.beforeAttempt) {
-          await fetchOptions.beforeAttempt()
-          signal.throwIfAborted()
-        }
         let reported = 0
         const response = await fetcher.fetch(url, {
           ...fetchOptions,
@@ -96,7 +100,14 @@ export function createRequester(options: {
         if (delay !== null && delay > MAX_RETRY_AFTER_MS)
           unsupportedUntil = Math.max(unsupportedUntil, Date.now() + delay)
         if (delay !== null) {
-          pausedUntil = Math.max(pausedUntil, Date.now() + Math.min(delay, MAX_RETRY_AFTER_MS))
+          const now = Date.now()
+          pausedUntil = Math.max(pausedUntil, now + Math.min(delay, MAX_RETRY_AFTER_MS))
+          // Stay inside the common ISO date range even for an excessive numeric header.
+          const until = Math.min(Date.UTC(9999, 11, 31), now + delay)
+          if (until > retryAfterUntil) {
+            retryAfterUntil = until
+            await options.persistRetryAfter?.(until)
+          }
         }
         if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) return response
         // The server asked to slow down: every request of the domain waits, not just this one.

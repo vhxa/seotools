@@ -411,6 +411,8 @@ export interface Crawl {
   analysisBuild: BuildInfo | null
   discoverySettings: CrawlDiscoverySettings | null
   rendering: CrawlRendering | null
+  admissionDropped?: boolean | null
+  retryAfterUntil?: Date | null
   pairedSummary?: PairSummary | null
   browserWaitMs: number
   ignoredParameters?: string[]
@@ -809,6 +811,8 @@ export interface CrawlRepository {
   /** Adds URLs to a crawl, ignoring those it already has. */
   addUrls(crawlId: string, urls: NewCrawlUrl[]): Promise<void>
   /** URLs waiting to be requested, shallowest first. */
+  markAdmissionDropped(crawlId: string): Promise<void>
+  extendRetryAfter(crawlId: string, until: Date): Promise<void>
   pairedCandidates(crawlId: string): Promise<{ eligible: number; rows: CrawlUrl[] }>
   servedAnchorBatch(
     crawlId: string,

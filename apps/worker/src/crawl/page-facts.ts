@@ -300,7 +300,30 @@ export class PageFactsCollector {
   // normalizing so entity encoding and inline markup do not change a word.
   private excludedTextDepth = 0
   private readonly bodyChunks: string[] = []
-  private readonly anchorLabels = new Set<string>()
+  private readonly anchorRun: string[] = []
+
+  private flushAnchors() {
+    if (!this.anchorRun.length) return
+    // Preserve inline prose across a single link. A run of neighbouring links
+    // is compared as distinct labels so a shuffled or repeated menu stays equal.
+    const labels = [...new Set(this.anchorRun)].sort()
+    this.bodyChunks.push(labels.join(' '))
+    this.anchorRun.length = 0
+  }
+
+  private servedText(chunk: string) {
+    if (this.anchorDepth) this.labelChunks.push(chunk)
+    else {
+      if (this.anchorRun.length && !chunk.trim()) {
+        this.anchorWhitespace += chunk
+        return
+      }
+      this.flushAnchors()
+      this.bodyChunks.push(this.anchorWhitespace, chunk)
+      this.anchorWhitespace = ''
+    }
+  }
+  private anchorWhitespace = ''
   private labelChunks: string[] = []
   private textLength = 0
   private readonly text: string[] = []
@@ -332,7 +355,7 @@ export class PageFactsCollector {
 
   open(name: string, attributes: Record<string, string>) {
     if (!this.excludedTextDepth && TEXT_BLOCKS.has(name)) {
-      ;(this.anchorDepth ? this.labelChunks : this.bodyChunks).push(' ')
+      this.servedText(' ')
     }
     if (NOT_SERVED_TEXT.has(name)) this.excludedTextDepth++
     this.trackHead(name)
@@ -393,8 +416,7 @@ export class PageFactsCollector {
     if (this.heading) this.heading.text += chunk
     if (this.anchor && this.anchor.text.length < MAX_ANCHOR_TEXT) this.anchor.text += chunk
     if (!this.excludedTextDepth) {
-      if (this.anchorDepth) this.labelChunks.push(chunk)
-      else this.bodyChunks.push(chunk)
+      this.servedText(chunk)
     }
     if (this.notContentDepth === 0 && this.textLength < MAX_TEXT_CHARACTERS) {
       this.text.push(chunk)
@@ -404,7 +426,7 @@ export class PageFactsCollector {
 
   close(name: string) {
     if (!this.excludedTextDepth && TEXT_BLOCKS.has(name)) {
-      ;(this.anchorDepth ? this.labelChunks : this.bodyChunks).push(' ')
+      this.servedText(' ')
     }
     if (NOT_SERVED_TEXT.has(name) && this.excludedTextDepth > 0) this.excludedTextDepth--
     if (NOT_CONTENT.has(name) && this.notContentDepth > 0) this.notContentDepth--
@@ -426,7 +448,7 @@ export class PageFactsCollector {
     }
     if (HEADING.test(name) && this.headingDepth > 0 && --this.headingDepth === 0) this.endHeading()
     if ((name === 'a' || name === 'area') && this.anchorDepth > 0 && --this.anchorDepth === 0) {
-      if (this.labelChunks.length) this.anchorLabels.add(collapse(this.labelChunks.join('')))
+      if (this.labelChunks.length) this.anchorRun.push(this.labelChunks.join(''))
       this.labelChunks = []
       this.endAnchor()
     }
@@ -444,13 +466,9 @@ export class PageFactsCollector {
     const text = collapse(this.text.join(' '))
     const words = text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word))
     const normalized = words.join(' ').toLowerCase()
+    this.flushAnchors()
     facts.servedTextDigest = createHash('sha256')
-      .update(
-        JSON.stringify([
-          collapse(this.bodyChunks.join('')),
-          [...this.anchorLabels].filter(Boolean).sort(),
-        ]),
-      )
+      .update(collapse(this.bodyChunks.join('')))
       .digest('hex')
     facts.servedTitleDigest = createHash('sha256').update(JSON.stringify(page.title)).digest('hex')
     facts.words = words.length
@@ -712,6 +730,7 @@ export class PageFactsCollector {
       const named = Boolean(attributes['aria-label']?.trim() || attributes.title?.trim())
       this.anchor = { text: name === 'area' ? (attributes.alt ?? '') : '', named, url }
     }
+    if (!this.anchorDepth && this.anchorRun.length) this.anchorWhitespace = ''
     this.anchorDepth++
     if ((attributes.target ?? '').toLowerCase() === '_blank') {
       const rel = (attributes.rel ?? '').toLowerCase().split(/\s+/)

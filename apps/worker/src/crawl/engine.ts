@@ -148,7 +148,7 @@ export async function runCrawl(
     .update(
       JSON.stringify([
         // Change this version if the paired extractor or identity contract changes.
-        1,
+        2,
         userAgent,
         Object.entries(headers?.headers ?? {}).sort(),
         settings.ignoredParameters,
@@ -187,7 +187,12 @@ export async function runCrawl(
   let doneCount = counts.urlsDoneCount
   const robots: CrawlRobotsFiles = { ...(crawl.robots ?? {}) }
   // A resumed crawl that was already at the limit has lost track of what it left out.
-  let truncated = !crawl.seedUrls && settings.maxUrls !== null && internalCount >= settings.maxUrls
+  let truncated =
+    crawl.admissionDropped ??
+    (!crawl.seedUrls &&
+      settings.maxUrls !== null &&
+      Math.max(internalCount, externalCount) >= settings.maxUrls)
+  let admissionWrite: Promise<void> | undefined
 
   /** Adds a URL to the crawl unless it is known, or the limit says otherwise. `false` if dropped. */
   function admit(
@@ -203,6 +208,7 @@ export async function runCrawl(
     const scope = isInternalUrl(url, host) ? 'internal' : 'external'
     const current = scope === 'internal' ? internalCount : externalCount
     if (!crawl!.seedUrls && settings.maxUrls !== null && current >= settings.maxUrls) {
+      if (!truncated) admissionWrite = db.crawls.markAdmissionDropped(crawlId)
       truncated = true
       return false
     }
@@ -266,6 +272,7 @@ export async function runCrawl(
       (await db.priorityUrls.list(crawl!.domainId))) {
       admit(url, 'priority', 0, urls)
     }
+    await admissionWrite
     await db.crawls.addUrls(crawlId, urls)
   }
 
@@ -273,6 +280,8 @@ export async function runCrawl(
     fetcher,
     settings,
     signal: stopSignal,
+    retryAfterUntil: crawl.retryAfterUntil?.getTime(),
+    persistRetryAfter: (until) => db.crawls.extendRetryAfter(crawlId, new Date(until)),
     retryBaseMs,
     log,
   })
@@ -528,6 +537,7 @@ export async function runCrawl(
     }
     if (rendered) await recovery.ready()
     stopSignal.throwIfAborted()
+    await admissionWrite
     await db.crawls.recordResult({ crawlId, urlHash: item.urlHash, result, render, ...found })
     doneCount++
     // What counts as a page: HTML that answered 2xx (a page that fails is an error).
@@ -666,6 +676,7 @@ export async function runCrawl(
       if (observation.render.status === 'rendered') {
         await recovery.ready()
         stopSignal.throwIfAborted()
+        await admissionWrite
         await db.crawls.recordResult({
           crawlId,
           urlHash: retry.item.urlHash,

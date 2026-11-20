@@ -43,6 +43,8 @@ describe.each([
   it('requires the retained served discovery and absence followed by positive membership', () => {
     expect(discoveryLinkVaried(input)).toBe(true)
     for (const changes of [
+      { missing: { crawlId: b, pair: { ...pair, repeat: { ...answer(['t']), status: 206 } } } },
+      { missing: { crawlId: b, pair: { ...pair, original: { ...answer([]), status: 206 } } } },
       { discovery: null },
       { missing: null },
       { comparableCompletedCrawls: false },

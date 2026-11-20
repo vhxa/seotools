@@ -153,6 +153,61 @@ describe('paired answers', () => {
       different: 0,
     })
   })
+  it.each([206, 200])('excludes a partial original response (%i)', async (statusCode) => {
+    const { pair, crawl } = await run({
+      ...html('part', { 'content-range': 'bytes 0-3/10' }),
+      statusCode,
+    })
+    expect(pair).toBeUndefined()
+    expect(crawl.pairedSummary?.eligible).toBe(0)
+  })
+  it('restores Retry-After before restarting an interrupted phase', async () => {
+    const stop = new AbortController()
+    const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+    let calls = 0
+    const site = fakeSite({
+      'https://example.com/': () => {
+        if (++calls === 2) {
+          stop.abort()
+          return html('stable', { 'retry-after': '3600' })
+        }
+        return html('stable')
+      },
+    })
+    await expect(
+      runCrawl(crawl.id, { db, log, signal: stop.signal, createFetcher: site.createFetcher }),
+    ).rejects.toBeInstanceOf(JobInterruptedError)
+    await runCrawl(crawl.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+    })
+    expect(calls).toBe(2)
+    expect((await db.crawls.get(crawl.id))?.pairedSummary?.unknown).toEqual({ 'retry-after': 1 })
+  })
+  it.each([true, false])('retains an external admission drop (restart %s)', async (restart) => {
+    await db.crawls.saveSettings(domainId, { ...(await db.crawls.settings(domainId)), maxUrls: 24 })
+    const stop = new AbortController()
+    const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+    const site = fakeSite({
+      'https://example.com/': html(
+        Array.from({ length: 25 }, (_, i) => `<a href="https://other.test/${i}">link</a>`).join(''),
+      ),
+    })
+    const record = db.crawls.recordResult
+    vi.spyOn(db.crawls, 'recordResult').mockImplementation(async (input) => {
+      await record(input)
+      if (restart && input.urlHash === crawlUrlHash('https://example.com/')) stop.abort()
+    })
+    const opts = { db, log, signal: stop.signal, createFetcher: site.createFetcher }
+    if (restart) await expect(runCrawl(crawl.id, opts)).rejects.toBeInstanceOf(JobInterruptedError)
+    await runCrawl(crawl.id, { ...opts, signal: new AbortController().signal })
+    expect(await db.crawls.get(crawl.id)).toMatchObject({
+      status: 'incomplete',
+      pairedSummary: null,
+    })
+  })
   it('records the two seeded pagination draws without admitting the repeat links', async () => {
     let seed = 7
     const { crawl, pair, site } = await run(() => {
@@ -174,9 +229,12 @@ describe('paired answers', () => {
       const links = (first ? ['a', 'b'] : ['b', 'a', 'b'])
         .map((x) => `<a href="/${x}">${x}</a>`)
         .join('')
-      return html(`<script nonce="${count}">x=${count}</script><p>Body</p>${links}`, {
-        date: String(count),
-      })
+      return html(
+        `<script nonce="${count}">x=${count}</script><p>${first ? 'Read <a href="/article">the article</a>.' : '<a href="/article">Read the article</a>.'}</p>${links}`,
+        {
+          date: String(count),
+        },
+      )
     }
     const { crawl, pair } = await run(site)
     expect(pair).toMatchObject({ unknown: null, changed: [] })
@@ -219,6 +277,8 @@ describe('paired answers', () => {
   })
 
   it.each([
+    ['206', { ...html('<a href="/fragment">partial</a>'), statusCode: 206 }, ['status'], null],
+    ['content range', html('partial', { 'content-range': 'bytes 0-6/100' }), [], 'incomplete'],
     ['redirect', moved('/elsewhere'), ['status'], null],
     ['missing', notFound, ['status', 'title', 'text'], null],
     ['incomplete', { ...html('partial'), truncated: true }, [], 'incomplete'],
