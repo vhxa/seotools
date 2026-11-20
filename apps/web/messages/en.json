@@ -3718,6 +3718,7 @@
     },
     "started": "Started {when}",
     "finished": "Finished {when}",
+    "requestCredentialsUnavailable": "The request credentials configured when this crawl was queued are no longer available.",
     "browserUnavailable": "The rendering browser was unavailable for the crawl’s recovery limit."
   },
   "Schedules": {

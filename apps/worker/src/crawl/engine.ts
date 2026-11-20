@@ -40,7 +40,7 @@ import type {
   Database,
   NewCrawlUrl,
 } from '@seotools/db'
-import { JobInterruptedError } from '../types'
+import { JobInterruptedError, PermanentJobError } from '../types'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import type { ParsedSitemap } from './extract'
 import {
@@ -137,7 +137,7 @@ export async function runCrawl(
       ? undefined
       : await siteHeaders(db, domain.id, domain.host, options.settingsSecret)
   if (snapshot?.requestCredentialsSet && !headers) {
-    throw new Error('Request credentials configured when the crawl started are unavailable')
+    throw new PermanentJobError('request-credentials-unavailable')
   }
   const fetcher = options.createFetcher({
     siteHeaders: headers,

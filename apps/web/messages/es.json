@@ -3718,6 +3718,7 @@
     },
     "started": "Inicio: {when}",
     "finished": "Fin: {when}",
+    "requestCredentialsUnavailable": "Ya no están disponibles las credenciales de acceso que había al poner este rastreo en cola.",
     "browserUnavailable": "El navegador de renderizado no estuvo disponible durante el plazo de recuperación del rastreo."
   },
   "Schedules": {

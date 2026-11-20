@@ -431,6 +431,23 @@ describe('settings', () => {
     expect(site.requests).not.toContain('https://example.com/hidden')
   })
 
+  it('does not start requests when the queued crawl required credentials that were removed', async () => {
+    await db.crawls.saveRequestSecrets(domainId, 'v1:encrypted')
+    const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    if (!crawl) throw new Error('crawl did not start')
+    await db.crawls.saveRequestSecrets(domainId, null)
+    const site = fakeSite({})
+    await expect(
+      runCrawl(crawl.id, {
+        db,
+        log,
+        signal: new AbortController().signal,
+        createFetcher: site.createFetcher,
+      }),
+    ).rejects.toThrow('request-credentials-unavailable')
+    expect(site.requests).toEqual([])
+  })
+
   it('respects the concurrency', async () => {
     await db.crawls.saveSettings(domainId, {
       ...(await db.crawls.settings(domainId)),

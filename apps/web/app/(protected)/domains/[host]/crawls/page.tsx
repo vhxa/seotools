@@ -97,6 +97,16 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
       analysis: buildLabel(analysis),
     })
   }
+  function crawlError(crawl: Crawl) {
+    switch (crawl.error) {
+      case 'browser-unavailable':
+        return t('browserUnavailable')
+      case 'request-credentials-unavailable':
+        return t('requestCredentialsUnavailable')
+      default:
+        return crawl.error ?? undefined
+    }
+  }
   // The ones the history can browse and compare: full crawls that finished with results.
   const browsable = (crawl: Crawl) => crawl.type === 'full' && isBrowsableStatus(crawl.status)
 
@@ -206,13 +216,7 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                           )}
                         </span>
                         <span className="flex flex-wrap items-center gap-1">
-                          <span
-                            title={
-                              crawl.error === 'browser-unavailable'
-                                ? t('browserUnavailable')
-                                : (crawl.error ?? undefined)
-                            }
-                          >
+                          <span title={crawlError(crawl)}>
                             <CrawlStatusBadge status={crawl.status} />
                           </span>
                           <span className="text-xs text-muted-foreground">
