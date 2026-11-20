@@ -3756,8 +3756,8 @@
       "started": "Iniciado por",
       "mode": "Modo",
       "state": "Estado",
-      "found": "{pages} páginas · {urls} URLs",
-      "findings": "{issues} problemas · {warnings} avisos",
+      "found": "Encontrado",
+      "findings": "Páginas con hallazgos",
       "actions": "Acciones"
     },
     "trigger": {
@@ -3765,8 +3765,8 @@
       "schedule": "Programado"
     },
     "latest": "Último",
-    "found": "{pages} páginas · {urls} URL · {external} externas",
-    "findings": "{issues} problemas · {warnings} avisos · {opportunities} oportunidades",
+    "found": "{pages} páginas · {urls} URLs",
+    "findings": "{issues} problemas · {warnings} avisos",
     "foundMore": "{pages} páginas · {urls} URLs · {external} URLs externas",
     "findingsAll": "{issues} problemas · {warnings} avisos · {opportunities} oportunidades",
     "cancelledNotAnalysed": "Cancelado — no analizado",

@@ -24,14 +24,20 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - Completed full crawls check up to 24 HTML pages twice and show the measured differences in crawl and URL details.
 - Crawls record their discovery settings and the builds that queued, ran and analysed them. Administration flags workers on mixed builds and workers or web apps that do not recognize the database's migrations.
+- The links of a URL that other URLs redirect to: below its incoming links, "Through redirects" lists the URLs that redirect to it and the links that point at each of them, and says that those links point to the redirecting URL, not to this one.
 
 ### Changed
 
 - The trend charts on the overview no longer draw one line through crawls that did not measure the same thing. When the rendering mode, the ignored parameters, the crawl settings, the issue checks or the audit rules differ from the crawl before, the line breaks and the first point after the change is ringed, with what changed in its tooltip.
+- The list of crawls shows one short row per crawl (when, how it was started, HTML or rendered, state, pages and URLs, pages with issues and warnings); the rest (external URLs, opportunities, rules, retained results, rendering coverage, errors) opens under "Details".
+- "How it was found" in the detail of a URL is a numbered list of sentences ("/sitemap.xml lists /a", "that URL links to /b/", "that URL redirects to /b") instead of a list of labels, and says "not recorded" for what the crawl did not keep.
+- Structure names its columns for what they count: "Pages" (HTML that answered 2xx) and, apart and last, "Failing URLs" (every URL of the directory that failed, references such as hreflang targets included), each with its explanation.
 
 ### Fixed
 
 - A worker left running through a database update stops claiming jobs when it detects migrations its image does not recognize.
+- A crawl that was cancelled reads "Cancelled — not analysed" instead of "Coverage not analysed yet".
+- On a crawl that did not render pages, the JavaScript category of the issues says "Not looked for: this crawl did not render pages" instead of showing nothing, which read as "no problems".
 
 ### Upgrade notes
 
