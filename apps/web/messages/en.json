@@ -3791,9 +3791,9 @@
   "Structure": {
     "metaTitle": "Structure · {host} · seotools",
     "title": "Structure",
-    "description": "The directories of the last full crawl and what is in each: pages, errors and pages with findings.",
+    "description": "The directories of the last full crawl and what is in each: pages, the findings on them and the URLs that failed.",
     "noCrawl": "The structure appears here once the domain has been crawled.",
-    "notChecked": "The last full crawl has not been checked for findings, so only pages and errors are counted. Run a new full crawl to see them here.",
+    "notChecked": "The last full crawl has not been checked for findings, so only pages and failing URLs are counted. Run a new full crawl to see them here.",
     "findingsHidden": "Findings are not shown while the analysis does not reflect the current audit configuration.",
     "incomplete": "The last crawl stopped at its URL limit after {urls, number} URLs: these counts do not cover the whole site.",
     "tree": "Directories",
@@ -3801,7 +3801,10 @@
     "breadcrumb": "Directory",
     "directory": "Directory",
     "columns": {
-      "errors": "Errors",
+      "pages": "Pages",
+      "pagesHelp": "Pages: HTML that answered with a 2xx status. Redirects, files and URLs that failed are not pages.",
+      "errors": "Failing URLs",
+      "errorsHelp": "Every URL in the directory that failed (4xx, 5xx or no answer), not only pages: it includes references such as hreflang targets, images or scripts. It is not comparable with the Pages column.",
       "issue": "Pages with issues",
       "warning": "Pages with warnings",
       "opportunity": "Pages with opportunities"

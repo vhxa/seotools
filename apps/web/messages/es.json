@@ -3791,9 +3791,9 @@
   "Structure": {
     "metaTitle": "Estructura · {host} · seotools",
     "title": "Estructura",
-    "description": "Los directorios del último rastreo completo y lo que hay en cada uno: páginas, errores y páginas con hallazgos.",
+    "description": "Los directorios del último rastreo completo y lo que hay en cada uno: páginas, los hallazgos en ellas y las URLs que fallaron.",
     "noCrawl": "La estructura aparece aquí cuando el dominio se ha rastreado.",
-    "notChecked": "El último rastreo completo no se ha comprobado en busca de hallazgos, así que solo se cuentan páginas y errores. Lanza un rastreo completo nuevo para verlos aquí.",
+    "notChecked": "El último rastreo completo no se ha comprobado en busca de hallazgos, así que solo se cuentan páginas y URLs con error. Lanza un rastreo completo nuevo para verlos aquí.",
     "findingsHidden": "Los hallazgos no se muestran mientras el análisis no refleje la configuración de auditoría actual.",
     "incomplete": "El último rastreo se detuvo en su límite de URLs tras {urls, number} URLs: estas cifras no cubren todo el sitio.",
     "tree": "Directorios",
@@ -3801,7 +3801,10 @@
     "breadcrumb": "Directorio",
     "directory": "Directorio",
     "columns": {
-      "errors": "Errores",
+      "pages": "Páginas",
+      "pagesHelp": "Páginas: HTML que respondió con un estado 2xx. Las redirecciones, los archivos y las URLs que fallaron no son páginas.",
+      "errors": "URLs con error",
+      "errorsHelp": "Todas las URLs del directorio que fallaron (4xx, 5xx o sin respuesta), no solo páginas: incluye referencias como destinos hreflang, imágenes o scripts. No es comparable con la columna Páginas.",
       "issue": "Páginas con problemas",
       "warning": "Páginas con avisos",
       "opportunity": "Páginas con oportunidades"
