@@ -21,6 +21,7 @@ import {
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { AcceptedFindings } from '@/components/pages/accepted-findings'
 import { Disclosure } from '@/components/pages/disclosure'
+import { DiscoveryChain } from '@/components/pages/discovery-chain'
 import { FindingHelp } from '@/components/pages/finding-help'
 import { RecheckButton } from '@/components/verification/recheck-button'
 import { UrlAuditActions } from '@/components/audit/url-audit-actions'
@@ -116,8 +117,6 @@ export async function UrlDetail({
     ? await (await getDb()).crawls.answerPairs(crawl.id, [url.urlHash])
     : []
   const discovery = await (await getDb()).crawls.discoveryPath(crawl.id, url.urlHash)
-  const tKinds = await getTranslations('LinkKinds')
-  const tRegions = await getTranslations('LinkRegions')
   const extracted = Object.entries(url.data?.extracted ?? {})
   const notSet = <span className="text-muted-foreground">{t('notSet')}</span>
   const text = (value: string | null | undefined) => (value ? value : notSet)
@@ -315,29 +314,7 @@ export async function UrlDetail({
 
       {discovery.length > 1 && (
         <Section title={t('discovery')}>
-          <ol className="grid gap-2 text-sm">
-            {discovery.map((step) => (
-              <li key={step.urlHash} className="min-w-0">
-                {step.foundKind && (
-                  <span className="mr-2 text-muted-foreground">{tKinds(step.foundKind)}</span>
-                )}
-                <a className="break-all underline" href={hrefFor(step.urlHash)}>
-                  {step.url}
-                </a>
-                {step.context && (
-                  <span className="block text-xs text-muted-foreground">
-                    {[
-                      step.context.text ? `“${step.context.text}”` : undefined,
-                      step.context.element,
-                      step.context.region ? tRegions(step.context.region) : undefined,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ol>
+          <DiscoveryChain host={host} steps={discovery} hrefFor={hrefFor} />
         </Section>
       )}
       <Tabs defaultValue="findings" className="min-w-0">
