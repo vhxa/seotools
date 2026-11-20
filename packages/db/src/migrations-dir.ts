@@ -29,6 +29,8 @@ export function migrationsDirOf(
   const candidates = [
     resolve(here, '..', 'migrations'),
     resolve(here, '..', '..', '..', 'packages', 'db', 'migrations'),
+    // Next's server starts from apps/web in source and standalone builds.
+    resolve(process.cwd(), '..', '..', 'packages', 'db', 'migrations'),
   ]
   const found = candidates.find((root) => exists(journal(root)))
   if (!found) throw notFound(dialect, candidates, false)

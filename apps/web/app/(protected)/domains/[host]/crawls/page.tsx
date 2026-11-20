@@ -1,4 +1,4 @@
-import { CRAWL_TYPES } from '@seotools/core'
+import { CRAWL_TYPES, buildIdentity, type BuildInfo } from '@seotools/core'
 import type { Crawl, CrawlSchedule } from '@seotools/db'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
@@ -72,6 +72,19 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
   }
   const when = (crawl: Pick<Crawl, 'finishedAt' | 'createdAt'>) =>
     format.dateTime(crawlMoment(crawl), { dateStyle: 'medium', timeStyle: 'short' })
+  const buildLabel = (build: BuildInfo | null | undefined) =>
+    build?.channel === 'development'
+      ? t('build.development')
+      : (build?.version ?? t('build.unrecorded'))
+  const buildLine = (crawl: Crawl) => {
+    const run = crawl.runBuilds?.builds ?? []
+    const analysis = crawl.analysisBuild
+    const ranOnMultiple = run.length > 1 || crawl.runBuilds?.overflow
+    const label = ranOnMultiple ? t('build.multiple') : buildLabel(run[0])
+    return analysis && (run.length !== 1 || buildIdentity(analysis) !== buildIdentity(run[0]!))
+      ? t('build.withAnalysis', { version: label, analysis: buildLabel(analysis) })
+      : t('build.version', { version: label })
+  }
   // The ones the history can browse and compare: full crawls that finished with results.
   const browsable = (crawl: Crawl) => crawl.type === 'full' && isBrowsableStatus(crawl.status)
 
@@ -196,6 +209,7 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                           {crawl.id === latest?.id && <Badge>{t('latest')}</Badge>}
                         </span>
                         <RenderStamp crawl={crawl} />
+                        <span className="text-xs text-muted-foreground">{buildLine(crawl)}</span>
                         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
                           {isBrowsable && !crawl.pruned && (
                             <Link

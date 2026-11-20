@@ -131,6 +131,13 @@
     "skipToContent": "Skip to main content"
   },
   "System": {
+    "buildWarnings": {
+      "development": "development build ({version})",
+      "mixed": "Workers on this database recently reported different builds: {builds}. Stop workers from older deployments.",
+      "workerOutdated": "Outdated workers ({builds}) have stopped taking new jobs. Stop those workers and run the build that matches the database.",
+      "unreported": "A worker checked in without reporting its version. Check for workers left running from an older deployment.",
+      "webOutdated": "This web app does not recognize the database’s migration history. Run the web app from the build that last migrated the database."
+    },
     "metaTitle": "Status · Administration · seotools",
     "title": "Status",
     "health": "Health",
@@ -3659,6 +3666,13 @@
     }
   },
   "Crawls": {
+    "build": {
+      "development": "development build",
+      "unrecorded": "not recorded",
+      "multiple": "multiple builds",
+      "version": "Version: {version}",
+      "withAnalysis": "Version: {version} · Analysis: {analysis}"
+    },
     "metaTitle": "Crawls · {host} · seotools",
     "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the rules it was analysed with, and its results per URL until the retention setting removes them.",
     "columns": {

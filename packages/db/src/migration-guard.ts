@@ -1,5 +1,14 @@
 import { readMigrationFiles } from 'drizzle-orm/migrator'
 
+export class UnknownMigrationError extends Error {
+  constructor() {
+    super(
+      'The database is newer than this image or has an unknown migration history. Refusing to start. Going back requires restoring the backup taken before updating, together with the previous image.',
+    )
+    this.name = 'UnknownMigrationError'
+  }
+}
+
 /** Refuse unknown journal entries before migrations or data conversions can write anything. */
 export function assertKnownMigrations(
   folder: string,
@@ -15,8 +24,6 @@ export function assertKnownMigrations(
         ),
     )
   ) {
-    throw new Error(
-      'The database is newer than this image or has an unknown migration history. Refusing to start. Going back requires restoring the backup taken before updating, together with the previous image.',
-    )
+    throw new UnknownMigrationError()
   }
 }

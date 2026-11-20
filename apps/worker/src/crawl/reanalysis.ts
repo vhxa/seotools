@@ -22,6 +22,7 @@ export async function reanalyseOutdatedCrawls(options: {
   log: Logger
   /** Checked between crawls, so that shutting down does not wait for all of them. */
   stopped?: () => boolean
+  canStart?: () => Promise<boolean>
 }): Promise<number> {
   const { db, log } = options
   const failed = new Set<string>()
@@ -32,7 +33,7 @@ export async function reanalyseOutdatedCrawls(options: {
       .slice(0, BATCH)
     if (outdated.length === 0) break
     for (const crawl of outdated) {
-      if (options.stopped?.()) return done
+      if (options.stopped?.() || (options.canStart && !(await options.canStart()))) return done
       try {
         await analyseCrawl(db, crawl.id, recordedAuditConfig(crawl))
         done++

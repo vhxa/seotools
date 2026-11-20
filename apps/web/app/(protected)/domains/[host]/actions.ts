@@ -23,6 +23,7 @@ import {
   parseCrawlSettingsForm,
   parseListCrawlForm,
 } from '@/lib/crawl-forms'
+import { getBuildInfo } from '@/lib/build-info'
 import { getDb } from '@/lib/db'
 import { getEnv } from '@/lib/env'
 import { archivedMessage, requireDomainEditor } from '@/lib/workspace'
@@ -65,7 +66,12 @@ export async function startCrawlAction(
   if (type === 'priority' && (await db.priorityUrls.list(domain.id)).length === 0) {
     return { error: t('noPriorityUrls') }
   }
-  const crawl = await db.crawls.start({ domainId: domain.id, type, trigger: 'manual' })
+  const crawl = await db.crawls.start({
+    domainId: domain.id,
+    type,
+    trigger: 'manual',
+    build: getBuildInfo(),
+  })
   if (!crawl) return { error: t('alreadyRunning') }
 
   revalidateDomain(host)
@@ -271,7 +277,13 @@ export async function startListCrawlAction(
   const seedUrls = list.urls
   const crawl = await (
     await getDb()
-  ).crawls.start({ domainId: domain.id, type: 'priority', trigger: 'manual', seedUrls })
+  ).crawls.start({
+    domainId: domain.id,
+    type: 'priority',
+    trigger: 'manual',
+    seedUrls,
+    build: getBuildInfo(),
+  })
   if (!crawl) return { error: t('alreadyRunning') }
   revalidateDomain(host)
   return { saved: true }

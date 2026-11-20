@@ -20,6 +20,7 @@
     "./crawl/normalize": "./src/crawl/normalize.ts",
     "./crawl/render-state": "./src/crawl/render-state.ts",
     "./crawl/settings": "./src/crawl/settings.ts",
+    "./crawl/discovery": "./src/crawl/discovery.ts",
     "./crawl/structured-data": "./src/crawl/structured-data.ts",
     "./crawl/thresholds": "./src/crawl/thresholds.ts",
     "./crawl/compare": "./src/crawl/compare.ts",

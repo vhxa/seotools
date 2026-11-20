@@ -17,7 +17,8 @@ import {
   settingsKeyFrom,
 } from '@seotools/core'
 import { createDatabase } from '@seotools/db'
-import pkg from '../package.json' with { type: 'json' }
+import { getWorkerBuildInfo } from './build-info'
+import { createMigrationCheck } from './migration-check'
 import { createHttpFetcher } from './crawl/fetcher'
 import { createCrawlFileRefresher } from './crawl/file-refresher'
 import { reanalyseOutdatedCrawls } from './crawl/reanalysis'
@@ -47,6 +48,11 @@ async function main() {
   const env = parseWorkerEnv()
   const log = createLogger('worker', env.LOG_LEVEL)
   const db = await createDatabase({ url: env.DATABASE_URL, dialect: env.DATABASE_DIALECT })
+  const build = getWorkerBuildInfo()
+  const migrationCheck = createMigrationCheck(db, log)
+  const ifCurrent = (work: () => Promise<unknown>) => async () => {
+    if (await migrationCheck.canStart()) await work()
+  }
   const settings = createSettings(db.settings, settingsKeyFrom(env))
   const paused = env.SEOTOOLS_PAUSE_AUTOMATION
   if (paused) {
@@ -65,16 +71,19 @@ async function main() {
 
   const workerId = `${hostname()}-${process.pid}-${randomBytes(2).toString('hex')}`
   const startedAt = new Date()
-  const beat = () =>
-    db.heartbeats
-      .beat({ workerId, startedAt })
+  const beat = async () => {
+    await migrationCheck.canStart()
+    await db.heartbeats
+      .beat({ workerId, startedAt, build, outdated: migrationCheck.isOutdated() })
       .catch((err) => log.error({ err }, 'heartbeat failed'))
+  }
   await beat()
   const heartbeat = setInterval(beat, WORKER_HEARTBEAT_INTERVAL_MS)
 
   const shared = {
     db,
     workerId,
+    canStart: migrationCheck.canStart,
     getMailer: async () =>
       paused ? unavailableMailer(MAIL_PAUSED, { retry: false }) : getMailer(settings),
     pollIntervalMs: env.WORKER_POLL_INTERVAL_MS,
@@ -110,20 +119,20 @@ async function main() {
         renderService: rendering.service,
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
-        appVersion: pkg.version,
+        appVersion: build.version,
         settingsSecret: settingsKeyFrom(env),
       }),
       [JOB_TYPES.botTest]: createBotTestHandler({
         db,
         paused,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
-        appVersion: pkg.version,
+        appVersion: build.version,
         settingsSecret: settingsKeyFrom(env),
       }),
       [JOB_TYPES.urlVerify]: createUrlVerifyHandler({
         db,
         allowPrivateNetworks: env.CRAWLER_ALLOW_PRIVATE_NETWORKS,
-        appVersion: pkg.version,
+        appVersion: build.version,
         settingsSecret: settingsKeyFrom(env),
       }),
     },
@@ -141,12 +150,13 @@ async function main() {
   runner.start()
   crawlRunner.start()
 
-  const tickScheduler = () =>
+  const tickScheduler = ifCurrent(() =>
     runDueSchedules(db, log, new Date(), { paused }).catch((err) =>
       log.error({ err }, 'crawl scheduler failed'),
-    )
+    ),
+  )
   // The record of sent email is capped by count and age, so it cannot grow forever.
-  const pruneDeliveries = () =>
+  const pruneDeliveries = ifCurrent(() =>
     db.incidents
       .prune(new Date(Date.now() - 90 * 86400000))
       .then(() =>
@@ -169,7 +179,8 @@ async function main() {
           failedBefore: new Date(Date.now() - FAILED_JOBS_MAX_AGE_MS),
         }),
       )
-      .catch((err) => log.error({ err }, 'could not prune finished jobs'))
+      .catch((err) => log.error({ err }, 'could not prune finished jobs')),
+  )
   void pruneDeliveries()
   const deliveriesTimer = setInterval(() => void pruneDeliveries(), PRUNE_INTERVAL_MS)
   void tickScheduler()
@@ -181,29 +192,32 @@ async function main() {
   const favicons = createFaviconRefresher({
     db,
     log: log.child({ lane: 'favicon' }),
-    appVersion: pkg.version,
+    appVersion: build.version,
     settingsSecret: settingsKeyFrom(env),
     createFetcher,
     paused,
   })
-  void favicons.tick()
-  const faviconTimer = setInterval(() => void favicons.tick(), SCHEDULER_INTERVAL_MS)
+  const tickFavicons = ifCurrent(favicons.tick)
+  void tickFavicons()
+  const faviconTimer = setInterval(tickFavicons, SCHEDULER_INTERVAL_MS)
 
   const crawlFiles = createCrawlFileRefresher({
     db,
     log: log.child({ lane: 'crawl-files' }),
-    appVersion: pkg.version,
+    appVersion: build.version,
     settingsSecret: settingsKeyFrom(env),
     createFetcher,
     paused,
   })
-  void crawlFiles.tick()
-  const crawlFilesTimer = setInterval(() => void crawlFiles.tick(), SCHEDULER_INTERVAL_MS)
+  const tickCrawlFiles = ifCurrent(crawlFiles.tick)
+  void tickCrawlFiles()
+  const crawlFilesTimer = setInterval(tickCrawlFiles, SCHEDULER_INTERVAL_MS)
 
   // Only if an administrator asked for it: otherwise this reads one setting and returns.
   const updates = createUpdateChecker({ settings, log: log.child({ lane: 'updates' }), paused })
-  void updates.tick()
-  const updatesTimer = setInterval(() => void updates.tick(), SCHEDULER_INTERVAL_MS)
+  const tickUpdates = ifCurrent(updates.tick)
+  void tickUpdates()
+  const updatesTimer = setInterval(tickUpdates, SCHEDULER_INTERVAL_MS)
 
   // After an update that changes the issues, earlier crawls show their old totals until this is done.
   let stopping = false
@@ -211,6 +225,7 @@ async function main() {
     db,
     log: log.child({ lane: 'analysis' }),
     stopped: () => stopping,
+    canStart: migrationCheck.canStart,
   }).catch((err) => log.error({ err }, 'analysing crawls again failed'))
 
   const shutdown = async (signal: string) => {
