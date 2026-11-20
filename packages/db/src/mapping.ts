@@ -283,6 +283,7 @@ export type CrawlRow = Omit<
   | 'runBuilds'
   | 'analysisBuild'
   | 'discoverySettings'
+  | 'pairedSummary'
   | 'rendering'
   | 'ignoredParameters'
   | 'seedUrls'
@@ -297,6 +298,7 @@ export type CrawlRow = Omit<
   runBuilds: string | null
   analysisBuild: string | null
   discoverySettings: string | null
+  pairedSummary?: string | null
   rendering: string | null
   ignoredParameters: string | null
   seedUrls: string | null
@@ -332,6 +334,7 @@ export const toCrawl = ({
   runBuilds,
   analysisBuild,
   discoverySettings,
+  pairedSummary,
   rendering,
   ignoredParameters,
   seedUrls,
@@ -354,6 +357,7 @@ export const toCrawl = ({
   runBuilds: parseJson(runBuilds) as Crawl['runBuilds'],
   analysisBuild: parseJson(analysisBuild) as Crawl['analysisBuild'],
   discoverySettings: parseJson(discoverySettings) as Crawl['discoverySettings'],
+  pairedSummary: parseJson(pairedSummary ?? null) as Crawl['pairedSummary'],
   rendering: parseJson(rendering) as Crawl['rendering'],
   ...row,
   pagesByWorstIssue:

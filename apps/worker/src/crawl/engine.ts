@@ -1,4 +1,6 @@
 import { getWorkerBuildInfo } from '../build-info'
+import {createHmac,createHash} from 'node:crypto'
+import {repeatAnswers} from './paired'
 import { createRenderResourceCache } from '../render/cache'
 import { RENDER_LIMITS } from '../render/limits'
 import type { RenderService } from '../render/service'
@@ -139,9 +141,14 @@ export async function runCrawl(
   if (snapshot?.requestCredentialsSet && !headers) {
     throw new PermanentJobError('request-credentials-unavailable')
   }
+  const userAgent = settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion)
+  // A restart can change credentials or the build's default User-Agent. A keyed fingerprint
+  // permits a repeat only under the same settings without retaining credentials.
+  const context = (headers ? createHmac('sha256',options.settingsSecret!) : createHash('sha256'))
+    .update(JSON.stringify([userAgent, Object.entries(headers?.headers ?? {}).sort(),settings.ignoredParameters])).digest('hex')
   const fetcher = options.createFetcher({
     siteHeaders: headers,
-    userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
+    userAgent,
     timeoutMs: settings.timeoutMs,
     concurrency:
       settings.concurrency +
@@ -419,7 +426,12 @@ export async function runCrawl(
     if (outcome instanceof FetchError) {
       result = failureResult(outcome)
     } else {
+      const servedAt = new Date().toISOString()
       ;({ result, found, sitemap } = analyse(item, outcome))
+      if (result.data?.facts) {
+        result.data.facts.requestContext = context
+        result.data.facts.servedAt = servedAt
+      }
       // Asked for as a script, stylesheet, image or media file, it is one, whatever it answered:
       // a missing `.js` that answers with an HTML error page is a broken resource, not a page.
       if (result.kind === 'page' && item.foundKind && RESOURCE_REFERENCES.has(item.foundKind)) {
@@ -664,6 +676,7 @@ export async function runCrawl(
     }
   }
 
+  let observations: Awaited<ReturnType<typeof repeatAnswers>>
   try {
     if (rendered) await recovery.start()
     await seed()
@@ -691,6 +704,9 @@ export async function runCrawl(
         ...fresh.files.map((file) => ({ ...file, via: 'crawl' as const })),
       )
       filesCapped = fresh.capped
+    }
+    if (followLinks && !truncated && !fatal && !stopSignal.aborted) {
+      observations = await repeatAnswers({ db, crawl, host, context, identity, requester, signal:stopSignal })
     }
   } catch (error) {
     if (error instanceof BrowserWaitExpiredError) fatal = error
@@ -726,7 +742,7 @@ export async function runCrawl(
 
   // A cancellation can also arrive after the last URL: `finish` then reports nothing changed.
   const status = truncated ? 'incomplete' : 'completed'
-  const finished = !cancelled && (await db.crawls.finish(crawlId, { status }))
+  const finished = !cancelled && (await db.crawls.finish(crawlId, { status, observations }))
   if (finished && !followLinks) {
     await db.crawlFiles
       .save(crawl.domainId, observedFiles)

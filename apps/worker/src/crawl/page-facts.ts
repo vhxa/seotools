@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   checkStructuredData,
   MAX_EVIDENCE_ITEMS,
@@ -276,6 +277,9 @@ export class PageFactsCollector {
   private jsonLd: string | null = null
   /** The JSON-LD blocks parsed so far, for `checkStructuredData`. */
   private jsonLdBlocks: unknown[] = []
+  private readonly bodyDigest = createHash('sha256')
+  private readonly anchorLabels = new Set<string>()
+  private labelChunks: string[] = []
   private textLength = 0
   private readonly text: string[] = []
   private readonly invalidHead = new Set<string>()
@@ -362,6 +366,11 @@ export class PageFactsCollector {
     if (this.codeDepth > 0) return
     if (this.heading) this.heading.text += chunk
     if (this.anchor && this.anchor.text.length < MAX_ANCHOR_TEXT) this.anchor.text += chunk
+    if (this.notContentDepth === 0) {
+      const value = collapse(chunk)
+      if (value && this.anchorDepth) this.labelChunks.push(value)
+      else if (value) this.bodyDigest.update(value + ' ')
+    }
     if (this.notContentDepth === 0 && this.textLength < MAX_TEXT_CHARACTERS) {
       this.text.push(chunk)
       this.textLength += chunk.length
@@ -388,6 +397,8 @@ export class PageFactsCollector {
     }
     if (HEADING.test(name) && this.headingDepth > 0 && --this.headingDepth === 0) this.endHeading()
     if ((name === 'a' || name === 'area') && this.anchorDepth > 0 && --this.anchorDepth === 0) {
+      if (this.labelChunks.length) this.anchorLabels.add(this.labelChunks.join(' '))
+      this.labelChunks = []
       this.endAnchor()
     }
   }
@@ -404,6 +415,8 @@ export class PageFactsCollector {
     const text = collapse(this.text.join(' '))
     const words = text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word))
     const normalized = words.join(' ').toLowerCase()
+    facts.servedTextDigest = this.bodyDigest.update(JSON.stringify([...this.anchorLabels].sort())).digest('hex')
+    facts.servedTitleDigest = createHash('sha256').update(JSON.stringify(page.title)).digest('hex')
     facts.words = words.length
     facts.placeholderText = normalized.includes('lorem ipsum')
     if (words.length >= MIN_WORDS_TO_COMPARE) facts.textHash = crawlUrlHash(normalized)

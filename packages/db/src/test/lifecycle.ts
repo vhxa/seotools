@@ -228,7 +228,10 @@ export function describeLifecycle(
       await db.crawls.addSitemapHreflang(crawl.id, [
         { pageHash: crawlUrlHash(url), lang: 'es', url: `${url}es` },
       ])
-      await db.crawls.finish(crawl.id, { status: 'completed' })
+      await db.crawls.finish(crawl.id, { status: 'completed', observations: {
+        summary:{version:1,eligible:1,selected:1,comparable:0,different:0,unknown:{transport:1},examples:[]},
+        pairs:[{version:1,sourceHash:crawlUrlHash(url),original:{at:new Date().toISOString(),status:200,media:'html',location:null,html:null},repeat:null,unknown:'transport',changed:[],examples:[]}]
+      } })
       await db.vitals.queueAlerts(crawl.id)
       const vital = {
         ...emptyVitals(),

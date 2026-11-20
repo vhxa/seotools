@@ -29,11 +29,11 @@ export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /** `Retry-After` is either seconds or an HTTP date. */
-export function parseRetryAfter(value: string | undefined): number | null {
+export function parseRetryAfter(value: string | undefined, maximum = MAX_RETRY_AFTER_MS): number | null {
   if (!value) return null
   const seconds = Number(value)
   const ms = Number.isFinite(seconds) ? seconds * 1000 : new Date(value).getTime() - Date.now()
-  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, MAX_RETRY_AFTER_MS) : null
+  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, maximum) : null
 }
 
 export const isRedirect = (status: number) => status >= 300 && status < 400 && status !== 304

@@ -1,3 +1,4 @@
+import type { AnswerPair } from '@seotools/core/crawl/paired'
 import type { FindingStateRecord } from '../types'
 import type { BotTestResult } from '../types'
 import {
@@ -228,6 +229,7 @@ const {
   crawlUrlAudit,
   crawlSitemapHreflang,
   crawlUrlHistory,
+  crawlAnswerPairs,
   crawlUrlLinks,
   priorityUrls,
   findingStates,
@@ -2093,7 +2095,7 @@ export function createSqliteDatabase(options: {
           .run()
       },
 
-      async finish(id, { status, error }) {
+      async finish(id, { status, error, observations }) {
         const counts = await this.countUrls(id)
         return db.transaction((tx) => {
           const crawl = tx
@@ -2105,6 +2107,7 @@ export function createSqliteDatabase(options: {
             .update(crawls)
             .set({
               ...counts,
+              pairedSummary: observations ? JSON.stringify(observations.summary) : null,
               status,
               error: error === undefined ? null : truncateError(error),
               activeKey: null,
@@ -2113,6 +2116,11 @@ export function createSqliteDatabase(options: {
             .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
             .run()
           if (result.changes === 0) return false
+          if (observations?.pairs.length) {
+            tx.insert(crawlAnswerPairs).values(observations.pairs.map(pair => ({
+              crawlId: id, sourceHash: pair.sourceHash, detail: JSON.stringify(pair)
+            }))).run()
+          }
           // The one place a crawl ends: whoever asked to be told hears of a full crawl from here.
           if (crawl?.type === 'full') {
             tx.insert(jobs).values(alertJobValues(id, new Date())).onConflictDoNothing().run()
@@ -2247,6 +2255,30 @@ export function createSqliteDatabase(options: {
             .onConflictDoNothing()
             .run()
         }
+      },
+
+      async pairedCandidates(crawlId) {
+        const eligible = and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.scope,'internal'), eq(crawlUrls.state,'done'), eq(crawlUrls.kind,'page'), gte(crawlUrls.statusCode,200), lt(crawlUrls.statusCode,300), sql`coalesce(json_extract(${crawlUrls.data}, '$.truncated'), 0) = 0`)
+        const [total] = await db.select({count: sql<number>`count(*)`}).from(crawlUrls).where(eligible)
+        const query = await db.select().from(crawlUrls).where(and(eligible,like(crawlUrls.url,'%?%'))).orderBy(
+          sql`case when lower(${crawlUrls.url}) like '%?page=%' or lower(${crawlUrls.url}) like '%&page=%' or lower(${crawlUrls.url}) like '%?paged=%' or lower(${crawlUrls.url}) like '%&paged=%' then 0 else 1 end`,asc(crawlUrls.urlHash),asc(crawlUrls.url)).limit(8)
+        const general = await db.select().from(crawlUrls).where(and(eligible,query.length ? notInArray(crawlUrls.urlHash,query.map(row=>row.urlHash)) : undefined)).orderBy(asc(crawlUrls.urlHash),asc(crawlUrls.url)).limit(16)
+        return {eligible:Number(total?.count ?? 0),rows:[...query,...general].map(toCrawlUrl)}
+      },
+
+      async servedAnchorBatch(crawlId, ref, seq, after) {
+        return db.selectDistinct({hash:crawlUrls.urlHash,url:crawlUrls.url}).from(crawlUrlLinks)
+          .innerJoin(crawlUrls,and(eq(crawlUrls.crawlId,crawlId),eq(crawlUrls.seq,crawlUrlLinks.target)))
+          .where(and(eq(crawlUrlLinks.crawlRef,ref),eq(crawlUrlLinks.source,seq),inArray(crawlUrlLinks.kind,['anchor','anchor-nofollow']),
+            or(isNull(crawlUrlLinks.rendered),eq(crawlUrlLinks.rendered,0)),eq(crawlUrls.scope,'internal'),gt(crawlUrls.urlHash,after)))
+          .orderBy(asc(crawlUrls.urlHash)).limit(256)
+      },
+
+      async answerPairs(crawlId,sourceHashes) {
+        // A crawl has at most 24 pairs, even when WP4 requests many source URLs.
+        const wanted = new Set(sourceHashes)
+        const rows = await db.select().from(crawlAnswerPairs).where(eq(crawlAnswerPairs.crawlId,crawlId))
+        return rows.filter(row=>wanted.has(row.sourceHash)).map(row=>JSON.parse(row.detail) as AnswerPair)
       },
 
       async nextQueued(crawlId, limit) {

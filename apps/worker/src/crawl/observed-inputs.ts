@@ -31,6 +31,10 @@ export const OPTIONAL_FACT_ISSUES: Record<OptionalFact, readonly PageIssueId[]> 
   document: ['html-lang-missing', 'html-lang-invalid', 'viewport-missing', 'charset-missing'],
   // Only the samples of findings that already exist: the finding itself does not depend on it.
   evidence: [],
+  servedTextDigest: [],
+  servedTitleDigest: [],
+  requestContext: [],
+  servedAt: [],
 }
 
 /** Whether the input of each of these issues was recorded for a page, by the facts it was kept with. */

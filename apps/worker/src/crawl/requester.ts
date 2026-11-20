@@ -11,6 +11,7 @@ export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
    * `false`: not held to the requests per second (a rendered page's resources, which their own
    * parallelism bounds). A server that asked to slow down still holds it.
    */
+  singleAttempt?: boolean
   paced?: boolean
 }
 
@@ -33,6 +34,7 @@ export function createRequester(options: {
 
   const interval = 1000 / settings.requestsPerSecond
   let nextSlot = 0
+  let unsupportedUntil = 0
   let pausedUntil = 0
   async function waitForSlot(signal = stopSignal) {
     const now = Date.now()
@@ -54,12 +56,12 @@ export function createRequester(options: {
 
   async function fetchWithRetries(
     url: string,
-    { paced = true, ...fetchOptions }: RequestOptions,
+    { paced = true, singleAttempt = false, ...fetchOptions }: RequestOptions,
   ): Promise<FetchedResponse | FetchError> {
     const signal = fetchOptions.signal
       ? AbortSignal.any([stopSignal, fetchOptions.signal])
       : stopSignal
-    const maxRetries = ['GET', 'HEAD', 'OPTIONS'].includes(fetchOptions.method ?? 'GET')
+    const maxRetries = !singleAttempt && ['GET', 'HEAD', 'OPTIONS'].includes(fetchOptions.method ?? 'GET')
       ? settings.maxRetries
       : 0
     for (let attempt = 0; ; attempt++) {
@@ -79,12 +81,14 @@ export function createRequester(options: {
         })
         // Alternate fetchers may report only a completed body. Never miss those bytes.
         if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
-        if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) {
-          return response
-        }
+        if (!RETRYABLE_STATUS.has(response.statusCode)) return response
+        const delay = parseRetryAfter(response.headers['retry-after'],Infinity)
+        if (delay !== null && delay > 300_000) unsupportedUntil = Date.now()+delay
+        if (attempt >= maxRetries && delay === null) return response
         // The server asked to slow down: every request of the domain waits, not just this one.
         const wait = parseRetryAfter(response.headers['retry-after']) ?? backoff
         pausedUntil = Math.max(pausedUntil, Date.now() + wait)
+        if (attempt >= maxRetries) return response
         log.info({ url, status: response.statusCode, wait }, 'server asked to slow down')
       } catch (error) {
         if (!(error instanceof FetchError)) throw error
@@ -94,7 +98,7 @@ export function createRequester(options: {
     }
   }
 
-  return { waitForSlot, fetchWithRetries }
+  return { waitForSlot, fetchWithRetries, excessiveDelay: () => Date.now() < unsupportedUntil }
 }
 
 export type Requester = ReturnType<typeof createRequester>

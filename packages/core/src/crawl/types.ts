@@ -252,6 +252,10 @@ export interface CrawlPageFacts {
   headingLevelSkipped: boolean
   words: number
   /** Fingerprint of the text, to find exact copies. `null`: too little text to compare. */
+  servedAt?: string
+  servedTextDigest?: string
+  requestContext?: string
+  servedTitleDigest?: string
   textHash: string | null
   /** Simhash of the text, to find near copies. `null`: too little text to compare. */
   textSimhash: string | null

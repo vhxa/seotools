@@ -2,6 +2,7 @@ import {
   real,
   index,
   integer,
+  foreignKey,
   primaryKey,
   sqliteTable,
   text,
@@ -253,6 +254,7 @@ export const crawls = sqliteTable(
     activeKey: text('active_key').unique(),
     pagesCount: integer('pages_count').notNull().default(0),
     urlsCount: integer('urls_count').notNull().default(0),
+    pairedSummary: text('paired_summary'),
     urlsDoneCount: integer('urls_done_count').notNull().default(0),
     externalCount: integer('external_count').notNull().default(0),
     robots: text('robots'),
@@ -357,6 +359,19 @@ export const crawlUrls = sqliteTable(
  * their `seq` in the crawl and the crawl its `ref`, so that the most numerous rows of the database
  * stay small. One row per source, target and kind: the first occurrence in the page.
  */
+export const crawlAnswerPairs = sqliteTable(
+  'crawl_answer_pairs',
+  {
+    crawlId: text('crawl_id').notNull(),
+    sourceHash: text('source_hash').notNull(),
+    detail: text('detail').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.sourceHash] }),
+    foreignKey({ columns: [t.crawlId, t.sourceHash], foreignColumns: [crawlUrls.crawlId, crawlUrls.urlHash] }).onDelete('cascade'),
+  ],
+)
+
 export const crawlUrlLinks = sqliteTable(
   'crawl_url_links',
   {
