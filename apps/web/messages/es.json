@@ -2302,6 +2302,7 @@
     "add": "Añadir"
   },
   "IssueCatalog": {
+    "notLookedFor": "No se ha buscado: este rastreo no renderizó las páginas",
     "noFindings": "Sin hallazgos registrados; la aplicabilidad puede ser incompleta",
     "unavailable": "No comprobable: datos de indexación no disponibles",
     "groups": {

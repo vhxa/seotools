@@ -2302,6 +2302,7 @@
     "add": "Add"
   },
   "IssueCatalog": {
+    "notLookedFor": "Not looked for: this crawl did not render pages",
     "noFindings": "No findings recorded; applicability may be incomplete",
     "unavailable": "Not checkable: indexing data unavailable",
     "groups": {

@@ -25,6 +25,7 @@ import { siteFindings } from '@/lib/crawl-files'
 import { compareHref, parseCompareQuery } from '@/lib/compare-query'
 import { getDb } from '@/lib/db'
 import { rankIssueCounts } from '@/lib/pages-issues'
+import { isRenderedCrawl } from '@/lib/rendering'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
 
@@ -382,6 +383,19 @@ export default async function IssuesPage({
               </section>
             )
           })}
+          {!isRenderedCrawl(latest) &&
+            !type &&
+            !search &&
+            (!group || (group.categories as readonly string[]).includes('javascript')) && (
+              <section aria-labelledby="javascript-category" className="grid gap-2">
+                <h2 id="javascript-category" className="text-base font-medium">
+                  {tCatalog('categories.javascript')}
+                </h2>
+                <p className="rounded-xl bg-card px-4 py-3 text-sm text-muted-foreground shadow-card ring-1 ring-foreground/10">
+                  {tCatalog('notLookedFor')}
+                </p>
+              </section>
+            )}
           {dismissedCounts.some((r) => matches(r.issue)) && (
             <section className="grid gap-2">
               <h2 className="text-base font-medium">{decisions('dismissed')}</h2>
