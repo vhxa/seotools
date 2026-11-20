@@ -27,13 +27,14 @@ export async function reanalyseOutdatedCrawls(options: {
   const { db, log } = options
   const failed = new Set<string>()
   let done = 0
-  while (!options.stopped?.()) {
+  const canStart = async () => !options.stopped?.() && (await options.canStart?.()) !== false
+  while (await canStart()) {
     const outdated = (await db.crawls.outdatedAnalyses(ISSUE_CATALOG_VERSION, failed.size + BATCH))
       .filter((crawl) => !failed.has(crawl.id))
       .slice(0, BATCH)
     if (outdated.length === 0) break
     for (const crawl of outdated) {
-      if (options.stopped?.() || (options.canStart && !(await options.canStart()))) return done
+      if (!(await canStart())) return done
       try {
         await analyseCrawl(db, crawl.id, recordedAuditConfig(crawl))
         done++

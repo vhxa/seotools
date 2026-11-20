@@ -104,6 +104,7 @@ export function compareCrawlDiscovery(
   compare('renderWaitMs', from.rendering?.waitMs, to.rendering?.waitMs)
   compare('renderOmittedHosts', from.rendering?.omittedHosts, to.rendering?.omittedHosts)
   compare('ignoredParameters', from.ignoredParameters, to.ignoredParameters)
-  for (const key of discoveryKeys) compare(key, from.discoverySettings?.[key], to.discoverySettings?.[key])
+  for (const key of discoveryKeys)
+    compare(key, from.discoverySettings?.[key], to.discoverySettings?.[key])
   return differences
 }

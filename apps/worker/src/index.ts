@@ -66,6 +66,7 @@ async function main() {
     concurrency: env.RENDER_CONCURRENCY,
     settings,
     paused,
+    canStart: migrationCheck.canStart,
     onError: (err) => log.error({ err }, 'browser check failed'),
   })
 

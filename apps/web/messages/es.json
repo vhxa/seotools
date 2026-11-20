@@ -3671,6 +3671,8 @@
       "unrecorded": "sin registrar",
       "multiple": "varias compilaciones",
       "version": "Versión: {version}",
+      "withUnrecordedRun": "{version} (ejecución anterior sin registrar)",
+      "withDifferentAnalysis": "Versión: {version} · Analizado con otra compilación ({analysis})",
       "withAnalysis": "Versión: {version} · Análisis: {analysis}"
     },
     "metaTitle": "Rastreos · {host} · seotools",

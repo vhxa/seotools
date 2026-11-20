@@ -398,6 +398,8 @@ export interface CrawlUrlRender {
 
 export interface CrawlRunBuilds {
   builds: BuildInfo[]
+  /** The crawl ran before build metadata was recorded. */
+  earlierRunUnrecorded: boolean
   /** More distinct builds participated than we keep individually. */
   overflow: boolean
 }

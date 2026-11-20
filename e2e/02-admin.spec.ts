@@ -1,6 +1,14 @@
+import { createDatabase } from '@seotools/db'
 import { readFile } from 'node:fs/promises'
 import { expect, test } from './support/test'
-import { ADMIN, ADMIN_STATE, HOST, RENDERED_HOST, RENDERED_UNOBSERVED } from './support/env'
+import {
+  ADMIN,
+  ADMIN_STATE,
+  DATABASE_URL,
+  HOST,
+  RENDERED_HOST,
+  RENDERED_UNOBSERVED,
+} from './support/env'
 import { signIn } from './support/helpers'
 
 const domain = `/domains/${HOST}`
@@ -187,6 +195,36 @@ test('the pages export downloads a CSV with its header row', async ({ page }) =>
   expect(rows.join('\n')).toContain('https://example.com/about')
 })
 
+test('Administration identifies different and outdated worker builds', async ({ page }) => {
+  const db = await createDatabase({ url: DATABASE_URL, dialect: 'sqlite' })
+  try {
+    const startedAt = new Date()
+    await db.heartbeats.beat({
+      workerId: 'previous-deployment',
+      startedAt,
+      build: { version: '0.5.0', channel: 'release', commit: null },
+      outdated: true,
+    })
+    await db.heartbeats.beat({
+      workerId: 'current-deployment',
+      startedAt,
+      build: { version: '0.6.0', channel: 'release', commit: null },
+      outdated: false,
+    })
+  } finally {
+    await db.close()
+  }
+
+  await page.goto('/system')
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'recently reported different builds' }),
+  ).toContainText(/0\.5\.0.*0\.6\.0|0\.6\.0.*0\.5\.0/)
+  await expect(page.getByRole('alert').filter({ hasText: 'Outdated workers' })).toContainText(
+    '0.5.0',
+  )
+  await expect(page.getByText('This web app does not recognize')).toHaveCount(0)
+})
+
 test('the Crawls area lists the crawls, with the run actions and its own sections', async ({
   page,
 }) => {
@@ -200,6 +238,7 @@ test('the Crawls area lists the crawls, with the run actions and its own section
   const crawls = page.getByRole('table')
   await expect(crawls.getByText('Full crawl').first()).toBeVisible()
   await expect(crawls.getByText('completed')).toBeVisible()
+  await expect(crawls.getByText('Version: development build', { exact: true })).toBeVisible()
   await expect(crawls.getByRole('link', { name: 'View', exact: true })).toBeVisible()
 
   // One entry in the sidebar, and tabs in the page.

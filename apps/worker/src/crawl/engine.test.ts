@@ -406,6 +406,31 @@ describe('settings', () => {
     expect(second.configs[0]).toMatchObject({ userAgent: 'Custom/1.0', timeoutMs: 5000 })
   })
 
+  it('uses the discovery snapshot even when settings change while the crawl is queued', async () => {
+    const initial = await db.crawls.settings(domainId)
+    await db.crawls.saveSettings(domainId, {
+      ...initial,
+      userAgent: 'Queued/1.0',
+      timeoutMs: 7000,
+      excludePrefixes: ['/hidden'],
+    })
+    const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+    if (!crawl) throw new Error('crawl did not start')
+    await db.crawls.saveSettings(domainId, { ...initial, userAgent: 'Changed/2.0' })
+    // Credentials added later must never attach to the queued crawl's requests.
+    await db.crawls.saveRequestSecrets(domainId, 'v1:encrypted')
+    const site = fakeSite({ 'https://example.com/': html('<a href="/hidden">hidden</a>') })
+    await runCrawl(crawl.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+    })
+    expect(site.configs[0]).toMatchObject({ userAgent: 'Queued/1.0', timeoutMs: 7000 })
+    expect(site.configs[0]?.siteHeaders).toBeUndefined()
+    expect(site.requests).not.toContain('https://example.com/hidden')
+  })
+
   it('respects the concurrency', async () => {
     await db.crawls.saveSettings(domainId, {
       ...(await db.crawls.settings(domainId)),

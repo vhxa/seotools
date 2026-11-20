@@ -36,7 +36,10 @@ const config: NextConfig = {
   // Trace dependencies from the monorepo root so workspace packages are included.
   outputFileTracingRoot: rootDir,
   outputFileTracingIncludes: {
-    '/system': ['../../packages/db/migrations/*/*.sql', '../../packages/db/migrations/*/meta/_journal.json'],
+    '/system': [
+      '../../packages/db/migrations/*/*.sql',
+      '../../packages/db/migrations/*/meta/_journal.json',
+    ],
   },
   // Workspace packages ship TypeScript sources.
   transpilePackages: ['@seotools/core', '@seotools/db'],

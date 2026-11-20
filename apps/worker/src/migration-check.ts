@@ -19,9 +19,6 @@ export function createMigrationCheck(db: Pick<Database, 'checkMigrations'>, log:
       outdated = err instanceof UnknownMigrationError
       if (outdated) log.error({ err }, 'worker is outdated and will no longer start work')
       else log.error({ err }, 'could not check migrations; pausing new work until the next check')
-    } finally {
-      nextCheck = Date.now() + CHECK_INTERVAL_MS
-      pending = undefined
     }
     return canWork
   }
@@ -29,7 +26,10 @@ export function createMigrationCheck(db: Pick<Database, 'checkMigrations'>, log:
   return {
     canStart() {
       if (outdated || Date.now() < nextCheck) return Promise.resolve(canWork)
-      return (pending ??= refresh())
+      return (pending ??= refresh().finally(() => {
+        nextCheck = Date.now() + CHECK_INTERVAL_MS
+        pending = undefined
+      }))
     },
     isOutdated: () => outdated,
   }

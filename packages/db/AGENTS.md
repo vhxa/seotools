@@ -32,6 +32,8 @@ pnpm db:check                                               # migration files ar
 
 Schemas exist once per dialect (`packages/db/src/schema/{sqlite,pg}.ts`): change both, with the same tables and columns (`copySqliteToPostgres` derives what it copies from the schemas and refuses if they differ). Never edit generated migrations by hand.
 
+Check the migration journal at startup and while workers run. A running worker that sees unknown migration history stops claiming jobs on either dialect. Administration reads the same check without blocking pages.
+
 ## Database contract (SQLite, PostgreSQL)
 
 `packages/db/src/test/contract.ts` defines the behaviour every dialect must provide (jobs queue, heartbeats, settings, companies and domains, crawls, audit rules, first admin) and runs once per dialect.

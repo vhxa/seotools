@@ -2008,7 +2008,9 @@ export function createPgDatabase(options: {
             .set({
               status: 'running',
               startedAt: current.startedAt ?? new Date(),
-              runBuilds: build ? recordRunBuild(current.runBuilds, build) : current.runBuilds,
+              runBuilds: build
+                ? recordRunBuild(current.runBuilds, build, current.startedAt !== null)
+                : current.runBuilds,
             })
             .where(active)
             .returning()
@@ -2894,7 +2896,16 @@ export function createPgDatabase(options: {
         return rows as NewCrawlUrl[]
       },
 
-      async saveAnalysis({ crawlId, issues, accepted = [], pages, withType, catalog, audit, build }) {
+      async saveAnalysis({
+        crawlId,
+        issues,
+        accepted = [],
+        pages,
+        withType,
+        catalog,
+        audit,
+        build,
+      }) {
         const issueRows = crawlIssueRows(crawlId, issues)
         const acceptedRows = crawlAcceptedRows(crawlId, accepted)
         const auditRows = crawlAuditRows(crawlId, audit.urls)
@@ -2920,17 +2931,16 @@ export function createPgDatabase(options: {
           for (const batch of chunk(auditRows)) await tx.insert(crawlUrlAudit).values(batch)
           await tx
             .update(crawls)
-            .set(
-              {
-                  ...crawlAnalysisColumns({
-                    pages,
-                    withType,
-                    catalog,
-                    snapshot: audit.snapshot,
-                    audit: audit.pages,
-                  }),
-                  analysisBuild: build ? JSON.stringify(build) : null,
-                })
+            .set({
+              ...crawlAnalysisColumns({
+                pages,
+                withType,
+                catalog,
+                snapshot: audit.snapshot,
+                audit: audit.pages,
+              }),
+              analysisBuild: build ? JSON.stringify(build) : null,
+            })
             .where(eq(crawls.id, crawlId))
           return true
         })

@@ -3671,6 +3671,8 @@
       "unrecorded": "not recorded",
       "multiple": "multiple builds",
       "version": "Version: {version}",
+      "withUnrecordedRun": "{version} (earlier run not recorded)",
+      "withDifferentAnalysis": "Version: {version} · Analysed by a different build ({analysis})",
       "withAnalysis": "Version: {version} · Analysis: {analysis}"
     },
     "metaTitle": "Crawls · {host} · seotools",

@@ -80,10 +80,22 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
     const run = crawl.runBuilds?.builds ?? []
     const analysis = crawl.analysisBuild
     const ranOnMultiple = run.length > 1 || crawl.runBuilds?.overflow
-    const label = ranOnMultiple ? t('build.multiple') : buildLabel(run[0])
-    return analysis && (run.length !== 1 || buildIdentity(analysis) !== buildIdentity(run[0]!))
-      ? t('build.withAnalysis', { version: label, analysis: buildLabel(analysis) })
-      : t('build.version', { version: label })
+    const first = run[0]
+    const label = ranOnMultiple ? t('build.multiple') : buildLabel(first)
+    const version = crawl.runBuilds?.earlierRunUnrecorded
+      ? t('build.withUnrecordedRun', { version: label })
+      : label
+    if (
+      !analysis ||
+      (first && !ranOnMultiple && buildIdentity(analysis) === buildIdentity(first))
+    ) {
+      return t('build.version', { version })
+    }
+    const different = run.some((build) => buildIdentity(analysis) !== buildIdentity(build))
+    return t(different ? 'build.withDifferentAnalysis' : 'build.withAnalysis', {
+      version,
+      analysis: buildLabel(analysis),
+    })
   }
   // The ones the history can browse and compare: full crawls that finished with results.
   const browsable = (crawl: Crawl) => crawl.type === 'full' && isBrowsableStatus(crawl.status)

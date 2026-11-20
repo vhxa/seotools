@@ -396,17 +396,30 @@ export function crawlStartColumns(row: CrawlSettingsRow | undefined, build?: Bui
 }
 
 /** Keep the first few distinct builds, even if one of them returns after a different one. */
-export function recordRunBuild(recorded: string | null, build: BuildInfo): string {
-  const history = (parseJson(recorded) as CrawlRunBuilds | null) ?? { builds: [], overflow: false }
+export function recordRunBuild(
+  recorded: string | null,
+  build: BuildInfo,
+  earlierRunUnrecorded: boolean,
+): string {
+  const history = (parseJson(recorded) as CrawlRunBuilds | null) ?? {
+    builds: [],
+    overflow: false,
+    earlierRunUnrecorded,
+  }
   if (
-    recorded !== null && history.builds.some((seen) => buildIdentity(seen) === buildIdentity(build))
-  ) return recorded
+    recorded !== null &&
+    history.builds.some((seen) => buildIdentity(seen) === buildIdentity(build))
+  )
+    return recorded
   if (history.builds.length < 3) history.builds.push(build)
   else history.overflow = true
   return JSON.stringify(history)
 }
 
-export function toHeartbeat({ build, ...row }: Omit<Heartbeat, 'build'> & { build: string | null }): Heartbeat {
+export function toHeartbeat({
+  build,
+  ...row
+}: Omit<Heartbeat, 'build'> & { build: string | null }): Heartbeat {
   return { ...row, build: parseJson(build) as BuildInfo | null }
 }
 

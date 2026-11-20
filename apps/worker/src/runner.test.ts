@@ -1,7 +1,11 @@
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createLogger, retryDelayMs, type Job } from '@seotools/core'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createRunner } from './runner'
+import { createRunner, type RunnerOptions } from './runner'
+import { createMigrationCheck } from './migration-check'
 import { JobDeferredError, JobInterruptedError, PermanentJobError, type JobHandler } from './types'
 import { exampleEcho } from './handlers/example-echo'
 import { createMailSendHandler } from './handlers/mail-send'
@@ -16,7 +20,7 @@ afterEach(async () => {
   await db.close()
 })
 
-function runnerWith(handlers: Record<string, JobHandler>, overrides = {}) {
+function runnerWith(handlers: Record<string, JobHandler>, overrides: Partial<RunnerOptions> = {}) {
   return createRunner({
     db,
     handlers,
@@ -44,6 +48,59 @@ describe('runner', () => {
       result: { got: { n: 1 } },
       attempts: 1,
     })
+  })
+
+  it('stops claiming jobs after a newer migration and lets a held job finish', async () => {
+    const migrations = mkdtempSync(join(tmpdir(), 'seotools-future-migrations-'))
+    const journalPath = join(migrations, 'meta/_journal.json')
+    cpSync(new URL('../../../packages/db/migrations/sqlite/', import.meta.url), migrations, {
+      recursive: true,
+    })
+    const clock = vi.spyOn(Date, 'now')
+    const canWork = createMigrationCheck(db, log)
+    const held = Promise.withResolvers<void>()
+    const handler = vi.fn(() => held.promise)
+    const runner = runnerWith({ ok: handler }, { canStart: canWork.canStart })
+    try {
+      const running = await db.jobs.enqueue({ type: 'ok' })
+      expect(await runner.tick()).toBe(1)
+      expect(canWork.isOutdated()).toBe(false)
+
+      const journal: {
+        entries: { idx: number; when: number; tag: string; breakpoints: boolean }[]
+      } = JSON.parse(readFileSync(journalPath, 'utf8'))
+      journal.entries.push({
+        idx: journal.entries.length,
+        when: journal.entries.at(-1)!.when + 1,
+        tag: 'future',
+        breakpoints: true,
+      })
+      writeFileSync(journalPath, JSON.stringify(journal))
+      writeFileSync(join(migrations, 'future.sql'), 'CREATE TABLE future_probe (id integer)')
+      await db.migrate(migrations)
+
+      clock.mockReturnValue(Date.now() + 31_000)
+      const pending = await db.jobs.enqueue({ type: 'ok' })
+      expect(await runner.tick()).toBe(0)
+      expect(canWork.isOutdated()).toBe(true)
+      expect((await db.jobs.get(running.id))?.status).toBe('running')
+
+      held.resolve()
+      await runner.idle()
+      expect(await runner.tick()).toBe(0)
+      expect(handler).toHaveBeenCalledOnce()
+      expect(await db.jobs.get(pending.id)).toMatchObject({
+        status: 'pending',
+        attempts: 0,
+        lockedBy: null,
+      })
+      expect((await db.jobs.get(running.id))?.status).toBe('completed')
+    } finally {
+      held.resolve()
+      await runner.idle()
+      clock.mockRestore()
+      rmSync(migrations, { recursive: true, force: true })
+    }
   })
 
   it('retries failures and gives up after maxAttempts', async () => {
