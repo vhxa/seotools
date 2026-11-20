@@ -3571,8 +3571,8 @@
         "rendered": "Renderizado en lugar de HTML",
         "html": "HTML en lugar de renderizado"
       },
-      "ignoredAdded": "Ahora ignora {count, plural, one {el parámetro} other {los parámetros}} {parameters}{more, plural, =0 {} other { y # más}}",
-      "ignoredRemoved": "Ya no ignora {count, plural, one {el parámetro} other {los parámetros}} {parameters}{more, plural, =0 {} other { y # más}}",
+      "ignoredAdded": "Ahora ignora{count, plural, one { el parámetro} other { los parámetros}} {parameters}{more, plural, =0 {} other { y # más}}",
+      "ignoredRemoved": "Ya no ignora{count, plural, one { el parámetro} other { los parámetros}} {parameters}{more, plural, =0 {} other { y # más}}",
       "settings": "Cambiaron los ajustes del rastreo: {settings}",
       "catalog": "Cambiaron las comprobaciones de problemas",
       "rules": "Cambiaron las reglas",

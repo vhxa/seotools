@@ -3571,8 +3571,8 @@
         "rendered": "Rendered instead of HTML",
         "html": "HTML instead of rendered"
       },
-      "ignoredAdded": "Now ignores {count, plural, one {parameter} other {parameters}} {parameters}{more, plural, =0 {} other { and # more}}",
-      "ignoredRemoved": "No longer ignores {count, plural, one {parameter} other {parameters}} {parameters}{more, plural, =0 {} other { and # more}}",
+      "ignoredAdded": "Now ignores{count, plural, one { parameter} other { parameters}} {parameters}{more, plural, =0 {} other { and # more}}",
+      "ignoredRemoved": "No longer ignores{count, plural, one { parameter} other { parameters}} {parameters}{more, plural, =0 {} other { and # more}}",
       "settings": "Crawl settings changed: {settings}",
       "catalog": "Issue checks changed",
       "rules": "Rules changed",
