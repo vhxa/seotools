@@ -20,6 +20,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-20
+
 ### Fixed
 
 - The JavaScript rendering block of the overview is a card like the rest of the dashboard; its long explanations are folded under "What this leaves unknown".
