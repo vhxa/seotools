@@ -1,5 +1,8 @@
 import { createDatabase } from '@seotools/db'
-import { readFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from './support/test'
 import {
   ADMIN,
@@ -195,8 +198,11 @@ test('the pages export downloads a CSV with its header row', async ({ page }) =>
   expect(rows.join('\n')).toContain('https://example.com/about')
 })
 
-test('Administration identifies different and outdated worker builds', async ({ page }) => {
+test('Administration identifies different builds and a database that is newer than the web app', async ({
+  page,
+}) => {
   const db = await createDatabase({ url: DATABASE_URL, dialect: 'sqlite' })
+  const migrations = await mkdtemp(join(tmpdir(), 'seotools-e2e-newer-'))
   try {
     const startedAt = new Date()
     await db.heartbeats.beat({
@@ -211,18 +217,38 @@ test('Administration identifies different and outdated worker builds', async ({ 
       build: { version: '0.6.0', channel: 'release', commit: null },
       outdated: false,
     })
+
+    await page.goto('/system')
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'recently reported different builds' }),
+    ).toContainText(/0\.5\.0.*0\.6\.0|0\.6\.0.*0\.5\.0/)
+    await expect(page.getByRole('alert').filter({ hasText: 'Outdated workers' })).toContainText(
+      '0.5.0',
+    )
+    await expect(page.getByText('This web app does not recognize')).toHaveCount(0)
+
+    // Advance only the throwaway smoke database's journal, leaving the web build as it was.
+    const source = fileURLToPath(new URL('../packages/db/migrations/sqlite/', import.meta.url))
+    await cp(source, migrations, { recursive: true })
+    const journalPath = join(migrations, 'meta/_journal.json')
+    const journal: { entries: { idx: number; when: number; tag: string; breakpoints: boolean }[] } =
+      JSON.parse(await readFile(journalPath, 'utf8'))
+    journal.entries.push({
+      idx: journal.entries.length,
+      when: journal.entries.at(-1)!.when + 1,
+      tag: 'future',
+      breakpoints: true,
+    })
+    await writeFile(journalPath, JSON.stringify(journal))
+    await writeFile(join(migrations, 'future.sql'), 'CREATE TABLE future_probe (id integer)')
+    await db.migrate(migrations)
+
+    expect((await page.reload())?.status()).toBe(200)
+    await expect(page.getByText('This web app does not recognize')).toBeVisible()
   } finally {
     await db.close()
+    await rm(migrations, { recursive: true, force: true })
   }
-
-  await page.goto('/system')
-  await expect(
-    page.getByRole('alert').filter({ hasText: 'recently reported different builds' }),
-  ).toContainText(/0\.5\.0.*0\.6\.0|0\.6\.0.*0\.5\.0/)
-  await expect(page.getByRole('alert').filter({ hasText: 'Outdated workers' })).toContainText(
-    '0.5.0',
-  )
-  await expect(page.getByText('This web app does not recognize')).toHaveCount(0)
 })
 
 test('the Crawls area lists the crawls, with the run actions and its own sections', async ({

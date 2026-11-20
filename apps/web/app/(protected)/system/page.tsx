@@ -1,6 +1,6 @@
 import { buildIdentity, type BuildInfo, type JobStatus } from '@seotools/core'
 import { UnknownMigrationError } from '@seotools/db'
-import { getFormatter, getTranslations } from 'next-intl/server'
+import { getFormatter, getNow, getTranslations } from 'next-intl/server'
 import { ChevronRightIcon, PauseIcon, TriangleAlertIcon } from 'lucide-react'
 import { AutoRefresh } from '@/components/auto-refresh'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -42,13 +42,13 @@ const statusVariant: Record<JobStatus, 'default' | 'secondary' | 'destructive' |
 /** Instance-wide status (database, worker, job queue): it does not belong to any domain. */
 export default async function SystemPage() {
   await requireAdmin()
-  const [t, format] = await Promise.all([getTranslations('System'), getFormatter()])
+  const [t, format, now] = await Promise.all([getTranslations('System'), getFormatter(), getNow()])
   const db = await getDb()
   const [{ report }, counts, jobs, recent, webOutdated] = await Promise.all([
     getHealth(async () => db),
     db.jobs.countByStatus(),
     db.jobs.list({ limit: 10 }),
-    db.heartbeats.recent(new Date(Date.now() - RECENT_WORKER_MS)),
+    db.heartbeats.recent(new Date(now.getTime() - RECENT_WORKER_MS)),
     db.checkMigrations().then(
       () => false,
       (error: unknown) => {

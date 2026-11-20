@@ -58,8 +58,11 @@ describe('runner', () => {
     })
     const clock = vi.spyOn(Date, 'now')
     const canWork = createMigrationCheck(db, log)
-    const held = Promise.withResolvers<void>()
-    const handler = vi.fn(() => held.promise)
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const handler = vi.fn(() => held)
     const runner = runnerWith({ ok: handler }, { canStart: canWork.canStart })
     try {
       const running = await db.jobs.enqueue({ type: 'ok' })
@@ -85,7 +88,7 @@ describe('runner', () => {
       expect(canWork.isOutdated()).toBe(true)
       expect((await db.jobs.get(running.id))?.status).toBe('running')
 
-      held.resolve()
+      release()
       await runner.idle()
       expect(await runner.tick()).toBe(0)
       expect(handler).toHaveBeenCalledOnce()
@@ -96,7 +99,7 @@ describe('runner', () => {
       })
       expect((await db.jobs.get(running.id))?.status).toBe('completed')
     } finally {
-      held.resolve()
+      release()
       await runner.idle()
       clock.mockRestore()
       rmSync(migrations, { recursive: true, force: true })
