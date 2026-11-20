@@ -82,6 +82,10 @@ it('discovers and follows the rendered menu, retains HTML checks and both graph 
   expect(await issues(crawl.id, '/only-js')).toContain('linked-only-by-javascript')
   expect(await issues(crawl.id, '/')).toContain('links-only-after-rendering')
   expect(await issues(crawl.id, '/')).toContain('few-html-links')
+  expect((await db.crawls.get(crawl.id))?.pairedSummary).toMatchObject({
+    comparable: 4,
+    different: 0,
+  })
   expect(fake.requests).toContain(`${SITE}/only-js`)
   const links = await db.crawls.linksFrom(crawl.id, [hash('/')])
   expect(links.filter((link) => link.rendered === 1)).toHaveLength(2)

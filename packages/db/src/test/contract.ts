@@ -5138,6 +5138,60 @@ export function describeDatabaseContract(
         expect((await db.crawls.latestWithResults(domainId, 'full'))?.id).toBe(running.id)
       })
 
+      it('publishes pairs with completion, keeps their counts after pruning, and leaves legacy crawls unknown', async () => {
+        const domainId = await domain()
+        const crawl = await startCrawl(domainId)
+        expect(crawl.pairedSummary).toBeNull()
+        const page = newUrl('https://acme.com/')
+        await db.crawls.addUrls(crawl.id, [page])
+        await db.crawls.recordResult({
+          crawlId: crawl.id,
+          urlHash: page.urlHash,
+          result: result('page'),
+        })
+        const summary = {
+          version: 1 as const,
+          eligible: 1,
+          selected: 1,
+          comparable: 0,
+          different: 0,
+          unknown: { transport: 1 },
+          examples: [],
+        }
+        const pair = {
+          version: 1 as const,
+          sourceHash: page.urlHash,
+          original: {
+            at: new Date().toISOString(),
+            status: 200,
+            media: 'html',
+            location: null,
+            html: null,
+          },
+          repeat: null,
+          changed: [],
+          unknown: 'transport' as const,
+          examples: [],
+        }
+        const finish = { status: 'completed' as const, observations: { summary, pairs: [pair] } }
+        expect(await db.crawls.finish(crawl.id, finish)).toBe(true)
+        expect(await db.crawls.finish(crawl.id, finish)).toBe(false)
+        await saveIssues({
+          crawlId: crawl.id,
+          issues: [],
+          pages: { issue: 0, warning: 0, opportunity: 0 },
+          withType: { issue: 0, warning: 0, opportunity: 0 },
+          catalog: 'test',
+        })
+        expect(await db.crawls.answerPairs(crawl.id, [page.urlHash])).toEqual([pair])
+        expect(await db.crawls.answerPairs(crawl.id, ['other'])).toEqual([])
+        const latest = await finishedCrawl(domainId)
+        expect(await db.crawls.answerPairs(latest.id, [page.urlHash])).toEqual([])
+        await db.crawls.prune({ domainId, type: 'full', keep: 1 })
+        expect(await db.crawls.answerPairs(crawl.id, [page.urlHash])).toEqual([])
+        expect((await db.crawls.get(crawl.id))?.pairedSummary).toEqual(summary)
+      })
+
       it('prunes old results but keeps the summary of every crawl', async () => {
         const domainId = await domain()
         const oldest = await finishedCrawl(domainId)
