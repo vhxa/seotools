@@ -12,7 +12,7 @@ import {
 export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   signal?: AbortSignal
   /** Rechecked before every attempt, after pacing. */
-  beforeAttempt?: () => void
+  beforeAttempt?: () => void | Promise<void>
   /** Each paired observation permits exactly one wire attempt. */
   singleAttempt?: boolean
   /**
@@ -77,7 +77,10 @@ export function createRequester(options: {
       if (signal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
       const backoff = retryBaseMs * 2 ** attempt
       try {
-        fetchOptions.beforeAttempt?.()
+        if (fetchOptions.beforeAttempt) {
+          await fetchOptions.beforeAttempt()
+          signal.throwIfAborted()
+        }
         let reported = 0
         const response = await fetcher.fetch(url, {
           ...fetchOptions,
@@ -89,15 +92,16 @@ export function createRequester(options: {
         })
         // Alternate fetchers may report only a completed body. Never miss those bytes.
         if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
-        if (!RETRYABLE_STATUS.has(response.statusCode)) return response
         const delay = parseRetryAfter(response.headers['retry-after'], Infinity)
         if (delay !== null && delay > MAX_RETRY_AFTER_MS)
           unsupportedUntil = Math.max(unsupportedUntil, Date.now() + delay)
-        if (attempt >= maxRetries && delay === null) return response
+        if (delay !== null) {
+          pausedUntil = Math.max(pausedUntil, Date.now() + Math.min(delay, MAX_RETRY_AFTER_MS))
+        }
+        if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) return response
         // The server asked to slow down: every request of the domain waits, not just this one.
-        const wait = parseRetryAfter(response.headers['retry-after']) ?? backoff
+        const wait = delay === null ? backoff : Math.min(delay, MAX_RETRY_AFTER_MS)
         pausedUntil = Math.max(pausedUntil, Date.now() + wait)
-        if (attempt >= maxRetries) return response
         log.info({ url, status: response.statusCode, wait }, 'server asked to slow down')
       } catch (error) {
         if (!(error instanceof FetchError)) throw error

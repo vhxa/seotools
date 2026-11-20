@@ -147,6 +147,8 @@ export async function runCrawl(
   const context = (headers ? createHmac('sha256', options.settingsSecret!) : createHash('sha256'))
     .update(
       JSON.stringify([
+        // Change this version if the paired extractor or identity contract changes.
+        1,
         userAgent,
         Object.entries(headers?.headers ?? {}).sort(),
         settings.ignoredParameters,
@@ -434,8 +436,28 @@ export async function runCrawl(
       result = failureResult(outcome)
     } else {
       const servedAt = new Date().toISOString()
-      ;({ result, found, sitemap } = analyse(item, outcome))
-      if (result.data?.facts) {
+      const anchors = new Set<string>()
+      const observe = (url: string, kind: CrawlLinkKind) => {
+        if ((kind === 'anchor' || kind === 'anchor-nofollow') && isInternalUrl(url, host)) {
+          anchors.add(crawlUrlHash(url))
+        }
+      }
+      ;({ result, found, sitemap } = analyse(
+        item,
+        outcome,
+        undefined,
+        undefined,
+        followLinks ? observe : undefined,
+      ))
+      if (followLinks && result.data?.facts && !outcome.truncated) {
+        // A resumed render can retain edges from an earlier fetch. Authenticate the
+        // stored graph against this response before using it as membership evidence.
+        result.data.facts.servedAnchors = {
+          count: anchors.size,
+          digest: createHash('sha256')
+            .update([...anchors].sort().join(''))
+            .digest('hex'),
+        }
         result.data.facts.requestContext = context
         result.data.facts.servedAt = servedAt
       }
@@ -720,6 +742,10 @@ export async function runCrawl(
         context,
         identity,
         requester,
+        onCancelled: () => {
+          cancelled = true
+          stop.abort()
+        },
         signal: stopSignal,
       })
     }

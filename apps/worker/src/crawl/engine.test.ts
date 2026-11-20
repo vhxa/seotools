@@ -94,6 +94,39 @@ describe('paired answers', () => {
       unknown: { 'retry-after': 1 },
     })
   })
+  it('sends exactly 24 serial, paced repeats for a larger eligible set', async () => {
+    const paths = Array.from({ length: 32 }, (_, n) => '/item?page=' + n)
+    const draws = new Set<string>()
+    const repeatTimes: number[] = []
+    const site = fakeSite({
+      'https://example.com/': html(paths.map((p) => `<a href="${p}"> item </a>`).join('')),
+      ...Object.fromEntries(
+        paths.map((p) => [
+          'https://example.com' + p,
+          () => {
+            if (draws.has(p)) repeatTimes.push(Date.now())
+            draws.add(p)
+            return html('stable')
+          },
+        ]),
+      ),
+    })
+    const { crawl } = await crawlWith(site)
+    expect(crawl.pairedSummary).toMatchObject({
+      eligible: 33,
+      selected: 24,
+      comparable: 24,
+      different: 0,
+    })
+    const repeats = site.requests.length - new Set(site.requests).size
+    expect(repeats).toBe(24)
+    // The home page may take one of the general slots. At 100/s, even the other 23
+    // cannot have been sent together. Allow for timer resolution at either endpoint.
+    expect(repeatTimes.length).toBeGreaterThanOrEqual(23)
+    expect(repeatTimes.at(-1)! - repeatTimes[0]!).toBeGreaterThanOrEqual(
+      (repeatTimes.length - 1) * 9,
+    )
+  })
   it('restarts an interrupted phase from the original records', async () => {
     const stop = new AbortController()
     const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
@@ -170,6 +203,15 @@ describe('paired answers', () => {
     expect(Buffer.byteLength(JSON.stringify(pair))).toBeLessThanOrEqual(16 * 1024)
   })
 
+  it('uses the response digest when retained edges include an older fetch', async () => {
+    const stale = 'https://example.com/stale'
+    vi.spyOn(db.crawls, 'servedAnchorBatch').mockResolvedValue([
+      { hash: crawlUrlHash(stale), url: stale },
+    ])
+    const { pair } = await run(html('<a href="/current">Current</a>'))
+    expect(pair).toMatchObject({ changed: [], unknown: null, examples: [] })
+    expect(pair?.original.html?.anchors).toMatchObject({ count: 1, hashes: [] })
+  })
   it('observes a changed footer on a short page', async () => {
     let draws = 0
     const { pair } = await run(() => html(`<footer>Offer ${++draws}</footer>`))
@@ -496,6 +538,7 @@ describe('full crawl', () => {
 
     const { crawl, summary } = await crawlWith(site)
 
+    expect(crawl.pairedSummary).toBeNull()
     expect(crawl.status).toBe('incomplete')
     expect(summary?.status).toBe('incomplete')
     expect(crawl.urlsCount).toBe(12)
@@ -661,6 +704,7 @@ describe('page issues', () => {
   it('leaves a priority crawl unanalysed: it only sees a few pages', async () => {
     await db.priorityUrls.add({ domainId, url: 'https://example.com/bare' })
     const { crawl } = await crawlWith(site(), 'priority')
+    expect(crawl.pairedSummary).toBeNull()
     expect(crawl.pagesByWorstIssue).toBeNull()
   })
 

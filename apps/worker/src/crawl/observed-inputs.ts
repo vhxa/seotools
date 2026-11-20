@@ -35,6 +35,7 @@ export const OPTIONAL_FACT_ISSUES: Record<OptionalFact, readonly PageIssueId[]> 
   servedTitleDigest: [],
   requestContext: [],
   servedAt: [],
+  servedAnchors: [],
 }
 
 /** Whether the input of each of these issues was recorded for a page, by the facts it was kept with. */

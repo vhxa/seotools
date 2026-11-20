@@ -42,6 +42,7 @@ export async function repeatAnswers(input: {
   context: string
   identity: (url: string) => string
   requester: Requester
+  onCancelled: () => void
   signal: AbortSignal
 }) {
   const { db, crawl, host, context, identity, requester, signal } = input
@@ -71,6 +72,7 @@ export async function repeatAnswers(input: {
     if (
       facts?.servedTextDigest &&
       facts.servedTitleDigest &&
+      facts.servedAnchors &&
       crawl.ref != null &&
       row.seq != null
     ) {
@@ -81,11 +83,15 @@ export async function repeatAnswers(input: {
         if (batch.length < 256) break
         after = batch[batch.length - 1]!.hash
       }
+      const stored = targets.finish()
+      const matched =
+        stored.digest === facts.servedAnchors.digest && stored.count === facts.servedAnchors.count
+      if (!matched) targets.sample.clear()
       original.html = {
         title: row.title?.slice(0, 160) ?? null,
         titleDigest: facts.servedTitleDigest,
         textDigest: facts.servedTextDigest,
-        anchors: targets.finish(),
+        anchors: matched ? stored : { ...facts.servedAnchors, hashes: [] },
       }
     }
     const pair: AnswerPair = {
@@ -103,6 +109,10 @@ export async function repeatAnswers(input: {
       const response = await requester.fetchWithRetries(row.url, {
         readBody: 'auto',
         singleAttempt: true,
+        beforeAttempt: async () => {
+          // The crawl may have been cancelled while waiting out Retry-After.
+          if ((await db.crawls.get(crawl.id))?.status !== 'running') input.onCancelled()
+        },
       })
       if (response instanceof FetchError) pair.unknown = 'transport'
       else {
