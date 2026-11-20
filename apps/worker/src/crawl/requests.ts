@@ -1,5 +1,5 @@
 /** Longest pause a `Retry-After` header can impose. */
-const MAX_RETRY_AFTER_MS = 5 * 60_000
+export const MAX_RETRY_AFTER_MS = 5 * 60_000
 
 export const RETRY_BASE_MS = 1000
 export const RETRYABLE_STATUS = new Set([429, 503])
@@ -29,7 +29,10 @@ export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /** `Retry-After` is either seconds or an HTTP date. */
-export function parseRetryAfter(value: string | undefined, maximum = MAX_RETRY_AFTER_MS): number | null {
+export function parseRetryAfter(
+  value: string | undefined,
+  maximum = MAX_RETRY_AFTER_MS,
+): number | null {
   if (!value) return null
   const seconds = Number(value)
   const ms = Number.isFinite(seconds) ? seconds * 1000 : new Date(value).getTime() - Date.now()

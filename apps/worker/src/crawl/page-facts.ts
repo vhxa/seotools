@@ -36,6 +36,22 @@ const HEAD_ELEMENTS = new Set([
 const HEAD_NOSCRIPT_ELEMENTS = new Set(['link', 'meta', 'style'])
 
 /** Where the text is not the content of the page: code, or what every page repeats. */
+const TEXT_BLOCKS = new Set([
+  'p',
+  'br',
+  'div',
+  'li',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'td',
+  'tr',
+  'section',
+  'article',
+])
 const NOT_CONTENT = new Set([
   'head',
   'title',
@@ -277,7 +293,9 @@ export class PageFactsCollector {
   private jsonLd: string | null = null
   /** The JSON-LD blocks parsed so far, for `checkStructuredData`. */
   private jsonLdBlocks: unknown[] = []
-  private readonly bodyDigest = createHash('sha256')
+  // The fetcher's decoded body cap bounds these chunks. Join parser callbacks before
+  // normalizing so entity encoding and inline markup do not change a word.
+  private readonly bodyChunks: string[] = []
   private readonly anchorLabels = new Set<string>()
   private labelChunks: string[] = []
   private textLength = 0
@@ -309,6 +327,7 @@ export class PageFactsCollector {
   }
 
   open(name: string, attributes: Record<string, string>) {
+    if (TEXT_BLOCKS.has(name)) this.bodyChunks.push(' ')
     this.trackHead(name)
     if (NOT_CONTENT.has(name)) this.notContentDepth++
     if (name === 'script' || name === 'style') this.codeDepth++
@@ -367,9 +386,8 @@ export class PageFactsCollector {
     if (this.heading) this.heading.text += chunk
     if (this.anchor && this.anchor.text.length < MAX_ANCHOR_TEXT) this.anchor.text += chunk
     if (this.notContentDepth === 0) {
-      const value = collapse(chunk)
-      if (value && this.anchorDepth) this.labelChunks.push(value)
-      else if (value) this.bodyDigest.update(value + ' ')
+      if (this.anchorDepth) this.labelChunks.push(chunk)
+      else this.bodyChunks.push(chunk)
     }
     if (this.notContentDepth === 0 && this.textLength < MAX_TEXT_CHARACTERS) {
       this.text.push(chunk)
@@ -378,6 +396,7 @@ export class PageFactsCollector {
   }
 
   close(name: string) {
+    if (TEXT_BLOCKS.has(name)) this.bodyChunks.push(' ')
     if (NOT_CONTENT.has(name) && this.notContentDepth > 0) this.notContentDepth--
     if ((name === 'script' || name === 'style') && this.codeDepth > 0) this.codeDepth--
     if (name === 'svg' && this.svgDepth > 0) this.svgDepth--
@@ -397,7 +416,7 @@ export class PageFactsCollector {
     }
     if (HEADING.test(name) && this.headingDepth > 0 && --this.headingDepth === 0) this.endHeading()
     if ((name === 'a' || name === 'area') && this.anchorDepth > 0 && --this.anchorDepth === 0) {
-      if (this.labelChunks.length) this.anchorLabels.add(this.labelChunks.join(' '))
+      if (this.labelChunks.length) this.anchorLabels.add(collapse(this.labelChunks.join('')))
       this.labelChunks = []
       this.endAnchor()
     }
@@ -415,7 +434,14 @@ export class PageFactsCollector {
     const text = collapse(this.text.join(' '))
     const words = text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word))
     const normalized = words.join(' ').toLowerCase()
-    facts.servedTextDigest = this.bodyDigest.update(JSON.stringify([...this.anchorLabels].sort())).digest('hex')
+    facts.servedTextDigest = createHash('sha256')
+      .update(
+        JSON.stringify([
+          collapse(this.bodyChunks.join('')),
+          [...this.anchorLabels].filter(Boolean).sort(),
+        ]),
+      )
+      .digest('hex')
     facts.servedTitleDigest = createHash('sha256').update(JSON.stringify(page.title)).digest('hex')
     facts.words = words.length
     facts.placeholderText = normalized.includes('lorem ipsum')

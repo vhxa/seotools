@@ -782,7 +782,11 @@ export interface CrawlRepository {
   /** Ends an active crawl, recounting its URLs. `false` if it had already ended. */
   finish(
     id: string,
-    input: { status: 'completed' | 'incomplete' | 'failed'; error?: string; observations?: {summary: PairSummary; pairs: AnswerPair[]} },
+    input: {
+      status: 'completed' | 'incomplete' | 'failed'
+      error?: string
+      observations?: { summary: PairSummary; pairs: AnswerPair[] }
+    },
   ): Promise<boolean>
   /** `false` if the crawl had already ended. */
   cancel(id: string): Promise<boolean>
@@ -805,8 +809,13 @@ export interface CrawlRepository {
   /** Adds URLs to a crawl, ignoring those it already has. */
   addUrls(crawlId: string, urls: NewCrawlUrl[]): Promise<void>
   /** URLs waiting to be requested, shallowest first. */
-  pairedCandidates(crawlId: string): Promise<{eligible: number; rows: CrawlUrl[]}>
-  servedAnchorBatch(crawlId: string, ref: number, seq: number, after: string): Promise<{hash: string; url: string}[]>
+  pairedCandidates(crawlId: string): Promise<{ eligible: number; rows: CrawlUrl[] }>
+  servedAnchorBatch(
+    crawlId: string,
+    ref: number,
+    seq: number,
+    after: string,
+  ): Promise<{ hash: string; url: string }[]>
   answerPairs(crawlId: string, sourceHashes: readonly string[]): Promise<AnswerPair[]>
   nextQueued(crawlId: string, limit: number): Promise<NewCrawlUrl[]>
   /** Every URL of the crawl, to pick up where a previous attempt left off. */

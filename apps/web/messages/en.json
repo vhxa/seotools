@@ -4199,5 +4199,28 @@
     },
     "noneObserved": "None among the pages observed completely",
     "linksUnknownGroup": "Unknown for this crawl"
+  },
+  "PairedAnswers": {
+    "title": "Paired requests",
+    "notice": "This site answered {different} of {total} checked pages differently when requested twice during this crawl.",
+    "same": "No difference observed in {total, plural, one {# paired check} other {# paired checks}}.",
+    "unavailable": "No comparable paired checks are available.",
+    "unknown": "{count, plural, one {# inconclusive check} other {# inconclusive checks}}.",
+    "pruned": "Retention removed the per-page evidence.",
+    "examples": "Show examples",
+    "changed": "The answers differed in {fields}.",
+    "status": "HTTP status",
+    "media": "media type",
+    "text": "served text",
+    "anchors": "internal anchor targets",
+    "original": "First answer",
+    "repeat": "Second answer",
+    "onlyHere": "Linked only in this answer: {url}",
+    "other": "Other media",
+    "request-context": "The request settings could not be matched.",
+    "transport": "The repeat request received no answer.",
+    "retry-after": "The server requested a longer pause than the crawl supports.",
+    "incomplete": "The complete HTML could not be compared.",
+    "titleField": "page title"
   }
 }

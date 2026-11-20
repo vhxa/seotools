@@ -22,6 +22,7 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Added
 
+- Completed full crawls check up to 24 HTML pages twice and show the measured differences in crawl and URL details.
 - Crawls record their discovery settings and the builds that queued, ran and analysed them. Administration flags workers on mixed builds and workers or web apps that do not recognize the database's migrations.
 
 ### Fixed
@@ -30,7 +31,7 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Upgrade notes
 
-- This version adds a database migration. Going back requires restoring the backup taken before updating, together with the previous image. Stop older deployments when updating, especially workers from versions that only check migrations at startup.
+- This version adds database migrations for crawl provenance and paired observations. Going back requires restoring the backup taken before updating, together with the previous image. Stop older deployments when updating, especially workers from versions that only check migrations at startup.
 
 ## [0.7.1] - 2026-11-20
 

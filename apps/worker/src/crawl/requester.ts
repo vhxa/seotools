@@ -1,6 +1,12 @@
 import type { CrawlSettings, Logger } from '@seotools/core'
 import { FetchError, type FetchedResponse, type Fetcher } from './fetcher'
-import { PERMANENT_ERRORS, RETRYABLE_STATUS, abortableSleep, parseRetryAfter } from './requests'
+import {
+  MAX_RETRY_AFTER_MS,
+  PERMANENT_ERRORS,
+  RETRYABLE_STATUS,
+  abortableSleep,
+  parseRetryAfter,
+} from './requests'
 
 /** What a request can ask for besides its URL: the fetcher's options, except who can stop it. */
 export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
@@ -61,9 +67,10 @@ export function createRequester(options: {
     const signal = fetchOptions.signal
       ? AbortSignal.any([stopSignal, fetchOptions.signal])
       : stopSignal
-    const maxRetries = !singleAttempt && ['GET', 'HEAD', 'OPTIONS'].includes(fetchOptions.method ?? 'GET')
-      ? settings.maxRetries
-      : 0
+    const maxRetries =
+      !singleAttempt && ['GET', 'HEAD', 'OPTIONS'].includes(fetchOptions.method ?? 'GET')
+        ? settings.maxRetries
+        : 0
     for (let attempt = 0; ; attempt++) {
       await (paced ? waitForSlot(signal) : waitForPause(signal))
       if (signal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
@@ -82,8 +89,8 @@ export function createRequester(options: {
         // Alternate fetchers may report only a completed body. Never miss those bytes.
         if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
         if (!RETRYABLE_STATUS.has(response.statusCode)) return response
-        const delay = parseRetryAfter(response.headers['retry-after'],Infinity)
-        if (delay !== null && delay > 300_000) unsupportedUntil = Date.now()+delay
+        const delay = parseRetryAfter(response.headers['retry-after'], Infinity)
+        if (delay !== null && delay > MAX_RETRY_AFTER_MS) unsupportedUntil = Date.now() + delay
         if (attempt >= maxRetries && delay === null) return response
         // The server asked to slow down: every request of the domain waits, not just this one.
         const wait = parseRetryAfter(response.headers['retry-after']) ?? backoff

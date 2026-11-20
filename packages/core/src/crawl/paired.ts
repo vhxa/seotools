@@ -55,19 +55,39 @@ export function discoveryLinkVaried(input: {
   comparableCompletedCrawls: boolean
   discoveredCrawlId: string
   missingCrawlId: string
-  discovery: { crawlId: string; sourceHash: string; targetHash: string; kind: string; rendered: boolean } | null
+  discovery: {
+    crawlId: string
+    sourceHash: string
+    targetHash: string
+    kind: string
+    rendered: boolean
+  } | null
   missing: { crawlId: string; pair: AnswerPair } | null
   targetHash: string
 }): boolean {
   const { discovery, missing, targetHash } = input
-  if (!input.comparableCompletedCrawls || !discovery || !missing ||
-      input.discoveredCrawlId === input.missingCrawlId ||
-      discovery.crawlId !== input.discoveredCrawlId || missing.crawlId !== input.missingCrawlId ||
-      discovery.rendered || !['anchor', 'anchor-nofollow'].includes(discovery.kind) ||
-      discovery.targetHash !== targetHash || discovery.sourceHash !== missing.pair.sourceHash ||
-      missing.pair.unknown || !missing.pair.changed.includes('anchors')) return false
+  if (
+    !input.comparableCompletedCrawls ||
+    !discovery ||
+    !missing ||
+    input.discoveredCrawlId === input.missingCrawlId ||
+    discovery.crawlId !== input.discoveredCrawlId ||
+    missing.crawlId !== input.missingCrawlId ||
+    discovery.rendered ||
+    !['anchor', 'anchor-nofollow'].includes(discovery.kind) ||
+    discovery.targetHash !== targetHash ||
+    discovery.sourceHash !== missing.pair.sourceHash ||
+    missing.pair.unknown ||
+    !missing.pair.changed.includes('anchors')
+  )
+    return false
   const before = missing.pair.original.html?.anchors
   const after = missing.pair.repeat?.html?.anchors
-  return !!before && !!after && before.count === before.hashes.length &&
-    !before.hashes.includes(targetHash) && after.hashes.includes(targetHash)
+  return (
+    !!before &&
+    !!after &&
+    before.count === before.hashes.length &&
+    !before.hashes.includes(targetHash) &&
+    after.hashes.includes(targetHash)
+  )
 }

@@ -356,11 +356,6 @@ export const crawlUrls = pgTable(
   ],
 )
 
-/**
- * Which URL of a crawl links to which, how, and where in the page (`LinkContext`). The URLs are
- * their `seq` in the crawl and the crawl its `ref`, so that the most numerous rows of the database
- * stay small. One row per source, target and kind: the first occurrence in the page.
- */
 export const crawlAnswerPairs = pgTable(
   'crawl_answer_pairs',
   {
@@ -370,10 +365,18 @@ export const crawlAnswerPairs = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.crawlId, t.sourceHash] }),
-    foreignKey({ columns: [t.crawlId, t.sourceHash], foreignColumns: [crawlUrls.crawlId, crawlUrls.urlHash] }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.crawlId, t.sourceHash],
+      foreignColumns: [crawlUrls.crawlId, crawlUrls.urlHash],
+    }).onDelete('cascade'),
   ],
 )
 
+/**
+ * Which URL of a crawl links to which, how, and where in the page (`LinkContext`). The URLs are
+ * their `seq` in the crawl and the crawl its `ref`, so that the most numerous rows of the database
+ * stay small. One row per source, target and kind: the first occurrence in the page.
+ */
 export const crawlUrlLinks = pgTable(
   'crawl_url_links',
   {

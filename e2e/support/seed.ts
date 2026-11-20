@@ -53,11 +53,27 @@ export async function seed(): Promise<Database> {
     trigger: 'manual',
   })
   if (!started) throw new Error('the seed crawl did not start')
+  let draws = 0
   await runCrawl(started.id, {
     db,
     log: createLogger('e2e-seed', 'silent'),
     signal: new AbortController().signal,
-    createFetcher: fakeSite(website, 0).createFetcher,
+    createFetcher: fakeSite(
+      {
+        ...website,
+        [`${SITE}/products?sort=price`]: () =>
+          page('/products?sort=price', {
+            canonical: `${SITE}/products`,
+            ...(draws++
+              ? {
+                  title: 'A different product listing',
+                  links: '<a href="/special">Special offer</a>',
+                }
+              : {}),
+          }),
+      },
+      0,
+    ).createFetcher,
     retryBaseMs: 1,
   })
   const crawl = await db.crawls.get(started.id)

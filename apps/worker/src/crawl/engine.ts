@@ -1,6 +1,6 @@
 import { getWorkerBuildInfo } from '../build-info'
-import {createHmac,createHash} from 'node:crypto'
-import {repeatAnswers} from './paired'
+import { createHmac, createHash } from 'node:crypto'
+import { repeatAnswers } from './paired'
 import { createRenderResourceCache } from '../render/cache'
 import { RENDER_LIMITS } from '../render/limits'
 import type { RenderService } from '../render/service'
@@ -144,8 +144,15 @@ export async function runCrawl(
   const userAgent = settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion)
   // A restart can change credentials or the build's default User-Agent. A keyed fingerprint
   // permits a repeat only under the same settings without retaining credentials.
-  const context = (headers ? createHmac('sha256',options.settingsSecret!) : createHash('sha256'))
-    .update(JSON.stringify([userAgent, Object.entries(headers?.headers ?? {}).sort(),settings.ignoredParameters])).digest('hex')
+  const context = (headers ? createHmac('sha256', options.settingsSecret!) : createHash('sha256'))
+    .update(
+      JSON.stringify([
+        userAgent,
+        Object.entries(headers?.headers ?? {}).sort(),
+        settings.ignoredParameters,
+      ]),
+    )
+    .digest('hex')
   const fetcher = options.createFetcher({
     siteHeaders: headers,
     userAgent,
@@ -706,7 +713,15 @@ export async function runCrawl(
       filesCapped = fresh.capped
     }
     if (followLinks && !truncated && !fatal && !stopSignal.aborted) {
-      observations = await repeatAnswers({ db, crawl, host, context, identity, requester, signal:stopSignal })
+      observations = await repeatAnswers({
+        db,
+        crawl,
+        host,
+        context,
+        identity,
+        requester,
+        signal: stopSignal,
+      })
     }
   } catch (error) {
     if (error instanceof BrowserWaitExpiredError) fatal = error

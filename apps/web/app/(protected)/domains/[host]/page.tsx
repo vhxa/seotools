@@ -1,3 +1,4 @@
+import { PairedNotice } from '@/components/crawl/paired-answers'
 import { Incidents } from '@/components/incidents'
 import { auditResultsState } from '@seotools/core/crawl/audit'
 import { compareWithPrevious } from '@seotools/db'
@@ -139,6 +140,7 @@ export default async function DomainDashboardPage({
 
       <AuditResultsNotice host={domain.host} state={state} />
 
+      {!!latest?.pairedSummary?.different && <PairedNotice host={host} crawl={latest} />}
       <section aria-labelledby="figures" className="@container grid gap-3">
         <h2 id="figures" className="sr-only">
           {t('figures')}
