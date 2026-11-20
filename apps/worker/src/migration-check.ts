@@ -1,5 +1,5 @@
 import type { Logger } from '@seotools/core'
-import { UnknownMigrationError, type Database } from '@seotools/db'
+import { isUnknownMigrationError, type Database } from '@seotools/db'
 
 const CHECK_INTERVAL_MS = 30_000
 
@@ -16,7 +16,7 @@ export function createMigrationCheck(db: Pick<Database, 'checkMigrations'>, log:
       canWork = true
     } catch (err) {
       canWork = false
-      outdated = err instanceof UnknownMigrationError
+      outdated = isUnknownMigrationError(err)
       if (outdated) log.error({ err }, 'worker is outdated and will no longer start work')
       else log.error({ err }, 'could not check migrations; pausing new work until the next check')
     }

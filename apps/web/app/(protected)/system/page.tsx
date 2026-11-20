@@ -1,5 +1,5 @@
 import { buildIdentity, type BuildInfo, type JobStatus } from '@seotools/core'
-import { UnknownMigrationError } from '@seotools/db'
+import { isUnknownMigrationError } from '@seotools/db'
 import { getFormatter, getNow, getTranslations } from 'next-intl/server'
 import { ChevronRightIcon, PauseIcon, TriangleAlertIcon } from 'lucide-react'
 import { AutoRefresh } from '@/components/auto-refresh'
@@ -52,7 +52,7 @@ export default async function SystemPage() {
     db.checkMigrations().then(
       () => false,
       (error: unknown) => {
-        if (error instanceof UnknownMigrationError) return true
+        if (isUnknownMigrationError(error)) return true
         console.error('Could not check database migrations for the Status page', error)
         return false
       },
