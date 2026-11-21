@@ -896,6 +896,36 @@
     "characters": "({count} characters)",
     "self": "Self",
     "discovery": "How it was found",
+    "discoveryChain": {
+      "step": "<subject></subject> {relation} <target></target>",
+      "intro": "One step at a time, from where the crawl started to this URL.",
+      "thatUrl": "That URL",
+      "thisUrl": "this URL",
+      "earlierMissing": "Earlier steps: not recorded.",
+      "howMissing": "how it led here: not recorded",
+      "contextMissing": "link text and position: not recorded",
+      "relations": {
+        "anchor": "links to",
+        "anchor-nofollow": "links, marked nofollow, to",
+        "canonical": "declares as its canonical URL",
+        "hreflang": "declares as an hreflang alternate",
+        "head-link": "has a link in its head to",
+        "script": "loads the script",
+        "style": "loads the stylesheet",
+        "image": "shows the image",
+        "media": "embeds the media file",
+        "frame": "embeds the frame",
+        "form": "has a form that submits to",
+        "meta": "points to, in a meta tag,",
+        "structured-data": "mentions in its structured data",
+        "http-header": "points to in an HTTP header",
+        "redirect": "redirects to",
+        "sitemap": "lists",
+        "llms": "lists in llms.txt",
+        "other": "refers to",
+        "unknown": "led to"
+      }
+    },
     "tabs": {
       "findings": "Findings",
       "links": "Links",
@@ -943,6 +973,18 @@
       "empty": "The crawl recorded no links from this URL.",
       "unread": "The crawl did not read this URL, so what it links to is not known.",
       "note": "A URL counts once for each type of link this page uses to point at it, however many times it repeats it."
+    },
+    "viaRedirects": {
+      "title": "Through redirects",
+      "count": "{count, plural, one {# URL redirects here} other {# URLs redirect here}}",
+      "note": "These URLs redirect to this one. The links under each point to the redirecting URL, not to this one: people and crawlers only get here because the redirect sends them on.",
+      "noLinks": "No page of this crawl links to it.",
+      "more": "and {count, plural, one {# more link} other {# more links}}: open the redirecting URL to see them all",
+      "errors": {
+        "unavailable": "These links cannot be shown: the crawl is not available.",
+        "pruned": "The results of this crawl were removed, so its links are no longer stored.",
+        "failed": "The links could not be loaded. Try again."
+      }
     },
     "count": "{count, plural, one {# link} other {# links}}",
     "groupsLabel": "Types of link",
@@ -2302,6 +2344,7 @@
     "add": "Add"
   },
   "IssueCatalog": {
+    "notLookedFor": "Not looked for: this crawl did not render pages",
     "noFindings": "No findings recorded; applicability may be incomplete",
     "unavailable": "Not checkable: indexing data unavailable",
     "groups": {
@@ -3701,27 +3744,43 @@
       "development": "development build",
       "unrecorded": "not recorded",
       "multiple": "multiple builds",
-      "version": "Version: {version}",
+      "version": "{version}",
       "withUnrecordedRun": "{version} (earlier run not recorded)",
-      "withDifferentAnalysis": "Version: {version} · Analysed by a different build ({analysis})",
-      "withAnalysis": "Version: {version} · Analysis: {analysis}"
+      "withDifferentAnalysis": "{version} · analysed by a different build ({analysis})",
+      "withAnalysis": "{version} · analysis: {analysis}"
     },
     "metaTitle": "Crawls · {host} · seotools",
     "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the rules it was analysed with, and its results per URL until the retention setting removes them.",
     "columns": {
-      "crawl": "Crawl",
-      "results": "Results",
-      "found": "Found",
-      "findings": "Pages with findings",
-      "rules": "Rules"
+      "date": "Date",
+      "started": "Started by",
+      "mode": "Mode",
+      "state": "State",
+      "pages": "Pages",
+      "pagesHelp": "HTML pages that answered successfully. The URLs of the crawl, pages and anything else it found, are in its details.",
+      "findings": "Issues · Warnings",
+      "findingsHelp": "Pages with at least one issue, then pages with at least one warning. Opportunities are in the details.",
+      "actions": "Actions"
     },
     "trigger": {
       "manual": "Manual",
       "schedule": "Scheduled"
     },
     "latest": "Latest",
-    "found": "{pages} pages · {urls} URLs · {external} external",
-    "findings": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
+    "cancelledNotAnalysed": "Cancelled — not analysed",
+    "details": {
+      "open": "Details",
+      "close": "Close",
+      "started": "Started",
+      "finished": "Finished",
+      "version": "Version",
+      "urls": "URLs found",
+      "external": "External URLs",
+      "opportunities": "Pages with opportunities",
+      "results": "Results per URL",
+      "rules": "Rules",
+      "rendering": "Rendering"
+    },
     "view": "View",
     "compareWithPrevious": "Compare with previous",
     "retention": "How many crawls keep their results per URL is set in the crawl settings; older ones keep only their totals.",
@@ -3747,10 +3806,13 @@
       "hint": "One URL per line, up to 1000; links are not followed.",
       "start": "Start list crawl"
     },
-    "started": "Started {when}",
-    "finished": "Finished {when}",
     "requestCredentialsUnavailable": "The request credentials configured when this crawl was queued are no longer available.",
-    "browserUnavailable": "The rendering browser was unavailable for the crawl’s recovery limit."
+    "browserUnavailable": "The rendering browser was unavailable for the crawl’s recovery limit.",
+    "sections": {
+      "run": "Run",
+      "found": "What it found",
+      "analysis": "Analysis"
+    }
   },
   "Schedules": {
     "metaTitle": "Schedules · {host} · seotools",
@@ -3790,9 +3852,9 @@
   "Structure": {
     "metaTitle": "Structure · {host} · seotools",
     "title": "Structure",
-    "description": "The directories of the last full crawl and what is in each: pages, errors and pages with findings.",
+    "description": "The directories of the last full crawl and what is in each: pages, the findings on them and the URLs that failed.",
     "noCrawl": "The structure appears here once the domain has been crawled.",
-    "notChecked": "The last full crawl has not been checked for findings, so only pages and errors are counted. Run a new full crawl to see them here.",
+    "notChecked": "The last full crawl has not been checked for findings, so only pages and failing URLs are counted. Run a new full crawl to see them here.",
     "findingsHidden": "Findings are not shown while the analysis does not reflect the current audit configuration.",
     "incomplete": "The last crawl stopped at its URL limit after {urls, number} URLs: these counts do not cover the whole site.",
     "tree": "Directories",
@@ -3800,7 +3862,10 @@
     "breadcrumb": "Directory",
     "directory": "Directory",
     "columns": {
-      "errors": "Errors",
+      "pages": "Pages",
+      "pagesHelp": "Pages: HTML that answered with a 2xx status. Redirects, files and URLs that failed are not pages.",
+      "errors": "Failing URLs",
+      "errorsHelp": "Every URL in the directory that failed (4xx, 5xx or no answer), not only pages: it includes references such as hreflang targets, images or scripts. It is not comparable with the Pages column.",
       "issue": "Pages with issues",
       "warning": "Pages with warnings",
       "opportunity": "Pages with opportunities"
@@ -4214,6 +4279,7 @@
         "html": "Read the served HTML only: no page was opened in a browser.",
         "rendered": "Pages were opened in a browser that ran their JavaScript."
       },
+      "cancelledNotAnalysed": "Cancelled — not analysed",
       "coverageUnknown": "Coverage not analysed yet",
       "coverageNotRecorded": "Coverage not recorded",
       "allObserved": "All pages observed completely",
@@ -4252,6 +4318,9 @@
     "transport": "The repeat request received no answer.",
     "retry-after": "The server requested a longer pause than the crawl supports.",
     "incomplete": "The complete HTML could not be compared.",
-    "titleField": "page title"
+    "titleField": "page title",
+    "loadingExamples": "Loading examples",
+    "examplesUnavailable": "The examples could not be loaded.",
+    "examplesTitle": "Examples"
   }
 }

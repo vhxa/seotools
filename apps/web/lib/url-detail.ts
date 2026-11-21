@@ -20,6 +20,7 @@ import {
   type RecheckPreviewSource,
   type RecheckView,
 } from './recheck'
+import { loadRedirectLinks, type RedirectLinksPage } from './redirect-links'
 import { loadUrlLinks, type UrlLinksPage } from './url-links'
 import { RENDER_DETAIL_SAMPLE, renderViewOf, type RenderView } from './url-rendering'
 
@@ -49,7 +50,7 @@ export interface UrlDetailData {
    * The first page of the links that arrive at this URL and of those that leave it, navigation
    * links as a list opens on. The rest is read a page at a time (`loadLinksAction`).
    */
-  links: { in: UrlLinksPage; out: UrlLinksPage }
+  links: { in: UrlLinksPage; out: UrlLinksPage; viaRedirects: RedirectLinksPage }
   priority: boolean
   /** What the crawl's JavaScript rendering observed of this URL, or why it did not. */
   rendering: {
@@ -123,6 +124,7 @@ export async function loadUrlDetail(input: {
     config,
     linksIn,
     linksOut,
+    viaRedirects,
     priorities,
     verified,
     finishedPreview,
@@ -137,6 +139,7 @@ export async function loadUrlDetail(input: {
     db.audit.config(domainId),
     loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'in' }),
     loadUrlLinks(db.crawls, { crawlId: crawl.id, urlHash, direction: 'out' }),
+    loadRedirectLinks(db.crawls, { crawlId: crawl.id, urlHash }),
     db.priorityUrls.list(domainId),
     db.verifications.latestFor(domainId, [urlHash]),
     db.verifications.latestFinishedFor(domainId, urlHash),
@@ -183,7 +186,7 @@ export async function loadUrlDetail(input: {
     accepted,
     acceptedElsewhere,
     evidenceUrls,
-    links: { in: linksIn, out: linksOut },
+    links: { in: linksIn, out: linksOut, viaRedirects },
     priority: priorities.some((p) => p.urlHash === urlHash),
     rendering: { view: rendering, links: renderedLinks, known: redirectKnown },
     audit: audit[0] ?? null,

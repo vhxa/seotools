@@ -87,11 +87,13 @@ export function RenderingSummary({
           <div className="grid gap-1 text-sm">
             {coverage === null ? (
               <p className="text-muted-foreground">
-                {t(
-                  coverageGapOf(crawl) === 'not-analysed'
-                    ? 'coverageUnknown'
-                    : 'coverageNotRecorded',
-                )}
+                {crawl.status === 'cancelled'
+                  ? t('stamp.cancelledNotAnalysed')
+                  : t(
+                      coverageGapOf(crawl) === 'not-analysed'
+                        ? 'coverageUnknown'
+                        : 'coverageNotRecorded',
+                    )}
               </p>
             ) : coverage.unobserved === 0 ? (
               <p>{t('allObserved')}</p>

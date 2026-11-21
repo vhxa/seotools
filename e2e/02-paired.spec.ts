@@ -14,9 +14,9 @@ test('opens the paired answers from a completed crawl', async ({ page }) => {
   ).toBeVisible()
   if (screenshots) await page.screenshot({ path: join(screenshots, 'overview.png') })
   await page.goto(`/domains/${HOST}/crawls`)
-  await page.getByText('Paired requests', { exact: true }).last().click()
-  await page.getByText('Show examples', { exact: true }).click()
-  const link = page.getByRole('link', {
+  await page.getByRole('button', { name: 'Details' }).click()
+  await expect(page.getByRole('dialog').getByText('Paired requests', { exact: true })).toBeVisible()
+  const link = page.getByRole('dialog').getByRole('link', {
     name: 'https://example.com/products?sort=price',
     exact: true,
   })
@@ -37,9 +37,11 @@ test('opens the paired answers from a completed crawl', async ({ page }) => {
 
 test('retains the measured total after removing page evidence', async ({ page }) => {
   await page.goto(`/domains/${RENDERED_HOST}/crawls`)
-  const row = page.getByRole('row').filter({ hasText: 'Results pruned' })
-  await row.getByText('Paired requests', { exact: true }).click()
-  await expect(row.getByText('No difference observed in 1 paired check.')).toBeVisible()
-  await expect(row.getByText('Retention removed the per-page evidence.')).toBeVisible()
-  await expect(row.getByText('Show examples')).toHaveCount(0)
+  // The older crawl of the domain is the one whose results were pruned.
+  await page.getByRole('button', { name: 'Details' }).last().click()
+  const details = page.getByRole('dialog')
+  await expect(details.getByText('Results pruned')).toBeVisible()
+  await expect(details.getByText('No difference observed in 1 paired check.')).toBeVisible()
+  await expect(details.getByText('Retention removed the per-page evidence.')).toBeVisible()
+  await expect(details.getByText('Examples', { exact: true })).toHaveCount(0)
 })

@@ -264,8 +264,15 @@ test('the Crawls area lists the crawls, with the run actions and its own section
   const crawls = page.getByRole('table')
   await expect(crawls.getByText('Full crawl').first()).toBeVisible()
   await expect(crawls.getByText('completed')).toBeVisible()
-  await expect(crawls.getByText('Version: development build', { exact: true })).toBeVisible()
   await expect(crawls.getByRole('link', { name: 'View', exact: true })).toBeVisible()
+  // Everything else about the crawl is in its details, in a drawer that opens at once.
+  await crawls.getByRole('button', { name: 'Details' }).click()
+  const details = page.getByRole('dialog')
+  await expect(details.getByText('Version', { exact: true })).toBeVisible()
+  await expect(details.getByText('development build', { exact: true })).toBeVisible()
+  await expect(details.getByRole('heading', { name: 'Run' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(details).toHaveCount(0)
 
   // One entry in the sidebar, and tabs in the page.
   const sidebar = page.getByRole('navigation', { name: 'Main' })
@@ -622,7 +629,9 @@ test('a rendered crawl of over a thousand pages shows its number and coverage in
   await expect(block.getByText('None', { exact: true })).toHaveCount(0)
 
   await page.goto(`/domains/${RENDERED_HOST}/crawls`)
+  // The short row says the crawl was rendered; the coverage is in its details.
   const row = page.getByRole('row').filter({ hasText: 'Rendered' }).first()
-  await expect(row.getByText(`${unobserved} pages not observed completely`)).toBeVisible()
-  await expect(row.getByText('Coverage not analysed yet')).toHaveCount(0)
+  await row.getByRole('button', { name: 'Details' }).click()
+  await expect(page.getByText(`${unobserved} pages not observed completely`)).toBeVisible()
+  await expect(page.getByText('Coverage not analysed yet')).toHaveCount(0)
 })

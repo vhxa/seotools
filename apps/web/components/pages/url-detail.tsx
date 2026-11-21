@@ -21,6 +21,7 @@ import {
 import { AuditResultsNotice } from '@/components/audit/audit-notice'
 import { AcceptedFindings } from '@/components/pages/accepted-findings'
 import { Disclosure } from '@/components/pages/disclosure'
+import { DiscoveryChain } from '@/components/pages/discovery-chain'
 import { FindingHelp } from '@/components/pages/finding-help'
 import { RecheckButton } from '@/components/verification/recheck-button'
 import { UrlAuditActions } from '@/components/audit/url-audit-actions'
@@ -30,6 +31,7 @@ import { StatusCell } from '@/components/crawl/status-cell'
 import { IssueEvidenceView } from '@/components/pages/issue-evidence'
 import { IssueDetails, IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { UrlSharePreview } from '@/components/pages/share-preview'
+import { RedirectLinksPanel } from '@/components/pages/redirect-links-panel'
 import { UrlLinks } from '@/components/pages/url-links'
 import { UrlRendering } from '@/components/pages/url-rendering'
 import { UrlRecheck } from '@/components/verification/url-recheck'
@@ -39,6 +41,7 @@ import { documentFindingsState, groupDetailFindings } from '@/lib/url-detail-fin
 import { ruleRefsOf } from '@/lib/audit-rules'
 import { sharePreview } from '@/lib/share-preview'
 import { formatBytes } from '@/lib/format'
+import { hrefPattern } from '@/lib/url-links'
 import type { UrlDetailData } from '@/lib/url-detail'
 
 function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
@@ -116,8 +119,6 @@ export async function UrlDetail({
     ? await (await getDb()).crawls.answerPairs(crawl.id, [url.urlHash])
     : []
   const discovery = await (await getDb()).crawls.discoveryPath(crawl.id, url.urlHash)
-  const tKinds = await getTranslations('LinkKinds')
-  const tRegions = await getTranslations('LinkRegions')
   const extracted = Object.entries(url.data?.extracted ?? {})
   const notSet = <span className="text-muted-foreground">{t('notSet')}</span>
   const text = (value: string | null | undefined) => (value ? value : notSet)
@@ -315,29 +316,7 @@ export async function UrlDetail({
 
       {discovery.length > 1 && (
         <Section title={t('discovery')}>
-          <ol className="grid gap-2 text-sm">
-            {discovery.map((step) => (
-              <li key={step.urlHash} className="min-w-0">
-                {step.foundKind && (
-                  <span className="mr-2 text-muted-foreground">{tKinds(step.foundKind)}</span>
-                )}
-                <a className="break-all underline" href={hrefFor(step.urlHash)}>
-                  {step.url}
-                </a>
-                {step.context && (
-                  <span className="block text-xs text-muted-foreground">
-                    {[
-                      step.context.text ? `“${step.context.text}”` : undefined,
-                      step.context.element,
-                      step.context.region ? tRegions(step.context.region) : undefined,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ol>
+          <DiscoveryChain host={host} steps={discovery} hrefFor={hrefFor} />
         </Section>
       )}
       <Tabs defaultValue="findings" className="min-w-0">
@@ -569,6 +548,17 @@ export async function UrlDetail({
           <div id="inbound-links">
             <UrlLinks host={host} data={data} direction="in" hrefFor={hrefFor} />
           </div>
+          {data.links.viaRedirects.total > 0 && (
+            <RedirectLinksPanel
+              // A different URL or crawl is a different list, not the same one with other props.
+              key={`${crawl.id}:${url.urlHash}:redirects`}
+              host={host}
+              crawlId={crawl.id}
+              urlHash={url.urlHash}
+              initial={data.links.viaRedirects}
+              hrefs={hrefPattern(hrefFor)}
+            />
+          )}
           <UrlLinks host={host} data={data} direction="out" hrefFor={hrefFor} />
         </TabsContent>
       </Tabs>
