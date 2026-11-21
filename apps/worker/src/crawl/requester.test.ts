@@ -124,3 +124,37 @@ it('paces ordinary dispatch after a repeat has a slow cancellation check', async
   ])
   expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(49)
 })
+
+it('honours a pending answer when a second request is queued in the same turn', async () => {
+  vi.useFakeTimers()
+  try {
+    let resolveFirst!: (response: FetchedResponse) => void
+    const pending = new Promise<FetchedResponse>((resolve) => {
+      resolveFirst = resolve
+    })
+    const times: number[] = []
+    const requester = createRequester({
+      fetcher: {
+        close() {},
+        fetch() {
+          times.push(Date.now())
+          return times.length === 1 ? pending : Promise.resolve(answer)
+        },
+      },
+      settings: { requestsPerSecond: 20, maxRetries: 0 },
+      signal: new AbortController().signal,
+      retryBaseMs: 0,
+      log: createLogger('test', 'silent'),
+    })
+    const first = requester.fetchWithRetries('https://site.test/a', {})
+    await vi.advanceTimersByTimeAsync(50)
+    const received = Date.now()
+    resolveFirst({ ...answer, headers: { 'retry-after': '1' } })
+    const second = requester.fetchWithRetries('https://site.test/b', {})
+    await vi.advanceTimersByTimeAsync(1000)
+    await Promise.all([first, second])
+    expect(times[1]! - received).toBeGreaterThanOrEqual(1000)
+  } finally {
+    vi.useRealTimers()
+  }
+})

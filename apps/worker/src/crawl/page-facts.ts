@@ -327,8 +327,9 @@ export class PageFactsCollector {
   private excludedTextDepth = 0
   private readonly visibleChunks: string[] = []
   // Two neighbouring labels are separate words even when their tags touch.
-  private adjacentLabel = false
-  private separateLabel = false
+  private labelSequence = 0
+  private currentLabel = 0
+  private previousTextLabel = 0
   private textLength = 0
   private readonly text: string[] = []
   private readonly invalidHead = new Set<string>()
@@ -358,11 +359,12 @@ export class PageFactsCollector {
   }
 
   open(name: string, attributes: Record<string, string>) {
-    if (!this.excludedTextDepth && TEXT_BLOCKS.has(name)) {
-      this.visibleChunks.push(' ')
+    if (this.excludedTextDepth || NOT_SERVED_TEXT.has(name) || attributes.hidden !== undefined) {
+      this.excludedTextDepth++
+    } else {
+      if (TEXT_BLOCKS.has(name)) this.visibleChunks.push(' ')
+      if (name === 'a') this.currentLabel = ++this.labelSequence
     }
-    if (NOT_SERVED_TEXT.has(name)) this.excludedTextDepth++
-    if (name === 'a') this.separateLabel = this.adjacentLabel
     this.trackHead(name)
     if (NOT_CONTENT.has(name)) this.notContentDepth++
     if (name === 'script' || name === 'style') this.codeDepth++
@@ -421,10 +423,14 @@ export class PageFactsCollector {
     if (this.heading) this.heading.text += chunk
     if (this.anchor && this.anchor.text.length < MAX_ANCHOR_TEXT) this.anchor.text += chunk
     if (!this.excludedTextDepth) {
-      if (this.separateLabel) this.visibleChunks.push(' ')
+      if (
+        this.currentLabel &&
+        this.previousTextLabel &&
+        this.currentLabel !== this.previousTextLabel
+      )
+        this.visibleChunks.push(' ')
       this.visibleChunks.push(chunk)
-      this.separateLabel = false
-      this.adjacentLabel = false
+      this.previousTextLabel = this.currentLabel
     }
     if (this.notContentDepth === 0 && this.textLength < MAX_TEXT_CHARACTERS) {
       this.text.push(chunk)
@@ -433,14 +439,11 @@ export class PageFactsCollector {
   }
 
   close(name: string) {
-    if (!this.excludedTextDepth && TEXT_BLOCKS.has(name)) {
-      this.visibleChunks.push(' ')
+    if (this.excludedTextDepth) this.excludedTextDepth--
+    else {
+      if (TEXT_BLOCKS.has(name)) this.visibleChunks.push(' ')
+      if (name === 'a') this.currentLabel = 0
     }
-    if (name === 'a' && !this.excludedTextDepth) {
-      this.adjacentLabel = true
-      this.separateLabel = false
-    }
-    if (NOT_SERVED_TEXT.has(name) && this.excludedTextDepth > 0) this.excludedTextDepth--
     if (NOT_CONTENT.has(name) && this.notContentDepth > 0) this.notContentDepth--
     if ((name === 'script' || name === 'style') && this.codeDepth > 0) this.codeDepth--
     if (name === 'svg' && this.svgDepth > 0) this.svgDepth--
@@ -477,7 +480,12 @@ export class PageFactsCollector {
     const words = text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word))
     const normalized = words.join(' ').toLowerCase()
     facts.servedTextDigest = createHash('sha256')
-      .update(this.visibleChunks.join('').replace(/[\s\p{White_Space}]+/gu, ' ').trim())
+      .update(
+        this.visibleChunks
+          .join('')
+          .replace(/[\s\p{White_Space}]+/gu, ' ')
+          .trim(),
+      )
       .digest('hex')
     facts.servedTitleDigest = createHash('sha256').update(JSON.stringify(page.title)).digest('hex')
     facts.words = words.length

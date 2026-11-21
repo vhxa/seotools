@@ -179,7 +179,8 @@ export async function fetchCrawlFiles(input: {
     url: string,
     options: { readBody?: 'auto' | 'force'; maxBytes?: number },
   ): Promise<FetchedResponse | FetchError> {
-    if (input.requester) return input.requester.fetchWithRetries(url, options)
+    if (input.requester)
+      return input.requester.fetchWithRetries(url, { ...options, stopOnExcessiveDelay: true })
     for (let attempt = 0; ; attempt++) {
       await abortableSleep(interval, signal)
       if (signal.aborted) throw new DOMException('Refresh stopped', 'AbortError')

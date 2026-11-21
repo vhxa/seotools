@@ -8,6 +8,8 @@ import {
   parseRetryAfter,
 } from './requests'
 
+export class ExcessiveRetryAfterError extends Error {}
+
 /** What a request can ask for besides its URL: the fetcher's options, except who can stop it. */
 export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   signal?: AbortSignal
@@ -15,6 +17,7 @@ export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   beforeAttempt?: () => void | Promise<void>
   /** Each paired observation permits exactly one wire attempt. */
   singleAttempt?: boolean
+  stopOnExcessiveDelay?: boolean
   /**
    * `false`: not held to the requests per second (a rendered page's resources, which their own
    * parallelism bounds). A server that asked to slow down still holds it.
@@ -47,31 +50,42 @@ export function createRequester(options: {
   let unsupportedUntil = retryAfterUntil > Date.now() + MAX_RETRY_AFTER_MS ? retryAfterUntil : 0
   let pausedUntil = Math.min(retryAfterUntil, Date.now() + MAX_RETRY_AFTER_MS)
 
-  async function waitForSlot(
+  async function dispatch<T>(
+    send: () => Promise<T>,
     signal = stopSignal,
     paced = true,
     beforeAttempt?: RequestOptions['beforeAttempt'],
+    stopOnExcessiveDelay = false,
   ) {
     for (;;) {
       signal.throwIfAborted()
+      if (stopOnExcessiveDelay && Date.now() < unsupportedUntil)
+        throw new ExcessiveRetryAfterError()
       const wait = Math.max(paced ? nextSlot : 0, pausedUntil) - Date.now()
       if (wait > 0) {
         await abortableSleep(wait, signal)
         continue
       }
-      if (beforeAttempt) {
-        await beforeAttempt()
-        signal.throwIfAborted()
-        if (Date.now() < Math.max(paced ? nextSlot : 0, pausedUntil)) continue
-      }
-      if (paced) nextSlot = Date.now() + interval
-      return
+      await beforeAttempt?.()
+      signal.throwIfAborted()
+      if (stopOnExcessiveDelay && Date.now() < unsupportedUntil)
+        throw new ExcessiveRetryAfterError()
+      const now = Date.now()
+      if (now < Math.max(paced ? nextSlot : 0, pausedUntil)) continue
+      if (paced) nextSlot = now + interval
+      return send()
     }
   }
 
   async function fetchWithRetries(
     url: string,
-    { paced = true, singleAttempt = false, ...fetchOptions }: RequestOptions,
+    {
+      paced = true,
+      singleAttempt = false,
+      beforeAttempt,
+      stopOnExcessiveDelay,
+      ...fetchOptions
+    }: RequestOptions,
   ): Promise<FetchedResponse | FetchError> {
     const signal = fetchOptions.signal
       ? AbortSignal.any([stopSignal, fetchOptions.signal])
@@ -80,35 +94,44 @@ export function createRequester(options: {
       !singleAttempt && ['GET', 'HEAD', 'OPTIONS'].includes(fetchOptions.method ?? 'GET')
         ? settings.maxRetries
         : 0
+    async function send() {
+      let reported = 0
+      const response = await fetcher.fetch(url, {
+        ...fetchOptions,
+        signal,
+        onBodyBytes: (size) => {
+          reported += size
+          fetchOptions.onBodyBytes?.(size)
+        },
+      })
+      // Alternate fetchers may report only a completed body. Never miss those bytes.
+      if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
+      const delay = parseRetryAfter(response.headers['retry-after'], Infinity)
+      if (delay !== null && delay > MAX_RETRY_AFTER_MS)
+        unsupportedUntil = Math.max(unsupportedUntil, Date.now() + delay)
+      if (delay !== null) {
+        const now = Date.now()
+        pausedUntil = Math.max(pausedUntil, now + Math.min(delay, MAX_RETRY_AFTER_MS))
+        // Stay inside the common ISO date range even for an excessive numeric header.
+        const until = Math.min(Date.UTC(9999, 11, 31), now + delay)
+        if (until > retryAfterUntil) {
+          retryAfterUntil = until
+          await options.persistRetryAfter?.(until)
+        }
+      }
+      return { response, delay }
+    }
+
     for (let attempt = 0; ; attempt++) {
-      await waitForSlot(signal, paced, fetchOptions.beforeAttempt)
-      if (signal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
       const backoff = retryBaseMs * 2 ** attempt
       try {
-        let reported = 0
-        const response = await fetcher.fetch(url, {
-          ...fetchOptions,
+        const { response, delay } = await dispatch(
+          send,
           signal,
-          onBodyBytes: (size) => {
-            reported += size
-            fetchOptions.onBodyBytes?.(size)
-          },
-        })
-        // Alternate fetchers may report only a completed body. Never miss those bytes.
-        if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
-        const delay = parseRetryAfter(response.headers['retry-after'], Infinity)
-        if (delay !== null && delay > MAX_RETRY_AFTER_MS)
-          unsupportedUntil = Math.max(unsupportedUntil, Date.now() + delay)
-        if (delay !== null) {
-          const now = Date.now()
-          pausedUntil = Math.max(pausedUntil, now + Math.min(delay, MAX_RETRY_AFTER_MS))
-          // Stay inside the common ISO date range even for an excessive numeric header.
-          const until = Math.min(Date.UTC(9999, 11, 31), now + delay)
-          if (until > retryAfterUntil) {
-            retryAfterUntil = until
-            await options.persistRetryAfter?.(until)
-          }
-        }
+          paced,
+          beforeAttempt,
+          stopOnExcessiveDelay,
+        )
         if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) return response
         // The server asked to slow down: every request of the domain waits, not just this one.
         const wait = delay === null ? backoff : Math.min(delay, MAX_RETRY_AFTER_MS)
@@ -122,7 +145,7 @@ export function createRequester(options: {
     }
   }
 
-  return { waitForSlot, fetchWithRetries, excessiveDelay: () => Date.now() < unsupportedUntil }
+  return { dispatch, fetchWithRetries, excessiveDelay: () => Date.now() < unsupportedUntil }
 }
 
 export type Requester = ReturnType<typeof createRequester>

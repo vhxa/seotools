@@ -186,6 +186,41 @@ describe('paired answers', () => {
     expect(calls).toBe(2)
     expect((await db.crawls.get(crawl.id))?.pairedSummary?.unknown).toEqual({ 'retry-after': 1 })
   })
+  it('preserves existing file records when a resumed robots refresh asks for an hour', async () => {
+    await crawlWith(fakeSite({ 'https://example.com/robots.txt': html('saved robots') }))
+    const previous = await db.crawlFiles.list(domainId)
+    const stop = new AbortController()
+    const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+    let calls = 0
+    const initial = fakeSite({
+      'https://example.com/': () => {
+        if (++calls === 2) stop.abort()
+        return html('stable')
+      },
+    })
+    await expect(
+      runCrawl(crawl.id, { db, log, signal: stop.signal, createFetcher: initial.createFetcher }),
+    ).rejects.toBeInstanceOf(JobInterruptedError)
+    const robots = 'https://example.com/robots.txt'
+    const resumed = fakeSite({ [robots]: { statusCode: 503, headers: { 'retry-after': '3600' } } })
+    const prune = vi.spyOn(db.crawlFiles, 'prune')
+    vi.useFakeTimers()
+    try {
+      const finished = runCrawl(crawl.id, {
+        db,
+        log,
+        signal: new AbortController().signal,
+        createFetcher: resumed.createFetcher,
+      })
+      await vi.runAllTimersAsync()
+      await finished
+      expect(resumed.requests.slice(resumed.requests.indexOf(robots))).toEqual([robots])
+      expect(await db.crawlFiles.list(domainId)).toEqual(previous)
+      expect(prune).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it.each([true, false])('retains an external admission drop (restart %s)', async (restart) => {
     await db.crawls.saveSettings(domainId, { ...(await db.crawls.settings(domainId)), maxUrls: 24 })
     const stop = new AbortController()
@@ -244,15 +279,21 @@ describe('paired answers', () => {
     )
   })
   it.each([
-    ['<a href="/a">Alpha</a> | <a href="/b">Beta</a>', '<a href="/b">Beta</a> | <a href="/a">Alpha</a>'],
+    [
+      '<a href="/a">Alpha</a> | <a href="/b">Beta</a>',
+      '<a href="/b">Beta</a> | <a href="/a">Alpha</a>',
+    ],
     ['<a href="/a">Read it</a>', '<a href="/a">Read it</a> <a href="/a">Read  it</a>'],
     ['<a href="/a">can</a><a href="/b">not</a>', '<a href="/a">cannot</a><a href="/b"></a>'],
-  ])('reports changed link labels in reading order, with the same targets', async (first, second) => {
-    let calls = 0
-    const { pair } = await run(() => html(++calls === 1 ? first : second))
-    expect(pair?.changed).toEqual(['text'])
-    expect(pair?.examples).toEqual([])
-  })
+  ])(
+    'reports changed link labels in reading order, with the same targets',
+    async (first, second) => {
+      let calls = 0
+      const { pair } = await run(() => html(++calls === 1 ? first : second))
+      expect(pair?.changed).toEqual(['text'])
+      expect(pair?.examples).toEqual([])
+    },
+  )
   it('keeps full link digests when both stored samples are capped', async () => {
     const links = Array.from({ length: 66 }, (_, i) => '/article/' + i)
     let draws = 0

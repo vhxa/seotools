@@ -58,7 +58,7 @@ import {
   crawlFileFetchOptions,
   fetchCrawlFiles,
 } from './files'
-import { createRequester } from './requester'
+import { ExcessiveRetryAfterError, createRequester } from './requester'
 import { PERMANENT_ERRORS, RETRY_BASE_MS, abortableSleep, isRedirect } from './requests'
 import { MAX_ROBOTS_BYTES, analyseResponse, emptyResult, failureResult } from './response'
 
@@ -289,7 +289,7 @@ export async function runCrawl(
     log,
   })
 
-  const { waitForSlot, fetchWithRetries: request } = requester
+  const { dispatch, fetchWithRetries: request } = requester
 
   function fetchWithRetries(item: NewCrawlUrl) {
     const fileKind = crawlFileKindOf(item.source)
@@ -558,13 +558,13 @@ export async function runCrawl(
     let result: CrawlUrlResult = emptyResult
     if (port === '' || port === '80' || port === '443') {
       for (let attempt = 0; ; attempt++) {
-        await waitForSlot()
-        if (stopSignal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
         try {
-          const response = await fetcher.fetch(item.url, {
-            signal: stopSignal,
-            maxBytes: EXTERNAL_BODY_BYTES,
-          })
+          const response = await dispatch(() =>
+            fetcher.fetch(item.url, {
+              signal: stopSignal,
+              maxBytes: EXTERNAL_BODY_BYTES,
+            }),
+          )
           result = {
             ...emptyResult,
             statusCode: response.statusCode,
@@ -732,25 +732,26 @@ export async function runCrawl(
     }
     // Done URLs survive a shutdown; the in-memory file batch does not. Re-acquire a complete
     // observation on resumed attempts before publishing or pruning any current file rows.
-    if (counts.urlsDoneCount > 0 && requester.excessiveDelay()) {
-      // A resumed attempt has only a partial file batch and cannot refresh it during backoff.
+    if (counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
       observedFiles.length = 0
-    } else if (counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
-      const fresh = await fetchCrawlFiles({
-        requester,
-        host,
-        settings,
-        fetcher,
-        signal: stopSignal,
-        now: () => new Date(),
-        retryBaseMs,
-      })
-      observedFiles.splice(
-        0,
-        observedFiles.length,
-        ...fresh.files.map((file) => ({ ...file, via: 'crawl' as const })),
-      )
-      filesCapped = fresh.capped
+      try {
+        const fresh = await fetchCrawlFiles({
+          requester,
+          host,
+          settings,
+          fetcher,
+          signal: stopSignal,
+          now: () => new Date(),
+          retryBaseMs,
+        })
+        if (!requester.excessiveDelay()) {
+          observedFiles.push(...fresh.files.map((file) => ({ ...file, via: 'crawl' as const })))
+          filesCapped = fresh.capped
+        }
+      } catch (error) {
+        if (!(error instanceof ExcessiveRetryAfterError)) throw error
+        // An incomplete refresh cannot replace or prune the previous file records.
+      }
     }
     if (followLinks && !truncated && !fatal && !stopSignal.aborted) {
       observations = await repeatAnswers({
