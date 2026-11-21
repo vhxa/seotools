@@ -148,7 +148,7 @@ export async function runCrawl(
     .update(
       JSON.stringify([
         // Change this version if the paired extractor or identity contract changes.
-        2,
+        3,
         userAgent,
         Object.entries(headers?.headers ?? {}).sort(),
         settings.ignoredParameters,

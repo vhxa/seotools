@@ -49,6 +49,32 @@ const TEXT_BLOCKS = new Set([
   'h6',
   'td',
   'tr',
+  'address',
+  'aside',
+  'blockquote',
+  'caption',
+  'dd',
+  'details',
+  'dialog',
+  'dl',
+  'dt',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'header',
+  'hgroup',
+  'hr',
+  'main',
+  'menu',
+  'nav',
+  'ol',
+  'pre',
+  'summary',
+  'table',
+  'th',
+  'ul',
   'section',
   'article',
 ])
@@ -299,34 +325,10 @@ export class PageFactsCollector {
   // The fetcher's decoded body cap bounds these chunks. Join parser callbacks before
   // normalizing so entity encoding and inline markup do not change a word.
   private excludedTextDepth = 0
-  private readonly bodyChunks: string[] = []
   private readonly visibleChunks: string[] = []
-  private readonly anchorRun: string[] = []
-
-  private flushAnchors() {
-    if (!this.anchorRun.length) return
-    // Preserve inline prose across a single link. A run of neighbouring links
-    // is compared as distinct labels so a shuffled or repeated menu stays equal.
-    const labels = [...new Set(this.anchorRun)].sort()
-    this.bodyChunks.push(labels.join(' '))
-    this.anchorRun.length = 0
-  }
-
-  private servedText(chunk: string) {
-    this.visibleChunks.push(chunk)
-    if (this.anchorDepth) this.labelChunks.push(chunk)
-    else {
-      if (this.anchorRun.length && !chunk.trim()) {
-        this.anchorWhitespace += chunk
-        return
-      }
-      this.flushAnchors()
-      this.bodyChunks.push(this.anchorWhitespace, chunk)
-      this.anchorWhitespace = ''
-    }
-  }
-  private anchorWhitespace = ''
-  private labelChunks: string[] = []
+  // Two neighbouring labels are separate words even when their tags touch.
+  private adjacentLabel = false
+  private separateLabel = false
   private textLength = 0
   private readonly text: string[] = []
   private readonly invalidHead = new Set<string>()
@@ -357,9 +359,10 @@ export class PageFactsCollector {
 
   open(name: string, attributes: Record<string, string>) {
     if (!this.excludedTextDepth && TEXT_BLOCKS.has(name)) {
-      this.servedText(' ')
+      this.visibleChunks.push(' ')
     }
     if (NOT_SERVED_TEXT.has(name)) this.excludedTextDepth++
+    if (name === 'a') this.separateLabel = this.adjacentLabel
     this.trackHead(name)
     if (NOT_CONTENT.has(name)) this.notContentDepth++
     if (name === 'script' || name === 'style') this.codeDepth++
@@ -418,7 +421,10 @@ export class PageFactsCollector {
     if (this.heading) this.heading.text += chunk
     if (this.anchor && this.anchor.text.length < MAX_ANCHOR_TEXT) this.anchor.text += chunk
     if (!this.excludedTextDepth) {
-      this.servedText(chunk)
+      if (this.separateLabel) this.visibleChunks.push(' ')
+      this.visibleChunks.push(chunk)
+      this.separateLabel = false
+      this.adjacentLabel = false
     }
     if (this.notContentDepth === 0 && this.textLength < MAX_TEXT_CHARACTERS) {
       this.text.push(chunk)
@@ -428,7 +434,11 @@ export class PageFactsCollector {
 
   close(name: string) {
     if (!this.excludedTextDepth && TEXT_BLOCKS.has(name)) {
-      this.servedText(' ')
+      this.visibleChunks.push(' ')
+    }
+    if (name === 'a' && !this.excludedTextDepth) {
+      this.adjacentLabel = true
+      this.separateLabel = false
     }
     if (NOT_SERVED_TEXT.has(name) && this.excludedTextDepth > 0) this.excludedTextDepth--
     if (NOT_CONTENT.has(name) && this.notContentDepth > 0) this.notContentDepth--
@@ -450,8 +460,6 @@ export class PageFactsCollector {
     }
     if (HEADING.test(name) && this.headingDepth > 0 && --this.headingDepth === 0) this.endHeading()
     if ((name === 'a' || name === 'area') && this.anchorDepth > 0 && --this.anchorDepth === 0) {
-      if (this.labelChunks.length) this.anchorRun.push(this.labelChunks.join(''))
-      this.labelChunks = []
       this.endAnchor()
     }
   }
@@ -468,12 +476,8 @@ export class PageFactsCollector {
     const text = collapse(this.text.join(' '))
     const words = text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word))
     const normalized = words.join(' ').toLowerCase()
-    this.flushAnchors()
     facts.servedTextDigest = createHash('sha256')
-      .update(collapse(this.visibleChunks.join('')))
-      .digest('hex')
-    facts.servedLinkNormalizedDigest = createHash('sha256')
-      .update(collapse(this.bodyChunks.join('')))
+      .update(this.visibleChunks.join('').replace(/[\s\p{White_Space}]+/gu, ' ').trim())
       .digest('hex')
     facts.servedTitleDigest = createHash('sha256').update(JSON.stringify(page.title)).digest('hex')
     facts.words = words.length
@@ -735,7 +739,6 @@ export class PageFactsCollector {
       const named = Boolean(attributes['aria-label']?.trim() || attributes.title?.trim())
       this.anchor = { text: name === 'area' ? (attributes.alt ?? '') : '', named, url }
     }
-    if (!this.anchorDepth && this.anchorRun.length) this.anchorWhitespace = ''
     this.anchorDepth++
     if ((attributes.target ?? '').toLowerCase() === '_blank') {
       const rel = (attributes.rel ?? '').toLowerCase().split(/\s+/)

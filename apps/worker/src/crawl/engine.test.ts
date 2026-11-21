@@ -222,13 +222,11 @@ describe('paired answers', () => {
     expect(crawl.pairedSummary).toMatchObject({ comparable: 1, different: 1 })
     expect(site.requests).not.toContain('https://example.com/7')
   })
-  it('ignores reordered and repeated anchors, script nonces and volatile headers', async () => {
+  it('ignores inline markup, Unicode whitespace, script nonces and volatile headers', async () => {
     let count = 0
     const site = () => {
       const first = ++count % 2
-      const links = (first ? ['a', 'b'] : ['b', 'a', 'b'])
-        .map((x) => `<a href="/${x}">${x}</a>`)
-        .join('')
+      const links = first ? '<nav>A</nav><footer>B</footer>' : '<p>A&#x202f;B</p>'
       return html(
         `<script nonce="${count}">x=${count}</script><p>${first ? 'Read <a href="/article">the article</a>.' : '<a href="/article">Read the article</a>.'}</p>${links}`,
         {
@@ -245,12 +243,15 @@ describe('paired answers', () => {
       JSON.stringify(baseline),
     )
   })
-  it('preserves visible prose when inline markup divides a word across links', async () => {
+  it.each([
+    ['<a href="/a">Alpha</a> | <a href="/b">Beta</a>', '<a href="/b">Beta</a> | <a href="/a">Alpha</a>'],
+    ['<a href="/a">Read it</a>', '<a href="/a">Read it</a> <a href="/a">Read  it</a>'],
+    ['<a href="/a">can</a><a href="/b">not</a>', '<a href="/a">cannot</a><a href="/b"></a>'],
+  ])('reports changed link labels in reading order, with the same targets', async (first, second) => {
     let calls = 0
-    const { pair } = await run(() =>
-      html(++calls === 1 ? '<a href="/a">Wo</a><a href="/a">rd</a>' : '<a href="/a">Word</a>'),
-    )
-    expect(pair?.changed).toEqual([])
+    const { pair } = await run(() => html(++calls === 1 ? first : second))
+    expect(pair?.changed).toEqual(['text'])
+    expect(pair?.examples).toEqual([])
   })
   it('keeps full link digests when both stored samples are capped', async () => {
     const links = Array.from({ length: 66 }, (_, i) => '/article/' + i)
