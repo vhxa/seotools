@@ -10,6 +10,12 @@ import { detectIncidents, INCIDENT_STAGES } from '@seotools/core/incidents'
 import { incidentAlertJobId, vitalsAlertJobId } from '../mapping'
 import type { SiteIncident, NewCrawlFile } from '../types'
 import { referenceGroup } from '@seotools/core/crawl/links'
+import {
+  CONFIGURATION_REASONS,
+  EXPLANATION_VERSION,
+  isComparisonReason,
+} from '@seotools/core/crawl/comparison-reasons'
+import type { CompareView } from '@seotools/core/crawl/compare'
 import { CRAWL_LINK_KINDS } from '@seotools/core'
 import { randomUUID } from 'node:crypto'
 import {
@@ -45,7 +51,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { alias, type PgColumn } from 'drizzle-orm/pg-core'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import postgres from 'postgres'
@@ -164,6 +170,15 @@ import {
   foldIssueCounts,
   toLinkContext,
   foldPortfolio,
+  compareSearch,
+  comparisonUrlValues,
+  firstLinkByKind,
+  isCurrentExplanation,
+  STALE_EXPLANATION_MS,
+  toComparisonHeader,
+  toExplainedUrl,
+  toSourceCounterpart,
+  toOneSidedUrl,
 } from '../mapping'
 import {
   alertColumns,
@@ -180,6 +195,10 @@ import {
 import { assertKnownMigrations } from '../migration-guard'
 import * as schema from '../schema/pg'
 import type {
+  CrawlComparisonCounts,
+  CrawlComparisonQuery,
+  ExplanationDetails,
+  SourceCounterpart,
   CrawlLink,
   CrawlUrlRender,
   CrawlUrlAudit,
@@ -228,6 +247,8 @@ const {
   crawlUrlHistory,
   crawlAnswerPairs,
   crawlUrlLinks,
+  crawlComparisons,
+  crawlComparisonUrls,
   priorityUrls,
   findingStates,
   auditRules,
@@ -493,6 +514,116 @@ export function createPgDatabase(options: {
     xRobotsTag: t.xRobotsTag,
     error: t.error,
     depth: t.depth,
+  })
+
+  /** Explaining a pair: the source of a link, its row in the pair, and what the other crawl has. */
+  const sourceUrls = alias(crawlUrls, 'source_urls')
+  const counterpartUrls = alias(crawlUrls, 'counterpart_urls')
+  const counterpartRenders = alias(crawlUrlRenders, 'counterpart_renders')
+  const sourceRows = alias(crawlComparisonUrls, 'source_rows')
+
+  /** Both crawls of a pair by id, with their `ref`s. `null` unless both have one. */
+  const pairOf = async (baseId: string, targetId: string) => {
+    const rows = await db
+      .select({ id: crawls.id, ref: crawls.ref, domainId: crawls.domainId })
+      .from(crawls)
+      .where(inArray(crawls.id, [baseId, targetId]))
+    const base = rows.find((row) => row.id === baseId)
+    const target = rows.find((row) => row.id === targetId)
+    if (!base || !target || base.ref === null || target.ref === null || baseId === targetId)
+      return null
+    return { baseRef: base.ref, targetRef: target.ref, domainId: base.domainId }
+  }
+
+  const ofPair = (
+    pair: { baseRef: number; targetRef: number },
+    table: { baseRef: PgColumn; targetRef: PgColumn } = crawlComparisonUrls,
+  ) => and(eq(table.baseRef, pair.baseRef), eq(table.targetRef, pair.targetRef))
+
+  const headerOf = async (pair: { baseRef: number; targetRef: number }) => {
+    const [row] = await db.select().from(crawlComparisons).where(ofPair(pair, crawlComparisons))
+    return row ? toComparisonHeader(row) : null
+  }
+
+  /** The `ref`s of a pair whose stored explanation is current and done; `null` otherwise. */
+  const explainedPair = async (baseId: string, targetId: string) => {
+    const pair = await pairOf(baseId, targetId)
+    if (!pair) return null
+    return isCurrentExplanation(await headerOf(pair)) ? pair : null
+  }
+
+  /** The stored reason of a listed URL (`main`), joined on the pair's primary key. */
+  const explanationColumns = {
+    side: crawlComparisonUrls.side,
+    urlHash: crawlComparisonUrls.urlHash,
+    seq: crawlComparisonUrls.seq,
+    reason: crawlComparisonUrls.reason,
+    detail: crawlComparisonUrls.detail,
+    via: crawlComparisonUrls.via,
+    through: crawlComparisonUrls.through,
+    sources: crawlComparisonUrls.sources,
+    unseen: crawlComparisonUrls.unseen,
+    intoHash: crawlComparisonUrls.intoHash,
+    intoUrl: crawlComparisonUrls.intoUrl,
+    intoPresent: crawlComparisonUrls.intoPresent,
+  }
+
+  /** Which stored reasons a listing of `added`/`missing`/`configuration` shows. */
+  const reasonFilter = (change: string, reason: string | undefined) => {
+    const configuration = inArray(crawlComparisonUrls.reason, [...CONFIGURATION_REASONS])
+    return and(
+      change === 'configuration' ? configuration : not(configuration),
+      reason ? eq(crawlComparisonUrls.reason, reason) : undefined,
+    )
+  }
+
+  /** The URLs a crawl has and the other does not, by side and reason, in the view. */
+  const reasonCounts = async (
+    pair: { baseRef: number; targetRef: number },
+    ids: { baseId: string; targetId: string },
+    view: CompareView,
+  ) => {
+    const reasons: CrawlComparisonCounts['reasons'] = { base: {}, target: {} }
+    for (const side of ['base', 'target'] as const) {
+      const rows = await db
+        .select({ reason: crawlComparisonUrls.reason, count: sql<number>`count(*)` })
+        .from(crawlComparisonUrls)
+        .innerJoin(
+          crawlUrls,
+          and(
+            eq(crawlUrls.crawlId, side === 'base' ? ids.baseId : ids.targetId),
+            eq(crawlUrls.urlHash, crawlComparisonUrls.urlHash),
+          ),
+        )
+        .where(
+          and(ofPair(pair), eq(crawlComparisonUrls.side, side), compareViewOf(crawlUrls, view)),
+        )
+        .groupBy(crawlComparisonUrls.reason)
+      for (const row of rows) {
+        if (isComparisonReason(row.reason)) reasons[side][row.reason] = sumOf(row.count)
+      }
+    }
+    return reasons
+  }
+
+  /** The listing of `configuration`: URLs of either side whose stored reason is a setting. */
+  const explanationList = (
+    query: CrawlComparisonQuery,
+    pair: { baseRef: number; targetRef: number },
+  ) => ({
+    join: and(
+      eq(
+        crawlUrls.crawlId,
+        sql`case when ${crawlComparisonUrls.side} = 'base' then ${query.baseId} else ${query.targetId} end`,
+      ),
+      eq(crawlUrls.urlHash, crawlComparisonUrls.urlHash),
+    ),
+    where: and(
+      ofPair(pair),
+      reasonFilter('configuration', query.reason),
+      compareViewOf(crawlUrls, query.view),
+      compareSearch(crawlUrls.url, crawlUrls.title, query.search),
+    ),
   })
 
   /** Two different full crawls of the domain that finished with results and still have them. */
@@ -924,6 +1055,14 @@ export function createPgDatabase(options: {
           .where(inArray(botTestRuns.domainId, domainIds))
       ).map((row) => row.id),
     )
+    // The jobs that explain a pair of the domain's crawls (`requestComparison`).
+    for (const row of await tx
+      .select({ id: crawlComparisons.jobId })
+      .from(crawlComparisons)
+      .innerJoin(crawls, eq(crawls.ref, crawlComparisons.targetRef))
+      .where(and(inArray(crawls.domainId, domainIds), isNotNull(crawlComparisons.jobId)))) {
+      if (row.id) ids.push(row.id)
+    }
     const incidentIds = await tx
       .select({ id: siteIncidents.id })
       .from(siteIncidents)
@@ -2146,7 +2285,17 @@ export function createPgDatabase(options: {
               .from(crawls)
               .where(eq(crawls.id, crawlId))
             if (crawl?.ref != null) {
-              await tx.delete(crawlUrlLinks).where(eq(crawlUrlLinks.crawlRef, crawl.ref))
+              const ref = crawl.ref
+              await tx.delete(crawlUrlLinks).where(eq(crawlUrlLinks.crawlRef, ref))
+              // Why URLs differ is read with the links: it goes with the results it explains.
+              await tx
+                .delete(crawlComparisonUrls)
+                .where(
+                  or(eq(crawlComparisonUrls.baseRef, ref), eq(crawlComparisonUrls.targetRef, ref)),
+                )
+              await tx
+                .delete(crawlComparisons)
+                .where(or(eq(crawlComparisons.baseRef, ref), eq(crawlComparisons.targetRef, ref)))
             }
             await tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId))
             await tx
@@ -3292,9 +3441,18 @@ export function createPgDatabase(options: {
               )
           )[0],
         ])
+        const pair = await explainedPair(baseId, targetId)
+        const reasons = pair
+          ? await reasonCounts(pair, { baseId, targetId }, view)
+          : { base: {}, target: {} }
+        const configured = (side: 'base' | 'target') =>
+          CONFIGURATION_REASONS.reduce((sum, reason) => sum + (reasons[side][reason] ?? 0), 0)
         return {
-          added: sumOf(added?.count),
-          missing: sumOf(missing?.count),
+          added: sumOf(added?.count) - configured('target'),
+          missing: sumOf(missing?.count) - configured('base'),
+          configuration: configured('base') + configured('target'),
+          explained: pair !== null,
+          reasons,
           unrequested: sumOf(unrequested?.count),
           compared: sumOf(compared?.count),
           status: sumOf(compared?.status),
@@ -3308,6 +3466,28 @@ export function createPgDatabase(options: {
 
       async compareUrls({ limit, offset, ...query }) {
         if (!(await comparablePair(query.domainId, query.baseId, query.targetId))) return []
+        const pair =
+          query.change === 'added' || query.change === 'missing' || query.change === 'configuration'
+            ? await explainedPair(query.baseId, query.targetId)
+            : null
+        if (query.change === 'configuration') {
+          if (!pair) return []
+          const list = explanationList(query, pair)
+          const rows = await db
+            .select({
+              urlHash: crawlUrls.urlHash,
+              url: crawlUrls.url,
+              main: snapshotOf(crawlUrls),
+              explanation: explanationColumns,
+            })
+            .from(crawlComparisonUrls)
+            .innerJoin(crawlUrls, list.join)
+            .where(list.where)
+            .orderBy(asc(crawlUrls.url), asc(crawlUrls.urlHash))
+            .limit(limit)
+            .offset(offset)
+          return rows.map((row) => toUrlComparison(query.change, { ...row, other: null }))
+        }
         const plan = comparePlan(query)
         const rows = await db
           .select({
@@ -3315,11 +3495,18 @@ export function createPgDatabase(options: {
             url: crawlUrls.url,
             main: snapshotOf(crawlUrls),
             other: snapshotOf(otherUrls),
+            explanation: explanationColumns,
           })
           .from(crawlUrls)
           .leftJoin(
             otherUrls,
             and(eq(otherUrls.crawlId, plan.otherCrawlId), eq(otherUrls.urlHash, crawlUrls.urlHash)),
+          )
+          .leftJoin(
+            crawlComparisonUrls,
+            pair
+              ? and(ofPair(pair), eq(crawlComparisonUrls.urlHash, crawlUrls.urlHash))
+              : sql`false`,
           )
           .where(
             compareWhere(
@@ -3328,39 +3515,547 @@ export function createPgDatabase(options: {
               otherUrls,
               pgDiffers,
               findingDifferences(query.baseId, query.targetId),
+              pair ? reasonFilter(query.change, query.reason) : undefined,
             ),
           )
           .orderBy(asc(crawlUrls.url), asc(crawlUrls.urlHash))
           .limit(limit)
           .offset(offset)
-        return rows.map((row) => toUrlComparison(query.change, row))
+        return rows.map(({ explanation, ...row }) =>
+          toUrlComparison(query.change, pair ? { ...row, explanation } : row),
+        )
       },
 
       async countCompared(query) {
         if (!(await comparablePair(query.domainId, query.baseId, query.targetId))) return 0
-        const plan = comparePlan(query)
-        const row = (
-          await db
+        const pair =
+          query.change === 'added' || query.change === 'missing' || query.change === 'configuration'
+            ? await explainedPair(query.baseId, query.targetId)
+            : null
+        if (query.change === 'configuration') {
+          if (!pair) return 0
+          const list = explanationList(query, pair)
+          const [row] = await db
             .select({ count: sql<number>`count(*)` })
+            .from(crawlComparisonUrls)
+            .innerJoin(crawlUrls, list.join)
+            .where(list.where)
+          return sumOf(row?.count)
+        }
+        const plan = comparePlan(query)
+        const base = db
+          .select({ count: sql<number>`count(*)` })
+          .from(crawlUrls)
+          .leftJoin(
+            otherUrls,
+            and(eq(otherUrls.crawlId, plan.otherCrawlId), eq(otherUrls.urlHash, crawlUrls.urlHash)),
+          )
+        const where = compareWhere(
+          query,
+          crawlUrls,
+          otherUrls,
+          pgDiffers,
+          findingDifferences(query.baseId, query.targetId),
+          pair ? reasonFilter(query.change, query.reason) : undefined,
+        )
+        const [row] = pair
+          ? await base
+              .leftJoin(
+                crawlComparisonUrls,
+                and(ofPair(pair), eq(crawlComparisonUrls.urlHash, crawlUrls.urlHash)),
+              )
+              .where(where)
+          : await base.where(where)
+        return sumOf(row?.count)
+      },
+
+      async comparisonHeader({ domainId, baseId, targetId }) {
+        const pair = await pairOf(baseId, targetId)
+        if (!pair || pair.domainId !== domainId) return null
+        return headerOf(pair)
+      },
+
+      async requestComparison({ domainId, baseId, targetId, now = new Date() }) {
+        if (!(await comparablePair(domainId, baseId, targetId))) return null
+        const found = await pairOf(baseId, targetId)
+        if (!found) return null
+        const pair = { baseRef: found.baseRef, targetRef: found.targetRef }
+        const [domain] = await db
+          .select({ archivedAt: domains.archivedAt })
+          .from(domains)
+          .where(eq(domains.id, domainId))
+        if (domain?.archivedAt) return headerOf(pair)
+        const jobId = randomUUID()
+        const queued = {
+          version: EXPLANATION_VERSION,
+          state: 'queued',
+          runner: null,
+          jobId,
+          startedAt: now,
+          finishedAt: null,
+        }
+        await db.transaction(async (tx) => {
+          const created = await tx
+            .insert(crawlComparisons)
+            .values({ ...pair, ...queued })
+            .onConflictDoNothing()
+            .returning({ ref: crawlComparisons.baseRef })
+          const renewed =
+            created.length > 0
+              ? created
+              : await tx
+                  .update(crawlComparisons)
+                  .set(queued)
+                  .where(
+                    and(
+                      ofPair(pair, crawlComparisons),
+                      or(
+                        ne(crawlComparisons.version, EXPLANATION_VERSION),
+                        // Failed, or a run that never finished: tried again after a while, not on every view.
+                        and(
+                          ne(crawlComparisons.state, 'done'),
+                          lt(
+                            crawlComparisons.startedAt,
+                            new Date(now.getTime() - STALE_EXPLANATION_MS),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .returning({ ref: crawlComparisons.baseRef })
+          if (renewed.length > 0) {
+            await tx.insert(jobs).values({
+              id: jobId,
+              type: JOB_TYPES.compareExplain,
+              payload: JSON.stringify({ baseId, targetId }),
+              runAt: now,
+              createdAt: now,
+              updatedAt: now,
+            })
+          }
+        })
+        return headerOf(pair)
+      },
+
+      async explanationStamp(domainId) {
+        const [row] = await db
+          .select({
+            count: sql<number>`count(*)`,
+            done: sql<number>`sum(case when ${crawlComparisons.state} = 'done' then 1 else 0 end)`,
+            last: max(crawlComparisons.finishedAt),
+          })
+          .from(crawlComparisons)
+          .innerJoin(crawls, eq(crawls.ref, crawlComparisons.targetRef))
+          .where(eq(crawls.domainId, domainId))
+        return `${sumOf(row?.count)}:${sumOf(row?.done)}:${row?.last?.getTime?.() ?? row?.last ?? ''}`
+      },
+
+      comparisonWork: {
+        async begin({ baseId, targetId, runner, version, now = new Date() }) {
+          const found = await pairOf(baseId, targetId)
+          if (!found) return false
+          const pair = { baseRef: found.baseRef, targetRef: found.targetRef }
+          const values = { version, state: 'running', runner, startedAt: now, finishedAt: null }
+          await db.transaction(async (tx) => {
+            await tx
+              .insert(crawlComparisons)
+              .values({ ...pair, ...values, jobId: null })
+              .onConflictDoUpdate({
+                target: [crawlComparisons.baseRef, crawlComparisons.targetRef],
+                set: values,
+              })
+            await tx.delete(crawlComparisonUrls).where(ofPair(pair))
+          })
+          return true
+        },
+
+        async oneSided({ baseId, targetId, side, after, limit, undecided }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair) return []
+          const [ownId, otherId] = side === 'base' ? [baseId, targetId] : [targetId, baseId]
+          const rows = await db
+            .select({
+              urlHash: crawlUrls.urlHash,
+              url: crawlUrls.url,
+              seq: crawlUrls.seq,
+              source: crawlUrls.source,
+              foundFrom: crawlUrls.foundFrom,
+              foundKind: crawlUrls.foundKind,
+              viaHash: sourceUrls.urlHash,
+              viaUrl: sourceUrls.url,
+              viaRendered: crawlUrlLinks.rendered,
+            })
             .from(crawlUrls)
             .leftJoin(
               otherUrls,
+              and(eq(otherUrls.crawlId, otherId), eq(otherUrls.urlHash, crawlUrls.urlHash)),
+            )
+            .leftJoin(
+              sourceUrls,
+              and(eq(sourceUrls.crawlId, ownId), eq(sourceUrls.seq, crawlUrls.foundFrom)),
+            )
+            .leftJoin(
+              crawlUrlLinks,
               and(
-                eq(otherUrls.crawlId, plan.otherCrawlId),
-                eq(otherUrls.urlHash, crawlUrls.urlHash),
+                eq(crawlUrlLinks.crawlRef, side === 'base' ? pair.baseRef : pair.targetRef),
+                eq(crawlUrlLinks.source, crawlUrls.foundFrom),
+                eq(crawlUrlLinks.target, crawlUrls.seq),
+                eq(crawlUrlLinks.kind, crawlUrls.foundKind),
+              ),
+            )
+            .leftJoin(
+              crawlComparisonUrls,
+              undecided
+                ? and(ofPair(pair), eq(crawlComparisonUrls.urlHash, crawlUrls.urlHash))
+                : sql`false`,
+            )
+            .where(
+              and(
+                eq(crawlUrls.crawlId, ownId),
+                eq(crawlUrls.scope, 'internal'),
+                isNull(otherUrls.urlHash),
+                undecided ? isNull(crawlComparisonUrls.urlHash) : undefined,
+                after === null ? undefined : gt(crawlUrls.urlHash, after),
+              ),
+            )
+            .orderBy(asc(crawlUrls.urlHash))
+            .limit(limit)
+          return rows.map(toOneSidedUrl)
+        },
+
+        async present(crawlId, urlHashes) {
+          const found: { urlHash: string; url: string; seq: number | null }[] = []
+          for (const batch of chunk([...new Set(urlHashes)])) {
+            const rows = await db
+              .select({ urlHash: crawlUrls.urlHash, url: crawlUrls.url, seq: crawlUrls.seq })
+              .from(crawlUrls)
+              .where(and(eq(crawlUrls.crawlId, crawlId), inArray(crawlUrls.urlHash, batch)))
+            found.push(...rows)
+          }
+          return found
+        },
+
+        async save({ baseId, targetId, rows }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair) return
+          for (const batch of chunk(rows, 1000)) {
+            await db
+              .insert(crawlComparisonUrls)
+              .values(batch.map((row) => comparisonUrlValues(pair.baseRef, pair.targetRef, row)))
+              .onConflictDoNothing()
+          }
+        },
+
+        async inLinks({ baseId, targetId, side, seqs, after, limit }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair || seqs.length === 0) return []
+          const ownRef = side === 'base' ? pair.baseRef : pair.targetRef
+          const rows = await db
+            .select({
+              target: crawlUrlLinks.target,
+              source: crawlUrlLinks.source,
+              kind: crawlUrlLinks.kind,
+              rendered: crawlUrlLinks.rendered,
+            })
+            .from(crawlUrlLinks)
+            .where(
+              and(
+                eq(crawlUrlLinks.crawlRef, ownRef),
+                inArray(crawlUrlLinks.target, seqs),
+                // A page that names itself (canonical, og:url) says nothing about how it was reached.
+                ne(crawlUrlLinks.source, crawlUrlLinks.target),
+                after === null
+                  ? undefined
+                  : or(
+                      gt(crawlUrlLinks.target, after.target),
+                      and(
+                        eq(crawlUrlLinks.target, after.target),
+                        gt(crawlUrlLinks.source, after.source),
+                      ),
+                      and(
+                        eq(crawlUrlLinks.target, after.target),
+                        eq(crawlUrlLinks.source, after.source),
+                        gt(crawlUrlLinks.kind, after.kind),
+                      ),
+                    ),
+              ),
+            )
+            .orderBy(asc(crawlUrlLinks.target), asc(crawlUrlLinks.source), asc(crawlUrlLinks.kind))
+            .limit(limit)
+          return rows.map((row) => ({ ...row, rendered: row.rendered === 1 }))
+        },
+
+        async counterparts({ baseId, targetId, side, sources, merged }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair || sources.length === 0) return []
+          const [ownId, otherId] = side === 'base' ? [baseId, targetId] : [targetId, baseId]
+          const found: SourceCounterpart[] = []
+          // Three lookups by index, joined here: one query joining them made PostgreSQL scan every
+          // stored reason of the pair for each batch.
+          // 5,000 parameters a lookup: within both dialects' limits, and few round trips.
+          for (const batch of chunk([...new Set(sources)], 5000)) {
+            const own = await db
+              .select({ seq: sourceUrls.seq, urlHash: sourceUrls.urlHash })
+              .from(sourceUrls)
+              .where(and(eq(sourceUrls.crawlId, ownId), inArray(sourceUrls.seq, batch)))
+            const into = new Map<string, string>()
+            if (merged && own.length > 0) {
+              const rows = await db
+                .select({ urlHash: sourceRows.urlHash, intoHash: sourceRows.intoHash })
+                .from(sourceRows)
+                .where(
+                  and(
+                    ofPair(pair, sourceRows),
+                    inArray(
+                      sourceRows.urlHash,
+                      own.map((row) => row.urlHash),
+                    ),
+                    isNotNull(sourceRows.intoHash),
+                  ),
+                )
+              for (const row of rows) if (row.intoHash) into.set(row.urlHash, row.intoHash)
+            }
+            const hashOf = (urlHash: string) => into.get(urlHash) ?? urlHash
+            const others =
+              own.length === 0
+                ? []
+                : await db
+                    .select({
+                      urlHash: counterpartUrls.urlHash,
+                      state: counterpartUrls.state,
+                      kind: counterpartUrls.kind,
+                      statusCode: counterpartUrls.statusCode,
+                      notRequested: sql<
+                        string | null
+                      >`case when ${counterpartUrls.data} like '%"notRequested":"excluded"%' then 'excluded' when ${counterpartUrls.data} like '%"notRequested":"depth"%' then 'depth' end`,
+                      servedTruncated: sql<number>`case when ${counterpartUrls.data} like '%"truncated":true%' then 1 else 0 end`,
+                      renderState: sql<
+                        string | null
+                      >`case when ${counterpartRenders.urlHash} is null then null else ${renderStateSql(counterpartRenders, counterpartUrls.data)} end`,
+                      // A text match, not a JSON cast: one `\u0000` in a stored title would fail the query.
+                      // The capture object as JSON text (flat: a nested one reads as none, never trusted).
+                      capture: sql<
+                        string | null
+                      >`case when ${counterpartRenders.urlHash} is not null then substring(${counterpartRenders.data} from '"capture":([{][^{}]*[}])') end`,
+                    })
+                    .from(counterpartUrls)
+                    .leftJoin(
+                      counterpartRenders,
+                      and(
+                        eq(counterpartRenders.crawlId, counterpartUrls.crawlId),
+                        eq(counterpartRenders.urlHash, counterpartUrls.urlHash),
+                      ),
+                    )
+                    .where(
+                      and(
+                        eq(counterpartUrls.crawlId, otherId),
+                        inArray(counterpartUrls.urlHash, [
+                          ...new Set(own.map((row) => hashOf(row.urlHash))),
+                        ]),
+                      ),
+                    )
+            const byHash = new Map(others.map((row) => [row.urlHash, row]))
+            for (const row of own) {
+              if (row.seq === null) continue
+              const other = byHash.get(hashOf(row.urlHash))
+              found.push(
+                toSourceCounterpart(
+                  other
+                    ? { ...other, source: row.seq }
+                    : {
+                        source: row.seq,
+                        state: null,
+                        kind: null,
+                        statusCode: null,
+                        notRequested: null,
+                        servedTruncated: 0,
+                        renderState: null,
+                        capture: null,
+                      },
+                ),
+              )
+            }
+          }
+          return found
+        },
+
+        async pending({ baseId, targetId, after, limit }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair) return []
+          const rows = await db
+            .select(explanationColumns)
+            .from(crawlComparisonUrls)
+            .where(
+              and(
+                ofPair(pair),
+                eq(crawlComparisonUrls.reason, 'pending'),
+                after === null ? undefined : gt(crawlComparisonUrls.urlHash, after),
+              ),
+            )
+            .orderBy(asc(crawlComparisonUrls.urlHash))
+            .limit(limit)
+          return rows.map(toExplainedUrl)
+        },
+
+        async merges({ baseId, targetId, side, after, limit }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair) return []
+          const rows = await db
+            .select(explanationColumns)
+            .from(crawlComparisonUrls)
+            .where(
+              and(
+                ofPair(pair),
+                eq(crawlComparisonUrls.side, side),
+                inArray(crawlComparisonUrls.reason, ['merged', 'split']),
+                eq(crawlComparisonUrls.intoPresent, true),
+                after === null ? undefined : gt(crawlComparisonUrls.urlHash, after),
+              ),
+            )
+            .orderBy(asc(crawlComparisonUrls.urlHash))
+            .limit(limit)
+          return rows.map(toExplainedUrl)
+        },
+
+        async unseenSources({ baseId, targetId, side, seqs, merged }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair || seqs.length === 0) return []
+          const [ownId, otherId] = side === 'base' ? [baseId, targetId] : [targetId, baseId]
+          const ownRef = side === 'base' ? pair.baseRef : pair.targetRef
+          const counterpartHash = merged
+            ? sql`coalesce(${sourceRows.intoHash}, ${sourceUrls.urlHash})`
+            : sql`${sourceUrls.urlHash}`
+          const rows = await db
+            .select({
+              target: crawlUrlLinks.target,
+              reason: sourceRows.reason,
+              seq: sql<number>`min(${crawlUrlLinks.source})`,
+            })
+            .from(crawlUrlLinks)
+            .innerJoin(
+              sourceUrls,
+              and(eq(sourceUrls.crawlId, ownId), eq(sourceUrls.seq, crawlUrlLinks.source)),
+            )
+            .leftJoin(
+              sourceRows,
+              and(ofPair(pair, sourceRows), eq(sourceRows.urlHash, sourceUrls.urlHash)),
+            )
+            .leftJoin(
+              counterpartUrls,
+              and(
+                eq(counterpartUrls.crawlId, otherId),
+                eq(counterpartUrls.urlHash, counterpartHash),
               ),
             )
             .where(
-              compareWhere(
-                query,
-                crawlUrls,
-                otherUrls,
-                pgDiffers,
-                findingDifferences(query.baseId, query.targetId),
+              and(
+                eq(crawlUrlLinks.crawlRef, ownRef),
+                inArray(crawlUrlLinks.target, seqs),
+                ne(crawlUrlLinks.source, crawlUrlLinks.target),
+                isNull(counterpartUrls.urlHash),
               ),
             )
-        )[0]
-        return sumOf(row?.count)
+            .groupBy(sql.raw('1, 2'))
+          return rows.map((row) => ({
+            target: Number(row.target),
+            reason: row.reason,
+            seq: Number(row.seq),
+          }))
+        },
+
+        async resolve({ baseId, targetId, rows }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair || rows.length === 0) return
+          await db.transaction(async (tx) => {
+            for (const batch of chunk(rows, 1000)) {
+              await tx.delete(crawlComparisonUrls).where(
+                and(
+                  ofPair(pair),
+                  inArray(
+                    crawlComparisonUrls.urlHash,
+                    batch.map((row) => row.urlHash),
+                  ),
+                ),
+              )
+              await tx
+                .insert(crawlComparisonUrls)
+                .values(batch.map((row) => comparisonUrlValues(pair.baseRef, pair.targetRef, row)))
+            }
+          })
+        },
+
+        async finish({ baseId, targetId, runner, state, now = new Date() }) {
+          const pair = await pairOf(baseId, targetId)
+          if (!pair) return false
+          const updated = await db
+            .update(crawlComparisons)
+            .set({ state, finishedAt: now })
+            .where(and(ofPair(pair, crawlComparisons), eq(crawlComparisons.runner, runner)))
+            .returning({ ref: crawlComparisons.baseRef })
+          return updated.length > 0
+        },
+      },
+
+      async explanationDetails({ domainId, baseId, targetId, rows }) {
+        const details: ExplanationDetails = {
+          urls: { base: new Map(), target: new Map() },
+          links: { base: new Map(), target: new Map() },
+        }
+        if (rows.length === 0 || !(await comparablePair(domainId, baseId, targetId))) return details
+        const pair = await pairOf(baseId, targetId)
+        if (!pair) return details
+        for (const side of ['base', 'target'] as const) {
+          const own = rows.filter((row) => row.side === side)
+          const crawlId = side === 'base' ? baseId : targetId
+          const ref = side === 'base' ? pair.baseRef : pair.targetRef
+          const seqs = [
+            ...new Set(own.flatMap((row) => [row.via, row.through]).filter((seq) => seq !== null)),
+          ]
+          for (const batch of chunk(seqs)) {
+            const found = await db
+              .select({ seq: crawlUrls.seq, url: crawlUrls.url })
+              .from(crawlUrls)
+              .where(and(eq(crawlUrls.crawlId, crawlId), inArray(crawlUrls.seq, batch)))
+            for (const row of found) if (row.seq !== null) details.urls[side].set(row.seq, row.url)
+          }
+          const linked = own.filter((row) => row.via !== null && row.seq !== null)
+          if (linked.length === 0) continue
+          const links = await db
+            .select({
+              source: crawlUrlLinks.source,
+              target: crawlUrlLinks.target,
+              kind: crawlUrlLinks.kind,
+              rendered: crawlUrlLinks.rendered,
+              text: crawlUrlLinks.text,
+              element: crawlUrlLinks.element,
+              region: crawlUrlLinks.region,
+              snippet: crawlUrlLinks.snippet,
+            })
+            .from(crawlUrlLinks)
+            .where(
+              and(
+                eq(crawlUrlLinks.crawlRef, ref),
+                or(
+                  ...linked.map((row) =>
+                    and(eq(crawlUrlLinks.source, row.via!), eq(crawlUrlLinks.target, row.seq!)),
+                  ),
+                ),
+              ),
+            )
+          for (const row of linked) {
+            const first = firstLinkByKind(
+              links.filter((link) => link.source === row.via && link.target === row.seq),
+            )
+            if (!first) continue
+            const context = toLinkContext(first)
+            details.links[side].set(row.seq!, {
+              kind: first.kind,
+              rendered: first.rendered === 1,
+              ...(context ? { context } : {}),
+            })
+          }
+        }
+        return details
       },
 
       async urlHistory({ domainId, crawlIds, urlHashes }) {

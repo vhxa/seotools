@@ -405,6 +405,72 @@ export const crawlUrlLinks = pgTable(
 )
 
 /**
+ * Why the URLs that one crawl of a pair has and the other lacks differ: one row per pair, written by
+ * `explainPair` (worker) and read by the comparison and the alerts. Crawls by `ref`, like the links.
+ * `version` is `EXPLANATION_VERSION`: rows made with other rules are worked out again, never shown.
+ * `runner` is whoever is working it out, so that a run replaced by another cannot mark it done.
+ */
+export const crawlComparisons = pgTable(
+  'crawl_comparisons',
+  {
+    baseRef: integer('base_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    targetRef: integer('target_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    /** `queued`, `running`, `done` or `failed`. */
+    state: text('state').notNull(),
+    runner: text('runner'),
+    jobId: text('job_id'),
+    startedAt: ts('started_at').notNull(),
+    finishedAt: ts('finished_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.baseRef, t.targetRef] }),
+    index('crawl_comparisons_target_idx').on(t.targetRef),
+  ],
+)
+
+/**
+ * One row per URL that one crawl of the pair has and the other does not (`side`: which has it),
+ * with its reason (`COMPARISON_REASONS`). `seq`, `via` and `through` are numbers of URLs in the crawl
+ * that has it; `into_*` is the address it has in the other crawl when ignored parameters merged or
+ * split it.
+ */
+export const crawlComparisonUrls = pgTable(
+  'crawl_comparison_urls',
+  {
+    baseRef: integer('base_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    targetRef: integer('target_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    urlHash: text('url_hash').notNull(),
+    side: text('side').notNull(),
+    seq: integer('seq'),
+    reason: text('reason').notNull(),
+    detail: text('detail'),
+    via: integer('via'),
+    through: integer('through'),
+    /** In-links of the URL in the crawl that has it. */
+    sources: integer('sources').notNull().default(0),
+    /** Of them, from URLs the other crawl does not have either (a chain). */
+    unseen: integer('unseen').notNull().default(0),
+    intoHash: text('into_hash'),
+    intoUrl: text('into_url'),
+    intoPresent: boolean('into_present'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.baseRef, t.targetRef, t.urlHash] }),
+    index('crawl_comparison_urls_reason_idx').on(t.baseRef, t.targetRef, t.side, t.reason),
+    index('crawl_comparison_urls_target_idx').on(t.targetRef),
+  ],
+)
+
+/**
  * What each URL of the site was in a crawl whose results per URL are no longer kept: its answer,
  * the findings pending and accepted, and its audit state. Enough for the history of a URL, with no
  * links or evidence. Removed after the domain's `history_days`.

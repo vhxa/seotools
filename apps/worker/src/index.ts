@@ -27,6 +27,8 @@ import { handlers, createBotTestHandler } from './handlers'
 import { createAccessEmailHandler } from './handlers/access-email'
 import { createAuditRecomputeHandler } from './handlers/audit-recompute'
 import { createCrawlAlertsHandler } from './handlers/crawl-alerts'
+import { createCompareExplainHandler } from './handlers/compare-explain'
+import { requestLatestExplanations } from './crawl/explain'
 import { createCrawlRunHandler } from './handlers/crawl-run'
 import { createCwvCollectHandler } from './handlers/cwv-collect'
 import { createMailSendHandler } from './handlers/mail-send'
@@ -107,6 +109,7 @@ async function main() {
       [JOB_TYPES.vitalsAlerts]: createVitalsAlertsHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
       [JOB_TYPES.crawlAlerts]: createCrawlAlertsHandler({ db, publicUrl: env.BETTER_AUTH_URL }),
       [JOB_TYPES.mailSend]: createMailSendHandler({ db }),
+      [JOB_TYPES.compareExplain]: createCompareExplainHandler({ db }),
     },
     concurrency: env.WORKER_CONCURRENCY,
     excludeTypes: [...crawlTypes, JOB_TYPES.cwvCollect],
@@ -228,6 +231,12 @@ async function main() {
     stopped: () => stopping,
     canStart: migrationCheck.canStart,
   }).catch((err) => log.error({ err }, 'analysing crawls again failed'))
+  // Pairs crawled before this version, or explained with older rules, get their reasons.
+  const explanations = requestLatestExplanations({
+    db,
+    log: log.child({ lane: 'comparison' }),
+    stopped: () => stopping,
+  }).catch((err) => log.error({ err }, 'asking for comparisons to be explained failed'))
 
   const shutdown = async (signal: string) => {
     if (stopping) return
@@ -249,6 +258,7 @@ async function main() {
       updates.stop(),
       rendering.stop(),
       reanalysis,
+      explanations,
     ])
     await db.close()
     process.exit(0)

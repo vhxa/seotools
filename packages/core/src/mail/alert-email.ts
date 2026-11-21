@@ -42,6 +42,7 @@ export const ALERT_EMAIL_COPY = {
     summaryNoBase:
       'There is no earlier crawl that completed and still has its results, so the two cannot be compared.',
     summaryUrls: 'URLs added: {added}. URLs not seen: {missing}.',
+    summaryConfiguration: 'URLs changed by your configuration: {configuration}.',
     summaryAnswers:
       'Answers that changed: status {status}, title {title}, canonical {canonical}, robots {robots}.',
     summaryFindings:
@@ -51,7 +52,7 @@ export const ALERT_EMAIL_COPY = {
     summaryNoFindings: 'Findings cannot be compared: one of the crawls has none.',
     summaryCut: 'Large changes were counted up to a limit: the real numbers are higher.',
     noteIgnoredParameters:
-      'Ignored query parameters changed: added and not seen URLs may come from this setting.',
+      'Ignored query parameters changed between the two crawls: the URLs this explains are counted as changed by your configuration.',
     noteIncomplete: 'A crawl stopped at its URL limit, so URLs it did not reach are not gone.',
     noteCatalog: 'The checks changed between the two crawls: some findings differ because of that.',
     noteBasis:
@@ -99,6 +100,7 @@ export const ALERT_EMAIL_COPY = {
     summaryNoBase:
       'No hay un rastreo anterior que se completara y conserve sus resultados, así que no se pueden comparar.',
     summaryUrls: 'URLs nuevas: {added}. URLs no vistas: {missing}.',
+    summaryConfiguration: 'URLs que cambian por tu configuración: {configuration}.',
     summaryAnswers:
       'Respuestas que cambiaron: estado {status}, título {title}, canónica {canonical}, robots {robots}.',
     summaryFindings:
@@ -108,7 +110,7 @@ export const ALERT_EMAIL_COPY = {
     summaryNoFindings: 'No se pueden comparar los hallazgos: uno de los rastreos no tiene.',
     summaryCut: 'Los cambios grandes se contaron hasta un límite: las cifras reales son mayores.',
     noteIgnoredParameters:
-      'Han cambiado los parámetros ignorados: las URL añadidas y no vistas pueden deberse a este ajuste.',
+      'Han cambiado los parámetros ignorados entre los dos rastreos: las URL que eso explica se cuentan como cambios por tu configuración.',
     noteIncomplete:
       'Un rastreo se detuvo en su límite de URLs, así que las URLs que no alcanzó no han desaparecido.',
     noteCatalog:
@@ -181,6 +183,8 @@ export type ChangeSummary =
       urls: {
         added: number
         missing: number
+        /** In one crawl only because of the user's settings. */
+        configuration: number
         status: number
         title: number
         canonical: number
@@ -199,6 +203,11 @@ export type ChangeSummary =
       notes: PairNoteName[]
       cut: boolean
       compareHref: string
+      /**
+       * Why each URL is in one crawl only was worked out. `false`: the URL figures are left out,
+       * since some may come from the user's own settings.
+       */
+      explained: boolean
     }
 
 export interface AlertEmailInput {
@@ -302,7 +311,10 @@ export function alertEmail(input: AlertEmailInput): { subject: string; text: str
     } else {
       lines.push(fill(copy.summaryTitle, { since: date(summary.since) }))
       const { urls, findings } = summary
-      lines.push(fill(copy.summaryUrls, urls))
+      if (summary.explained) {
+        lines.push(fill(copy.summaryUrls, urls))
+        if (urls.configuration > 0) lines.push(fill(copy.summaryConfiguration, urls))
+      }
       lines.push(fill(copy.summaryAnswers, urls))
       if (findings) {
         lines.push(fill(copy.summaryFindings, findings))

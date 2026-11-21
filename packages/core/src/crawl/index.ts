@@ -1,6 +1,7 @@
 export * from './acceptance'
 export * from './audit'
 export * from './compare'
+export * from './comparison-reasons'
 export * from './evidence'
 export * from './extraction'
 export * from './files'

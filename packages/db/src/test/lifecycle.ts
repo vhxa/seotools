@@ -271,6 +271,28 @@ export function describeLifecycle(
       await db.vitals.saveOrigin(vital)
       await db.vitals.saveUrl({ ...vital, urlHash: crawlUrlHash(url), source: 'field' })
       expect(await db.crawls.prune({ domainId, type: 'full', keep: 1 })).toBe(1)
+      // Why URLs differ between two crawls, as `explainPair` stores it.
+      const pair = { baseId: older.id, targetId: crawl.id }
+      await db.crawls.comparisonWork.begin({ ...pair, runner: 'test', version: 1 })
+      await db.crawls.comparisonWork.save({
+        ...pair,
+        rows: [
+          {
+            side: 'target',
+            urlHash: crawlUrlHash(other),
+            seq: 2,
+            reason: 'linked',
+            detail: null,
+            via: 1,
+            through: null,
+            sources: 1,
+            unseen: 0,
+            intoHash: null,
+            intoUrl: null,
+            intoPresent: null,
+          },
+        ],
+      })
       await db.alerts.save({
         userId: member.id,
         locale: 'en',
@@ -558,6 +580,8 @@ export function describeLifecycle(
         expect(tables).toEqual(
           expect.arrayContaining([
             'audit_rules',
+            'crawl_comparison_urls',
+            'crawl_comparisons',
             'crawl_files',
             'crawl_url_history',
             'crawl_url_links',

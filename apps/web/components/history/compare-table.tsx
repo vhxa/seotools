@@ -3,6 +3,8 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import { ResultsTable } from '@/components/results-table'
+import { CheckNowButton } from '@/components/history/check-now-button'
+import { CompareReason } from '@/components/history/compare-reason'
 import { FindingChangeBadge } from '@/components/history/finding-badge'
 import { Answer, Robots, Text } from '@/components/history/snapshot-cells'
 import { IssueBadge } from '@/components/pages/issue-mark'
@@ -31,6 +33,8 @@ export function CompareTable({
   baseId,
   targetId,
   footer,
+  ignored = { base: [], target: [] },
+  activeRecheckId = null,
 }: {
   footer: ReactNode
   host: string
@@ -39,6 +43,10 @@ export function CompareTable({
   rows: ComparisonRow[]
   baseId: string
   targetId: string
+  /** Ignored parameters of each crawl, to name those that merged or split a URL. */
+  ignored?: { base: readonly string[]; target: readonly string[] }
+  /** The domain's recheck under way: "Check now" waits for it. */
+  activeRecheckId?: string | null
 }) {
   const t = useTranslations('CrawlCompare.table')
   if (rows.length === 0)
@@ -62,26 +70,55 @@ export function CompareTable({
 
   let head: ReactNode
   let cells: (row: ComparisonRow) => ReactNode
-  if (change === 'added' || change === 'missing') {
-    const side = (row: ComparisonRow) => (change === 'added' ? row.target : row.base)
+  const oneSided = change === 'added' || change === 'missing' || change === 'configuration'
+  if (oneSided) {
+    const side = (row: ComparisonRow) => row.target ?? row.base
     head = (
       <>
         <TableHead>{t('columns.answer')}</TableHead>
-        <TableHead>{t('columns.title')}</TableHead>
-        <TableHead>{t('columns.depth')}</TableHead>
+        <TableHead>{t('columns.why')}</TableHead>
       </>
     )
     cells = (row) => {
       const snapshot = side(row)
+      // Merged and split URLs are explained by configuration: nothing to check on the site.
+      const checkable =
+        row.why && row.why.explanation.reason !== 'merged' && row.why.explanation.reason !== 'split'
       return snapshot ? (
         <>
           <TableCell className="align-top">
-            <Answer snapshot={snapshot} />
+            <div className="grid gap-1">
+              <Answer snapshot={snapshot} />
+              {snapshot.title && (
+                <span className="text-xs text-muted-foreground">
+                  <Text value={snapshot.title} />
+                </span>
+              )}
+            </div>
           </TableCell>
-          <TableCell className="max-w-xs align-top">
-            <Text value={snapshot.title} />
+          <TableCell className="align-top">
+            <div className="grid gap-1.5">
+              <CompareReason
+                host={host}
+                url={row.url}
+                why={row.why ?? null}
+                check={row.check ?? null}
+                baseId={baseId}
+                targetId={targetId}
+                ignored={ignored}
+              />
+              {checkable && (
+                <CheckNowButton
+                  host={host}
+                  from={baseId}
+                  to={targetId}
+                  side={row.target ? 'target' : 'base'}
+                  urlHashes={[row.urlHash]}
+                  activeRecheckId={activeRecheckId}
+                />
+              )}
+            </div>
           </TableCell>
-          <TableCell className="align-top tabular-nums">{snapshot.depth}</TableCell>
         </>
       ) : null
     }
@@ -142,11 +179,10 @@ export function CompareTable({
       <table className="w-full min-w-[56rem] table-fixed text-sm [&_td]:overflow-hidden [&_td]:[overflow-wrap:anywhere] [&_td]:whitespace-normal">
         <colgroup>
           <col className="w-[36%]" />
-          {change === 'added' || change === 'missing' ? (
+          {oneSided ? (
             <>
-              <col className="w-[18%]" />
-              <col className="w-[36%]" />
-              <col className="w-[10%]" />
+              <col className="w-[22%]" />
+              <col className="w-[42%]" />
             </>
           ) : FIELD_CHANGES.includes(change) ? (
             <>

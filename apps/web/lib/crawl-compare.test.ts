@@ -1,5 +1,13 @@
 import { auditSnapshotOf } from '@seotools/core/crawl/audit'
-import type { Crawl, CrawlUrlComparison, CrawlUrlTrace } from '@seotools/db'
+import type {
+  ComparisonHeader,
+  Crawl,
+  CrawlUrlComparison,
+  CrawlUrlTrace,
+  ExplanationDetails,
+  VerifiedUrl,
+} from '@seotools/db'
+import { EXPLANATION_VERSION } from '@seotools/core/crawl/comparison-reasons'
 import { describe, expect, it } from 'vitest'
 import { parseCompareQuery } from './compare-query'
 import { loadComparison, type ComparisonSource } from './crawl-compare'
@@ -76,18 +84,57 @@ const trace = (crawlId: string, urlHash: string, issues: string[]): CrawlUrlTrac
   },
 })
 
+const queued: ComparisonHeader = {
+  baseRef: 1,
+  targetRef: 2,
+  version: EXPLANATION_VERSION,
+  state: 'queued',
+  runner: null,
+  jobId: 'job',
+  startedAt: new Date(),
+  finishedAt: null,
+}
+const done: ComparisonHeader = { ...queued, state: 'done', finishedAt: new Date() }
+
 /** A source that records what it was asked and answers from fixtures. */
 function source(options: {
   rows?: CrawlUrlComparison[]
   total?: number
   traces?: CrawlUrlTrace[]
+  header?: ComparisonHeader | null
+  details?: ExplanationDetails
 }) {
-  const calls: { listed?: unknown; counted?: unknown; history?: unknown } = {}
+  const calls: {
+    listed?: unknown
+    counted?: unknown
+    history?: unknown
+    requested?: unknown
+    details?: unknown
+  } = {}
   const db: ComparisonSource = {
+    async comparisonHeader() {
+      return options.header ?? null
+    },
+    async requestComparison(input) {
+      calls.requested = input
+      return { ...queued, ...(options.header ?? {}) }
+    },
+    async explanationDetails(input) {
+      calls.details = input
+      return (
+        options.details ?? {
+          urls: { base: new Map(), target: new Map() },
+          links: { base: new Map(), target: new Map() },
+        }
+      )
+    },
     async compareCounts() {
       return {
         added: 0,
         missing: 0,
+        configuration: 0,
+        explained: options.header?.state === 'done',
+        reasons: { base: {}, target: {} },
         unrequested: 0,
         compared: 0,
         status: 0,
@@ -218,5 +265,93 @@ describe('loadComparison', () => {
     expect(data.rows[0]?.findings).toEqual([
       { issue: 'title-missing', kind: 'unverified', reportedBy: 'target', reasons: ['catalog'] },
     ])
+  })
+
+  it('asks for a pair to be explained when it has no current explanation, and says it is under way', async () => {
+    const { db, calls } = source({ rows: [] })
+    const data = await run(db, { change: 'missing' })
+    expect(calls.requested).toEqual({ domainId: 'd1', baseId: 'c1', targetId: 'c3' })
+    expect(data.explanation).toBe('preparing')
+    expect(data.summary.find((line) => line.kind === 'urls')).toMatchObject({ state: 'preparing' })
+
+    const stale = source({ rows: [], header: { ...done, version: EXPLANATION_VERSION - 1 } })
+    expect((await run(stale.db, {})).explanation).toBe('preparing')
+    expect(stale.calls.requested).toBeDefined()
+
+    const current = source({ rows: [], header: done })
+    expect((await run(current.db, {})).explanation).toBe('done')
+    expect(current.calls.requested).toBeUndefined()
+  })
+
+  it('filters by reason only the URLs one crawl lacks', async () => {
+    const { db, calls } = source({ rows: [], header: done })
+    await run(db, { change: 'missing', why: 'notReached' })
+    expect(calls.listed).toMatchObject({ reason: 'notReached' })
+    await run(db, { change: 'title', why: 'notReached' })
+    expect(calls.listed).not.toHaveProperty('reason')
+  })
+
+  it('gives each row the pages its reason names, the link, and only answers rechecked after the later crawl', async () => {
+    const later = crawl('c3', { finishedAt: new Date(2026, 5, 1) })
+    const explained: CrawlUrlComparison = {
+      ...row('a'),
+      target: null,
+      explanation: {
+        side: 'base',
+        seq: 7,
+        reason: 'unlinked',
+        detail: null,
+        via: 1,
+        through: null,
+        sources: 1,
+        into: null,
+      },
+    }
+    const answer = (urlHash: string, fetchedAt: Date) =>
+      ({
+        urlHash,
+        statusCode: 404,
+        redirectTo: null,
+        error: null,
+        kind: 'page',
+        fetchedAt,
+        verificationId: 'v',
+      }) as VerifiedUrl
+    const { db, calls } = source({
+      rows: [explained, { ...row('b'), target: null, explanation: null }],
+      header: done,
+      details: {
+        urls: { base: new Map([[1, 'https://acme.com/']]), target: new Map() },
+        links: {
+          base: new Map([[7, { kind: 'anchor', rendered: false, context: { text: 'Old' } }]]),
+          target: new Map(),
+        },
+      },
+    })
+    const data = await loadComparison({
+      crawls: db,
+      verifications: {
+        async latestFor() {
+          return [answer('a', new Date(2026, 6, 1)), answer('b', new Date(2026, 4, 1))]
+        },
+        async active() {
+          return null
+        },
+      },
+      domainId: 'd1',
+      base: older,
+      target: later,
+      history: [older, later],
+      query: parseCompareQuery({ change: 'missing' }),
+    })
+    expect(calls.details).toMatchObject({ rows: [{ side: 'base', seq: 7, via: 1, through: null }] })
+    expect(data.rows[0]?.why).toMatchObject({
+      via: { url: 'https://acme.com/' },
+      link: { kind: 'anchor', context: { text: 'Old' } },
+    })
+    expect(data.rows[0]?.check).toMatchObject({ statusCode: 404 })
+    // Rechecked before the later crawl: the comparison already says more than that.
+    expect(data.rows[1]?.check).toBeNull()
+    expect(data.rows[1]?.why).toBeNull()
   })
 })

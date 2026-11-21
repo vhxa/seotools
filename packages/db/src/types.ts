@@ -8,6 +8,7 @@ import type { IncidentKind, IncidentStage } from '@seotools/core/incidents'
 import type { VitalMetrics } from '@seotools/core'
 import type { RenderCounts, RenderFilter, RenderState } from '@seotools/core/crawl/render-state'
 import type { FindingAcceptance } from '@seotools/core/crawl/acceptance'
+import type { ComparisonReason, ComparisonSide } from '@seotools/core/crawl/comparison-reasons'
 import type {
   AccessGrant,
   BuildInfo,
@@ -1059,6 +1060,41 @@ export interface CrawlRepository {
   ): Promise<CrawlUrlComparison[]>
   /** How many URLs `compareUrls` would list for the same query, ignoring the page. */
   countCompared(query: CrawlComparisonQuery): Promise<number>
+  /** The explanation of a pair, if one was ever started. `null` too for pairs that cannot have one. */
+  comparisonHeader(input: {
+    domainId: string
+    baseId: string
+    targetId: string
+  }): Promise<ComparisonHeader | null>
+  /**
+   * Asks for the pair to be explained (`compare.explain`) unless its explanation is current, being
+   * worked out, or the domain is archived; returns the header as it is after. Idempotent: the header's
+   * primary key holds one per pair, created with its job in one transaction. `null`: not a pair that
+   * can be explained (not a comparable pair of the domain, or a crawl made before `ref` existed).
+   */
+  requestComparison(input: {
+    domainId: string
+    baseId: string
+    targetId: string
+    now?: Date
+  }): Promise<ComparisonHeader | null>
+  /**
+   * A short text that changes whenever an explanation of a pair of the domain starts or ends, for
+   * pages that drop what they cached when it changes (`dataStamp`).
+   */
+  explanationStamp(domainId: string): Promise<string>
+  /** The rest is what `explainPair` (`explain.ts`) works with: nothing else writes these rows. */
+  comparisonWork: ComparisonWork
+  /**
+   * For the rows of a page of a comparison: the address of each `seq` of the crawl that has them,
+   * and the first link (by kind) from `via` to the row's URL in that crawl, with where it sits.
+   */
+  explanationDetails(input: {
+    domainId: string
+    baseId: string
+    targetId: string
+    rows: { side: ComparisonSide; seq: number | null; via: number | null; through: number | null }[]
+  }): Promise<ExplanationDetails>
   /**
    * What the crawls of the domain recorded of these URLs: for each crawl that has a URL, one entry.
    * Crawls that are not full crawls of the domain (or that were pruned, and so have nothing) give
@@ -1069,6 +1105,161 @@ export interface CrawlRepository {
     crawlIds: string[]
     urlHashes: string[]
   }): Promise<CrawlUrlTrace[]>
+}
+
+export type ComparisonHeaderState = 'queued' | 'running' | 'done' | 'failed'
+
+export interface ComparisonHeader {
+  baseRef: number
+  targetRef: number
+  /** `EXPLANATION_VERSION` it was (or is being) worked out with. */
+  version: number
+  state: ComparisonHeaderState
+  runner: string | null
+  jobId: string | null
+  startedAt: Date
+  finishedAt: Date | null
+}
+
+/** A URL of one side of a pair that the other crawl does not have, as explaining reads it. */
+export interface OneSidedUrl {
+  urlHash: string
+  url: string
+  seq: number | null
+  source: string
+  foundFrom: number | null
+  foundKind: string | null
+  /** The URL it was found from and whether that link was found only after rendering. */
+  foundVia: { urlHash: string; url: string; rendered: boolean } | null
+}
+
+/** An in-link of a URL of one side, as stored: by `seq` in that side's crawl. */
+export interface InLink {
+  target: number
+  source: number
+  kind: string
+  /** Found only after rendering. */
+  rendered: boolean
+}
+
+/**
+ * What the other crawl stored of a source of in-links (its counterpart, looked up through the
+ * address it was merged into when it has one), as far as `classifyLink` needs it. `null`: the other
+ * crawl does not have it.
+ */
+export interface SourceCounterpart {
+  source: number
+  counterpart: {
+    state: 'queued' | 'done' | 'skipped'
+    kind: 'page' | 'redirect' | 'resource' | 'unknown'
+    statusCode: number | null
+    notRequested: 'excluded' | 'depth' | null
+    servedTruncated: boolean
+    renderState: RenderState | null
+    /** `data.capture` of the render (WP1's capture rule and what it recorded). */
+    capture: Record<string, unknown> | null
+  } | null
+}
+
+/** A row of `crawl_comparison_urls` as explaining writes it. */
+export interface ExplainedUrl {
+  side: ComparisonSide
+  urlHash: string
+  seq: number | null
+  reason: ComparisonReason | 'pending'
+  detail: string | null
+  via: number | null
+  through: number | null
+  sources: number
+  unseen: number
+  intoHash: string | null
+  intoUrl: string | null
+  intoPresent: boolean | null
+}
+
+export interface ComparisonPairIds {
+  baseId: string
+  targetId: string
+}
+
+/** The steps of `explainPair`, each one bounded query. Both crawls must have a `ref`. */
+export interface ComparisonWork {
+  /**
+   * Starts working a pair out: the header is `running` for `runner` with this version, and the
+   * pair's rows are removed. `false`: a crawl of the pair has no `ref` or no longer exists.
+   */
+  begin(
+    input: ComparisonPairIds & { runner: string; version: number; now?: Date },
+  ): Promise<boolean>
+  /**
+   * URLs of `side` the other crawl does not have, by `url_hash`, after `after`. `undecided`: only
+   * those without a row yet.
+   */
+  oneSided(
+    input: ComparisonPairIds & {
+      side: ComparisonSide
+      after: string | null
+      limit: number
+      undecided: boolean
+    },
+  ): Promise<OneSidedUrl[]>
+  /** Of these hashes, those the crawl has, with their address and `seq`. */
+  present(
+    crawlId: string,
+    urlHashes: string[],
+  ): Promise<{ urlHash: string; url: string; seq: number | null }[]>
+  /** Rows of `side` merged or split into an address the other crawl has, by `url_hash`. */
+  merges(
+    input: ComparisonPairIds & { side: ComparisonSide; after: string | null; limit: number },
+  ): Promise<ExplainedUrl[]>
+  /** Adds rows; a row already there stays as it is. */
+  save(input: ComparisonPairIds & { rows: ExplainedUrl[] }): Promise<void>
+  /**
+   * In-links of these URLs of `side`, by (`target`, `source`, `kind`) after `after`: plain numbers, so
+   * a URL linked from every page costs one small row per link and nothing else.
+   */
+  inLinks(
+    input: ComparisonPairIds & {
+      side: ComparisonSide
+      seqs: number[]
+      after: { target: number; source: number; kind: string } | null
+      limit: number
+    },
+  ): Promise<InLink[]>
+  /**
+   * What the other crawl has of each of these sources of `side` (once per source, however many
+   * links it has), through its merged address when it has one (`merged`).
+   */
+  counterparts(
+    input: ComparisonPairIds & { side: ComparisonSide; sources: number[]; merged: boolean },
+  ): Promise<SourceCounterpart[]>
+  /** Rows still `pending`, by `url_hash`, after `after`. */
+  pending(
+    input: ComparisonPairIds & { after: string | null; limit: number },
+  ): Promise<ExplainedUrl[]>
+  /**
+   * For these URLs of `side`: their sources the other crawl does not have, grouped by the reason of
+   * the source's own row (`null`: it has none), with the lowest `seq` of each group.
+   */
+  unseenSources(
+    input: ComparisonPairIds & { side: ComparisonSide; seqs: number[]; merged: boolean },
+  ): Promise<{ target: number; reason: string | null; seq: number }[]>
+  /** Replaces rows that were `pending` with their reason (one delete and one insert per batch). */
+  resolve(input: ComparisonPairIds & { rows: ExplainedUrl[] }): Promise<void>
+  /** Ends the work of `runner`. `false`: another run took the pair over (nothing is changed). */
+  finish(
+    input: ComparisonPairIds & { runner: string; state: 'done' | 'failed'; now?: Date },
+  ): Promise<boolean>
+}
+
+export interface ExplanationDetails {
+  /** Addresses by side and `seq`. */
+  urls: Record<ComparisonSide, Map<number, string>>
+  /** The link from `via` to the row's URL, by side and the row's `seq`. */
+  links: Record<
+    ComparisonSide,
+    Map<number, { kind: string; rendered: boolean; context?: LinkContext }>
+  >
 }
 
 /** Which URLs a comparison of two crawls lists. */
@@ -1082,6 +1273,11 @@ export interface CrawlComparisonQuery {
   search?: string
   /** Only for `gained` and `lost`: those that are about this issue (an id from `PAGE_ISSUES`). */
   issue?: string
+  /**
+   * Only for `added`, `missing` and `configuration` of an explained pair: the URLs given this reason.
+   * Ignored while the pair is not explained.
+   */
+  reason?: ComparisonReason
 }
 
 /** A URL in a comparison, as each crawl recorded it. `null`: that crawl does not have the URL. */
@@ -1090,6 +1286,25 @@ export interface CrawlUrlComparison {
   url: string
   base: UrlSnapshot | null
   target: UrlSnapshot | null
+  /**
+   * Why only one crawl has it, for `added`, `missing` and `configuration` of an explained pair.
+   * `null`: not worked out (yet), or a change that both crawls have.
+   */
+  explanation?: UrlExplanation | null
+}
+
+/** A stored reason (`crawl_comparison_urls`), as the comparison lists it. */
+export interface UrlExplanation {
+  side: ComparisonSide
+  /** `seq` of the URL in the crawl that has it. */
+  seq: number | null
+  reason: ComparisonReason
+  detail: string | null
+  via: number | null
+  through: number | null
+  sources: number
+  /** The address it has in the other crawl (merged or split), whether that crawl has it. */
+  into: { url: string; urlHash: string; present: boolean } | null
 }
 
 /**
@@ -1097,10 +1312,16 @@ export interface CrawlUrlComparison {
  * counted for `added`, `missing` and the ones below `compared`.
  */
 export interface CrawlComparisonCounts {
-  /** In the later crawl and not in the earlier one. */
+  /** In the later crawl and not in the earlier one (minus `configuration` once explained). */
   added: number
-  /** In the earlier crawl and not in the later one. */
+  /** In the earlier crawl and not in the later one (minus `configuration` once explained). */
   missing: number
+  /** In one crawl only because of the user's settings. `0` until the pair is explained. */
+  configuration: number
+  /** Whether the stored explanation of the pair is current and done: the reasons below are real. */
+  explained: boolean
+  /** URLs of each side by reason (both views of `configuration` reasons included). */
+  reasons: Record<ComparisonSide, Partial<Record<ComparisonReason, number>>>
   /** In both, but at least one of the crawls found the URL and did not request it. Every view. */
   unrequested: number
   /** In both and requested by both, which is what the rest are among. */

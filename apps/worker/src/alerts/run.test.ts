@@ -306,6 +306,62 @@ describe('the change summary', () => {
   })
 })
 
+describe('URLs merged by a newly ignored parameter', () => {
+  const listing = (withDuration: boolean) =>
+    site({
+      '/': page('/', {
+        links: ['/e/1', '/e/2', '/e/3']
+          .map((path) => `<a href="${path}${withDuration ? '?duration=60' : ''}">e</a>`)
+          .join(''),
+      }),
+      ...(withDuration
+        ? Object.fromEntries(
+            ['/e/1', '/e/2', '/e/3'].map((path) => [`${path}?duration=60`, page(path)]),
+          )
+        : {}),
+      '/e/1': page('/e/1'),
+      '/e/2': page('/e/2'),
+      '/e/3': page('/e/3'),
+    })
+
+  it('are explained before the alert reads the comparison, and never reported as not seen', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'])
+    await crawl(listing(true))
+    await db.crawls.saveIgnoredParameters(domainId, ['duration'])
+    const second = await crawl(listing(true))
+    const target = (await db.crawls.get(second))!
+    const header = await db.crawls.comparisonHeader({
+      domainId,
+      baseId: (await db.crawls.list(domainId, { type: 'full' })).find((c) => c.id !== second)!.id,
+      targetId: second,
+    })
+    expect(header?.state).toBe('done')
+    await run(second)
+    const { text } = sent[0]!
+    expect(text).toContain('URLs not seen: 0.')
+    expect(text).toContain('URLs changed by your configuration: 3.')
+    expect(target.ignoredParameters).toEqual(['duration'])
+  })
+
+  it('waits for the explanation, and once given up on, says nothing about URLs added or not seen', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'])
+    const first = await crawl(listing(true))
+    await db.crawls.saveIgnoredParameters(domainId, ['duration'])
+    const second = await crawl(listing(true))
+    // As if the explanation had never run: a job is asked for and the alert waits.
+    const pair = { domainId, baseId: first, targetId: second }
+    await db.crawls.comparisonWork.begin({ ...pair, runner: 'gone', version: 0 })
+    await expect(run(second)).rejects.toBeInstanceOf(JobDeferredError)
+    expect(sent).toHaveLength(0)
+    const finished = (await db.crawls.get(second))!.finishedAt!
+    await run(second, { now: new Date(finished.getTime() + ANALYSIS_WAIT_MS + 1) })
+    expect(sent[0]!.text).not.toContain('URLs not seen')
+    expect(sent[0]!.text).toContain('Answers that changed')
+  })
+})
+
 describe('a crawl that did not go well', () => {
   it('tells of a failed crawl, with the reason, and only those who asked for it', async () => {
     const ana = await member()
