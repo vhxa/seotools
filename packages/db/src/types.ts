@@ -1083,6 +1083,13 @@ export interface CrawlRepository {
    * pages that drop what they cached when it changes (`dataStamp`).
    */
   explanationStamp(domainId: string): Promise<string>
+  /** The stored reason of each of these URLs of a pair (only those that have one). */
+  comparisonReasons(input: {
+    domainId: string
+    baseId: string
+    targetId: string
+    urlHashes: string[]
+  }): Promise<{ urlHash: string; side: ComparisonSide; reason: string }[]>
   /** The rest is what `explainPair` (`explain.ts`) works with: nothing else writes these rows. */
   comparisonWork: ComparisonWork
   /**

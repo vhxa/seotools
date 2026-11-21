@@ -1013,6 +1013,16 @@ export function describeComparisonReasons(getDb: () => Database) {
       ).toBe(1)
       const counts = await db.crawls.compareCounts({ ...ids, view: 'pages' })
       expect(counts?.reasons.base).toEqual({ merged: 1, unknown: 1, notReached: 1 })
+      const reasons = await db.crawls.comparisonReasons({
+        ...ids,
+        urlHashes: [hashOf('/leaf'), hashOf('/a?duration=1'), hashOf('/')],
+      })
+      expect(new Map(reasons.map((row) => [row.urlHash, [row.side, row.reason]]))).toEqual(
+        new Map([
+          [hashOf('/leaf'), ['base', 'notReached']],
+          [hashOf('/a?duration=1'), ['base', 'merged']],
+        ]),
+      )
     })
 
     it('works the pair out again from scratch: the same rows twice, and after a run that stopped', async () => {

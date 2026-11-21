@@ -3007,7 +3007,9 @@
         "depth": "it was beyond the maximum depth",
         "excluded": "it was outside the paths to crawl",
         "mode": "the link was only in the rendered page",
-        "other": "it was not read whole"
+        "other": "it was not read whole",
+        "error-answer": "it answered with an error page",
+        "other-answer": "it now answers a page instead of the redirect"
       },
       "limit": {
         "base": "The later crawl stopped at its URL limit, so URLs it found afterwards were not recorded.",
@@ -3024,11 +3026,21 @@
       "unknown": {
         "none": "Nothing stored says why. It may have been deleted, stopped being linked or listed in a sitemap, or not been reached.",
         "legacy": "Nothing stored says why: the crawl was made before seotools kept how it found each URL.",
-        "cap": "It is reached only through a long chain of URLs the other crawl did not see either, which was not followed to its end."
+        "cap": "It is reached only through a long chain of URLs the other crawl did not see either, which was not followed to its end.",
+        "cycle": "Nothing stored says why: it is only linked from URLs that link each other, and no page both crawls read whole links into them.",
+        "chain": "Nothing stored says why: it is reached only through a URL the other crawl did not have, for a reason that was not stored.",
+        "source-unobserved": "Nothing stored says why: <link>{via}</link>, which linked it, did not answer a whole page in the crawl that has it (an error, a redirect or a cut response).",
+        "identity": "Nothing stored says why: <link>{via}</link>, which linked it, is read at another address by the other crawl, which ignores another set of query parameters, so it is not the same page there.",
+        "render-own": "Nothing stored says why: the render of <link>{via}</link> that has the link is not a capture that can be compared.",
+        "render-settings": "Nothing stored says why: <link>{via}</link> was rendered with different rendering settings by the two crawls.",
+        "settings": "Nothing stored says why: the two crawls requested pages with different settings, or one did not record them, so a missing link is not read as a change of the site.",
+        "partial-configuration": "Nothing stored says why: a setting explains some of the links to it, but not all of them."
       },
       "allWhole": "Every page that linked it ({count, plural, one {# link} other {# links}}) was read whole.",
       "linkWas": "The link as it was: {kind}{hasRegion, select, yes {, in {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
-      "linkIs": "The link as it is: {kind}{hasRegion, select, yes {, in {region}} other {}}{hasText, select, yes { «{text}»} other {}}."
+      "linkIs": "The link as it is: {kind}{hasRegion, select, yes {, in {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
+      "unavailable": "These crawls cannot say why this URL differs: one was stored before seotools numbered the URLs it found.",
+      "failed": "Why it differs could not be worked out; it is tried again later."
     },
     "check": {
       "url": "Check now",

@@ -404,6 +404,7 @@ export default async function ComparePage({
                 target: target.ignoredParameters ?? [],
               }}
               activeRecheckId={data.activeRecheck?.id ?? null}
+              explanation={data.explanation}
               footer={
                 <Pagination
                   page={data.page}

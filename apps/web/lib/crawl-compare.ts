@@ -209,7 +209,13 @@ async function withReasons(
     domainId,
     baseId: base.id,
     targetId: target.id,
-    rows: explained.map(({ side, seq, via, through }) => ({ side, seq, via, through })),
+    rows: explained.map(({ side, seq, via, viaKind, through }) => ({
+      side,
+      seq,
+      via,
+      viaKind,
+      through,
+    })),
   })
   const checks = new Map<string, CheckAnswer>()
   const after = (target.finishedAt ?? target.createdAt).getTime()

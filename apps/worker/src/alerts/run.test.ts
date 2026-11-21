@@ -9,6 +9,7 @@ import {
   type NewAuditRule,
 } from '@seotools/core'
 import { createCompany, createFirstAdmin } from '@seotools/db'
+import { EXPLANATION_VERSION } from '@seotools/core/crawl/comparison-reasons'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { recomputeAudit } from '../crawl/audit-recompute'
@@ -359,6 +360,45 @@ describe('URLs merged by a newly ignored parameter', () => {
     await run(second, { now: new Date(finished.getTime() + ANALYSIS_WAIT_MS + 1) })
     expect(sent[0]!.text).not.toContain('URLs not seen')
     expect(sent[0]!.text).toContain('Answers that changed')
+  })
+})
+
+describe('waiting for the explanation (WP4 fix round, finding 9)', () => {
+  it('waits for a retry that is queued, and sends at once after a failure still in its back-off', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'])
+    const first = await crawl(site())
+    const second = await crawl(site({ '/new': page('/new') }))
+    const pair = { domainId, baseId: first, targetId: second }
+    // A failed run: retried only after its back-off. The email does not wait, and leaves URLs out.
+    await db.crawls.comparisonWork.begin({ ...pair, runner: 'r1', version: EXPLANATION_VERSION })
+    await db.crawls.comparisonWork.finish({
+      ...pair,
+      runner: 'r1',
+      state: 'failed',
+      retryAt: new Date(Date.now() + 60 * 60_000),
+    })
+    await run(second)
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.text).not.toContain('URLs not seen')
+  })
+
+  it('waits while a job that will be retried has the pair queued', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'])
+    const first = await crawl(site())
+    const second = await crawl(site({ '/new': page('/new') }))
+    const pair = { domainId, baseId: first, targetId: second }
+    const header = await db.crawls.requestComparison({ ...pair, now: new Date(0) })
+    await db.crawls.comparisonWork.begin({
+      ...pair,
+      runner: 'r1',
+      version: EXPLANATION_VERSION,
+      jobId: header?.jobId ?? null,
+    })
+    await db.crawls.comparisonWork.finish({ ...pair, runner: 'r1', state: 'queued' })
+    await expect(run(second)).rejects.toBeInstanceOf(JobDeferredError)
+    expect(sent).toHaveLength(0)
   })
 })
 

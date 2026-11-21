@@ -14,6 +14,7 @@ import {
   CONFIGURATION_REASONS,
   EXPLANATION_VERSION,
   isComparisonReason,
+  type ComparisonSide,
 } from '@seotools/core/crawl/comparison-reasons'
 import type { CompareView } from '@seotools/core/crawl/compare'
 import { CRAWL_LINK_KINDS } from '@seotools/core'
@@ -3718,6 +3719,25 @@ export function createPgDatabase(options: {
           .innerJoin(crawls, eq(crawls.ref, crawlComparisons.targetRef))
           .where(eq(crawls.domainId, domainId))
         return `${sumOf(row?.count)}:${sumOf(row?.done)}:${row?.last?.getTime?.() ?? row?.last ?? ''}`
+      },
+
+      async comparisonReasons({ domainId, baseId, targetId, urlHashes }) {
+        if (urlHashes.length === 0 || !(await comparablePair(domainId, baseId, targetId))) return []
+        const pair = await pairOf(baseId, targetId)
+        if (!pair) return []
+        const found: { urlHash: string; side: ComparisonSide; reason: string }[] = []
+        for (const batch of chunk([...new Set(urlHashes)])) {
+          const rows = await db
+            .select({
+              urlHash: crawlComparisonUrls.urlHash,
+              side: crawlComparisonUrls.side,
+              reason: crawlComparisonUrls.reason,
+            })
+            .from(crawlComparisonUrls)
+            .where(and(ofPair(pair), inArray(crawlComparisonUrls.urlHash, batch)))
+          for (const row of rows) found.push({ ...row, side: row.side as ComparisonSide })
+        }
+        return found
       },
 
       comparisonWork: {

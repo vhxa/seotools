@@ -93,6 +93,8 @@ const queued: ComparisonHeader = {
   jobId: 'job',
   startedAt: new Date(),
   finishedAt: null,
+  failures: 0,
+  retryAt: null,
 }
 const done: ComparisonHeader = { ...queued, state: 'done', finishedAt: new Date() }
 
@@ -283,6 +285,21 @@ describe('loadComparison', () => {
     expect(current.calls.requested).toBeUndefined()
   })
 
+  // Finding 7: a pair stored before crawls were numbered says it cannot be explained.
+  it('says a pair that cannot be explained cannot be, instead of waiting for it', async () => {
+    const { db, calls } = source({ rows: [{ ...row('a'), target: null }] })
+    db.requestComparison = async (input) => {
+      calls.requested = input
+      return null
+    }
+    const data = await run(db, { change: 'missing' })
+    expect(data.explanation).toBe('unavailable')
+    expect(data.summary.find((line) => line.kind === 'urls')).toMatchObject({
+      state: 'unavailable',
+    })
+    expect(data.rows[0]?.why).toBeNull()
+  })
+
   it('filters by reason only the URLs one crawl lacks', async () => {
     const { db, calls } = source({ rows: [], header: done })
     await run(db, { change: 'missing', why: 'notReached' })
@@ -302,6 +319,8 @@ describe('loadComparison', () => {
         reason: 'unlinked',
         detail: null,
         via: 1,
+        viaKind: 'anchor',
+        viaRendered: false,
         through: null,
         sources: 1,
         into: null,
@@ -344,7 +363,10 @@ describe('loadComparison', () => {
       history: [older, later],
       query: parseCompareQuery({ change: 'missing' }),
     })
-    expect(calls.details).toMatchObject({ rows: [{ side: 'base', seq: 7, via: 1, through: null }] })
+    // Asked for the exact edge the reason is about (finding 11).
+    expect(calls.details).toMatchObject({
+      rows: [{ side: 'base', seq: 7, via: 1, viaKind: 'anchor', through: null }],
+    })
     expect(data.rows[0]?.why).toMatchObject({
       via: { url: 'https://acme.com/' },
       link: { kind: 'anchor', context: { text: 'Old' } },

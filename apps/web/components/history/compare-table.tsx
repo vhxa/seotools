@@ -10,6 +10,7 @@ import { Answer, Robots, Text } from '@/components/history/snapshot-cells'
 import { IssueBadge } from '@/components/pages/issue-mark'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { compareHref, type CompareQuery } from '@/lib/compare-query'
+import type { ExplanationState } from '@/lib/compare-summary'
 import type { ComparisonRow } from '@/lib/crawl-compare'
 
 const FIELD_CHANGES: readonly CrawlChange[] = ['status', 'title', 'canonical', 'robots']
@@ -35,6 +36,7 @@ export function CompareTable({
   footer,
   ignored = { base: [], target: [] },
   activeRecheckId = null,
+  explanation = 'done',
 }: {
   footer: ReactNode
   host: string
@@ -47,6 +49,8 @@ export function CompareTable({
   ignored?: { base: readonly string[]; target: readonly string[] }
   /** The domain's recheck under way: "Check now" waits for it. */
   activeRecheckId?: string | null
+  /** Whether the pair's reasons were worked out. */
+  explanation?: ExplanationState
 }) {
   const t = useTranslations('CrawlCompare.table')
   if (rows.length === 0)
@@ -102,6 +106,7 @@ export function CompareTable({
                 host={host}
                 url={row.url}
                 why={row.why ?? null}
+                state={explanation}
                 check={row.check ?? null}
                 baseId={baseId}
                 targetId={targetId}

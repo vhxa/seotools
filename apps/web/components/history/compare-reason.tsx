@@ -2,6 +2,7 @@ import { ignoredParametersOf } from '@seotools/core/crawl/comparison-reasons'
 import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
+import type { ExplanationState } from '@/lib/compare-summary'
 import type { CheckAnswer, RowReason } from '@/lib/crawl-compare'
 
 /**
@@ -14,6 +15,7 @@ export function CompareReason({
   host,
   url,
   why,
+  state,
   check,
   baseId,
   targetId,
@@ -23,6 +25,8 @@ export function CompareReason({
   /** The URL being explained. */
   url: string
   why: RowReason | null
+  /** Whether the pair's reasons were worked out: rows without one say why not. */
+  state: ExplanationState
   check: CheckAnswer | null
   baseId: string
   targetId: string
@@ -32,7 +36,12 @@ export function CompareReason({
   const t = useTranslations('CrawlCompare.why')
   const tKinds = useTranslations('LinkKinds')
   const tRegions = useTranslations('LinkRegions')
-  if (!why) return <p className="text-xs text-muted-foreground">{t('pending')}</p>
+  if (!why)
+    return (
+      <p className="text-xs text-muted-foreground">
+        {t(state === 'unavailable' ? 'unavailable' : state === 'failed' ? 'failed' : 'pending')}
+      </p>
+    )
 
   const { explanation } = why
   const side = explanation.side
@@ -110,9 +119,7 @@ export function CompareReason({
       sentence = t.rich('unstable', via)
       break
     case 'unknown':
-      sentence = t(
-        `unknown.${explanation.detail === 'legacy' || explanation.detail === 'cap' ? explanation.detail : 'none'}`,
-      )
+      sentence = t.rich(`unknown.${unknownKey(explanation.detail)}`, via)
       break
   }
 
@@ -134,6 +141,7 @@ export function CompareReason({
     (explanation.reason === 'unlinked' ||
       explanation.reason === 'linked' ||
       explanation.reason === 'notReached' ||
+      explanation.reason === 'unknown' ||
       explanation.reason === 'mode')
       ? why.link
       : null
@@ -165,10 +173,31 @@ export function CompareReason({
 const settingKey = (detail: string | null) =>
   detail === 'priority' || detail === 'files' || detail === 'limit' ? detail : 'other'
 
+/** Why nothing stored decides it, as the sentence names it. */
+function unknownKey(detail: string | null) {
+  switch (detail) {
+    case 'legacy':
+    case 'cap':
+    case 'cycle':
+    case 'chain':
+    case 'source-unobserved':
+    case 'identity':
+    case 'render-own':
+    case 'render-settings':
+    case 'settings':
+    case 'partial-configuration':
+      return detail
+    default:
+      return 'none'
+  }
+}
+
 /** The class of a source not read whole, as the sentence names it. */
 function stateKey(detail: string | null) {
   switch (detail) {
     case 'failed':
+    case 'error-answer':
+    case 'other-answer':
     case 'redirected':
     case 'served-truncated':
     case 'render-missing':

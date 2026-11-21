@@ -3007,7 +3007,9 @@
         "depth": "estaba más allá de la profundidad máxima",
         "excluded": "quedaba fuera de las rutas que se rastrean",
         "mode": "el enlace solo estaba en la página renderizada",
-        "other": "no se leyó entera"
+        "other": "no se leyó entera",
+        "error-answer": "respondió con una página de error",
+        "other-answer": "ahora responde una página en lugar de la redirección"
       },
       "limit": {
         "base": "El rastreo posterior se detuvo en su límite de URLs, así que no guardó las que encontró después.",
@@ -3024,11 +3026,21 @@
       "unknown": {
         "none": "Nada de lo guardado dice por qué. Puede que se borrara, que dejara de enlazarse o de estar en un sitemap, o que no se alcanzara.",
         "legacy": "Nada de lo guardado dice por qué: el rastreo es anterior a que seotools guardara cómo encontró cada URL.",
-        "cap": "Solo se llega a ella por una cadena larga de URLs que el otro rastreo tampoco vio, y no se siguió hasta el final."
+        "cap": "Solo se llega a ella por una cadena larga de URLs que el otro rastreo tampoco vio, y no se siguió hasta el final.",
+        "cycle": "Nada de lo guardado dice por qué: solo la enlazan URLs que se enlazan entre sí, y ninguna página que ambos rastreos leyeran entera enlaza hacia ellas.",
+        "chain": "Nada de lo guardado dice por qué: solo se llega a ella a través de una URL que el otro rastreo no tenía, por un motivo que no se guardó.",
+        "source-unobserved": "Nada de lo guardado dice por qué: <link>{via}</link>, que la enlazaba, no respondió una página entera en el rastreo que la tiene (un error, una redirección o una respuesta cortada).",
+        "identity": "Nada de lo guardado dice por qué: el otro rastreo lee <link>{via}</link>, que la enlazaba, en otra dirección porque ignora otros parámetros, así que allí no es la misma página.",
+        "render-own": "Nada de lo guardado dice por qué: el renderizado de <link>{via}</link> que tiene el enlace no es una captura que se pueda comparar.",
+        "render-settings": "Nada de lo guardado dice por qué: los dos rastreos renderizaron <link>{via}</link> con ajustes de renderizado distintos.",
+        "settings": "Nada de lo guardado dice por qué: los dos rastreos pidieron las páginas con ajustes distintos, o uno no los registró, así que un enlace que falta no se lee como un cambio del sitio.",
+        "partial-configuration": "Nada de lo guardado dice por qué: un ajuste explica algunos de los enlaces hacia ella, pero no todos."
       },
       "allWhole": "Todas las páginas que la enlazaban ({count, plural, one {# enlace} other {# enlaces}}) se leyeron enteras.",
       "linkWas": "El enlace tal como era: {kind}{hasRegion, select, yes {, en {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
-      "linkIs": "El enlace tal como es: {kind}{hasRegion, select, yes {, en {region}} other {}}{hasText, select, yes { «{text}»} other {}}."
+      "linkIs": "El enlace tal como es: {kind}{hasRegion, select, yes {, en {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
+      "unavailable": "Estos rastreos no pueden decir por qué difiere esta URL: uno se guardó antes de que seotools numerara las URLs que encontraba.",
+      "failed": "No se pudo averiguar por qué difiere; se volverá a intentar más tarde."
     },
     "check": {
       "url": "Comprobar ahora",
