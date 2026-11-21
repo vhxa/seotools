@@ -12,6 +12,7 @@ import { JobInterruptedError } from '../types'
 import { analyseCrawl } from './analysis'
 import { reanalyseOutdatedCrawls } from './reanalysis'
 import { runCrawl, type CrawlEngineOptions } from './engine'
+import { htmlBaseline } from './html-baseline'
 import { fakeSite, html, moved, notFound } from './fake-site'
 import { FetchError, type FetchedResponse } from './fetcher'
 
@@ -67,6 +68,296 @@ const urls = async (crawlId: string, view: 'pages' | 'errors' | 'other' | 'exter
   (await db.crawls.listUrls({ crawlId, view, limit: 1000, offset: 0 })).map((u) => u.url).sort()
 const row = async (crawlId: string, url: string) =>
   (await db.crawls.latestResults(domainId, [crawlUrlHash(url)])).find((r) => r.crawlId === crawlId)
+
+describe('paired answers', () => {
+  const url = 'https://example.com/?page=1'
+  async function run(answer: Parameters<typeof fakeSite>[0][string]) {
+    await db.priorityUrls.add({ domainId, url })
+    const site = fakeSite({ [url]: answer })
+    const { crawl } = await crawlWith(site)
+    const [pair] = await db.crawls.answerPairs(crawl.id, [crawlUrlHash(url)])
+    return { crawl, pair, site }
+  }
+  it('stops after an excessive Retry-After, even with retries configured', async () => {
+    let calls = 0
+    const site = fakeSite({
+      'https://example.com/': html('<a href="/?page=1">page</a>'),
+      [url]: () =>
+        ++calls === 1 ? html('ok') : { statusCode: 503, headers: { 'retry-after': '3600' } },
+    })
+    const { crawl } = await crawlWith(site)
+    expect(calls).toBe(2)
+    expect(crawl.pairedSummary).toMatchObject({
+      selected: 2,
+      comparable: 1,
+      different: 1,
+      unknown: { 'retry-after': 1 },
+    })
+  })
+  it('sends exactly 24 serial, paced repeats for a larger eligible set', async () => {
+    const paths = Array.from({ length: 32 }, (_, n) => '/item?page=' + n)
+    const draws = new Set<string>()
+    const repeatTimes: number[] = []
+    const site = fakeSite({
+      'https://example.com/': html(paths.map((p) => `<a href="${p}"> item </a>`).join('')),
+      ...Object.fromEntries(
+        paths.map((p) => [
+          'https://example.com' + p,
+          () => {
+            if (draws.has(p)) repeatTimes.push(Date.now())
+            draws.add(p)
+            return html('stable')
+          },
+        ]),
+      ),
+    })
+    const { crawl } = await crawlWith(site)
+    expect(crawl.pairedSummary).toMatchObject({
+      eligible: 33,
+      selected: 24,
+      comparable: 24,
+      different: 0,
+    })
+    const repeats = site.requests.length - new Set(site.requests).size
+    expect(repeats).toBe(24)
+    // The home page may take one of the general slots. At 100/s, even the other 23
+    // cannot have been sent together. Allow for timer resolution at either endpoint.
+    expect(repeatTimes.length).toBeGreaterThanOrEqual(23)
+    expect(repeatTimes.at(-1)! - repeatTimes[0]!).toBeGreaterThanOrEqual(
+      (repeatTimes.length - 1) * 9,
+    )
+  })
+  it('restarts an interrupted phase from the original records', async () => {
+    const stop = new AbortController()
+    const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+    let calls = 0
+    const site = fakeSite({
+      'https://example.com/': () => {
+        if (++calls === 2) stop.abort()
+        return html('<p>stable</p>')
+      },
+    })
+    await expect(
+      runCrawl(crawl.id, { db, log, signal: stop.signal, createFetcher: site.createFetcher }),
+    ).rejects.toBeInstanceOf(JobInterruptedError)
+    expect((await db.crawls.get(crawl.id))?.pairedSummary).toBeNull()
+    await runCrawl(crawl.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+    })
+    expect(calls).toBe(3)
+    expect((await db.crawls.get(crawl.id))?.pairedSummary).toMatchObject({
+      comparable: 1,
+      different: 0,
+    })
+  })
+  it.each([206, 200])('excludes a partial original response (%i)', async (statusCode) => {
+    const { pair, crawl } = await run({
+      ...html('part', { 'content-range': 'bytes 0-3/10' }),
+      statusCode,
+    })
+    expect(pair).toBeUndefined()
+    expect(crawl.pairedSummary?.eligible).toBe(0)
+  })
+  it('restores Retry-After before restarting an interrupted phase', async () => {
+    const stop = new AbortController()
+    const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+    let calls = 0
+    const site = fakeSite({
+      'https://example.com/': () => {
+        if (++calls === 2) {
+          stop.abort()
+          return html('stable', { 'retry-after': '3600' })
+        }
+        return html('stable')
+      },
+    })
+    await expect(
+      runCrawl(crawl.id, { db, log, signal: stop.signal, createFetcher: site.createFetcher }),
+    ).rejects.toBeInstanceOf(JobInterruptedError)
+    await runCrawl(crawl.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+    })
+    expect(calls).toBe(2)
+    expect((await db.crawls.get(crawl.id))?.pairedSummary?.unknown).toEqual({ 'retry-after': 1 })
+  })
+  it('preserves existing file records when a resumed robots refresh asks for an hour', async () => {
+    await crawlWith(fakeSite({ 'https://example.com/robots.txt': html('saved robots') }))
+    const previous = await db.crawlFiles.list(domainId)
+    const stop = new AbortController()
+    const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+    let calls = 0
+    const initial = fakeSite({
+      'https://example.com/': () => {
+        if (++calls === 2) stop.abort()
+        return html('stable')
+      },
+    })
+    await expect(
+      runCrawl(crawl.id, { db, log, signal: stop.signal, createFetcher: initial.createFetcher }),
+    ).rejects.toBeInstanceOf(JobInterruptedError)
+    const robots = 'https://example.com/robots.txt'
+    const resumed = fakeSite({ [robots]: { statusCode: 503, headers: { 'retry-after': '3600' } } })
+    const prune = vi.spyOn(db.crawlFiles, 'prune')
+    vi.useFakeTimers()
+    try {
+      const finished = runCrawl(crawl.id, {
+        db,
+        log,
+        signal: new AbortController().signal,
+        createFetcher: resumed.createFetcher,
+      })
+      await vi.runAllTimersAsync()
+      await finished
+      expect(resumed.requests.slice(resumed.requests.indexOf(robots))).toEqual([robots])
+      expect(await db.crawlFiles.list(domainId)).toEqual(previous)
+      expect(prune).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it.each([true, false])('retains an external admission drop (restart %s)', async (restart) => {
+    await db.crawls.saveSettings(domainId, { ...(await db.crawls.settings(domainId)), maxUrls: 24 })
+    const stop = new AbortController()
+    const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+    const site = fakeSite({
+      'https://example.com/': html(
+        Array.from({ length: 25 }, (_, i) => `<a href="https://other.test/${i}">link</a>`).join(''),
+      ),
+    })
+    const record = db.crawls.recordResult
+    vi.spyOn(db.crawls, 'recordResult').mockImplementation(async (input) => {
+      await record(input)
+      if (restart && input.urlHash === crawlUrlHash('https://example.com/')) stop.abort()
+    })
+    const opts = { db, log, signal: stop.signal, createFetcher: site.createFetcher }
+    if (restart) await expect(runCrawl(crawl.id, opts)).rejects.toBeInstanceOf(JobInterruptedError)
+    await runCrawl(crawl.id, { ...opts, signal: new AbortController().signal })
+    expect(await db.crawls.get(crawl.id)).toMatchObject({
+      status: 'incomplete',
+      pairedSummary: null,
+    })
+  })
+  it('records the two seeded pagination draws without admitting the repeat links', async () => {
+    let seed = 7
+    const { crawl, pair, site } = await run(() => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+      const page = seed % 10
+      return html(`<title>Page ${page}</title><p>${page}</p><a href="/${page}">More</a>`)
+    })
+    expect(pair?.changed).toEqual(['title', 'text', 'anchors'])
+    expect(pair?.examples).toHaveLength(2)
+    expect(pair?.original.html?.title).toBe('Page 8')
+    expect(pair?.repeat?.html?.title).toBe('Page 7')
+    expect(crawl.pairedSummary).toMatchObject({ comparable: 1, different: 1 })
+    expect(site.requests).not.toContain('https://example.com/7')
+  })
+  it('ignores inline markup, Unicode whitespace, script nonces and volatile headers', async () => {
+    let count = 0
+    const site = () => {
+      const first = ++count % 2
+      const links = first ? '<nav>A</nav><footer>B</footer>' : '<p>A&#x202f;B</p>'
+      return html(
+        `<script nonce="${count}">x=${count}</script><p>${first ? 'Read <a href="/article">the article</a>.' : '<a href="/article">Read the article</a>.'}</p>${links}`,
+        {
+          date: String(count),
+        },
+      )
+    }
+    const { crawl, pair } = await run(site)
+    expect(pair).toMatchObject({ unknown: null, changed: [] })
+    const baseline = await htmlBaseline(db, crawl.id)
+    vi.spyOn(db.crawls, 'pairedCandidates').mockResolvedValueOnce({ eligible: 0, rows: [] })
+    count = 0
+    expect(JSON.stringify(await htmlBaseline(db, (await run(site)).crawl.id))).toBe(
+      JSON.stringify(baseline),
+    )
+  })
+  it.each([
+    [
+      '<a href="/a">Alpha</a> | <a href="/b">Beta</a>',
+      '<a href="/b">Beta</a> | <a href="/a">Alpha</a>',
+    ],
+    ['<a href="/a">Read it</a>', '<a href="/a">Read it</a> <a href="/a">Read  it</a>'],
+  ])(
+    'reports changed link labels in reading order, with the same targets',
+    async (first, second) => {
+      let calls = 0
+      const { pair } = await run(() => html(++calls === 1 ? first : second))
+      expect(pair?.changed).toEqual(['text'])
+      expect(pair?.examples).toEqual([])
+    },
+  )
+  it.each([
+    ['<a href="/a">can</a><a href="/b">not</a>', '<a href="/a">cannot</a><a href="/b"></a>'],
+    [
+      '<a href="/a">Read</a>, <a href="/b">please</a>.',
+      '<a href="/a">Read,</a> <a href="/b">please</a>.',
+    ],
+    ['<p>cooperate</p>', '<p>coop<dialog></dialog>erate</p>'],
+  ])(
+    'compares the characters a page shows, not where layout puts spaces',
+    async (first, second) => {
+      let calls = 0
+      const { pair } = await run(() => html(++calls === 1 ? first : second))
+      expect(pair?.changed).toEqual([])
+    },
+  )
+  it('keeps full link digests when both stored samples are capped', async () => {
+    const links = Array.from({ length: 66 }, (_, i) => '/article/' + i)
+    let draws = 0
+    const { pair } = await run(() => {
+      const targets = draws++ ? [...links.slice(1), '/new'] : links
+      return html(targets.map((target) => `<a href="${target}"></a>`).join(''))
+    })
+    expect(pair?.changed).toEqual(['anchors'])
+    for (const answer of [pair?.original, pair?.repeat]) {
+      expect(answer?.html?.anchors.count).toBe(66)
+      expect(answer?.html?.anchors.hashes).toHaveLength(64)
+    }
+    expect(pair?.examples).toEqual([])
+    expect(Buffer.byteLength(JSON.stringify(pair))).toBeLessThanOrEqual(16 * 1024)
+  })
+
+  it('uses the response digest when retained edges include an older fetch', async () => {
+    const stale = 'https://example.com/stale'
+    vi.spyOn(db.crawls, 'servedAnchorBatch').mockResolvedValue([
+      { hash: crawlUrlHash(stale), url: stale },
+    ])
+    const { pair } = await run(html('<a href="/current">Current</a>'))
+    expect(pair).toMatchObject({ changed: [], unknown: null, examples: [] })
+    expect(pair?.original.html?.anchors).toMatchObject({ count: 1, hashes: [] })
+  })
+  it('observes a changed footer on a short page', async () => {
+    let draws = 0
+    const { pair } = await run(() => html(`<footer>Offer ${++draws}</footer>`))
+    expect(pair?.changed).toEqual(['text'])
+  })
+
+  it.each([
+    ['206', { ...html('<a href="/fragment">partial</a>'), statusCode: 206 }, ['status'], null],
+    ['content range', html('partial', { 'content-range': 'bytes 0-6/100' }), [], 'incomplete'],
+    ['redirect', moved('/elsewhere'), ['status'], null],
+    ['missing', notFound, ['status', 'title', 'text'], null],
+    ['incomplete', { ...html('partial'), truncated: true }, [], 'incomplete'],
+    ['timeout', new FetchError('ETIMEDOUT', 'timeout'), [], 'transport'],
+    ['media', { statusCode: 200, headers: { 'content-type': 'image/png' } }, ['media'], null],
+    ['stable', html('<title>OK</title><p>short</p>'), [], null],
+    ['links only', html('<title>OK</title><p>short</p><a href="/more"></a>'), ['anchors'], null],
+  ] as const)('classifies %s', async (_name, answer, changed, unknown) => {
+    let count = 0
+    const { pair } = await run(() =>
+      ++count === 1 ? html('<title>OK</title><p>short</p>') : answer,
+    )
+    expect(count).toBe(2)
+    expect(pair).toMatchObject({ changed, unknown })
+  })
+})
 
 describe('full crawl', () => {
   it('reads what the custom extractors ask from every page', async () => {
@@ -357,7 +648,7 @@ describe('full crawl', () => {
     })
     const { crawl } = await crawlWith(site)
     expect(crawl.status).toBe('completed')
-    expect(site.requests.filter((url) => url === 'https://example.com/a')).toHaveLength(1)
+    expect(site.requests.filter((url) => url === 'https://example.com/a')).toHaveLength(2)
   })
 
   it('stops at the URL limit and says it is incomplete', async () => {
@@ -370,6 +661,7 @@ describe('full crawl', () => {
 
     const { crawl, summary } = await crawlWith(site)
 
+    expect(crawl.pairedSummary).toBeNull()
     expect(crawl.status).toBe('incomplete')
     expect(summary?.status).toBe('incomplete')
     expect(crawl.urlsCount).toBe(12)
@@ -535,6 +827,7 @@ describe('page issues', () => {
   it('leaves a priority crawl unanalysed: it only sees a few pages', async () => {
     await db.priorityUrls.add({ domainId, url: 'https://example.com/bare' })
     const { crawl } = await crawlWith(site(), 'priority')
+    expect(crawl.pairedSummary).toBeNull()
     expect(crawl.pagesByWorstIssue).toBeNull()
   })
 
@@ -708,7 +1001,7 @@ describe('politeness and failures', () => {
     })
     const { crawl } = await crawlWith(site)
 
-    expect(calls).toBe(3)
+    expect(calls).toBe(4)
     expect(await row(crawl.id, 'https://example.com/')).toMatchObject({
       statusCode: 200,
       title: 'ok',
@@ -732,7 +1025,7 @@ describe('politeness and failures', () => {
       },
     })
     await crawlWith(site)
-    expect(times).toHaveLength(2)
+    expect(times).toHaveLength(3)
     expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(950)
   })
 
@@ -746,7 +1039,7 @@ describe('politeness and failures', () => {
     })
     const { crawl } = await crawlWith(site)
 
-    expect(flaky).toBe(2)
+    expect(flaky).toBe(3)
     expect(site.requests.filter((url) => url === 'https://www.example.com/')).toHaveLength(1)
     expect(site.requests.filter((url) => url === 'http://www.example.com/')).toHaveLength(1)
     expect((await row(crawl.id, 'http://www.example.com/'))?.error).toMatch(/BLOCKED_ADDRESS/)
@@ -933,7 +1226,7 @@ describe('interruptions', () => {
 
     expect(summary?.status).toBe('completed')
     const homeRequests = site.requests.filter((url) => url === 'https://example.com/')
-    expect(homeRequests).toHaveLength(1)
+    expect(homeRequests).toHaveLength(2)
     for (let i = 0; i < 40; i++) expect(site.requests).toContain(`https://example.com/p${i}`)
     expect((await db.crawls.get(crawl!.id))?.urlsCount).toBe(56)
   })

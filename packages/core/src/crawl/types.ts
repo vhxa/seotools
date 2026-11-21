@@ -251,6 +251,12 @@ export interface CrawlPageFacts {
   /** A heading jumps more than one level down from the one before it. */
   headingLevelSkipped: boolean
   words: number
+  /** Facts from the original served response used for a paired check. */
+  servedAt?: string
+  servedTextDigest?: string
+  requestContext?: string
+  servedTitleDigest?: string
+  servedAnchors?: { count: number; digest: string }
   /** Fingerprint of the text, to find exact copies. `null`: too little text to compare. */
   textHash: string | null
   /** Simhash of the text, to find near copies. `null`: too little text to compare. */

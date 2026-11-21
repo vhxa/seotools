@@ -109,6 +109,8 @@ This pulls the newest **stable release**. For anything you rely on, pin a versio
 
 ## Configuration
 
+Completed full crawls repeat up to 24 served HTML requests. Crawl details show how many comparable answers differed, with both observations available on the URL detail.
+
 Administrators can save an encrypted Google API key in **Administration → Integrations**. With collection enabled in a domain’s Crawling settings, its page addresses and origin are sent to Google after each full crawl. The key's Google Cloud project needs the **Chrome UX Report API** (field data) and the **PageSpeed Insights API** (lab data) enabled, and a key restricted to APIs must allow both. Data is collected after the next full crawl; earlier crawls are not filled in.
 
 All configuration is through environment variables. See [`.env.example`](.env.example) for the

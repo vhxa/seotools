@@ -1,3 +1,4 @@
+import { PairedDetail } from '@/components/crawl/paired-answers'
 import { FindingStatesList } from '@/components/audit/finding-states-list'
 import { FindingStateActions } from '@/components/audit/finding-state-actions'
 import { VitalsValues } from './vitals-values'
@@ -111,6 +112,9 @@ export async function UrlDetail({
   const extractors = new Map(
     (await (await getDb()).crawls.settings(crawl.domainId)).extractors.map((e) => [e.key, e.name]),
   )
+  const [pair] = crawl.pairedSummary
+    ? await (await getDb()).crawls.answerPairs(crawl.id, [url.urlHash])
+    : []
   const discovery = await (await getDb()).crawls.discoveryPath(crawl.id, url.urlHash)
   const tKinds = await getTranslations('LinkKinds')
   const tRegions = await getTranslations('LinkRegions')
@@ -122,6 +126,7 @@ export async function UrlDetail({
   const vitals = urlVitals(await (await getDb()).vitals.urls(data.crawl.id), data.url.urlHash)
   return (
     <div className="@container/url-detail grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 [overflow-wrap:anywhere] [&_[data-slot=badge]]:max-w-full [&_[data-slot=select-trigger]]:max-w-full [&_[data-slot=select-trigger]]:min-w-0 [&_[data-slot=select-value]]:min-w-0">
+      {pair && <PairedDetail pair={pair} />}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">{t(`kinds.${url.kind}`)}</span>
         {data.recheck.available && (

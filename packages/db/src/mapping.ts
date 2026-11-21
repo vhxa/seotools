@@ -283,6 +283,7 @@ export type CrawlRow = Omit<
   | 'runBuilds'
   | 'analysisBuild'
   | 'discoverySettings'
+  | 'pairedSummary'
   | 'rendering'
   | 'ignoredParameters'
   | 'seedUrls'
@@ -297,6 +298,7 @@ export type CrawlRow = Omit<
   runBuilds: string | null
   analysisBuild: string | null
   discoverySettings: string | null
+  pairedSummary?: string | null
   rendering: string | null
   ignoredParameters: string | null
   seedUrls: string | null
@@ -332,6 +334,7 @@ export const toCrawl = ({
   runBuilds,
   analysisBuild,
   discoverySettings,
+  pairedSummary,
   rendering,
   ignoredParameters,
   seedUrls,
@@ -354,6 +357,7 @@ export const toCrawl = ({
   runBuilds: parseJson(runBuilds) as Crawl['runBuilds'],
   analysisBuild: parseJson(analysisBuild) as Crawl['analysisBuild'],
   discoverySettings: parseJson(discoverySettings) as Crawl['discoverySettings'],
+  pairedSummary: parseJson(pairedSummary ?? null) as Crawl['pairedSummary'],
   rendering: parseJson(rendering) as Crawl['rendering'],
   ...row,
   pagesByWorstIssue:
@@ -635,6 +639,26 @@ export const crawlRobotsColumn = (robots: CrawlRobotsFiles) =>
       ]),
     ),
   )
+
+/** Read query URLs in hash order and keep only the first eight in each priority group. */
+export async function pairedQueryHashes(
+  batch: (after: string) => PromiseLike<{ urlHash: string; url: string }[]>,
+) {
+  const pagination: string[] = []
+  const other: string[] = []
+  let after = ''
+  while (pagination.length < 8) {
+    const rows = await batch(after)
+    for (const { urlHash, url } of rows) {
+      const names = [...new URL(url).searchParams.keys()]
+      const group = names.some((name) => /^(page|paged)$/i.test(name)) ? pagination : other
+      if (names.length && group.length < 8) group.push(urlHash)
+      after = urlHash
+    }
+    if (rows.length < 256) break
+  }
+  return [...pagination, ...other].slice(0, 8)
+}
 
 /** External URLs are recorded, not crawled, so they don't enter the queue. */
 export const newCrawlUrlRow = (crawlId: string, { notRequested, ...url }: NewCrawlUrl) => ({

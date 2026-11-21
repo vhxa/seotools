@@ -53,11 +53,27 @@ export async function seed(): Promise<Database> {
     trigger: 'manual',
   })
   if (!started) throw new Error('the seed crawl did not start')
+  let draws = 0
   await runCrawl(started.id, {
     db,
     log: createLogger('e2e-seed', 'silent'),
     signal: new AbortController().signal,
-    createFetcher: fakeSite(website, 0).createFetcher,
+    createFetcher: fakeSite(
+      {
+        ...website,
+        [`${SITE}/products?sort=price`]: () =>
+          page('/products?sort=price', {
+            canonical: `${SITE}/products`,
+            ...(draws++
+              ? {
+                  title: 'A different product listing',
+                  links: '<a href="/special">Special offer</a>',
+                }
+              : {}),
+          }),
+      },
+      0,
+    ).createFetcher,
     retryBaseMs: 1,
   })
   const crawl = await db.crawls.get(started.id)
@@ -85,6 +101,14 @@ async function seedRenderedCrawl(db: Database) {
   const company = await createCompany(db, { name: 'Browser Ltd', domain: RENDERED_HOST })
   if (!company.ok) throw new Error('could not create the rendered company')
   const domainId = company.domain.id
+  const older = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+  if (!older) throw new Error('could not start the retention fixture')
+  await runCrawl(older.id, {
+    db,
+    log: createLogger('e2e-seed', 'silent'),
+    signal: new AbortController().signal,
+    createFetcher: fakeSite({ [`https://${RENDERED_HOST}/`]: page('/') }).createFetcher,
+  })
   await db.crawls.saveSettings(domainId, {
     ...(await db.crawls.settings(domainId)),
     renderingMode: 'headless',
@@ -92,6 +116,7 @@ async function seedRenderedCrawl(db: Database) {
   const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
   if (!crawl) throw new Error('the rendered crawl did not start')
   await db.crawls.finish(crawl.id, { status: 'completed' })
+  await db.crawls.prune({ domainId, type: 'full', keep: 1 })
   const config = await currentAuditConfig(db, domainId)
   await db.crawls.saveAnalysis({
     crawlId: crawl.id,

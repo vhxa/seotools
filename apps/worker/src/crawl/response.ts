@@ -30,7 +30,7 @@ import { isRedirect } from './requests'
 /** robots.txt files past this size are ignored by Google, so nothing past it matters to an audit. */
 export const MAX_ROBOTS_BYTES = 512 * 1024
 
-const HTML = /^(text\/html|application\/xhtml\+xml)\b/i
+export const HTML_MEDIA_TYPE = /^(text\/html|application\/xhtml\+xml)\b/i
 const CSS = /^text\/css\b/i
 const XML = /^(text\/xml|application\/(xml|[\w.+-]*\+xml))\b/i
 
@@ -170,7 +170,7 @@ export function analyseResponse(input: {
         log.warn({ url: item.url, err: error }, 'could not read sitemap')
       }
     }
-  } else if (contentType && HTML.test(contentType)) {
+  } else if (contentType && HTML_MEDIA_TYPE.test(contentType)) {
     kind = 'page'
     if (body) {
       const html = input.renderedHtml ?? decodeText(body, contentType)
@@ -206,7 +206,8 @@ export function analyseResponse(input: {
   } else if (contentType && CSS.test(contentType) && body) {
     addAll(extractCssUrls(decodeText(body, contentType), item.url))
   }
-  if (response.truncated) data.truncated = true
+  if (response.truncated || headers['content-range'] !== undefined || statusCode === 206)
+    data.truncated = true
 
   return {
     sitemap,

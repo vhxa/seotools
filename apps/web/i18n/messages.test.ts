@@ -104,3 +104,8 @@ describe('message syntax', () => {
     expect(invalid).toEqual([])
   })
 })
+
+it('limits the paired notice to the sample in both languages', () => {
+  expect(en.PairedAnswers.notice).toContain('of {total} checked pages')
+  expect(es.PairedAnswers.notice).toContain('de las {total} páginas que se solicitaron dos veces')
+})

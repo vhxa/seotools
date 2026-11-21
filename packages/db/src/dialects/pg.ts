@@ -1,3 +1,4 @@
+import type { AnswerPair } from '@seotools/core/crawl/paired'
 import type { FindingStateRecord } from '../types'
 import type { BotTestResult } from '../types'
 import {
@@ -131,6 +132,7 @@ import {
   foldViewCounts,
   groupDomains,
   newCrawlLinkRow,
+  pairedQueryHashes,
   newCrawlUrlRow,
   newestPerUrl,
   newestVerifiedPerUrl,
@@ -224,6 +226,7 @@ const {
   crawlUrlAudit,
   crawlSitemapHreflang,
   crawlUrlHistory,
+  crawlAnswerPairs,
   crawlUrlLinks,
   priorityUrls,
   findingStates,
@@ -1850,6 +1853,7 @@ export function createPgDatabase(options: {
                   domainId,
                   type,
                   trigger,
+                  admissionDropped: false,
                   seedUrls: seedUrls ? JSON.stringify(seedUrls) : null,
                   ...crawlStartColumns(snapshot, build),
                   jobId,
@@ -2032,7 +2036,7 @@ export function createPgDatabase(options: {
           .where(eq(crawls.id, id))
       },
 
-      async finish(id, { status, error }) {
+      async finish(id, { status, error, observations }) {
         const counts = await this.countUrls(id)
         return db.transaction(async (tx) => {
           const crawl = (
@@ -2045,6 +2049,7 @@ export function createPgDatabase(options: {
             .update(crawls)
             .set({
               ...counts,
+              pairedSummary: observations ? JSON.stringify(observations.summary) : null,
               status,
               error: error === undefined ? null : truncateError(error),
               activeKey: null,
@@ -2052,6 +2057,15 @@ export function createPgDatabase(options: {
             })
             .where(and(eq(crawls.id, id), isNotNull(crawls.activeKey)))
           if (result.count === 0) return false
+          if (observations?.pairs.length) {
+            await tx.insert(crawlAnswerPairs).values(
+              observations.pairs.map((pair) => ({
+                crawlId: id,
+                sourceHash: pair.sourceHash,
+                detail: JSON.stringify(pair),
+              })),
+            )
+          }
           // The one place a crawl ends: whoever asked to be told hears of a full crawl from here.
           if (crawl?.type === 'full') {
             await tx.insert(jobs).values(alertJobValues(id, new Date())).onConflictDoNothing()
@@ -2185,6 +2199,104 @@ export function createPgDatabase(options: {
             .values(batch.map((url) => newCrawlUrlRow(crawlId, url)))
             .onConflictDoNothing()
         }
+      },
+
+      async markAdmissionDropped(crawlId) {
+        await db.update(crawls).set({ admissionDropped: true }).where(eq(crawls.id, crawlId))
+      },
+      async extendRetryAfter(crawlId, until) {
+        await db
+          .update(crawls)
+          .set({ retryAfterUntil: until })
+          .where(
+            and(
+              eq(crawls.id, crawlId),
+              or(isNull(crawls.retryAfterUntil), lt(crawls.retryAfterUntil, until)),
+            ),
+          )
+      },
+
+      async pairedCandidates(crawlId) {
+        const eligible = and(
+          eq(crawlUrls.crawlId, crawlId),
+          eq(crawlUrls.scope, 'internal'),
+          eq(crawlUrls.state, 'done'),
+          eq(crawlUrls.kind, 'page'),
+          gte(crawlUrls.statusCode, 200),
+          ne(crawlUrls.statusCode, 206),
+          lt(crawlUrls.statusCode, 300),
+          sql`coalesce(${crawlUrls.data}::jsonb ->> 'truncated', 'false') = 'false'`,
+        )
+        const [total] = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(crawlUrls)
+          .where(eligible)
+        const hashes = await pairedQueryHashes((after) =>
+          db
+            .select({ urlHash: crawlUrls.urlHash, url: crawlUrls.url })
+            .from(crawlUrls)
+            .where(and(eligible, like(crawlUrls.url, '%?%'), gt(crawlUrls.urlHash, after)))
+            .orderBy(asc(crawlUrls.urlHash))
+            .limit(256),
+        )
+        const queryRows = hashes.length
+          ? await db
+              .select()
+              .from(crawlUrls)
+              .where(and(eligible, inArray(crawlUrls.urlHash, hashes)))
+          : []
+        const query = hashes.map((hash) => queryRows.find((row) => row.urlHash === hash)!)
+        const general = await db
+          .select()
+          .from(crawlUrls)
+          .where(
+            and(
+              eligible,
+              query.length
+                ? notInArray(
+                    crawlUrls.urlHash,
+                    query.map((row) => row.urlHash),
+                  )
+                : undefined,
+            ),
+          )
+          .orderBy(asc(crawlUrls.urlHash), asc(crawlUrls.url))
+          .limit(16)
+        return { eligible: Number(total?.count ?? 0), rows: [...query, ...general].map(toCrawlUrl) }
+      },
+
+      async servedAnchorBatch(crawlId, ref, seq, after) {
+        return db
+          .selectDistinct({ hash: crawlUrls.urlHash, url: crawlUrls.url })
+          .from(crawlUrlLinks)
+          .innerJoin(
+            crawlUrls,
+            and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.seq, crawlUrlLinks.target)),
+          )
+          .where(
+            and(
+              eq(crawlUrlLinks.crawlRef, ref),
+              eq(crawlUrlLinks.source, seq),
+              inArray(crawlUrlLinks.kind, ['anchor', 'anchor-nofollow']),
+              or(isNull(crawlUrlLinks.rendered), eq(crawlUrlLinks.rendered, 0)),
+              eq(crawlUrls.scope, 'internal'),
+              gt(crawlUrls.urlHash, after),
+            ),
+          )
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(256)
+      },
+
+      async answerPairs(crawlId, sourceHashes) {
+        // A crawl has at most 24 pairs, even when WP4 requests many source URLs.
+        const wanted = new Set(sourceHashes)
+        const rows = await db
+          .select()
+          .from(crawlAnswerPairs)
+          .where(eq(crawlAnswerPairs.crawlId, crawlId))
+        return rows
+          .filter((row) => wanted.has(row.sourceHash))
+          .map((row) => JSON.parse(row.detail) as AnswerPair)
       },
 
       async nextQueued(crawlId, limit) {

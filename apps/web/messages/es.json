@@ -4199,5 +4199,28 @@
     },
     "noneObserved": "Ninguno entre las páginas observadas por completo",
     "linksUnknownGroup": "Desconocido en este rastreo"
+  },
+  "PairedAnswers": {
+    "title": "Dos solicitudes a la misma página",
+    "notice": "Durante este rastreo, el sitio respondió de forma distinta en {different} de las {total} páginas que se solicitaron dos veces.",
+    "same": "No se observaron diferencias en {total, plural, one {# comprobación doble} other {# comprobaciones dobles}}.",
+    "unavailable": "No hay pares de respuestas que se puedan comparar.",
+    "unknown": "{count, plural, one {# comprobación no concluyente} other {# comprobaciones no concluyentes}}.",
+    "pruned": "Los datos de cada página se eliminaron al vencer el plazo de conservación.",
+    "examples": "Ver ejemplos",
+    "changed": "Las respuestas difieren en {fields}.",
+    "status": "estado HTTP",
+    "media": "tipo de contenido",
+    "text": "texto del HTML recibido",
+    "anchors": "destinos de los enlaces internos",
+    "original": "Primera respuesta",
+    "repeat": "Segunda respuesta",
+    "onlyHere": "Solo esta respuesta enlazaba a {url}",
+    "other": "Otro contenido",
+    "request-context": "No se pudo confirmar que las solicitudes usaran la misma configuración.",
+    "transport": "La segunda solicitud no obtuvo respuesta.",
+    "retry-after": "El servidor pidió una pausa mayor de la que admite el rastreo.",
+    "incomplete": "No se pudo comparar el HTML completo.",
+    "titleField": "título de la página"
   }
 }

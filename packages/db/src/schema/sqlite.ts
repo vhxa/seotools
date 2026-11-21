@@ -2,6 +2,7 @@ import {
   real,
   index,
   integer,
+  foreignKey,
   primaryKey,
   sqliteTable,
   text,
@@ -253,6 +254,9 @@ export const crawls = sqliteTable(
     activeKey: text('active_key').unique(),
     pagesCount: integer('pages_count').notNull().default(0),
     urlsCount: integer('urls_count').notNull().default(0),
+    pairedSummary: text('paired_summary'),
+    retryAfterUntil: ts('retry_after_until'),
+    admissionDropped: integer('admission_dropped', { mode: 'boolean' }),
     urlsDoneCount: integer('urls_done_count').notNull().default(0),
     externalCount: integer('external_count').notNull().default(0),
     robots: text('robots'),
@@ -349,6 +353,22 @@ export const crawlUrls = sqliteTable(
     index('crawl_urls_queue_idx').on(t.crawlId, t.state, t.depth),
     index('crawl_urls_view_idx').on(t.crawlId, t.scope, t.kind, t.depth),
     index('crawl_urls_hash_idx').on(t.urlHash),
+  ],
+)
+
+export const crawlAnswerPairs = sqliteTable(
+  'crawl_answer_pairs',
+  {
+    crawlId: text('crawl_id').notNull(),
+    sourceHash: text('source_hash').notNull(),
+    detail: text('detail').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.sourceHash] }),
+    foreignKey({
+      columns: [t.crawlId, t.sourceHash],
+      foreignColumns: [crawlUrls.crawlId, crawlUrls.urlHash],
+    }).onDelete('cascade'),
   ],
 )
 

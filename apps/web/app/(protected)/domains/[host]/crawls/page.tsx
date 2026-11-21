@@ -1,4 +1,5 @@
 import { CRAWL_TYPES, buildIdentity, type BuildInfo } from '@seotools/core'
+import { PairedNotice } from '@/components/crawl/paired-answers'
 import type { Crawl, CrawlSchedule } from '@seotools/db'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
@@ -44,6 +45,7 @@ const pad = (value: number) => String(value).padStart(2, '0')
 export default async function CrawlsPage({ params }: { params: Promise<{ host: string }> }) {
   const { host } = await params
   const { domain, canEdit } = await requireDomain(host)
+  const pairedTitle = (await getTranslations('PairedAnswers'))('title')
   const [t, tCrawl, tStamp, format] = await Promise.all([
     getTranslations('Crawls'),
     getTranslations('Crawl'),
@@ -230,6 +232,12 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                         </span>
                         <RenderStamp crawl={crawl} />
                         <span className="text-xs text-muted-foreground">{buildLine(crawl)}</span>
+                        {crawl.type === 'full' && crawl.status === 'completed' && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer">{pairedTitle}</summary>
+                            <PairedNotice host={domain.host} crawl={crawl} />
+                          </details>
+                        )}
                         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
                           {isBrowsable && !crawl.pruned && (
                             <Link
