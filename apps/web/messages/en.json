@@ -1775,7 +1775,7 @@
       "unavailableKept": "This domain stays on Rendered and its other settings can be saved, but its next crawl will fail if the browser is still unavailable then.",
       "comparison": "Findings about the server's answer (status codes, redirects, response time…) will be compared with earlier crawls as usual. Findings about each page's content, about which pages link to which, and JavaScript findings will show as not comparable, never as new or fixed.",
       "wait": "Capture window (ms)",
-      "waitHint": "How long a page may run its JavaScript once its HTML is parsed. The page is captured as it is at the end of the window, or earlier once its network is quiet. From 1000 to 30000 milliseconds; default 5000.",
+      "waitHint": "The page is captured after this much time has passed since its HTML was parsed. Set 1000 to 30000 milliseconds. The default is 5000.",
       "omitted": "Additional omitted hosts",
       "omittedHint": "One hostname suffix per line, up to 50. Requests to these hosts and their subdomains are omitted.",
       "cost": {
@@ -4067,9 +4067,9 @@
     "unknown": "Not verifiable",
     "notRendered": "Not rendered",
     "hints": {
-      "complete": "Rendered whole and captured once the network was quiet.",
+      "complete": "The whole rendered page was captured while the network was quiet.",
       "redirect": "JavaScript sent the page to another address. Nothing else was compared.",
-      "unsettled": "Captured at the end of the capture window, with requests still pending. Its findings are reported; what had not appeared by then is never reported as fixed.",
+      "unsettled": "The network had yet to settle when the page was captured. The crawl reports the findings it observed and leaves any missing findings unverified.",
       "truncated": "The rendered page or the served HTML was cut at a size or request limit. Its JavaScript findings are unknown.",
       "failed": "The browser could not render the page. Its JavaScript findings are unknown.",
       "unknown": "This older render did not settle, or did not record whether the page was whole. Its JavaScript findings are unknown.",
@@ -4101,7 +4101,7 @@
       "differs": "Differs",
       "unknownNote": "“Not recorded” means this crawl did not keep that value, so nothing is claimed about it."
     },
-    "complete": "Rendered whole: captured once the network was quiet, and nothing was cut.",
+    "complete": "The whole rendered page was captured while the network was quiet.",
     "loading": {
       "title": "Captured while still loading",
       "body": "Captured at the end of the {ms} ms window, with {pending, plural, one {# request} other {# requests}} still pending.",

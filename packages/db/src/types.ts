@@ -373,7 +373,16 @@ export interface CrawlUrlRender {
      * When the DOM was captured: requests still in flight (`settled` false: at the window's end) and
      * milliseconds after the DOM was parsed (`null`: it never was). Absent on rows before 0.6.0-rc.2.
      */
-    capture?: { pending: number; afterMs: number | null }
+    capture?: { pending: number; afterMs: number | null; delayMs?: number | null; rule?: string }
+    /** Fingerprints of the served response and resource responses supplied to the browser. */
+    inputs?: {
+      document: string
+      resourceRequests: string
+      resourceAnswers: string
+      /** Metadata digests are absent on earlier observations. */
+      documentResponseMetadata?: string
+      resourceResponseMetadata?: string
+    }
     /** Absent on older rows. A redirect observes the target, not the abandoned DOM. */
     redirected?: boolean
     /** Absent on older render rows: these extracted values were not retained. */
@@ -389,6 +398,8 @@ export interface CrawlUrlRender {
     documentLinks?: {
       internal: number
       nofollow: number
+      /** Fingerprint of the exact normalized anchor set, including external anchors. */
+      anchorsHash?: string
       embeds: string[]
       embedsComplete: boolean
     }

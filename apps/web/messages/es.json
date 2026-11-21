@@ -1775,7 +1775,7 @@
       "unavailableKept": "Este dominio sigue en modo renderizado y puedes guardar el resto de sus ajustes, pero su próximo rastreo fallará si el navegador sigue sin estar disponible.",
       "comparison": "Los hallazgos sobre la respuesta del servidor (códigos de estado, redirecciones, tiempo de respuesta…) se compararán con los rastreos anteriores como siempre. Los hallazgos sobre el contenido de cada página, sobre qué páginas enlazan a cuáles y los de JavaScript aparecerán como no comparables, nunca como nuevos ni corregidos.",
       "wait": "Ventana de captura (ms)",
-      "waitHint": "Cuánto tiempo puede ejecutar JavaScript una página una vez analizado su HTML. La página se captura tal como está al final de la ventana, o antes si su red ya está en calma. Entre 1000 y 30000 milisegundos; 5000 por defecto.",
+      "waitHint": "La página se captura cuando transcurre este tiempo desde que se analiza su HTML. Puedes elegir entre 1000 y 30000 milisegundos. El valor por defecto es 5000.",
       "omitted": "Hosts adicionales que omitir",
       "omittedHint": "Un sufijo de hostname por línea, hasta 50. Se omiten las solicitudes a estos hosts y sus subdominios.",
       "cost": {
@@ -4067,9 +4067,9 @@
     "unknown": "No verificable",
     "notRendered": "Sin renderizar",
     "hints": {
-      "complete": "Renderizada entera y capturada con la red ya en calma.",
+      "complete": "Se capturó toda la página renderizada con la red en calma.",
       "redirect": "JavaScript llevó la página a otra dirección. No se comparó nada más.",
-      "unsettled": "Capturada al final de la ventana de captura, con peticiones aún pendientes. Sus hallazgos se informan; lo que todavía no había aparecido nunca se da por corregido.",
+      "unsettled": "La red aún no se había estabilizado al capturar la página. El rastreo muestra los hallazgos observados y deja sin verificar los que aún no aparecían.",
       "truncated": "La página renderizada o el HTML servido se cortó por un límite de tamaño o de peticiones. Sus hallazgos de JavaScript son desconocidos.",
       "failed": "El navegador no pudo renderizar la página. Sus hallazgos de JavaScript son desconocidos.",
       "unknown": "Este renderizado anterior no terminó de cargar o no registró si la página estaba completa. Sus hallazgos de JavaScript son desconocidos.",
@@ -4101,7 +4101,7 @@
       "differs": "Difiere",
       "unknownNote": "«No registrado» significa que este rastreo no guardó ese valor, así que no se afirma nada sobre él."
     },
-    "complete": "Renderizada entera: capturada con la red en calma y sin cortes.",
+    "complete": "Se capturó toda la página renderizada con la red en calma.",
     "loading": {
       "title": "Capturada mientras seguía cargando",
       "body": "Capturada al final de la ventana de {ms} ms, con {pending, plural, one {# petición aún pendiente} other {# peticiones aún pendientes}}.",

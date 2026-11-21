@@ -19,6 +19,7 @@ export * from './vitals-regression'
 export * from './mail/incident-email'
 
 export * from './crawl/render-policy'
+export { captureProvesAbsence, type CaptureEvidence } from './crawl/render-state'
 export * from './render-status'
 
 export * from './crawl/basis'
