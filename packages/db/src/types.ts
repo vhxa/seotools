@@ -1119,6 +1119,10 @@ export interface ComparisonHeader {
   jobId: string | null
   startedAt: Date
   finishedAt: Date | null
+  /** Failed attempts in a row; reset when one is done. */
+  failures: number
+  /** A failed explanation is asked for again from this moment (the back-off). */
+  retryAt: Date | null
 }
 
 /** A URL of one side of a pair that the other crawl does not have, as explaining reads it. */
@@ -1147,24 +1151,33 @@ export interface InLink {
  * address it was merged into when it has one), as far as `classifyLink` needs it. `null`: the other
  * crawl does not have it.
  */
-export interface SourceCounterpart {
-  source: number
-  counterpart: {
-    /** Its address hash in the other crawl (through its merged address when it has one). */
-    urlHash: string
-    state: 'queued' | 'done' | 'skipped'
-    kind: 'page' | 'redirect' | 'resource' | 'unknown'
-    statusCode: number | null
-    notRequested: 'excluded' | 'depth' | null
-    servedTruncated: boolean
-  } | null
+/** What one crawl stored of a page, as far as the links it gave depend on it. */
+export interface StoredPage {
+  urlHash: string
+  state: 'queued' | 'done' | 'skipped'
+  kind: 'page' | 'redirect' | 'resource' | 'unknown'
+  statusCode: number | null
+  notRequested: 'excluded' | 'depth' | null
+  servedTruncated: boolean
 }
 
 /**
- * The render row of a counterpart, as stored: `data` is the raw JSON text, which the caller parses
- * (a stray `\u0000` in a stored title must not fail the query, so it is never cast in SQL).
+ * A source of in-links of `side`, as each crawl stored it: in the crawl that has the links (`own`)
+ * and at the **same address** in the other crawl (`other`, `null` when it has none there).
+ * `identityChanged`: the other crawl has it at another address (it ignores a parameter it carries).
  */
-export interface CounterpartRender {
+export interface SourceCounterpart {
+  source: number
+  own: StoredPage
+  other: StoredPage | null
+  identityChanged: boolean
+}
+
+/**
+ * A render row as stored: `data` is the raw JSON text, which the caller parses (a stray `\u0000` in
+ * a stored title must not fail the query, so it is never cast in SQL).
+ */
+export interface RenderRow {
   urlHash: string
   status: 'rendered' | 'failed'
   settled: boolean
@@ -1180,6 +1193,9 @@ export interface ExplainedUrl {
   reason: ComparisonReason | 'pending'
   detail: string | null
   via: number | null
+  /** The link from `via` the reason is about: its kind and whether found after rendering. */
+  viaKind: string | null
+  viaRendered: boolean | null
   through: number | null
   sources: number
   unseen: number
@@ -1223,8 +1239,11 @@ export interface ComparisonWork {
   merges(
     input: ComparisonPairIds & { side: ComparisonSide; after: string | null; limit: number },
   ): Promise<ExplainedUrl[]>
-  /** Adds rows; a row already there stays as it is. */
-  save(input: ComparisonPairIds & { rows: ExplainedUrl[] }): Promise<void>
+  /**
+   * Adds rows; a row already there stays as it is. Every write is fenced: it happens only while the
+   * pair is still claimed by `runner`, and otherwise throws `ComparisonSupersededError`.
+   */
+  save(input: ComparisonPairIds & { runner: string; rows: ExplainedUrl[] }): Promise<void>
   /**
    * In-links of these URLs of `side`, by (`target`, `source`, `kind`) after `after`: plain numbers, so
    * a URL linked from every page costs one small row per link and nothing else.
@@ -1238,19 +1257,17 @@ export interface ComparisonWork {
     },
   ): Promise<InLink[]>
   /**
-   * What the other crawl has of each of these sources of `side` (once per source, however many
-   * links it has), through its merged address when it has one (`merged`).
+   * Each of these sources of `side` in both crawls (once per source, however many links it has).
+   * `merged`: the crawls ignore different parameters, so a source may have another address there.
    */
   counterparts(
     input: ComparisonPairIds & { side: ComparisonSide; sources: number[]; merged: boolean },
   ): Promise<SourceCounterpart[]>
   /**
-   * The other crawl's render rows of these counterparts (by their hash in the other crawl): only for
-   * the linking pages whose links were found after rendering, since only those read a render.
+   * The render rows of these URLs of one crawl of the pair. At most `RENDER_BATCH` hashes a call: the
+   * caller parses each group and keeps only what it decides, so render data never accumulates.
    */
-  counterpartRenders(
-    input: ComparisonPairIds & { side: ComparisonSide; urlHashes: string[] },
-  ): Promise<CounterpartRender[]>
+  renders(input: ComparisonPairIds & { crawlId: string; urlHashes: string[] }): Promise<RenderRow[]>
   /** Rows still `pending`, by `url_hash`, after `after`. */
   pending(
     input: ComparisonPairIds & { after: string | null; limit: number },
@@ -1263,7 +1280,7 @@ export interface ComparisonWork {
     input: ComparisonPairIds & { side: ComparisonSide; seqs: number[]; merged: boolean },
   ): Promise<{ target: number; reason: string | null; seq: number }[]>
   /** Replaces rows that were `pending` with their reason (one delete and one insert per batch). */
-  resolve(input: ComparisonPairIds & { rows: ExplainedUrl[] }): Promise<void>
+  resolve(input: ComparisonPairIds & { runner: string; rows: ExplainedUrl[] }): Promise<void>
   /** Ends the work of `runner`. `false`: another run took the pair over (nothing is changed). */
   finish(
     input: ComparisonPairIds & { runner: string; state: 'done' | 'failed'; now?: Date },
@@ -1319,6 +1336,9 @@ export interface UrlExplanation {
   reason: ComparisonReason
   detail: string | null
   via: number | null
+  /** The exact link from `via` the reason is about. */
+  viaKind: string | null
+  viaRendered: boolean | null
   through: number | null
   sources: number
   /** The address it has in the other crawl (merged or split), whether that crawl has it. */
