@@ -7,6 +7,8 @@ CREATE TABLE `crawl_comparison_urls` (
 	`reason` text NOT NULL,
 	`detail` text,
 	`via` integer,
+	`via_kind` text,
+	`via_rendered` integer,
 	`through` integer,
 	`sources` integer DEFAULT 0 NOT NULL,
 	`unseen` integer DEFAULT 0 NOT NULL,
@@ -29,6 +31,8 @@ CREATE TABLE `crawl_comparisons` (
 	`job_id` text,
 	`started_at` integer NOT NULL,
 	`finished_at` integer,
+	`failures` integer DEFAULT 0 NOT NULL,
+	`retry_at` integer,
 	PRIMARY KEY(`base_ref`, `target_ref`),
 	FOREIGN KEY (`base_ref`) REFERENCES `crawls`(`ref`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`target_ref`) REFERENCES `crawls`(`ref`) ON UPDATE no action ON DELETE cascade

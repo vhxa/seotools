@@ -56,6 +56,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import postgres from 'postgres'
 import { DomainArchivedError } from '../archive'
+import { ComparisonSupersededError } from '../comparison-errors'
 import {
   AUDIT_SEMANTICS_SETTING,
   UPGRADED_DIMENSIONS,
@@ -172,12 +173,12 @@ import {
   foldPortfolio,
   compareSearch,
   comparisonUrlValues,
-  firstLinkByKind,
   isCurrentExplanation,
   STALE_EXPLANATION_MS,
+  RENDER_BATCH,
   toComparisonHeader,
   toExplainedUrl,
-  toSourceCounterpart,
+  toStoredPage,
   toOneSidedUrl,
 } from '../mapping'
 import {
@@ -199,7 +200,7 @@ import type {
   CrawlComparisonQuery,
   ExplanationDetails,
   SourceCounterpart,
-  CounterpartRender,
+  RenderRow,
   CrawlLink,
   CrawlUrlRender,
   CrawlUrlAudit,
@@ -560,6 +561,8 @@ export function createPgDatabase(options: {
     reason: crawlComparisonUrls.reason,
     detail: crawlComparisonUrls.detail,
     via: crawlComparisonUrls.via,
+    viaKind: crawlComparisonUrls.viaKind,
+    viaRendered: crawlComparisonUrls.viaRendered,
     through: crawlComparisonUrls.through,
     sources: crawlComparisonUrls.sources,
     unseen: crawlComparisonUrls.unseen,
@@ -624,6 +627,43 @@ export function createPgDatabase(options: {
       compareViewOf(crawlUrls, query.view),
       compareSearch(crawlUrls.url, crawlUrls.title, query.search),
     ),
+  })
+
+  /**
+   * Inside a write's transaction: the pair is still claimed by `runner` and running. Otherwise the
+   * run was taken over or a crawl was pruned (which removed the claim): nothing more is written.
+   */
+  const assertClaimed = async (
+    tx: Pick<typeof db, 'select'>,
+    pair: { baseRef: number; targetRef: number },
+    runner: string,
+  ) => {
+    const claim = (
+      await tx
+        .select({ runner: crawlComparisons.runner })
+        .from(crawlComparisons)
+        .where(
+          and(
+            ofPair(pair, crawlComparisons),
+            eq(crawlComparisons.runner, runner),
+            eq(crawlComparisons.state, 'running'),
+          ),
+        )
+        .for('update')
+    )[0]
+    if (!claim) throw new ComparisonSupersededError()
+  }
+
+  /** What `counterparts` reads of a page in either crawl. */
+  const pageColumns = (table: typeof sourceUrls | typeof counterpartUrls) => ({
+    urlHash: table.urlHash,
+    state: table.state,
+    kind: table.kind,
+    statusCode: table.statusCode,
+    notRequested: sql<
+      string | null
+    >`case when ${table.data} like '%"notRequested":"excluded"%' then 'excluded' when ${table.data} like '%"notRequested":"depth"%' then 'depth' end`,
+    servedTruncated: sql<number>`case when ${table.data} like '%"truncated":true%' then 1 else 0 end`,
   })
 
   /** Two different full crawls of the domain that finished with results and still have them. */
@@ -3580,11 +3620,13 @@ export function createPgDatabase(options: {
         const found = await pairOf(baseId, targetId)
         if (!found) return null
         const pair = { baseRef: found.baseRef, targetRef: found.targetRef }
-        const [domain] = await db
-          .select({ archivedAt: domains.archivedAt })
-          .from(domains)
-          .where(eq(domains.id, domainId))
-        if (domain?.archivedAt) return headerOf(pair)
+        const archived = (
+          await db
+            .select({ archivedAt: domains.archivedAt })
+            .from(domains)
+            .where(eq(domains.id, domainId))
+        )[0]?.archivedAt
+        if (archived) return await headerOf(pair)
         const jobId = randomUUID()
         const queued = {
           version: EXPLANATION_VERSION,
@@ -3594,10 +3636,39 @@ export function createPgDatabase(options: {
           startedAt: now,
           finishedAt: null,
         }
+        // A job of the pair that is still waiting or running: never a second one.
+        const activeJob = exists(
+          db
+            .select({ one: sql`1` })
+            .from(jobs)
+            .where(
+              and(
+                eq(jobs.id, crawlComparisons.jobId),
+                inArray(jobs.status, ['pending', 'running']),
+              ),
+            ),
+        )
+        const idle = or(
+          and(
+            isNull(crawlComparisons.jobId),
+            or(
+              ne(crawlComparisons.state, 'running'),
+              // A run inside a crawl job that never finished.
+              lt(crawlComparisons.startedAt, new Date(now.getTime() - STALE_EXPLANATION_MS)),
+            ),
+          ),
+          and(isNotNull(crawlComparisons.jobId), not(activeJob)),
+        )
         await db.transaction(async (tx) => {
+          // Retention is checked in the same transaction: a pruned crawl never gets a header again.
+          const kept = await tx
+            .select({ id: crawls.id })
+            .from(crawls)
+            .where(and(inArray(crawls.id, [baseId, targetId]), eq(crawls.pruned, false)))
+          if (kept.length < 2) return
           const created = await tx
             .insert(crawlComparisons)
-            .values({ ...pair, ...queued })
+            .values({ ...pair, ...queued, failures: 0, retryAt: null })
             .onConflictDoNothing()
             .returning({ ref: crawlComparisons.baseRef })
           const renewed =
@@ -3609,16 +3680,15 @@ export function createPgDatabase(options: {
                   .where(
                     and(
                       ofPair(pair, crawlComparisons),
+                      idle,
                       or(
                         ne(crawlComparisons.version, EXPLANATION_VERSION),
-                        // Failed, or a run that never finished: tried again after a while, not on every view.
+                        // Failed: asked for again only once its back-off has passed.
                         and(
-                          ne(crawlComparisons.state, 'done'),
-                          lt(
-                            crawlComparisons.startedAt,
-                            new Date(now.getTime() - STALE_EXPLANATION_MS),
-                          ),
+                          eq(crawlComparisons.state, 'failed'),
+                          or(isNull(crawlComparisons.retryAt), lte(crawlComparisons.retryAt, now)),
                         ),
+                        inArray(crawlComparisons.state, ['queued', 'running']),
                       ),
                     ),
                   )
@@ -3634,7 +3704,7 @@ export function createPgDatabase(options: {
             })
           }
         })
-        return headerOf(pair)
+        return await headerOf(pair)
       },
 
       async explanationStamp(domainId) {
@@ -3651,22 +3721,45 @@ export function createPgDatabase(options: {
       },
 
       comparisonWork: {
-        async begin({ baseId, targetId, runner, version, now = new Date() }) {
-          const found = await pairOf(baseId, targetId)
-          if (!found) return false
-          const pair = { baseRef: found.baseRef, targetRef: found.targetRef }
-          const values = { version, state: 'running', runner, startedAt: now, finishedAt: null }
-          await db.transaction(async (tx) => {
+        async begin({ baseId, targetId, runner, version, jobId = null, now = new Date() }) {
+          return await db.transaction(async (tx) => {
+            // Claimed only while both crawls are still retained full results of the pair.
+            const rows = await tx
+              .select({
+                id: crawls.id,
+                ref: crawls.ref,
+                pruned: crawls.pruned,
+                status: crawls.status,
+              })
+              .from(crawls)
+              .where(inArray(crawls.id, [baseId, targetId]))
+            const base = rows.find((row) => row.id === baseId)
+            const target = rows.find((row) => row.id === targetId)
+            const usable = (row: typeof base) =>
+              !!row &&
+              row.ref !== null &&
+              !row.pruned &&
+              (row.status === 'completed' || row.status === 'incomplete')
+            if (baseId === targetId || !usable(base) || !usable(target)) return false
+            const pair = { baseRef: base!.ref!, targetRef: target!.ref! }
+            const values = {
+              version,
+              state: 'running',
+              runner,
+              jobId,
+              startedAt: now,
+              finishedAt: null,
+            }
             await tx
               .insert(crawlComparisons)
-              .values({ ...pair, ...values, jobId: null })
+              .values({ ...pair, ...values, failures: 0, retryAt: null })
               .onConflictDoUpdate({
                 target: [crawlComparisons.baseRef, crawlComparisons.targetRef],
                 set: values,
               })
             await tx.delete(crawlComparisonUrls).where(ofPair(pair))
+            return true
           })
-          return true
         },
 
         async oneSided({ baseId, targetId, side, after, limit, undecided }) {
@@ -3684,6 +3777,7 @@ export function createPgDatabase(options: {
               viaHash: sourceUrls.urlHash,
               viaUrl: sourceUrls.url,
               viaRendered: crawlUrlLinks.rendered,
+              viaLinkKind: crawlUrlLinks.kind,
             })
             .from(crawlUrls)
             .leftJoin(
@@ -3735,15 +3829,18 @@ export function createPgDatabase(options: {
           return found
         },
 
-        async save({ baseId, targetId, rows }) {
+        async save({ baseId, targetId, runner, rows }) {
           const pair = await pairOf(baseId, targetId)
-          if (!pair) return
-          for (const batch of chunk(rows, 1000)) {
-            await db
-              .insert(crawlComparisonUrls)
-              .values(batch.map((row) => comparisonUrlValues(pair.baseRef, pair.targetRef, row)))
-              .onConflictDoNothing()
-          }
+          if (!pair) throw new ComparisonSupersededError()
+          await db.transaction(async (tx) => {
+            await assertClaimed(tx, pair, runner)
+            for (const batch of chunk(rows, 1000)) {
+              await tx
+                .insert(crawlComparisonUrls)
+                .values(batch.map((row) => comparisonUrlValues(pair.baseRef, pair.targetRef, row)))
+                .onConflictDoNothing()
+            }
+          })
         },
 
         async inLinks({ baseId, targetId, side, seqs, after, limit }) {
@@ -3790,86 +3887,55 @@ export function createPgDatabase(options: {
           if (!pair || sources.length === 0) return []
           const [ownId, otherId] = side === 'base' ? [baseId, targetId] : [targetId, baseId]
           const found: SourceCounterpart[] = []
-          // Three lookups by index, joined here: one query joining them made PostgreSQL scan every
-          // stored reason of the pair for each batch.
-          // 5,000 parameters a lookup: within both dialects' limits, and few round trips.
+          // By index, joined here; 5,000 parameters a lookup, within both dialects' limits.
           for (const batch of chunk([...new Set(sources)], 5000)) {
             const own = await db
-              .select({ seq: sourceUrls.seq, urlHash: sourceUrls.urlHash })
+              .select({ seq: sourceUrls.seq, ...pageColumns(sourceUrls) })
               .from(sourceUrls)
               .where(and(eq(sourceUrls.crawlId, ownId), inArray(sourceUrls.seq, batch)))
-            const into = new Map<string, string>()
-            if (merged && own.length > 0) {
+            if (own.length === 0) continue
+            const hashes = own.map((row) => row.urlHash)
+            // Sources the other crawl reads at another address: not the same page there.
+            const moved = new Set<string>()
+            if (merged) {
               const rows = await db
-                .select({ urlHash: sourceRows.urlHash, intoHash: sourceRows.intoHash })
+                .select({ urlHash: sourceRows.urlHash })
                 .from(sourceRows)
                 .where(
                   and(
                     ofPair(pair, sourceRows),
-                    inArray(
-                      sourceRows.urlHash,
-                      own.map((row) => row.urlHash),
-                    ),
+                    inArray(sourceRows.urlHash, hashes),
                     isNotNull(sourceRows.intoHash),
                   ),
                 )
-              for (const row of rows) if (row.intoHash) into.set(row.urlHash, row.intoHash)
+              for (const row of rows) moved.add(row.urlHash)
             }
-            const hashOf = (urlHash: string) => into.get(urlHash) ?? urlHash
-            const others =
-              own.length === 0
-                ? []
-                : await db
-                    .select({
-                      urlHash: counterpartUrls.urlHash,
-                      state: counterpartUrls.state,
-                      kind: counterpartUrls.kind,
-                      statusCode: counterpartUrls.statusCode,
-                      notRequested: sql<
-                        string | null
-                      >`case when ${counterpartUrls.data} like '%"notRequested":"excluded"%' then 'excluded' when ${counterpartUrls.data} like '%"notRequested":"depth"%' then 'depth' end`,
-                      servedTruncated: sql<number>`case when ${counterpartUrls.data} like '%"truncated":true%' then 1 else 0 end`,
-                    })
-                    .from(counterpartUrls)
-                    .where(
-                      and(
-                        eq(counterpartUrls.crawlId, otherId),
-                        inArray(counterpartUrls.urlHash, [
-                          ...new Set(own.map((row) => hashOf(row.urlHash))),
-                        ]),
-                      ),
-                    )
+            const others = await db
+              .select(pageColumns(counterpartUrls))
+              .from(counterpartUrls)
+              .where(
+                and(eq(counterpartUrls.crawlId, otherId), inArray(counterpartUrls.urlHash, hashes)),
+              )
             const byHash = new Map(others.map((row) => [row.urlHash, row]))
             for (const row of own) {
               if (row.seq === null) continue
-              const other = byHash.get(hashOf(row.urlHash))
-              found.push(
-                toSourceCounterpart(
-                  other
-                    ? { ...other, source: row.seq }
-                    : {
-                        source: row.seq,
-                        state: null,
-                        kind: null,
-                        statusCode: null,
-                        notRequested: null,
-                        servedTruncated: 0,
-                      },
-                ),
-              )
+              const ownPage = toStoredPage(row)
+              if (!ownPage) continue
+              found.push({
+                source: row.seq,
+                own: ownPage,
+                other: moved.has(row.urlHash) ? null : toStoredPage(byHash.get(row.urlHash)),
+                identityChanged: moved.has(row.urlHash),
+              })
             }
           }
           return found
         },
 
-        async counterpartRenders({ baseId, targetId, side, urlHashes }) {
-          const pair = await pairOf(baseId, targetId)
-          if (!pair || urlHashes.length === 0) return []
-          const otherId = side === 'base' ? targetId : baseId
-          const found: CounterpartRender[] = []
-          // The whole stored `data` of each render, as text: parsed by the caller, never cast here.
-          // 200 at a time: render data holds extracted page values and can be large.
-          for (const batch of chunk([...new Set(urlHashes)], 200)) {
+        async renders({ baseId, targetId, crawlId, urlHashes }) {
+          if (urlHashes.length === 0 || (crawlId !== baseId && crawlId !== targetId)) return []
+          const found: RenderRow[] = []
+          for (const batch of chunk([...new Set(urlHashes)], RENDER_BATCH)) {
             const rows = await db
               .select({
                 urlHash: crawlUrlRenders.urlHash,
@@ -3880,10 +3946,10 @@ export function createPgDatabase(options: {
               })
               .from(crawlUrlRenders)
               .where(
-                and(eq(crawlUrlRenders.crawlId, otherId), inArray(crawlUrlRenders.urlHash, batch)),
+                and(eq(crawlUrlRenders.crawlId, crawlId), inArray(crawlUrlRenders.urlHash, batch)),
               )
             for (const row of rows)
-              found.push({ ...row, settled: Boolean(row.settled) } as CounterpartRender)
+              found.push({ ...row, settled: Boolean(row.settled) } as RenderRow)
           }
           return found
         },
@@ -3926,18 +3992,16 @@ export function createPgDatabase(options: {
           return rows.map(toExplainedUrl)
         },
 
-        async unseenSources({ baseId, targetId, side, seqs, merged }) {
+        async unseenSources({ baseId, targetId, side, seqs }) {
           const pair = await pairOf(baseId, targetId)
           if (!pair || seqs.length === 0) return []
           const [ownId, otherId] = side === 'base' ? [baseId, targetId] : [targetId, baseId]
           const ownRef = side === 'base' ? pair.baseRef : pair.targetRef
-          const counterpartHash = merged
-            ? sql`coalesce(${sourceRows.intoHash}, ${sourceUrls.urlHash})`
-            : sql`${sourceUrls.urlHash}`
           const rows = await db
             .select({
               target: crawlUrlLinks.target,
               reason: sourceRows.reason,
+              detail: sourceRows.detail,
               seq: sql<number>`min(${crawlUrlLinks.source})`,
             })
             .from(crawlUrlLinks)
@@ -3953,7 +4017,7 @@ export function createPgDatabase(options: {
               counterpartUrls,
               and(
                 eq(counterpartUrls.crawlId, otherId),
-                eq(counterpartUrls.urlHash, counterpartHash),
+                eq(counterpartUrls.urlHash, sourceUrls.urlHash),
               ),
             )
             .where(
@@ -3964,18 +4028,21 @@ export function createPgDatabase(options: {
                 isNull(counterpartUrls.urlHash),
               ),
             )
-            .groupBy(sql.raw('1, 2'))
+            .groupBy(sql.raw('1, 2, 3'))
           return rows.map((row) => ({
             target: Number(row.target),
             reason: row.reason,
+            detail: row.detail,
             seq: Number(row.seq),
           }))
         },
 
-        async resolve({ baseId, targetId, rows }) {
+        async resolve({ baseId, targetId, runner, rows }) {
           const pair = await pairOf(baseId, targetId)
-          if (!pair || rows.length === 0) return
+          if (!pair) throw new ComparisonSupersededError()
+          if (rows.length === 0) return
           await db.transaction(async (tx) => {
+            await assertClaimed(tx, pair, runner)
             for (const batch of chunk(rows, 1000)) {
               await tx.delete(crawlComparisonUrls).where(
                 and(
@@ -3993,13 +4060,31 @@ export function createPgDatabase(options: {
           })
         },
 
-        async finish({ baseId, targetId, runner, state, now = new Date() }) {
+        async finish({ baseId, targetId, runner, state, retryAt = null, now = new Date() }) {
           const pair = await pairOf(baseId, targetId)
           if (!pair) return false
+          const values =
+            state === 'done'
+              ? { state, finishedAt: now, failures: 0, retryAt: null }
+              : state === 'failed'
+                ? {
+                    state,
+                    finishedAt: now,
+                    failures: sql`${crawlComparisons.failures} + 1`,
+                    retryAt,
+                  }
+                : // The job that runs it will try again: still to be worked out.
+                  { state, runner: null }
           const updated = await db
             .update(crawlComparisons)
-            .set({ state, finishedAt: now })
-            .where(and(ofPair(pair, crawlComparisons), eq(crawlComparisons.runner, runner)))
+            .set(values)
+            .where(
+              and(
+                ofPair(pair, crawlComparisons),
+                eq(crawlComparisons.runner, runner),
+                eq(crawlComparisons.state, 'running'),
+              ),
+            )
             .returning({ ref: crawlComparisons.baseRef })
           return updated.length > 0
         },
@@ -4027,7 +4112,10 @@ export function createPgDatabase(options: {
               .where(and(eq(crawlUrls.crawlId, crawlId), inArray(crawlUrls.seq, batch)))
             for (const row of found) if (row.seq !== null) details.urls[side].set(row.seq, row.url)
           }
-          const linked = own.filter((row) => row.via !== null && row.seq !== null)
+          // The exact link each reason is about: its stored kind, never another link of the pair.
+          const linked = own.filter(
+            (row) => row.via !== null && row.seq !== null && row.viaKind !== null,
+          )
           if (linked.length === 0) continue
           const links = await db
             .select({
@@ -4046,14 +4134,19 @@ export function createPgDatabase(options: {
                 eq(crawlUrlLinks.crawlRef, ref),
                 or(
                   ...linked.map((row) =>
-                    and(eq(crawlUrlLinks.source, row.via!), eq(crawlUrlLinks.target, row.seq!)),
+                    and(
+                      eq(crawlUrlLinks.source, row.via!),
+                      eq(crawlUrlLinks.target, row.seq!),
+                      eq(crawlUrlLinks.kind, row.viaKind!),
+                    ),
                   ),
                 ),
               ),
             )
           for (const row of linked) {
-            const first = firstLinkByKind(
-              links.filter((link) => link.source === row.via && link.target === row.seq),
+            const first = links.find(
+              (link) =>
+                link.source === row.via && link.target === row.seq && link.kind === row.viaKind,
             )
             if (!first) continue
             const context = toLinkContext(first)

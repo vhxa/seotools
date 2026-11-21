@@ -426,6 +426,9 @@ export const crawlComparisons = pgTable(
     jobId: text('job_id'),
     startedAt: ts('started_at').notNull(),
     finishedAt: ts('finished_at'),
+    /** Failed attempts in a row, and when a failed explanation may be asked for again. */
+    failures: integer('failures').notNull().default(0),
+    retryAt: ts('retry_at'),
   },
   (t) => [
     primaryKey({ columns: [t.baseRef, t.targetRef] }),
@@ -454,6 +457,9 @@ export const crawlComparisonUrls = pgTable(
     reason: text('reason').notNull(),
     detail: text('detail'),
     via: integer('via'),
+    /** The exact link from `via` the reason is about. */
+    viaKind: text('via_kind'),
+    viaRendered: integer('via_rendered'),
     through: integer('through'),
     /** In-links of the URL in the crawl that has it. */
     sources: integer('sources').notNull().default(0),

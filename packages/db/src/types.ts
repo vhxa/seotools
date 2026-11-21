@@ -1093,7 +1093,13 @@ export interface CrawlRepository {
     domainId: string
     baseId: string
     targetId: string
-    rows: { side: ComparisonSide; seq: number | null; via: number | null; through: number | null }[]
+    rows: {
+      side: ComparisonSide
+      seq: number | null
+      via: number | null
+      viaKind: string | null
+      through: number | null
+    }[]
   }): Promise<ExplanationDetails>
   /**
    * What the crawls of the domain recorded of these URLs: for each crawl that has a URL, one entry.
@@ -1212,11 +1218,18 @@ export interface ComparisonPairIds {
 /** The steps of `explainPair`, each one bounded query. Both crawls must have a `ref`. */
 export interface ComparisonWork {
   /**
-   * Starts working a pair out: the header is `running` for `runner` with this version, and the
-   * pair's rows are removed. `false`: a crawl of the pair has no `ref` or no longer exists.
+   * Claims the pair for `runner` (a token unique to this attempt), in one transaction that checks
+   * both crawls are still retained full results: the header is `running` for it with this version
+   * and the job running it (`null` inside a crawl job), and the pair's rows are removed. `false`:
+   * a crawl of the pair has no `ref`, was pruned or no longer exists; nothing is written.
    */
   begin(
-    input: ComparisonPairIds & { runner: string; version: number; now?: Date },
+    input: ComparisonPairIds & {
+      runner: string
+      version: number
+      jobId?: string | null
+      now?: Date
+    },
   ): Promise<boolean>
   /**
    * URLs of `side` the other crawl does not have, by `url_hash`, after `after`. `undecided`: only
@@ -1277,13 +1290,22 @@ export interface ComparisonWork {
    * the source's own row (`null`: it has none), with the lowest `seq` of each group.
    */
   unseenSources(
-    input: ComparisonPairIds & { side: ComparisonSide; seqs: number[]; merged: boolean },
-  ): Promise<{ target: number; reason: string | null; seq: number }[]>
+    input: ComparisonPairIds & { side: ComparisonSide; seqs: number[] },
+  ): Promise<{ target: number; reason: string | null; detail: string | null; seq: number }[]>
   /** Replaces rows that were `pending` with their reason (one delete and one insert per batch). */
   resolve(input: ComparisonPairIds & { runner: string; rows: ExplainedUrl[] }): Promise<void>
-  /** Ends the work of `runner`. `false`: another run took the pair over (nothing is changed). */
+  /**
+   * Ends the work of `runner`: `done`; `failed`, asked for again from `retryAt` (the back-off), with
+   * one more failure counted; or `queued`, when the job running it will try again. `false`: another
+   * run took the pair over or a crawl was pruned (nothing is changed).
+   */
   finish(
-    input: ComparisonPairIds & { runner: string; state: 'done' | 'failed'; now?: Date },
+    input: ComparisonPairIds & {
+      runner: string
+      state: 'done' | 'failed' | 'queued'
+      retryAt?: Date | null
+      now?: Date
+    },
   ): Promise<boolean>
 }
 

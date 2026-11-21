@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f3ed4940-5070-4482-8508-f5c97a631187",
+  "id": "d618db4d-f136-4158-b45b-acae020bb499",
   "prevId": "37bebd48-b3d7-4bef-af3a-5d5d6cc29bce",
   "tables": {
     "account": {
@@ -829,6 +829,20 @@
           "notNull": false,
           "autoincrement": false
         },
+        "via_kind": {
+          "name": "via_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "via_rendered": {
+          "name": "via_rendered",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "through": {
           "name": "through",
           "type": "integer",
@@ -988,6 +1002,21 @@
         },
         "finished_at": {
           "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "failures": {
+          "name": "failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "retry_at": {
+          "name": "retry_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

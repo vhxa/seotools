@@ -7,6 +7,8 @@ CREATE TABLE "crawl_comparison_urls" (
 	"reason" text NOT NULL,
 	"detail" text,
 	"via" integer,
+	"via_kind" text,
+	"via_rendered" integer,
 	"through" integer,
 	"sources" integer DEFAULT 0 NOT NULL,
 	"unseen" integer DEFAULT 0 NOT NULL,
@@ -25,6 +27,8 @@ CREATE TABLE "crawl_comparisons" (
 	"job_id" text,
 	"started_at" timestamp with time zone NOT NULL,
 	"finished_at" timestamp with time zone,
+	"failures" integer DEFAULT 0 NOT NULL,
+	"retry_at" timestamp with time zone,
 	CONSTRAINT "crawl_comparisons_base_ref_target_ref_pk" PRIMARY KEY("base_ref","target_ref")
 );
 --> statement-breakpoint

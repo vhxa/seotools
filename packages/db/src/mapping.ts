@@ -79,7 +79,7 @@ import type {
   ComparisonHeader,
   ComparisonHeaderState,
   ExplainedUrl,
-  SourceCounterpart,
+  StoredPage,
   OneSidedUrl,
   UrlExplanation,
   AlertSubscription,
@@ -2016,6 +2016,9 @@ function readBlockerObservation(
 /** A run that started this long ago and did not finish is taken for dead: the pair is queued again. */
 export const STALE_EXPLANATION_MS = 6 * 60 * 60_000
 
+/** Render rows read at a time: their data can be large, so each group is parsed and dropped. */
+export const RENDER_BATCH = 200
+
 export function toComparisonHeader(row: {
   baseRef: number
   targetRef: number
@@ -2025,8 +2028,10 @@ export function toComparisonHeader(row: {
   jobId: string | null
   startedAt: Date
   finishedAt: Date | null
+  failures: number
+  retryAt: Date | null
 }): ComparisonHeader {
-  return { ...row, state: row.state as ComparisonHeaderState }
+  return { ...row, failures: Number(row.failures), state: row.state as ComparisonHeaderState }
 }
 
 /** Whether a stored explanation can be shown: done with the rules of this version. */
@@ -2042,6 +2047,8 @@ export const comparisonUrlValues = (baseRef: number, targetRef: number, row: Exp
   reason: row.reason,
   detail: row.detail,
   via: row.via,
+  viaKind: row.viaKind,
+  viaRendered: row.viaRendered === null ? null : row.viaRendered ? 1 : 0,
   through: row.through,
   sources: row.sources,
   unseen: row.unseen,
@@ -2057,6 +2064,8 @@ type ExplainedRow = {
   reason: string
   detail: string | null
   via: number | null
+  viaKind: string | null
+  viaRendered: number | null
   through: number | null
   sources: number
   unseen: number
@@ -2069,6 +2078,7 @@ export const toExplainedUrl = (row: ExplainedRow): ExplainedUrl => ({
   ...row,
   side: row.side as ComparisonSide,
   reason: row.reason as ExplainedUrl['reason'],
+  viaRendered: row.viaRendered === null ? null : row.viaRendered === 1,
 })
 
 /** A listed row's stored reason. `null`: no row, or one still `pending` (never shown as a reason). */
@@ -2082,6 +2092,9 @@ export function toUrlExplanation(
     reason: row.reason,
     detail: row.detail ?? null,
     via: row.via ?? null,
+    viaKind: row.viaKind ?? null,
+    viaRendered:
+      row.viaRendered === null || row.viaRendered === undefined ? null : row.viaRendered === 1,
     through: row.through ?? null,
     sources: row.sources ?? 0,
     into:
@@ -2091,31 +2104,26 @@ export function toUrlExplanation(
   }
 }
 
-export function toSourceCounterpart(row: {
-  source: number | null
-  urlHash?: string | null
+type StoredPageRow = {
+  urlHash: string
   state: string | null
   kind: string | null
   statusCode: number | null
   notRequested: string | null
   servedTruncated: number | boolean
-}): SourceCounterpart {
+}
+
+/** A page as one crawl stored it, from the columns `counterparts` selects. `null`: no row. */
+export function toStoredPage(row: StoredPageRow | null | undefined): StoredPage | null {
+  if (!row || row.state === null) return null
   return {
-    source: Number(row.source),
-    counterpart:
-      row.state === null || !row.urlHash
-        ? null
-        : {
-            urlHash: row.urlHash,
-            state: row.state as 'queued' | 'done' | 'skipped',
-            kind: (row.kind ?? 'unknown') as 'page' | 'redirect' | 'resource' | 'unknown',
-            statusCode: row.statusCode === null ? null : Number(row.statusCode),
-            notRequested:
-              row.notRequested === 'excluded' || row.notRequested === 'depth'
-                ? row.notRequested
-                : null,
-            servedTruncated: Boolean(Number(row.servedTruncated)),
-          },
+    urlHash: row.urlHash,
+    state: row.state as StoredPage['state'],
+    kind: (row.kind ?? 'unknown') as StoredPage['kind'],
+    statusCode: row.statusCode === null ? null : Number(row.statusCode),
+    notRequested:
+      row.notRequested === 'excluded' || row.notRequested === 'depth' ? row.notRequested : null,
+    servedTruncated: Boolean(Number(row.servedTruncated)),
   }
 }
 
@@ -2129,6 +2137,8 @@ export const toOneSidedUrl = (row: {
   viaHash: string | null
   viaUrl: string | null
   viaRendered: number | null
+  /** The joined discovering link's kind: `null` when that link row was not found. */
+  viaLinkKind: string | null
 }): OneSidedUrl => ({
   urlHash: row.urlHash,
   url: row.url,
@@ -2136,17 +2146,10 @@ export const toOneSidedUrl = (row: {
   source: row.source,
   foundFrom: row.foundFrom,
   foundKind: row.foundKind,
+  // Only a discovering link that is stored: a missing row is never read as a served link.
   foundVia:
-    row.viaHash !== null && row.viaUrl !== null
+    row.viaHash !== null && row.viaUrl !== null && row.viaLinkKind !== null
       ? { urlHash: row.viaHash, url: row.viaUrl, rendered: row.viaRendered === 1 }
       : null,
 })
 
-/** The first link by kind (`CRAWL_LINK_KINDS` order) of several between the same two URLs. */
-export function firstLinkByKind<T extends { kind: string }>(links: T[]): T | undefined {
-  const order = (kind: string) => {
-    const index = (CRAWL_LINK_KINDS as readonly string[]).indexOf(kind)
-    return index < 0 ? CRAWL_LINK_KINDS.length : index
-  }
-  return [...links].sort((a, b) => order(a.kind) - order(b.kind))[0]
-}

@@ -1,5 +1,5 @@
 {
-  "id": "fb32050a-49b3-42f1-9cf1-f923454acf9c",
+  "id": "aa3bacaa-c066-429f-bb22-d9a5b07430d3",
   "prevId": "749819a1-e800-4b97-b712-cb0a5bbb7053",
   "version": "7",
   "dialect": "postgresql",
@@ -820,6 +820,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "via_kind": {
+          "name": "via_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "via_rendered": {
+          "name": "via_rendered",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "through": {
           "name": "through",
           "type": "integer",
@@ -1000,6 +1012,19 @@
         },
         "finished_at": {
           "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failures": {
+          "name": "failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "retry_at": {
+          "name": "retry_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

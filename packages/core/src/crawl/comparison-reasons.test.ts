@@ -3,110 +3,166 @@ import {
   CONFIGURATION_REASONS,
   NOT_REACHED_ORDER,
   SIDE_REASONS,
-  UNRECORDED_REACH,
   chainStep,
   classifyDifference,
   classifyLink,
+  entersChain,
   identityChange,
   ignoredParametersOf,
-  reachChanges,
+  narrower,
+  type ClassTally,
   type DifferenceInput,
   type LinkClass,
-  type SourceCounterpart,
+  type LinkObservation,
+  type PageObservation,
+  type PairConditions,
 } from './comparison-reasons'
 
-const page: SourceCounterpart = {
+const page: PageObservation = {
   state: 'done',
   kind: 'page',
   statusCode: 200,
   notRequested: null,
   servedTruncated: false,
   renderState: 'complete',
-  captureProvesAbsence: false,
+  renderTrusted: true,
+}
+const comparable: PairConditions = {
+  otherRendered: true,
+  requestsComparable: true,
+  rendersComparable: true,
+  depthNarrowed: false,
 }
 const link = (
-  counterpart: Partial<SourceCounterpart> | null,
-  options: { rendered?: boolean; kind?: string; otherRendered?: boolean } = {},
+  other: Partial<PageObservation> | null,
+  options: Partial<Omit<LinkObservation, 'other' | 'own' | 'conditions'>> & {
+    own?: Partial<PageObservation>
+    conditions?: Partial<PairConditions>
+  } = {},
 ) =>
   classifyLink({
     rendered: options.rendered ?? false,
     kind: options.kind ?? 'anchor',
-    otherRendered: options.otherRendered ?? true,
-    counterpart: counterpart && { ...page, ...counterpart },
+    own: { ...page, ...options.own },
+    other: other && { ...page, ...other },
+    identityChanged: options.identityChanged ?? false,
+    conditions: { ...comparable, ...options.conditions },
   })
 
 describe('classifyLink', () => {
+  it('calls a link gone only when both crawls read its source the same way, whole', () => {
+    expect(link({})).toBe('whole')
+    expect(link({}, { rendered: true })).toBe('whole')
+  })
+
+  // Finding 1: an error page's HTML (or any answer that is not the page) never proves a link.
   it.each([
-    ['a page answered 200', {}, 'whole'],
+    ['503', { statusCode: 503 }],
+    ['404', { statusCode: 404 }],
+    ['301', { statusCode: 301, kind: 'redirect' as const }],
+    ['no answer', { statusCode: null }],
+    ['a cut body', { servedTruncated: true }],
+    ['not requested', { state: 'queued' as const }],
+  ])('never reads a link from a source that answered %s in the crawl that has it', (_n, own) => {
+    expect(link({}, { own })).toBe('source-unobserved')
+  })
+
+  it.each([
     ['no counterpart', null, 'not-seen'],
     ['left out by paths', { state: 'skipped', notRequested: 'excluded' }, 'excluded'],
-    ['beyond depth', { state: 'skipped', notRequested: 'depth' }, 'depth'],
     ['left for later', { state: 'queued' }, 'not-requested'],
-    ['skipped for no recorded reason', { state: 'skipped' }, 'not-requested'],
     ['no answer', { statusCode: null }, 'failed'],
-    ['a 500', { statusCode: 500 }, 'failed'],
     ['a 503', { statusCode: 503 }, 'failed'],
     ['a 401', { statusCode: 401 }, 'failed'],
     ['a 403', { statusCode: 403 }, 'failed'],
-    ['a 408', { statusCode: 408 }, 'failed'],
     ['a 429', { statusCode: 429 }, 'failed'],
-    ['a 404', { statusCode: 404 }, 'whole'],
-    ['a 410', { statusCode: 410 }, 'whole'],
+    ['a 404', { statusCode: 404 }, 'error-answer'],
+    ['a 410', { statusCode: 410 }, 'error-answer'],
+    ['a 206', { statusCode: 206 }, 'error-answer'],
     ['a redirect', { statusCode: 301, kind: 'redirect' }, 'redirected'],
     ['a cut body', { servedTruncated: true }, 'served-truncated'],
-  ] as const)('a served link from a source that is %s', (_name, counterpart, expected) => {
-    expect(link(counterpart as Partial<SourceCounterpart> | null)).toBe(expected)
+  ] as const)('reads a source that is %s in the other crawl', (_n, other, expected) => {
+    expect(link(other as Partial<PageObservation> | null)).toBe(expected)
   })
 
-  it('takes a redirect as whole for the redirect link itself', () => {
-    expect(link({ statusCode: 302, kind: 'redirect' }, { kind: 'redirect' })).toBe('whole')
+  it('observes a redirect link only through a redirect on both sides', () => {
+    const redirect = { statusCode: 302, kind: 'redirect' as const }
+    expect(link(redirect, { kind: 'redirect', own: redirect })).toBe('whole')
+    expect(link({}, { kind: 'redirect', own: redirect })).toBe('other-answer')
   })
 
-  it('needs a whole served body before anything about the render', () => {
-    expect(link({ servedTruncated: true, renderState: 'failed' }, { rendered: true })).toBe(
-      'served-truncated',
-    )
+  // Finding 3: the same page means the same address.
+  it('never compares a source the other crawl reads at another address', () => {
+    expect(link({}, { identityChanged: true })).toBe('identity')
   })
 
-  it.each([
-    [null, false, 'render-missing'],
-    ['failed', false, 'render-failed'],
-    ['truncated', false, 'render-truncated'],
-    ['unsettled', false, 'render-unsettled'],
-    ['redirect', false, 'render-redirected'],
-    ['unknown', false, 'render-unreliable'],
-    ['complete', false, 'render-unreliable'],
-    ['complete', true, 'whole'],
-    ['unsettled', true, 'render-unsettled'],
-  ] as const)(
-    'a link found only after rendering, the other render %s (proves absence: %s)',
-    (renderState, captureProvesAbsence, expected) => {
-      expect(link({ renderState, captureProvesAbsence }, { rendered: true })).toBe(expected)
-    },
-  )
-
-  it('calls a rendered link from an unrendered crawl a difference of mode, before anything else', () => {
-    expect(link(null, { rendered: true, otherRendered: false })).toBe('mode')
-    expect(link({ statusCode: 503 }, { rendered: true, otherRendered: false })).toBe('mode')
-    expect(link({ statusCode: 503 }, { rendered: false, otherRendered: false })).toBe('failed')
+  it('needs recorded, equal request settings to call a link gone', () => {
+    expect(link({}, { conditions: { requestsComparable: false } })).toBe('settings')
   })
 
-  it('reads a rendered link from a source that now answers 404 as observed', () => {
-    expect(link({ statusCode: 404, renderState: null }, { rendered: true })).toBe('whole')
+  it('reads a source beyond the depth as a setting only when the other depth is narrower', () => {
+    const deep = { state: 'skipped' as const, notRequested: 'depth' as const }
+    expect(link(deep, { conditions: { depthNarrowed: true } })).toBe('depth-setting')
+    expect(link(deep, { conditions: { depthNarrowed: false } })).toBe('depth')
+    expect(link(deep, { conditions: { depthNarrowed: null } })).toBe('depth')
+  })
+
+  describe('a link found only after rendering', () => {
+    it.each([
+      [null, 'render-missing'],
+      ['failed', 'render-failed'],
+      ['truncated', 'render-truncated'],
+      ['unsettled', 'render-unsettled'],
+      ['redirect', 'render-redirected'],
+      ['unknown', 'render-unreliable'],
+    ] as const)('the other render is %s', (renderState, expected) => {
+      expect(link({ renderState }, { rendered: true })).toBe(expected)
+    })
+
+    it('needs a trusted capture on both sides (finding 1)', () => {
+      expect(link({ renderTrusted: false }, { rendered: true })).toBe('render-unreliable')
+      expect(link({}, { rendered: true, own: { renderTrusted: false } })).toBe('render-own')
+    })
+
+    // Finding 3: renders with another configured wait are not compared.
+    it('needs the same rendering settings on both sides', () => {
+      expect(link({}, { rendered: true, conditions: { rendersComparable: false } })).toBe(
+        'render-settings',
+      )
+    })
+
+    // Finding 5: a failed linker is not reached before it is anything a setting explains.
+    it('is a difference of mode only once the source answered whole', () => {
+      expect(link({}, { rendered: true, conditions: { otherRendered: false } })).toBe('mode')
+      expect(
+        link({ statusCode: 403 }, { rendered: true, conditions: { otherRendered: false } }),
+      ).toBe('failed')
+      expect(
+        link(
+          {},
+          { rendered: true, own: { statusCode: 403 }, conditions: { otherRendered: false } },
+        ),
+      ).toBe('source-unobserved')
+    })
   })
 })
 
+const tally = (via: number, count = 1): ClassTally => ({
+  count,
+  via,
+  kind: 'anchor',
+  rendered: false,
+})
 const input = (
   classes: Partial<Record<LinkClass, number>>,
   overrides: Partial<DifferenceInput> = {},
 ): DifferenceInput => ({
   side: 'base',
   source: 'link',
-  classes: Object.fromEntries(
-    Object.entries(classes).map(([name, via]) => [name, { count: 1, via }]),
-  ),
+  classes: Object.fromEntries(Object.entries(classes).map(([name, via]) => [name, tally(via)])),
   otherIncomplete: false,
-  reach: UNRECORDED_REACH,
+  limitNarrowed: false,
+  depthNarrowed: false,
   varied: null,
   numbered: true,
   ...overrides,
@@ -120,74 +176,109 @@ describe('classifyDifference', () => {
   it('claims a change of the site only when every in-link is whole', () => {
     expect(decide({ whole: 3 })).toEqual(['unlinked', null, 3])
     expect(decide({ whole: 3 }, { side: 'target' })).toEqual(['linked', null, 3])
-    expect(decide({ whole: 3, failed: 9 })).toEqual(['notReached', 'failed', 9])
   })
 
-  it('names as "not reached" the first class in the documented order, then the lowest seq', () => {
+  it('names the edge it is about', () => {
+    expect(
+      classifyDifference(
+        input({}, { classes: { whole: { count: 2, via: 4, kind: 'canonical', rendered: true } } }),
+      ),
+    ).toMatchObject({ via: 4, viaKind: 'canonical', viaRendered: true })
+  })
+
+  it('says not reached before anything else, in the documented order', () => {
     const all = Object.fromEntries(NOT_REACHED_ORDER.map((name, i) => [name, 100 - i]))
-    expect(decide(all)).toEqual(['notReached', NOT_REACHED_ORDER[0], 100])
-    expect(decide({ 'render-unsettled': 4, 'render-truncated': 8 })).toEqual([
+    expect(decide({ ...all, mode: 1, whole: 2 })).toEqual(['notReached', NOT_REACHED_ORDER[0], 100])
+    // Finding 5: a failed linker wins over a difference of mode or paths.
+    expect(decide({ mode: 1, failed: 9 })).toEqual(['notReached', 'failed', 9])
+    expect(decide({ excluded: 1, failed: 9 }, { otherIncomplete: true })).toEqual([
       'notReached',
-      'render-truncated',
-      8,
+      'failed',
+      9,
     ])
   })
 
-  it('leaves a chain pending: only whole sources and sources not seen either', () => {
-    expect(decide({ whole: 2, 'not-seen': 5 })[0]).toBe('pending')
-    expect(decide({ 'not-seen': 5 })[0]).toBe('pending')
-  })
-
-  it('puts settings first only when every blocking link is one', () => {
-    expect(decide({ mode: 4, whole: 1 })).toEqual(['mode', null, 4])
-    expect(decide({ excluded: 4, 'not-seen': 1 })).toEqual(['settings', 'excluded', 4])
-    expect(decide({ excluded: 4, mode: 2 })).toEqual(['settings', 'excluded', 4])
-    expect(decide({ excluded: 4, failed: 2 })).toEqual(['notReached', 'failed', 2])
-  })
-
-  it('treats depth as a setting only when it is recorded as changed', () => {
-    expect(decide({ depth: 7 })).toEqual(['depth', 'unrecorded', 7])
-    expect(decide({ depth: 7 }, { reach: { maxDepth: false, maxUrls: false } })).toEqual([
-      'depth',
-      'unchanged',
-      7,
-    ])
-    expect(decide({ depth: 7 }, { reach: { maxDepth: true, maxUrls: null } })).toEqual([
+  it('is unknown when an observation cannot decide, never a change of the site', () => {
+    for (const name of [
+      'source-unobserved',
+      'identity',
+      'render-own',
+      'render-settings',
       'settings',
-      'depth',
-      7,
+    ] as const)
+      expect(decide({ whole: 1, [name]: 2 })[0], name).toBe('unknown')
+  })
+
+  // Finding 5: a setting takes a URL out of the counts only when it explains every way in.
+  it('puts a URL in the configuration group only when every link is explained by a setting', () => {
+    expect(decide({ mode: 4 })).toEqual(['mode', null, 4])
+    expect(decide({ excluded: 4, mode: 2 })).toEqual(['settings', 'excluded', 4])
+    expect(decide({ 'depth-setting': 4 })).toEqual(['settings', 'depth', 4])
+    expect(decide({ mode: 4, whole: 1 })).toEqual(['unknown', 'partial-configuration', null])
+    expect(decide({ excluded: 4, 'not-seen': 1 })).toEqual([
+      'unknown',
+      'partial-configuration',
+      null,
     ])
   })
 
-  it('says limit over anything a page linked, configuration when the limit changed', () => {
-    expect(decide({ whole: 1 }, { otherIncomplete: true })).toEqual(['limit', 'unrecorded', null])
-    expect(
-      decide({ whole: 1 }, { otherIncomplete: true, reach: { maxDepth: null, maxUrls: false } }),
-    ).toEqual(['limit', null, null])
-    expect(
-      decide({ whole: 1 }, { otherIncomplete: true, reach: { maxDepth: null, maxUrls: true } }),
-    ).toEqual(['settings', 'limit', null])
+  it('says beyond the depth when it is not a narrower setting', () => {
+    expect(decide({ depth: 7 })).toEqual(['depth', 'unchanged', 7])
+    expect(decide({ depth: 7 }, { depthNarrowed: null })).toEqual(['depth', 'unrecorded', 7])
   })
 
-  it('puts a witnessed variation below the limit and above a change of the site', () => {
+  // Finding 5: a raised limit cannot explain a URL the later crawl lacks.
+  it('says limit, and configuration only when the other limit is narrower', () => {
+    expect(decide({ whole: 1 }, { otherIncomplete: true })).toEqual(['limit', null, null])
+    expect(decide({ whole: 1 }, { otherIncomplete: true, limitNarrowed: null })).toEqual([
+      'limit',
+      'unrecorded',
+      null,
+    ])
+    expect(decide({ whole: 1 }, { otherIncomplete: true, limitNarrowed: true })).toEqual([
+      'settings',
+      'limit',
+      null,
+    ])
+  })
+
+  it('puts a witnessed variation below not reached and the limit', () => {
     expect(decide({ whole: 1 }, { varied: 1 })).toEqual(['unstable', null, 1])
     expect(decide({ whole: 1 }, { varied: 1, otherIncomplete: true })[0]).toBe('limit')
+  })
+
+  it('leaves a chain pending, with its entrance when it has one', () => {
+    expect(decide({ whole: 2, 'not-seen': 5 })).toEqual(['pending', null, 2])
+    expect(decide({ 'not-seen': 5 })).toEqual(['pending', null, null])
   })
 
   it('explains a URL with no in-links only from the setting that put it there, else unknown', () => {
     expect(decide({}, { source: 'priority' })).toEqual(['settings', 'priority', null])
     expect(decide({}, { source: 'security' })).toEqual(['settings', 'files', null])
     expect(decide({}, { source: 'seed' })).toEqual(['unknown', 'no-links', null])
-    expect(decide({}, { source: 'sitemap-file' })).toEqual(['unknown', 'no-links', null])
     expect(decide({ whole: 1 }, { numbered: false })).toEqual(['unknown', 'legacy', null])
   })
+})
 
-  it('counts every in-link', () => {
-    expect(
-      classifyDifference(
-        input({}, { classes: { whole: { count: 3, via: 1 }, 'not-seen': { count: 2, via: 4 } } }),
-      ).sources,
-    ).toBe(5)
+describe('narrower', () => {
+  it('compares limits in the direction of the difference', () => {
+    expect(narrower(1000, 100)).toBe(true)
+    expect(narrower(null, 100)).toBe(true)
+    expect(narrower(100, 1000)).toBe(false)
+    expect(narrower(100, null)).toBe(false)
+    expect(narrower(100, 100)).toBe(false)
+    expect(narrower(undefined, 100)).toBeNull()
+  })
+})
+
+// Finding 4: a closed group with no observed entrance is never a change of the site.
+describe('entersChain', () => {
+  it('needs an observed entrance into the group', () => {
+    expect(entersChain('base', true, [])).toBe(true)
+    expect(entersChain('base', false, [{ reason: 'pending', entered: false }])).toBe(false)
+    expect(entersChain('base', false, [{ reason: 'pending', entered: true }])).toBe(true)
+    expect(entersChain('base', false, [{ reason: 'unlinked', entered: false }])).toBe(true)
+    expect(entersChain('target', false, [{ reason: 'unlinked', entered: false }])).toBe(false)
   })
 })
 
@@ -249,18 +340,5 @@ describe('the groups', () => {
           SIDE_REASONS.target.includes(reason as never),
       ).toBe(true)
     }
-  })
-})
-
-describe('reachChanges', () => {
-  it('reads changed, unrecorded and unchanged reach settings from the discovery comparison', () => {
-    expect(reachChanges([])).toEqual({ maxDepth: false, maxUrls: false })
-    expect(
-      reachChanges([
-        { setting: 'maxDepth', status: 'different' },
-        { setting: 'maxUrls', status: 'unknown' },
-        { setting: 'userAgent', status: 'different' },
-      ]),
-    ).toEqual({ maxDepth: true, maxUrls: null })
   })
 })
