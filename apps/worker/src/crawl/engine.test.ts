@@ -243,6 +243,19 @@ describe('paired answers', () => {
       pairedSummary: null,
     })
   })
+  // WP4 fix round, finding 2: an error page's links are not the page's links.
+  it('never reads anchors from a repeat that did not answer a whole 2xx page', async () => {
+    let calls = 0
+    const { pair } = await run(() =>
+      ++calls === 1
+        ? html('<title>Blog</title><a href="/a">A</a>')
+        : {
+            ...html('<title>Busy</title><a href="/a">A</a><a href="/page/3">3</a>'),
+            statusCode: 503,
+          },
+    )
+    expect(pair?.repeat).toMatchObject({ status: 503, html: null })
+  })
   it('records the two seeded pagination draws without admitting the repeat links', async () => {
     let seed = 7
     const { crawl, pair, site } = await run(() => {

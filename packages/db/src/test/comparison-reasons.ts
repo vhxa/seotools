@@ -796,6 +796,180 @@ export function describeComparisonReasons(getDb: () => Database) {
       expect(reasonOf(rows, '/page/3')).toEqual(['unknown', 'settings'])
     })
 
+    // Finding 1: a 503 error page's HTML supplied the edge in the crawl that has it.
+    it('never reads a link from an error page as one the site removed', async () => {
+      const { rows } = await explained(
+        { '/': { links: ['/hub'] }, '/hub': { status: 503, links: ['/leaf'] }, '/leaf': {} },
+        { '/': { links: ['/hub'] }, '/hub': {} },
+      )
+      expect(reasonOf(rows, '/leaf')).toEqual(['unknown', 'source-unobserved'])
+    })
+
+    // Finding 1: a rendered-only edge whose source now answers 404 was taken as whole.
+    it('never calls a rendered link gone from a source that does not answer a page', async () => {
+      const fixture = renderedLink('proven')
+      const { rows } = await explained(
+        fixture.base,
+        { '/': { links: ['/hub'], render: 'complete' }, '/hub': { status: 404 } },
+        both,
+      )
+      expect(reasonOf(rows, '/js')).toEqual(['notReached', 'error-answer'])
+    })
+
+    // Finding 2: a repeat that failed (a 503 page) is no witness, even when it names the URL.
+    it('never takes a failed repeat for a witness', async () => {
+      const failedRepeat = pairOf('/blog', [], ['/page/3'])
+      failedRepeat.repeat = { ...failedRepeat.repeat!, status: 503 }
+      const { rows } = await explained(
+        blog,
+        { '/': { links: ['/blog'] }, '/blog': {} },
+        { target: { pairs: [failedRepeat] } },
+      )
+      expect(reasonOf(rows, '/page/3')).toEqual(['unlinked', null])
+    })
+
+    // Finding 2: a discovering link that is not stored is never read as a served one.
+    it('never uses the witness for a discovering link that was not stored', async () => {
+      const { rows } = await explained(
+        {
+          '/': { links: ['/blog', '/other'] },
+          '/blog': {},
+          // Said to be found from /blog, but /blog stored no link to it.
+          '/page/3': { discoveredFrom: '/blog' },
+          '/other': { links: ['/page/3'] },
+        },
+        { '/': { links: ['/blog', '/other'] }, '/blog': {}, '/other': {} },
+        { target: { pairs: [pairOf('/blog', [], ['/page/3'])] } },
+      )
+      expect(rows.get('/page/3')?.reason).not.toBe('unstable')
+    })
+
+    // Finding 4: a closed cycle that no observed link enters is not a change of the site.
+    it('never calls a closed cycle with no observed entrance a change of the site', async () => {
+      const cycle = {
+        '/c1': { links: ['/c2'], discoveredFrom: '/c3' },
+        '/c2': { links: ['/c3'] },
+        '/c3': { links: ['/c1'] },
+      }
+      const { rows } = await explained({ '/': {}, ...cycle }, { '/': {} })
+      for (const path of ['/c1', '/c2', '/c3'])
+        expect(reasonOf(rows, path), path).toEqual(['unknown', 'cycle'])
+    })
+
+    // Finding 5: a linker that answered 403 is not reached, never a difference of mode.
+    it('says not reached before a difference of mode when the linker failed', async () => {
+      const { rows } = await explained(
+        {
+          '/': { links: ['/hub'], render: 'proven' },
+          '/hub': { links: [{ to: '/js', rendered: true }], render: 'proven' },
+          '/js': { render: 'proven' },
+        },
+        { '/': { links: ['/hub'] }, '/hub': { status: 403 } },
+        { base: { rendered: true } },
+      )
+      expect(reasonOf(rows, '/js')).toEqual(['notReached', 'failed'])
+    })
+
+    // Finding 5: a difference of mode cannot account for a link the other crawl read whole.
+    it('keeps a URL out of the configuration group unless a setting explains every link', async () => {
+      const db = getDb()
+      const { ids, rows } = await explained(
+        {
+          '/': { links: ['/hub', '/other'], render: 'proven' },
+          '/hub': { links: [{ to: '/js', rendered: true }], render: 'proven' },
+          '/other': { links: ['/js'], render: 'proven' },
+          '/js': { render: 'proven' },
+        },
+        { '/': { links: ['/hub', '/other'] }, '/hub': {}, '/other': {} },
+        { base: { rendered: true } },
+      )
+      expect(reasonOf(rows, '/js')).toEqual(['unknown', 'partial-configuration'])
+      expect(await db.crawls.compareCounts({ ...ids, view: 'pages' })).toMatchObject({
+        configuration: 0,
+        missing: 1,
+      })
+    })
+
+    // Finding 11: the edge shown is exactly the one the reason was decided on.
+    it('stores and shows the exact link the reason is about', async () => {
+      const db = getDb()
+      const { ids, rows } = await explained(
+        {
+          '/': { links: ['/hub'], render: 'proven' },
+          '/hub': {
+            links: [
+              { to: '/x', kind: 'anchor', text: 'Served link' },
+              { to: '/x', kind: 'canonical', rendered: true },
+            ],
+            render: 'proven',
+          },
+          '/x': { render: 'proven' },
+        },
+        { '/': { links: ['/hub'], render: 'proven' }, '/hub': { render: 'unsettled' } },
+        both,
+      )
+      const row = rows.get('/x')!
+      // The served anchor is gone from whole HTML, but the rendered canonical was not read whole.
+      expect([row.reason, row.detail, row.viaKind, row.viaRendered]).toEqual([
+        'notReached',
+        'render-unsettled',
+        'canonical',
+        true,
+      ])
+      const details = await db.crawls.explanationDetails({
+        ...ids,
+        rows: [{ side: 'base', seq: row.seq, via: row.via, viaKind: row.viaKind, through: null }],
+      })
+      expect(details.links.base.get(row.seq!)).toMatchObject({ kind: 'canonical', rendered: true })
+    })
+
+    // Finding 8: renders are read a bounded group at a time, however many pages link one URL.
+    it('reads renders in bounded groups when many rendered pages link one URL', async () => {
+      const db = getDb()
+      const domainId = await domain()
+      const fan = Object.fromEntries(
+        Array.from({ length: 450 }, (_, i) => [
+          `/p/${i}`,
+          { links: [{ to: '/target', rendered: true }], render: 'proven' as const },
+        ]),
+      )
+      const linkers = Object.keys(fan)
+      const base = await crawlOf(
+        domainId,
+        { '/': { links: linkers, render: 'proven' }, ...fan, '/target': { render: 'proven' } },
+        { rendered: true },
+      )
+      const target = await crawlOf(
+        domainId,
+        {
+          '/': { links: linkers, render: 'proven' },
+          ...Object.fromEntries(linkers.map((path) => [path, { render: 'proven' as const }])),
+        },
+        { rendered: true },
+      )
+      const calls: number[] = []
+      const work = db.crawls.comparisonWork
+      const spy = {
+        ...db,
+        crawls: {
+          ...db.crawls,
+          comparisonWork: {
+            ...work,
+            renders: (input: Parameters<typeof work.renders>[0]) => {
+              calls.push(input.urlHashes.length)
+              return work.renders(input)
+            },
+          },
+        },
+      }
+      await explainPair({ db: spy, baseId: base.id, targetId: target.id, runner: 'test' })
+      expect(Math.max(...calls)).toBeLessThanOrEqual(200)
+      // Each linking page's render is read once per crawl.
+      expect(calls.reduce((sum, n) => sum + n, 0)).toBe(450 * 2)
+      const rows = await rowsOf({ domainId, baseId: base.id, targetId: target.id })
+      expect(reasonOf(rows, '/target')).toEqual(['unlinked', null])
+    }, 120_000)
+
     it('lists each reason apart and filters by it, in both groups', async () => {
       const db = getDb()
       const { ids } = await explained(

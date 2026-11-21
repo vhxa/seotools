@@ -122,13 +122,16 @@ export async function runCrawlAlerts(input: {
   if (needsFindings && !unanalysed) {
     const base = await comparisonBaseOf(db, crawl)
     const pair = base ? { domainId: domain.id, baseId: base.id, targetId: crawl.id } : null
-    const header = pair ? await db.crawls.comparisonHeader(pair) : null
+    let header = pair ? await db.crawls.comparisonHeader(pair) : null
     const finishedAt = crawl.finishedAt ?? crawl.createdAt
     const waiting = now.getTime() - finishedAt.getTime() < ANALYSIS_WAIT_MS
-    if (pair && !isCurrentExplanation(header) && header?.state !== 'failed' && waiting) {
-      // Nothing is working it out (a crash before it began): ask for it, then wait.
-      if (!header) await db.crawls.requestComparison(pair)
-      throw new JobDeferredError(DEFERRED_MS, 'The comparison has not been explained yet')
+    if (pair && !isCurrentExplanation(header) && waiting) {
+      // Nothing working it out (never started, a crash, or a failure whose back-off has passed):
+      // ask for it. A pair that cannot be explained at all (a crawl stored before crawls were numbered) gets no
+      // header and is not waited for; a failure still in its back-off is final for this email.
+      header = (await db.crawls.requestComparison({ ...pair, now })) ?? header
+      if (header && (header.state === 'queued' || header.state === 'running'))
+        throw new JobDeferredError(DEFERRED_MS, 'The comparison has not been explained yet')
     }
   }
 

@@ -21,7 +21,11 @@ export function createCompareExplainHandler(deps: {
         db: deps.db,
         ...parsed.data,
         runner: job.id,
+        jobId: job.id,
         signal: ctx.signal,
+        // Another attempt follows: the pair stays queued for this job; the last one fails it, and
+        // it is asked for again only after its back-off.
+        onFailure: job.attempts >= job.maxAttempts ? { state: 'failed' } : { state: 'queued' },
         ...deps.sources,
       })
       const ms = Math.round(performance.now() - started)

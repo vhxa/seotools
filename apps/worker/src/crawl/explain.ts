@@ -9,10 +9,10 @@ import {
 
 /**
  * Overrides of what the explanation of a pair reads from other packages. `explainPair`'s defaults are
- * the real ones: WP1's capture rule (`captureProvesAbsence`), the stored paired observations and their
- * witness (`storedSiteVariation`) and the crawls' discovery snapshots (reach). Tests pass doubles.
+ * the real ones: WP1's capture rule (`captureProvesAbsence`) and the stored paired observations with
+ * their witness (`storedSiteVariation`). Tests pass doubles.
  */
-export type ExplainSources = Pick<ExplainOptions, 'captureTrust' | 'variation' | 'reach'>
+export type ExplainSources = Pick<ExplainOptions, 'captureTrust' | 'variation'>
 
 /**
  * Works out why URLs differ between a full crawl that just ended and the crawl it is compared with
@@ -33,14 +33,24 @@ export async function explainLatestPair(input: {
   const base = await comparisonBaseOf(db, target)
   if (!base) return null
   const started = performance.now()
-  const outcome = await explainPair({
-    db,
-    baseId: base.id,
-    targetId: target.id,
-    runner: input.runner,
-    ...(input.signal ? { signal: input.signal } : {}),
-    ...input.sources,
-  })
+  const pair = { domainId: target.domainId, baseId: base.id, targetId: target.id }
+  let outcome: ExplainOutcome
+  try {
+    outcome = await explainPair({
+      db,
+      baseId: base.id,
+      targetId: target.id,
+      runner: input.runner,
+      jobId: null,
+      // A crawl job has no retry of its own for this: a failure is handed to a job at once.
+      onFailure: { state: 'failed', retryAt: new Date() },
+      ...(input.signal ? { signal: input.signal } : {}),
+      ...input.sources,
+    })
+  } catch (error) {
+    if (!input.signal?.aborted) await db.crawls.requestComparison(pair).catch(() => undefined)
+    throw error
+  }
   const ms = Math.round(performance.now() - started)
   log.info({ baseId: base.id, targetId: target.id, outcome, ms }, 'worked out why URLs differ')
   return { outcome, ms }

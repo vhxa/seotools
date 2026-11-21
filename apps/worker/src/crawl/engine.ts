@@ -881,7 +881,7 @@ export async function runCrawl(
         ...(options.explainSources ? { sources: options.explainSources } : {}),
       })
     } catch (error) {
-      // The pair is marked failed; it is asked for again at startup or when the comparison opens.
+      // A job is queued to work it out again (`explainLatestPair`); alerts wait for it.
       log.warn({ err: error }, 'could not work out why URLs differ from the previous crawl')
     }
   }
