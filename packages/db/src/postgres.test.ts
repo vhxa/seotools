@@ -23,6 +23,15 @@ describeDatabaseContract(
           await sql`update audit_rules set accept_nofollow = ${accept} where id = ${ruleId}`
         },
       },
+      sessions: {
+        async open() {
+          const session = postgres(url!, { max: 1, onnotice: () => {} })
+          return {
+            query: async (text: string) => [...(await session.unsafe(text))],
+            close: () => session.end(),
+          }
+        },
+      },
       countRows: async (table: string) => {
         const [row] = await sql.unsafe(`select count(*)::int as n from "${table}"`)
         return Number(row?.n)

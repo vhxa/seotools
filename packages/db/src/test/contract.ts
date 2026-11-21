@@ -8,7 +8,7 @@ import { describeBotAccess } from './bot-access'
 import { describeAuditModel } from './audit-model'
 import { describeIncidents } from './incidents'
 import { describeVitals } from './vitals'
-import { describeComparisonReasons } from './comparison-reasons'
+import { describeComparisonReasons, type RawSessions } from './comparison-reasons'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -66,6 +66,8 @@ export function describeDatabaseContract(
     deleteUser: (id: string) => Promise<void>
     /** Rows in a table, by its name: for proving that nothing is left behind. */
     countRows: (table: string) => Promise<number>
+    /** PostgreSQL only: separate sessions, for proving how concurrent writers are serialized. */
+    sessions?: RawSessions
   }>,
   options: { skip?: boolean } = {},
 ) {
@@ -75,9 +77,10 @@ export function describeDatabaseContract(
     let deleteUser: (id: string) => Promise<void>
     let legacy: LegacyWrites
     let countRows: (table: string) => Promise<number>
+    let sessions: RawSessions | undefined
 
     beforeAll(async () => {
-      ;({ db, reset, legacy, countRows, deleteUser } = await setup())
+      ;({ db, reset, legacy, countRows, deleteUser, sessions } = await setup())
     })
     afterAll(async () => {
       await db?.close()
@@ -808,7 +811,10 @@ export function describeDatabaseContract(
     })
 
     describeVitals(() => db)
-    describeComparisonReasons(() => db)
+    describeComparisonReasons(
+      () => db,
+      () => sessions ?? null,
+    )
     describeBotAccess(() => db)
     describeLifecycle(
       () => db,

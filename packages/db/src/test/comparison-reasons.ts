@@ -161,7 +161,18 @@ const currentCapture = () => ({
   requests: { failedCount: 0 },
 })
 
-export function describeComparisonReasons(getDb: () => Database) {
+/** Dedicated PostgreSQL sessions (one connection each), to hold locks while a repository waits. */
+export interface RawSessions {
+  open: () => Promise<{
+    query: (text: string) => Promise<Record<string, unknown>[]>
+    close: () => Promise<void>
+  }>
+}
+
+export function describeComparisonReasons(
+  getDb: () => Database,
+  getSessions: () => RawSessions | null = () => null,
+) {
   describe('why URLs differ between two crawls', () => {
     let seq = 0
     let hostCount = 0
@@ -571,7 +582,8 @@ export function describeComparisonReasons(getDb: () => Database) {
       const lowered = await explained(pages.base, pages.target, {
         target: { status: 'incomplete', settings: { maxUrls: 50 } },
       })
-      expect(reasonOf(lowered.rows, '/a')).toEqual(['settings', 'limit'])
+      // Fix round 2, finding 5: a lower limit does not show it is why: the URL stays counted.
+      expect(reasonOf(lowered.rows, '/a')).toEqual(['limit', 'narrowed'])
       // Finding 5: a raised limit (100 → 1000) cannot explain a URL the later crawl lacks.
       const raised = await explained(pages.base, pages.target, {
         base: { settings: { maxUrls: 100 } },
@@ -1209,6 +1221,273 @@ export function describeComparisonReasons(getDb: () => Database) {
       expect(await db.crawls.requestComparison(ids)).toBeNull()
       expect(await db.crawls.comparisonHeader(ids)).toBeNull()
       expect(await explainPair({ db, ...ids, runner: 'd' })).toBe('not-comparable')
+    })
+
+    // Fix round 2, finding 1 (probe html-to-pdf): the source now answers a file, not a page.
+    it('never calls a link gone from a source that now answers something that is not HTML', async () => {
+      const { rows } = await explained(
+        { '/': { links: ['/leaf'] }, '/leaf': {} },
+        { '/': { kind: 'resource' } },
+      )
+      expect(reasonOf(rows, '/leaf')).toEqual(['notReached', 'other-answer'])
+      // Nor a link read from something that is not an HTML page in the crawl that has it.
+      const feed = await explained(
+        { '/': { links: ['/feed'] }, '/feed': { kind: 'resource', links: ['/item'] }, '/item': {} },
+        { '/': { links: ['/feed'] }, '/feed': { kind: 'resource' } },
+      )
+      expect(reasonOf(feed.rows, '/item')).toEqual(['unknown', 'source-unobserved'])
+    })
+
+    // Fix round 2, finding 1 (probe opposite-redirects): a redirect is not a whole page.
+    it('never calls the target of a redirect gone or new because the redirect changed', async () => {
+      const { rows } = await explained(
+        {
+          '/': { status: 302, kind: 'redirect', links: [{ to: '/leaf', kind: 'redirect' }] },
+          '/leaf': {},
+        },
+        {
+          '/': { status: 302, kind: 'redirect', links: [{ to: '/new', kind: 'redirect' }] },
+          '/new': {},
+        },
+      )
+      expect(reasonOf(rows, '/leaf')).toEqual(['unknown', 'source-unobserved'])
+      expect(reasonOf(rows, '/new')).toEqual(['unknown', 'source-unobserved'])
+    })
+
+    // Fix round 2, finding 2 (probe witness-discovering-503).
+    it('never uses the witness when the discovering page answered an error in its own crawl', async () => {
+      const { rows } = await explained(
+        { '/': { links: ['/blog'] }, '/blog': { status: 503, links: ['/page/3'] }, '/page/3': {} },
+        { '/': { links: ['/blog'] }, '/blog': {} },
+        { target: { pairs: [pairOf('/blog', [], ['/page/3'])] } },
+      )
+      expect(reasonOf(rows, '/page/3')).toEqual(['unknown', 'source-unobserved'])
+    })
+
+    // Fix round 2, finding 11 (probe witness-discovering-with-two-edge-kinds).
+    it('names the exact discovering link for a witnessed variation, nofollow included', async () => {
+      const db = getDb()
+      const { ids, rows } = await explained(
+        {
+          '/': { links: ['/blog'] },
+          '/blog': { links: [{ to: '/page/3', kind: 'anchor-nofollow' }, '/page/3'] },
+          '/page/3': {},
+        },
+        { '/': { links: ['/blog'] }, '/blog': {} },
+        { target: { pairs: [pairOf('/blog', [], ['/page/3'])] } },
+      )
+      const row = rows.get('/page/3')!
+      expect([row.reason, row.viaKind, row.viaRendered]).toEqual([
+        'unstable',
+        'anchor-nofollow',
+        false,
+      ])
+      const details = await db.crawls.explanationDetails({
+        ...ids,
+        rows: [{ side: 'base', seq: row.seq, via: row.via, viaKind: row.viaKind, through: null }],
+      })
+      expect(details.links.base.get(row.seq!)).toMatchObject({ kind: 'anchor-nofollow' })
+    })
+
+    // Fix round 2, finding 5 (probe narrower-limit-with-unexplained-path).
+    it('keeps a URL in the counts when a lower limit cannot be shown to be why', async () => {
+      const db = getDb()
+      const { ids, rows } = await explained(
+        { '/': { links: ['/middle', '/leaf'] }, '/middle': { links: ['/leaf'] }, '/leaf': {} },
+        { '/': { links: ['/other'] }, '/other': {} },
+        {
+          base: { settings: { maxUrls: 4 } },
+          target: { status: 'incomplete', settings: { maxUrls: 2 } },
+        },
+      )
+      expect(reasonOf(rows, '/leaf')).toEqual(['limit', 'narrowed'])
+      expect(await db.crawls.compareCounts({ ...ids, view: 'pages' })).toMatchObject({
+        configuration: 0,
+        missing: 2,
+      })
+    })
+
+    // Fix round 2, finding 9 (probes duplicate-retry-sqlite / -pg).
+    it('keeps the queued job of a pair when an attempt inside a crawl fails', async () => {
+      const db = getDb()
+      const domainId = await domain()
+      const base = await crawlOf(domainId, { '/': { links: ['/a'] }, '/a': {} })
+      const target = await crawlOf(domainId, { '/': {} })
+      const ids = { domainId, baseId: base.id, targetId: target.id }
+      const work = db.crawls.comparisonWork
+      const first = await db.crawls.requestComparison(ids)
+      expect(
+        await work.begin({ ...ids, runner: 'inline', version: EXPLANATION_VERSION, jobId: null }),
+      ).toBe(true)
+      expect((await db.crawls.comparisonHeader(ids))?.jobId).toBe(first?.jobId)
+      await work.finish({ ...ids, runner: 'inline', state: 'failed', retryAt: new Date(0) })
+      const second = await db.crawls.requestComparison(ids)
+      expect(second).toMatchObject({ jobId: first?.jobId, state: 'queued' })
+      const pending = (await db.jobs.list()).filter(
+        (job) =>
+          job.type === JOB_TYPES.compareExplain &&
+          job.status === 'pending' &&
+          (job.payload as { baseId: string }).baseId === base.id,
+      )
+      expect(pending.map((job) => job.id)).toEqual([first?.jobId])
+    })
+
+    describe('PostgreSQL: claims and pruning serialized (fix round 2, finding 6)', () => {
+      const waitFor = async (check: () => Promise<boolean>) => {
+        for (let i = 0; i < 500; i++) {
+          if (await check()) return
+          await new Promise((resolve) => setTimeout(resolve, 10))
+        }
+        throw new Error('timed out')
+      }
+      /** The statement of `session` waits for the advisory lock `key`. */
+      const waitsForAdvisory = (
+        watcher: Awaited<ReturnType<RawSessions['open']>>,
+        key: number,
+      ) =>
+        waitFor(async () => {
+          const [row] = await watcher.query(
+            `select exists (select 1 from pg_locks where locktype = 'advisory' and objid = ${key} and not granted) as waiting`,
+          )
+          return row?.waiting === true
+        })
+      /** Prune either waits for a row lock or is done (the code before the fix never waited). */
+      const blockedOrDone = (
+        watcher: Awaited<ReturnType<RawSessions['open']>>,
+        done: () => boolean,
+      ) =>
+        waitFor(async () => {
+          if (done()) return true
+          const [row] = await watcher.query(
+            `select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and wait_event <> 'advisory' and datname = current_database()`,
+          )
+          return Number(row?.n) > 0
+        })
+
+      it.each(['begin', 'requestComparison'] as const)(
+        'never leaves a header for a crawl pruned while %s claims the pair',
+        async (method) => {
+          const sessions = getSessions()
+          if (!sessions) return
+          const db = getDb()
+          const domainId = await domain()
+          const base = await crawlOf(domainId, { '/': { links: ['/a'] }, '/a': {} })
+          const target = await crawlOf(domainId, { '/': {} })
+          const ids = { domainId, baseId: base.id, targetId: target.id }
+          const holder = await sessions.open()
+          const watcher = await sessions.open()
+          const key = 853857
+          await holder.query(
+            `create or replace function wp4_pause_header() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock(${key}); return new; end $$`,
+          )
+          await holder.query(
+            `create trigger wp4_pause_header before insert on crawl_comparisons for each row execute function wp4_pause_header()`,
+          )
+          try {
+            await holder.query(`select pg_advisory_lock(${key})`)
+            const claim =
+              method === 'begin'
+                ? db.crawls.comparisonWork.begin({
+                    ...ids,
+                    runner: 'race',
+                    version: EXPLANATION_VERSION,
+                  })
+                : db.crawls.requestComparison(ids)
+            await waitsForAdvisory(watcher, key)
+            let pruneDone = false
+            const pruning = db.crawls
+              .prune({ domainId, type: 'full', keep: 1 })
+              .finally(() => (pruneDone = true))
+            await blockedOrDone(watcher, () => pruneDone)
+            await holder.query(`select pg_advisory_unlock(${key})`)
+            await claim
+            expect(await pruning).toBe(1)
+            expect((await db.crawls.get(base.id))?.pruned).toBe(true)
+            expect(await db.crawls.comparisonHeader(ids)).toBeNull()
+            const [left] = await watcher.query(
+              `select count(*)::int as n from crawl_comparisons c join crawls b on b.ref = c.base_ref where b.id = '${base.id}'`,
+            )
+            expect(Number(left?.n)).toBe(0)
+            if (method === 'begin') {
+              await expect(
+                db.crawls.comparisonWork.save({ ...ids, runner: 'race', rows: [] }),
+              ).rejects.toThrow(ComparisonSupersededError)
+            }
+            expect(await db.crawls.requestComparison(ids)).toBeNull()
+          } finally {
+            await holder.query(`select pg_advisory_unlock_all()`)
+            await holder.query(`drop trigger if exists wp4_pause_header on crawl_comparisons`)
+            await holder.query(`drop function if exists wp4_pause_header()`)
+            await holder.close()
+            await watcher.close()
+          }
+        },
+      )
+
+      it('never leaves reasons behind when a crawl is pruned while a run saves them', async () => {
+        const sessions = getSessions()
+        if (!sessions) return
+        const db = getDb()
+        const domainId = await domain()
+        const base = await crawlOf(domainId, { '/': { links: ['/a'] }, '/a': {} })
+        const target = await crawlOf(domainId, { '/': {} })
+        const ids = { domainId, baseId: base.id, targetId: target.id }
+        const work = db.crawls.comparisonWork
+        expect(await work.begin({ ...ids, runner: 'rows', version: EXPLANATION_VERSION })).toBe(
+          true,
+        )
+        const holder = await sessions.open()
+        const watcher = await sessions.open()
+        const key = 853858
+        await holder.query(
+          `create or replace function wp4_pause_row() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock(${key}); return new; end $$`,
+        )
+        await holder.query(
+          `create trigger wp4_pause_row before insert on crawl_comparison_urls for each row execute function wp4_pause_row()`,
+        )
+        try {
+          await holder.query(`select pg_advisory_lock(${key})`)
+          const row: ExplainedUrl = {
+            side: 'base',
+            urlHash: 'wp4-row-race',
+            seq: 1,
+            reason: 'unknown',
+            detail: null,
+            via: null,
+            viaKind: null,
+            viaRendered: null,
+            through: null,
+            sources: 0,
+            unseen: 0,
+            intoHash: null,
+            intoUrl: null,
+            intoPresent: null,
+          }
+          const writing = work.save({ ...ids, runner: 'rows', rows: [row] })
+          await waitsForAdvisory(watcher, key)
+          let pruneDone = false
+          const pruning = db.crawls
+            .prune({ domainId, type: 'full', keep: 1 })
+            .finally(() => (pruneDone = true))
+          await blockedOrDone(watcher, () => pruneDone)
+          await holder.query(`select pg_advisory_unlock(${key})`)
+          await writing.catch((error) => {
+            if (!(error instanceof ComparisonSupersededError)) throw error
+          })
+          expect(await pruning).toBe(1)
+          expect(await db.crawls.comparisonHeader(ids)).toBeNull()
+          const [left] = await watcher.query(
+            `select count(*)::int as n from crawl_comparison_urls where url_hash = 'wp4-row-race'`,
+          )
+          expect(Number(left?.n)).toBe(0)
+        } finally {
+          await holder.query(`select pg_advisory_unlock_all()`)
+          await holder.query(`drop trigger if exists wp4_pause_row on crawl_comparison_urls`)
+          await holder.query(`drop function if exists wp4_pause_row()`)
+          await holder.close()
+          await watcher.close()
+        }
+      })
     })
 
     it('removes the jobs that explain a pair with the domain', async () => {

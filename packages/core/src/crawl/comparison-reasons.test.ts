@@ -85,10 +85,17 @@ describe('classifyLink', () => {
     expect(link(other as Partial<PageObservation> | null)).toBe(expected)
   })
 
-  it('observes a redirect link only through a redirect on both sides', () => {
+  // Fix round 2, finding 1: only whole 2xx HTML is an observation of a page's links.
+  it('never reads a redirect as a whole page, on either side', () => {
     const redirect = { statusCode: 302, kind: 'redirect' as const }
-    expect(link(redirect, { kind: 'redirect', own: redirect })).toBe('whole')
-    expect(link({}, { kind: 'redirect', own: redirect })).toBe('other-answer')
+    expect(link(redirect, { kind: 'redirect', own: redirect })).toBe('source-unobserved')
+    expect(link({}, { kind: 'redirect', own: redirect })).toBe('source-unobserved')
+  })
+
+  it('needs an HTML page on both sides', () => {
+    expect(link({ kind: 'resource' })).toBe('other-answer')
+    expect(link({ kind: 'unknown' })).toBe('other-answer')
+    expect(link({}, { own: { kind: 'resource' } })).toBe('source-unobserved')
   })
 
   // Finding 3: the same page means the same address.
@@ -235,16 +242,33 @@ describe('classifyDifference', () => {
       'unrecorded',
       null,
     ])
+    // Fix round 2, finding 5: a lower limit does not show it is why; the URL stays counted.
     expect(decide({ whole: 1 }, { otherIncomplete: true, limitNarrowed: true })).toEqual([
-      'settings',
       'limit',
+      'narrowed',
       null,
     ])
+    expect(
+      decide({ 'not-seen': 1 }, { otherIncomplete: true, limitNarrowed: true })[0],
+    ).toBe('limit')
   })
 
   it('puts a witnessed variation below not reached and the limit', () => {
-    expect(decide({ whole: 1 }, { varied: 1 })).toEqual(['unstable', null, 1])
-    expect(decide({ whole: 1 }, { varied: 1, otherIncomplete: true })[0]).toBe('limit')
+    const edge = { via: 1, kind: 'anchor', rendered: false }
+    expect(decide({ whole: 1 }, { varied: edge })).toEqual(['unstable', null, 1])
+    expect(decide({ whole: 1 }, { varied: edge, otherIncomplete: true })[0]).toBe('limit')
+  })
+
+  // Fix round 2, finding 11: the witnessed discovering edge is the one named, exactly.
+  it('names the exact discovering edge of a witnessed variation', () => {
+    expect(
+      classifyDifference(
+        input(
+          { whole: 1 },
+          { varied: { via: 5, kind: 'anchor-nofollow', rendered: false } },
+        ),
+      ),
+    ).toMatchObject({ reason: 'unstable', via: 5, viaKind: 'anchor-nofollow', viaRendered: false })
   })
 
   it('leaves a chain pending, with its entrance when it has one', () => {
