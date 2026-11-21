@@ -300,9 +300,9 @@ export function describeLifecycle(
       expect(await db.crawls.prune({ domainId, type: 'full', keep: 2 })).toBe(1)
       // Why URLs differ between two crawls, as `explainPair` stores it.
       const pair = { baseId: older.id, targetId: crawl.id }
-      expect(
-        await db.crawls.comparisonWork.begin({ ...pair, runner: 'test', version: 1 }),
-      ).toBe(true)
+      expect(await db.crawls.comparisonWork.begin({ ...pair, runner: 'test', version: 1 })).toBe(
+        true,
+      )
       await db.crawls.comparisonWork.save({
         ...pair,
         runner: 'test',

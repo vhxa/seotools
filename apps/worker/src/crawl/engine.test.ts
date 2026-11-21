@@ -356,7 +356,8 @@ describe('paired answers', () => {
     ['206', { ...html('<a href="/fragment">partial</a>'), statusCode: 206 }, ['status'], null],
     ['content range', html('partial', { 'content-range': 'bytes 0-6/100' }), [], 'incomplete'],
     ['redirect', moved('/elsewhere'), ['status'], null],
-    ['missing', notFound, ['status', 'title', 'text'], null],
+    // An error page is not read: only its status differs.
+    ['missing', notFound, ['status'], null],
     ['incomplete', { ...html('partial'), truncated: true }, [], 'incomplete'],
     ['timeout', new FetchError('ETIMEDOUT', 'timeout'), [], 'transport'],
     ['media', { statusCode: 200, headers: { 'content-type': 'image/png' } }, ['media'], null],

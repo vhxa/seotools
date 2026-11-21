@@ -26,7 +26,6 @@ import {
 } from '@seotools/core/crawl/comparison-reasons'
 import {
   ALERT_KINDS,
-  CRAWL_LINK_KINDS,
   DEFAULT_CRAWL_SETTINGS,
   JOB_TYPES,
   LINK_CONTEXT_LIMITS,
@@ -2152,4 +2151,3 @@ export const toOneSidedUrl = (row: {
       ? { urlHash: row.viaHash, url: row.viaUrl, rendered: row.viaRendered === 1 }
       : null,
 })
-

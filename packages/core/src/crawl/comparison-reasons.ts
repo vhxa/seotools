@@ -465,12 +465,17 @@ export function classifyDifference(input: DifferenceInput): Explanation {
   if (configured.length > 0) {
     // A setting takes a URL out of the counts only when it explains every way it was linked.
     if (configured.length !== entries.length) return result('unknown', 'partial-configuration')
-    if (configured.every(([name]) => name === 'mode')) return result('mode', null, input.classes.mode!)
+    if (configured.every(([name]) => name === 'mode'))
+      return result('mode', null, input.classes.mode!)
     const name = has('excluded') ? 'excluded' : has('depth-setting') ? 'depth-setting' : 'mode'
     return result('settings', name === 'depth-setting' ? 'depth' : name, input.classes[name]!)
   }
   if (!has('not-seen')) {
-    return result(input.side === 'base' ? 'unlinked' : 'linked', null, lowest([input.classes.whole]))
+    return result(
+      input.side === 'base' ? 'unlinked' : 'linked',
+      null,
+      lowest([input.classes.whole]),
+    )
   }
   // An entrance: a link observed whole into the group (`via`), which chains need.
   return result('pending', null, lowest([input.classes.whole]))
