@@ -30,8 +30,6 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - URLs that only one crawl has because of your own settings (ignored query parameters that merge or split addresses, paths left out, the priority list, optional files, a depth or URL limit recorded as changed, links found only after rendering when a crawl did not render) are listed under "By your configuration", with the address they have in the other crawl, and are no longer counted as not seen or discovered, in the comparison and in the change summary email. Until a comparison is worked out, the email leaves the added and not seen figures out.
 
-### Changed
-
 - The trend charts on the overview no longer draw one line through crawls that did not measure the same thing. When the rendering mode, the ignored parameters, the crawl settings, the issue checks or the audit rules differ from the crawl before, the line breaks and the first point after the change is ringed, with what changed in its tooltip.
 
 ### Fixed

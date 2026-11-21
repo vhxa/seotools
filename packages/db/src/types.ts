@@ -1150,15 +1150,26 @@ export interface InLink {
 export interface SourceCounterpart {
   source: number
   counterpart: {
+    /** Its address hash in the other crawl (through its merged address when it has one). */
+    urlHash: string
     state: 'queued' | 'done' | 'skipped'
     kind: 'page' | 'redirect' | 'resource' | 'unknown'
     statusCode: number | null
     notRequested: 'excluded' | 'depth' | null
     servedTruncated: boolean
-    renderState: RenderState | null
-    /** `data.capture` of the render (WP1's capture rule and what it recorded). */
-    capture: Record<string, unknown> | null
   } | null
+}
+
+/**
+ * The render row of a counterpart, as stored: `data` is the raw JSON text, which the caller parses
+ * (a stray `\u0000` in a stored title must not fail the query, so it is never cast in SQL).
+ */
+export interface CounterpartRender {
+  urlHash: string
+  status: 'rendered' | 'failed'
+  settled: boolean
+  truncated: boolean | null
+  data: string
 }
 
 /** A row of `crawl_comparison_urls` as explaining writes it. */
@@ -1233,6 +1244,13 @@ export interface ComparisonWork {
   counterparts(
     input: ComparisonPairIds & { side: ComparisonSide; sources: number[]; merged: boolean },
   ): Promise<SourceCounterpart[]>
+  /**
+   * The other crawl's render rows of these counterparts (by their hash in the other crawl): only for
+   * the linking pages whose links were found after rendering, since only those read a render.
+   */
+  counterpartRenders(
+    input: ComparisonPairIds & { side: ComparisonSide; urlHashes: string[] },
+  ): Promise<CounterpartRender[]>
   /** Rows still `pending`, by `url_hash`, after `after`. */
   pending(
     input: ComparisonPairIds & { after: string | null; limit: number },

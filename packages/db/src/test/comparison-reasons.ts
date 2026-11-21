@@ -10,7 +10,8 @@ import {
 import { EXPLANATION_VERSION, UNRECORDED_REACH } from '@seotools/core/crawl/comparison-reasons'
 import { describe, expect, it } from 'vitest'
 import { compareWithPrevious } from '../changes'
-import { RENDER_CAPTURE_TRUST, explainPair, type ExplainOptions } from '../explain'
+import { NO_CAPTURE_TRUST, explainPair, type ExplainOptions } from '../explain'
+import { CAPTURE_DELAY_TOLERANCE_MS, CURRENT_CAPTURE_RULE } from '@seotools/core/crawl/render-state'
 import type { AnswerPair } from '@seotools/core/crawl/paired'
 import type {
   CrawlLink,
@@ -26,7 +27,17 @@ const site = 'https://acme.com'
 const urlOf = (path: string) => `${site}${path}`
 const hashOf = (path: string) => crawlUrlHash(urlOf(path))
 
-type RenderKind = 'complete' | 'proven' | 'failed' | 'truncated' | 'unsettled' | 'redirect'
+type RenderKind =
+  | 'complete'
+  | 'proven'
+  | 'failed-dependency'
+  | 'late'
+  | 'pending'
+  | 'legacy-rule'
+  | 'failed'
+  | 'truncated'
+  | 'unsettled'
+  | 'redirect'
 
 interface Link {
   to: string
@@ -92,10 +103,39 @@ function renderOf(path: string, kind: RenderKind): CrawlUrlRender {
     case 'complete':
       return base
     case 'proven':
-      // The capture marker of WP1: a missing link in such a render proves it is gone.
+      // WP1's current capture: on time, nothing pending, no failed dependency. Proves absence.
+      return { ...base, data: { ...base.data, ...currentCapture() } } as CrawlUrlRender
+    case 'failed-dependency':
       return {
         ...base,
-        data: { ...base.data, capture: { pending: 0, afterMs: 100, rule: 'v2' } },
+        data: { ...base.data, ...currentCapture(), requests: { failedCount: 1 } },
+      } as CrawlUrlRender
+    case 'late':
+      return {
+        ...base,
+        data: {
+          ...base.data,
+          ...currentCapture(),
+          capture: { ...currentCapture().capture, delayMs: CAPTURE_DELAY_TOLERANCE_MS + 1 },
+        },
+      } as CrawlUrlRender
+    case 'pending':
+      return {
+        ...base,
+        data: {
+          ...base.data,
+          ...currentCapture(),
+          capture: { ...currentCapture().capture, pending: 2 },
+        },
+      } as CrawlUrlRender
+    case 'legacy-rule':
+      return {
+        ...base,
+        data: {
+          ...base.data,
+          ...currentCapture(),
+          capture: { ...currentCapture().capture, rule: 'v2' },
+        },
       } as CrawlUrlRender
     case 'failed':
       return { ...base, status: 'failed', failure: 'crashed' }
@@ -112,8 +152,11 @@ function renderOf(path: string, kind: RenderKind): CrawlUrlRender {
   }
 }
 
-/** The capture rule as `explainPair` applies it by default (`RENDER_CAPTURE_TRUST`). */
-const trustV2: ExplainOptions['captureTrust'] = RENDER_CAPTURE_TRUST
+/** What WP1 stores of a capture made under its current rule, with nothing that disqualifies it. */
+const currentCapture = () => ({
+  capture: { rule: CURRENT_CAPTURE_RULE, pending: 0, afterMs: 5000, delayMs: 3 },
+  requests: { failedCount: 0 },
+})
 
 export function describeComparisonReasons(getDb: () => Database) {
   describe('why URLs differ between two crawls', () => {
@@ -426,29 +469,46 @@ export function describeComparisonReasons(getDb: () => Database) {
             '/hub': render ? { render } : {},
           },
           { base: { rendered: true }, target: { rendered: true } },
-          { captureTrust: trustV2 },
         )
         expect(reasonOf(rows, '/js')).toEqual(['notReached', detail])
       },
     )
 
-    it('calls a link found after rendering gone only from a render captured under the new rule', async () => {
-      const { rows } = await explained(
-        {
-          '/': { links: ['/hub'], render: 'complete' },
-          '/hub': { links: [{ to: '/js', rendered: true }], render: 'complete' },
-          '/js': { render: 'complete' },
-        },
-        {
-          '/': { links: ['/hub'], render: 'complete' },
-          '/hub': { render: 'proven' },
-        },
-        { base: { rendered: true }, target: { rendered: true } },
-        { captureTrust: trustV2 },
-      )
-      expect(reasonOf(rows, '/js')).toEqual(['unlinked', null])
-      // Without WP1's rule nothing proves it.
+    const renderedLink = (render: RenderKind) => ({
+      base: {
+        '/': { links: ['/hub'], render: 'complete' as const },
+        '/hub': { links: [{ to: '/js', rendered: true }], render: 'complete' as const },
+        '/js': { render: 'complete' as const },
+      },
+      target: { '/': { links: ['/hub'], render: 'complete' as const }, '/hub': { render } },
     })
+    const both = { base: { rendered: true }, target: { rendered: true } }
+
+    it("calls a link found after rendering gone only from a complete render of WP1's current capture", async () => {
+      const proven = renderedLink('proven')
+      const { rows } = await explained(proven.base, proven.target, both)
+      expect(reasonOf(rows, '/js')).toEqual(['unlinked', null])
+      // The same render read without WP1's rule proves nothing.
+      const without = await explained(proven.base, proven.target, both, {
+        captureTrust: NO_CAPTURE_TRUST,
+      })
+      expect(reasonOf(without.rows, '/js')).toEqual(['notReached', 'render-unreliable'])
+    })
+
+    it.each([
+      ['a failed dependency', 'failed-dependency'],
+      ['a late capture', 'late'],
+      ['pending work', 'pending'],
+      ['an older capture rule', 'legacy-rule'],
+      ['no capture rule at all', 'complete'],
+    ] as const)(
+      'never calls a link found after rendering gone from a complete render with %s',
+      async (_name, render) => {
+        const fixture = renderedLink(render)
+        const { rows } = await explained(fixture.base, fixture.target, both)
+        expect(reasonOf(rows, '/js')).toEqual(['notReached', 'render-unreliable'])
+      },
+    )
 
     it('keeps a served link provable whatever the render did', async () => {
       const { rows } = await explained(

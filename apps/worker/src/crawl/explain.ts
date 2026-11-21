@@ -9,7 +9,7 @@ import {
 
 /**
  * Overrides of what the explanation of a pair reads from other packages. `explainPair`'s defaults are
- * the real ones: the capture rule (`RENDER_CAPTURE_TRUST`), the stored paired observations and their
+ * the real ones: WP1's capture rule (`captureProvesAbsence`), the stored paired observations and their
  * witness (`storedSiteVariation`) and the crawls' discovery snapshots (reach). Tests pass doubles.
  */
 export type ExplainSources = Pick<ExplainOptions, 'captureTrust' | 'variation' | 'reach'>

@@ -17,36 +17,76 @@ import {
 import { crawlUrlHash } from '@seotools/core'
 import { compareCrawlDiscovery } from '@seotools/core/crawl/discovery'
 import { discoveryLinkVaried, type AnswerPair } from '@seotools/core/crawl/paired'
-import type { RenderState } from '@seotools/core/crawl/render-state'
-import type { Crawl, Database, ExplainedUrl, InLink, OneSidedUrl, SourceCounterpart } from './types'
+import {
+  captureProvesAbsence,
+  renderStateOf,
+  type CaptureEvidence,
+  type RenderState,
+} from '@seotools/core/crawl/render-state'
+import type {
+  CounterpartRender,
+  Crawl,
+  Database,
+  ExplainedUrl,
+  InLink,
+  OneSidedUrl,
+  SourceCounterpart,
+} from './types'
 
 /** URLs worked out at a time: one batch and its grouped in-links are all that is held in memory. */
 export const EXPLAIN_BATCH = 2000
 
 /**
- * What a render of the other crawl was, as WP1's `captureProvesAbsence` reads it: one observation, its
- * state and its stored data (`capture` only; `null` when the render has none).
+ * Whether a link missing from this render proves it was not in the page: WP1's
+ * `captureProvesAbsence`, which reads one self-contained observation (the render's state and its
+ * whole stored `data`: capture rule, pending work, capture delay, failed dependencies).
  */
-export interface CaptureObservation {
-  state: RenderState | null
-  data: { capture?: { rule?: string } & Record<string, unknown> } | null
-}
+export type CaptureTrust = (observation: CaptureEvidence) => boolean
 
-/** Whether a link missing from this render proves it was not in the page (WP1). */
-export type CaptureTrust = (observation: CaptureObservation) => boolean
-
-/** For tests: no render proves anything, as before WP1's capture rule. */
+/** For tests: no render proves anything. */
 export const NO_CAPTURE_TRUST: CaptureTrust = () => false
 
+/** What a render of the other crawl says, worked out once per render. */
+export interface RenderEvidence {
+  state: RenderState
+  /** A link found only after rendering that it lacks is proven absent (`CaptureTrust`). */
+  provesAbsence: boolean
+}
+
 /**
- * The capture rule of renders made since 0.8.0: a `complete` render with the `v2` marker. This is the
- * marker check WP1 shipped first; its `captureProvesAbsence({ state, data })` (one self-contained
- * observation: also no failed dependency and no delay) replaces it when WP1 merges. Switch the body
- * of this function to `return captureProvesAbsence(observation)` from
- * `@seotools/core/crawl/render-state`.
+ * A stored render row as WP1 reads it: its state by `renderStateOf` (captured when `data.capture`
+ * exists, redirected when `data.redirected` is true, the served HTML cut when its row says so), and
+ * whether it proves a link absent. Fails closed: `data` that does not parse to an object is a render
+ * whose state is `unknown` and that proves nothing.
  */
-export const RENDER_CAPTURE_TRUST: CaptureTrust = (observation) =>
-  observation.state === 'complete' && observation.data?.capture?.rule === 'v2'
+export function renderEvidence(
+  row: CounterpartRender,
+  servedTruncated: boolean,
+  captureTrust: CaptureTrust,
+): RenderEvidence {
+  let data: unknown
+  try {
+    data = JSON.parse(row.data)
+  } catch {
+    return { state: 'unknown', provesAbsence: false }
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data))
+    return { state: 'unknown', provesAbsence: false }
+  const stored = data as { capture?: unknown; redirected?: unknown }
+  const state = renderStateOf({
+    status: row.status,
+    settled: row.settled,
+    captured: !!stored.capture,
+    truncated: row.truncated,
+    redirected: stored.redirected === true,
+    servedTruncated,
+  })
+  try {
+    return { state, provesAbsence: captureTrust({ state, data: data as CaptureEvidence['data'] }) }
+  } catch {
+    return { state, provesAbsence: false }
+  }
+}
 
 /**
  * WP3's paired observations: a few pages of a crawl requested twice. `pairs` reads, for a batch, the
@@ -99,7 +139,7 @@ export interface ExplainOptions {
   targetId: string
   /** Who is working it out (a job id, or the crawl that just ended): only it may mark it done. */
   runner: string
-  /** Default: `RENDER_CAPTURE_TRUST`. */
+  /** Default: WP1's `captureProvesAbsence`. */
   captureTrust?: CaptureTrust
   /** Default: the stored pairs (`storedSiteVariation`). */
   variation?: SiteVariation
@@ -134,7 +174,7 @@ const stopIfAborted = (signal?: AbortSignal) => {
  */
 export async function explainPair(options: ExplainOptions): Promise<ExplainOutcome> {
   const { db, baseId, targetId, runner, signal } = options
-  const captureTrust = options.captureTrust ?? RENDER_CAPTURE_TRUST
+  const captureTrust = options.captureTrust ?? captureProvesAbsence
   const variation = options.variation ?? storedSiteVariation(db)
   const work = db.crawls.comparisonWork
   const [base, target] = await Promise.all([db.crawls.get(baseId), db.crawls.get(targetId)])
@@ -271,6 +311,7 @@ export async function explainPair(options: ExplainOptions): Promise<ExplainOutco
       // What the other crawl has of each linking page, kept across batches of this side (a page
       // that links everything, like a script chunk's sources, is read once), up to a bound.
       const known: CounterpartCache = new Map()
+      const renders: RenderCache = new Map()
       for (;;) {
         stopIfAborted(signal)
         // Undecided only (pass 1 decided the merged ones), by `url_hash` after the last batch: every
@@ -299,6 +340,7 @@ export async function explainPair(options: ExplainOptions): Promise<ExplainOutco
           otherRendered,
           captureTrust,
           known,
+          renders,
         )
         const rows = urls.map((url): ExplainedUrl => {
           const byClass = (url.seq !== null && classes.get(url.seq)) || {}
@@ -350,6 +392,8 @@ export async function explainPair(options: ExplainOptions): Promise<ExplainOutco
 /** Linking pages whose counterpart is kept between batches of a side: a bound on memory. */
 export const COUNTERPART_CACHE = 200_000
 type CounterpartCache = Map<number, SourceCounterpart['counterpart']>
+/** Render evidence by the counterpart's hash in the other crawl; `null`: it has no render. */
+type RenderCache = Map<string, RenderEvidence | null>
 
 /** In-links read at a time: the page of plain rows held in memory with one batch of URLs. */
 export const LINK_PAGE = 50_000
@@ -368,6 +412,7 @@ async function classesOf(
   otherRendered: boolean,
   captureTrust: CaptureTrust,
   known: CounterpartCache,
+  renders: RenderCache,
 ): Promise<Map<number, Partial<Record<LinkClass, ClassTally>>>> {
   const classes = new Map<number, Partial<Record<LinkClass, ClassTally>>>()
   let after: { target: number; source: number; kind: string } | null = null
@@ -381,8 +426,34 @@ async function classesOf(
     if (known.size + unknown.length > COUNTERPART_CACHE) known.clear()
     for (const found of await work.counterparts({ ...pair, side, sources: unknown, merged }))
       known.set(found.source, found.counterpart)
+    // A render is read only for linking pages whose links were found after rendering, once each.
+    if (otherRendered) {
+      const wanted = new Map<string, boolean>()
+      for (const link of links) {
+        const counterpart = link.rendered ? known.get(link.source) : null
+        if (counterpart && !renders.has(counterpart.urlHash))
+          wanted.set(counterpart.urlHash, counterpart.servedTruncated)
+      }
+      if (renders.size + wanted.size > COUNTERPART_CACHE) renders.clear()
+      if (wanted.size > 0) {
+        const found = await work.counterpartRenders({
+          ...pair,
+          side,
+          urlHashes: [...wanted.keys()],
+        })
+        for (const row of found)
+          renders.set(
+            row.urlHash,
+            renderEvidence(row, wanted.get(row.urlHash) ?? false, captureTrust),
+          )
+        // No render row: the page was not rendered by the other crawl.
+        for (const urlHash of wanted.keys()) if (!renders.has(urlHash)) renders.set(urlHash, null)
+      }
+    }
     for (const link of links) {
       const counterpart = known.get(link.source) ?? null
+      const render =
+        link.rendered && counterpart ? (renders.get(counterpart.urlHash) ?? null) : null
       const name = classifyLink({
         rendered: link.rendered,
         kind: link.kind,
@@ -393,13 +464,8 @@ async function classesOf(
           statusCode: counterpart.statusCode,
           notRequested: counterpart.notRequested,
           servedTruncated: counterpart.servedTruncated,
-          renderState: counterpart.renderState,
-          captureProvesAbsence:
-            link.rendered &&
-            captureTrust({
-              state: counterpart.renderState,
-              data: counterpart.capture === null ? null : { capture: counterpart.capture },
-            }),
+          renderState: render?.state ?? null,
+          captureProvesAbsence: render?.provesAbsence ?? false,
         },
       })
       const byClass = classes.get(link.target) ?? {}

@@ -18,11 +18,7 @@ import {
 } from 'drizzle-orm'
 import { snapshotCrawlDiscovery } from '@seotools/core/crawl/discovery'
 import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/acceptance'
-import {
-  RENDER_STATES,
-  renderFilterStates,
-  type RenderState,
-} from '@seotools/core/crawl/render-state'
+import { renderFilterStates, type RenderState } from '@seotools/core/crawl/render-state'
 import {
   EXPLANATION_VERSION,
   isComparisonReason,
@@ -2095,37 +2091,22 @@ export function toUrlExplanation(
   }
 }
 
-const RENDER_STATE_SET: ReadonlySet<string> = new Set(RENDER_STATES)
-
-/** The capture object of a render, from JSON text; `null` when absent or not an object. */
-function parseCapture(text: string | null): Record<string, unknown> | null {
-  if (!text) return null
-  try {
-    const value: unknown = JSON.parse(text)
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null
-  } catch {
-    return null
-  }
-}
-
 export function toSourceCounterpart(row: {
   source: number | null
+  urlHash?: string | null
   state: string | null
   kind: string | null
   statusCode: number | null
   notRequested: string | null
   servedTruncated: number | boolean
-  renderState: string | null
-  capture: string | null
 }): SourceCounterpart {
   return {
     source: Number(row.source),
     counterpart:
-      row.state === null
+      row.state === null || !row.urlHash
         ? null
         : {
+            urlHash: row.urlHash,
             state: row.state as 'queued' | 'done' | 'skipped',
             kind: (row.kind ?? 'unknown') as 'page' | 'redirect' | 'resource' | 'unknown',
             statusCode: row.statusCode === null ? null : Number(row.statusCode),
@@ -2134,11 +2115,6 @@ export function toSourceCounterpart(row: {
                 ? row.notRequested
                 : null,
             servedTruncated: Boolean(Number(row.servedTruncated)),
-            renderState:
-              row.renderState !== null && RENDER_STATE_SET.has(row.renderState)
-                ? (row.renderState as RenderState)
-                : null,
-            capture: parseCapture(row.capture),
           },
   }
 }

@@ -202,6 +202,7 @@ import type {
   CrawlComparisonQuery,
   ExplanationDetails,
   SourceCounterpart,
+  CounterpartRender,
   CrawlLink,
   CrawlUrlRender,
   CrawlUrlAudit,
@@ -539,7 +540,6 @@ export function createSqliteDatabase(options: {
   /** Explaining a pair: the source of a link, its row in the pair, and what the other crawl has. */
   const sourceUrls = alias(crawlUrls, 'source_urls')
   const counterpartUrls = alias(crawlUrls, 'counterpart_urls')
-  const counterpartRenders = alias(crawlUrlRenders, 'counterpart_renders')
   const sourceRows = alias(crawlComparisonUrls, 'source_rows')
 
   /** Both crawls of a pair by id, with their `ref`s. `null` unless both have one. */
@@ -3953,22 +3953,8 @@ export function createSqliteDatabase(options: {
                         string | null
                       >`case when ${counterpartUrls.data} like '%"notRequested":"excluded"%' then 'excluded' when ${counterpartUrls.data} like '%"notRequested":"depth"%' then 'depth' end`,
                       servedTruncated: sql<number>`case when ${counterpartUrls.data} like '%"truncated":true%' then 1 else 0 end`,
-                      renderState: sql<
-                        string | null
-                      >`case when ${counterpartRenders.urlHash} is null then null else ${renderStateSql(counterpartRenders, counterpartUrls.data)} end`,
-                      // The capture object as JSON text, for WP1's `captureProvesAbsence`.
-                      capture: sql<
-                        string | null
-                      >`case when ${counterpartRenders.urlHash} is not null then json_extract(${counterpartRenders.data}, '$.capture') end`,
                     })
                     .from(counterpartUrls)
-                    .leftJoin(
-                      counterpartRenders,
-                      and(
-                        eq(counterpartRenders.crawlId, counterpartUrls.crawlId),
-                        eq(counterpartRenders.urlHash, counterpartUrls.urlHash),
-                      ),
-                    )
                     .where(
                       and(
                         eq(counterpartUrls.crawlId, otherId),
@@ -3993,12 +3979,37 @@ export function createSqliteDatabase(options: {
                         statusCode: null,
                         notRequested: null,
                         servedTruncated: 0,
-                        renderState: null,
-                        capture: null,
                       },
                 ),
               )
             }
+          }
+          return found
+        },
+
+        async counterpartRenders({ baseId, targetId, side, urlHashes }) {
+          const pair = pairOf(baseId, targetId)
+          if (!pair || urlHashes.length === 0) return []
+          const otherId = side === 'base' ? targetId : baseId
+          const found: CounterpartRender[] = []
+          // The whole stored `data` of each render, as text: parsed by the caller, never cast here.
+          // 200 at a time: render data holds extracted page values and can be large.
+          for (const batch of chunk([...new Set(urlHashes)], 200)) {
+            const rows = db
+              .select({
+                urlHash: crawlUrlRenders.urlHash,
+                status: crawlUrlRenders.status,
+                settled: crawlUrlRenders.settled,
+                truncated: crawlUrlRenders.truncated,
+                data: crawlUrlRenders.data,
+              })
+              .from(crawlUrlRenders)
+              .where(
+                and(eq(crawlUrlRenders.crawlId, otherId), inArray(crawlUrlRenders.urlHash, batch)),
+              )
+              .all()
+            for (const row of rows)
+              found.push({ ...row, settled: Boolean(row.settled) } as CounterpartRender)
           }
           return found
         },
