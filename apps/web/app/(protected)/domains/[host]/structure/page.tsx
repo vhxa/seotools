@@ -34,6 +34,12 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   return { title: t('metaTitle', { host }) }
 }
 
+/**
+ * The directory column keeps room for ordinary names and only truncates (with the full path in a
+ * tooltip) the very long ones: it is the column the page is about, the figures are narrow.
+ */
+const DIRECTORY_CELL = 'min-w-64 max-w-[32rem]'
+
 type Params = Promise<Record<string, string | string[] | undefined>>
 
 /**
@@ -163,7 +169,7 @@ export default async function StructurePage({
     for (const child of nodes) {
       out.push(
         <TableRow key={child.path}>
-          <TableCell className="max-w-0">
+          <TableCell className={DIRECTORY_CELL}>
             <div
               className="flex min-w-0 items-center gap-2"
               style={{ paddingLeft: `${level * 1.25}rem` }}
@@ -188,7 +194,7 @@ export default async function StructurePage({
     if (parent.other) {
       out.push(
         <TableRow key={`${parent.path}…other`}>
-          <TableCell className="max-w-0">
+          <TableCell className={DIRECTORY_CELL}>
             <span
               className="block truncate text-sm text-muted-foreground"
               style={{ paddingLeft: `${level * 1.25}rem` }}
@@ -279,7 +285,10 @@ export default async function StructurePage({
                     </TableHeader>
                     <TableBody>
                       <TableRow className="bg-muted/40 font-medium">
-                        <TableCell className="max-w-0 truncate font-mono text-sm">
+                        <TableCell
+                          className={cn(DIRECTORY_CELL, 'truncate font-mono text-sm')}
+                          title={top.path}
+                        >
                           <FolderTreeIcon className="mr-2 inline size-4 align-text-bottom" />
                           {top.path}
                         </TableCell>

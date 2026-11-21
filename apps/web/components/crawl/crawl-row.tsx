@@ -1,67 +1,90 @@
 'use client'
 
-import { ChevronDownIcon } from 'lucide-react'
+import { XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useId, useState, type ReactNode } from 'react'
+import { useState, type MouseEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
 import { TableCell, TableRow } from '@/components/ui/table'
-import { cn } from '@/lib/utils'
 
 /**
- * One crawl of the list: its short row, and under it, on demand, everything else about the crawl.
- * The row keeps its height whether the details are open or not (the details are a row of their
- * own below it), so opening one never moves the others' columns. The cells and the details are made
- * by the server; this only holds whether they are open.
+ * One crawl of the list: its short row and, on demand, a side drawer with everything else about it
+ * (the same drawer the detail of a URL uses). The drawer opens the moment the row or its "Details"
+ * button is activated; its body is made by the server and whatever it loads (`CrawlDetailsLoader`)
+ * shows its own skeleton. The row never changes size, so nothing under or beside it moves.
+ *
+ * The button is the way in for the keyboard and for assistive technology; clicking anywhere else on
+ * the row is a courtesy for the mouse, and never takes over a link or a button of the row.
  */
 export function CrawlRow({
   cells,
-  details,
   actions,
-  columns,
+  title,
+  description,
+  details,
 }: {
-  /** The `TableCell`s of the short row, one per column but the last. */
+  /** The `TableCell`s of the row, but the last one. */
   cells: ReactNode
-  /** What the details show. */
-  details: ReactNode
-  /** Links and buttons of the row. */
+  /** The links and buttons of the row's last cell, before "Details". */
   actions: ReactNode
-  /** How many columns the table has, for the details to span. */
-  columns: number
+  /** What the drawer is about: the crawl's date. */
+  title: string
+  /** The crawl's type and state, for the drawer's header. */
+  description: ReactNode
+  /** The sections of the drawer. */
+  details: ReactNode
 }) {
-  const t = useTranslations('Crawls')
+  const t = useTranslations('Crawls.details')
   const [open, setOpen] = useState(false)
-  const id = useId()
+  const onRowClick = (event: MouseEvent<HTMLTableRowElement>) => {
+    if (event.defaultPrevented || window.getSelection()?.toString()) return
+    if ((event.target as HTMLElement).closest('a, button, summary, input, [role="button"]')) return
+    setOpen(true)
+  }
   return (
     <>
-      <TableRow className={cn(open && 'border-b-0')}>
+      <TableRow className="cursor-pointer" onClick={onRowClick}>
         {cells}
-        <TableCell className="align-top">
+        <TableCell>
           <div className="flex items-center justify-end gap-3 text-xs">
             {actions}
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="xs"
+              aria-haspopup="dialog"
               aria-expanded={open}
-              aria-controls={id}
-              onClick={() => setOpen((value) => !value)}
+              onClick={() => setOpen(true)}
             >
-              {t('details.toggle')}
-              <ChevronDownIcon
-                aria-hidden
-                className={cn('transition-transform', open && 'rotate-180')}
-              />
+              {t('open')}
             </Button>
           </div>
         </TableCell>
       </TableRow>
-      {open && (
-        <TableRow id={id} className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={columns} className="whitespace-normal">
-            {details}
-          </TableCell>
-        </TableRow>
-      )}
+      <Drawer open={open} swipeDirection="right" onOpenChange={setOpen}>
+        <DrawerContent className="max-w-dvw data-[swipe-axis=x]:[--drawer-content-width:100%] data-[swipe-axis=x]:sm:[--drawer-content-width:32rem] [&_[data-slot=drawer-content]]:min-w-0">
+          <DrawerHeader className="min-w-0 shrink-0 gap-1 border-b pr-14 pb-4">
+            <DrawerTitle className="text-base">{title}</DrawerTitle>
+            <DrawerDescription className="flex flex-wrap items-center gap-2">
+              {description}
+            </DrawerDescription>
+            <DrawerClose
+              render={<Button variant="ghost" size="icon-sm" className="absolute top-3 right-3" />}
+            >
+              <XIcon />
+              <span className="sr-only">{t('close')}</span>
+            </DrawerClose>
+          </DrawerHeader>
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-4">{details}</div>
+        </DrawerContent>
+      </Drawer>
     </>
   )
 }

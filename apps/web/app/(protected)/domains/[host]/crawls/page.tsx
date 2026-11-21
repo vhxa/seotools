@@ -30,6 +30,7 @@ import { getDb } from '@/lib/db'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
 import { isBrowsableStatus } from '@seotools/core/crawl/compare'
+import { InfoHelp } from '@/components/help'
 import { RenderStamp } from '@/components/history/render-stamp'
 import { CrawlRow } from '@/components/crawl/crawl-row'
 import { isRenderedCrawl } from '@/lib/rendering'
@@ -42,24 +43,26 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   return { title: t('metaTitle', { host }) }
 }
 
-/** Columns of the table: the short row's six and the actions. */
+/** Columns of the table: the six figures of a crawl and its actions. */
 const COLUMNS = 7
 
-function Detail({
-  label,
-  wide = false,
-  children,
-}: {
-  label: string
-  /** Takes the whole row of the details. */
-  wide?: boolean
-  children: ReactNode
-}) {
+/** A labelled group of the details of a crawl. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className={wide ? 'grid gap-0.5 sm:col-span-2 xl:col-span-3' : 'grid gap-0.5'}>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
+    <section className="grid gap-2 border-b pb-4 last:border-b-0 last:pb-0">
+      <h3 className="text-sm font-medium">{title}</h3>
+      <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[9rem_minmax(0,1fr)]">{children}</dl>
+    </section>
+  )
+}
+
+/** One label and its value in a section; a value the crawl does not have is not drawn at all. */
+function Item({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words">{children}</dd>
-    </div>
+    </>
   )
 }
 
@@ -192,17 +195,31 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
         </Link>
       </p>
 
-      <Card className="gap-0 py-0">
-        <CardContent className="overflow-x-auto px-0 [&_td:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:first-child]:pl-4 [&_th:last-child]:pr-4">
+      <Card className="gap-0 border py-0">
+        <CardContent className="px-0 [&_td:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:first-child]:pl-4 [&_th:last-child]:pr-4">
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead>{t('columns.crawl')}</TableHead>
+                <TableHead>{t('columns.date')}</TableHead>
                 <TableHead>{t('columns.started')}</TableHead>
                 <TableHead>{t('columns.mode')}</TableHead>
                 <TableHead>{t('columns.state')}</TableHead>
-                <TableHead>{t('columns.found')}</TableHead>
-                <TableHead>{t('columns.findings')}</TableHead>
+                <TableHead className="text-right">
+                  <span className="inline-flex items-center justify-end gap-0.5">
+                    {t('columns.pages')}
+                    <InfoHelp label={t('columns.pages')} compact>
+                      {t('columns.pagesHelp')}
+                    </InfoHelp>
+                  </span>
+                </TableHead>
+                <TableHead className="text-right">
+                  <span className="inline-flex items-center justify-end gap-0.5">
+                    {t('columns.findings')}
+                    <InfoHelp label={t('columns.findings')} compact>
+                      {t('columns.findingsHelp')}
+                    </InfoHelp>
+                  </span>
+                </TableHead>
                 <TableHead>
                   <span className="sr-only">{t('columns.actions')}</span>
                 </TableHead>
@@ -225,52 +242,55 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                 const cancelled = crawl.status === 'cancelled'
                 const date = (value: Date) =>
                   format.dateTime(value, { dateStyle: 'medium', timeStyle: 'short' })
+                const error = crawlError(crawl)
+                const opportunities = crawl.pagesWithType?.opportunity
                 return (
                   <CrawlRow
                     key={crawl.id}
-                    columns={COLUMNS}
+                    title={when(crawl)}
+                    description={
+                      <>
+                        <span>{tCrawl(`type.${crawl.type}`)}</span>
+                        <CrawlStatusBadge status={crawl.status} />
+                      </>
+                    }
                     cells={
                       <>
-                        <TableCell className="align-top">
-                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                            <span className="font-medium">{when(crawl)}</span>
-                            <span className="text-muted-foreground">
+                        <TableCell>
+                          <span className="grid gap-0.5">
+                            <span className="flex items-center gap-2 text-sm font-medium">
+                              {when(crawl)}
+                              {crawl.id === latest?.id && <Badge>{t('latest')}</Badge>}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
                               {tCrawl(`type.${crawl.type}`)}
                             </span>
-                            {crawl.id === latest?.id && <Badge>{t('latest')}</Badge>}
                           </span>
                         </TableCell>
-                        <TableCell className="align-top text-sm text-muted-foreground">
+                        <TableCell className="text-sm text-muted-foreground">
                           {t(`trigger.${crawl.trigger}`)}
                         </TableCell>
-                        <TableCell className="align-top">
+                        <TableCell>
                           <RenderStamp crawl={crawl} detailed={false} />
                         </TableCell>
-                        <TableCell className="align-top">
-                          <span
-                            title={crawlError(crawl)}
-                          >
+                        <TableCell>
+                          <span title={error}>
                             <CrawlStatusBadge status={crawl.status} />
                           </span>
                         </TableCell>
-                        <TableCell className="align-top text-sm tabular-nums">
-                          {t('found', {
-                            pages: format.number(crawl.pagesCount),
-                            urls: format.number(crawl.urlsCount),
-                          })}
+                        <TableCell className="text-right text-sm tabular-nums">
+                          {format.number(crawl.pagesCount)}
                         </TableCell>
-                        <TableCell className="align-top text-sm tabular-nums">
+                        <TableCell className="text-right text-sm tabular-nums">
                           {crawl.pagesWithType ? (
-                            t('findings', {
-                              issues: format.number(crawl.pagesWithType.issue),
-                              warnings: format.number(crawl.pagesWithType.warning),
-                            })
-                          ) : cancelled ? (
-                            <span className="text-muted-foreground">
-                              {t('cancelledNotAnalysed')}
-                            </span>
+                            `${format.number(crawl.pagesWithType.issue)} · ${format.number(crawl.pagesWithType.warning)}`
                           ) : (
-                            '—'
+                            <span
+                              className="text-muted-foreground"
+                              title={cancelled ? t('cancelledNotAnalysed') : undefined}
+                            >
+                              —
+                            </span>
                           )}
                         </TableCell>
                       </>
@@ -311,66 +331,70 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                       </>
                     }
                     details={
-                      <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-                        <Detail label={t('details.started')}>
-                          {date(crawl.startedAt ?? crawl.createdAt)}
-                        </Detail>
-                        <Detail label={t('details.finished')}>
-                          {crawl.finishedAt ? date(crawl.finishedAt) : '—'}
-                        </Detail>
-                        <Detail label={t('details.found')}>
-                          {t('foundMore', {
-                            pages: format.number(crawl.pagesCount),
-                            urls: format.number(crawl.urlsCount),
-                            external: format.number(crawl.externalCount),
-                          })}
-                        </Detail>
-                        <Detail label={t('details.findings')}>
-                          {crawl.pagesWithType
-                            ? t('findingsAll', {
-                                issues: format.number(crawl.pagesWithType.issue),
-                                warnings: format.number(crawl.pagesWithType.warning),
-                                opportunities: format.number(crawl.pagesWithType.opportunity),
-                              })
-                            : cancelled
-                              ? t('cancelledNotAnalysed')
-                              : '—'}
-                        </Detail>
-                        <Detail label={t('details.rules')}>
-                          {cancelled
-                            ? t('cancelledNotAnalysed')
-                            : crawl.type === 'full'
-                              ? rulesLabel(version)
-                              : '—'}
-                        </Detail>
-                        <Detail label={t('details.results')}>
-                          {!isBrowsable ? (
-                            '—'
-                          ) : crawl.pruned ? (
-                            <Badge variant="secondary" title={tStamp('prunedHint')}>
-                              {tStamp('pruned')}
-                            </Badge>
-                          ) : (
-                            tStamp('retained')
+                      <div className="grid gap-4">
+                        {cancelled && (
+                          <p className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                            {t('cancelledNotAnalysed')}
+                          </p>
+                        )}
+                        {error && (
+                          <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+                            {error}
+                          </p>
+                        )}
+                        <Section title={t('sections.run')}>
+                          <Item label={t('details.started')}>
+                            {date(crawl.startedAt ?? crawl.createdAt)}
+                          </Item>
+                          {crawl.finishedAt && (
+                            <Item label={t('details.finished')}>{date(crawl.finishedAt)}</Item>
                           )}
-                        </Detail>
-                        {isRenderedCrawl(crawl) && (
-                          <Detail label={t('details.rendering')} wide>
-                            <RenderStamp crawl={crawl} showMode={false} />
-                          </Detail>
+                          <Item label={t('details.version')}>{buildLine(crawl)}</Item>
+                        </Section>
+                        <Section title={t('sections.found')}>
+                          <Item label={t('details.urls')}>{format.number(crawl.urlsCount)}</Item>
+                          <Item label={t('details.external')}>
+                            {format.number(crawl.externalCount)}
+                          </Item>
+                          {opportunities !== undefined && (
+                            <Item label={t('details.opportunities')}>
+                              {format.number(opportunities)}
+                            </Item>
+                          )}
+                          {isBrowsable && (
+                            <Item label={t('details.results')}>
+                              {crawl.pruned ? (
+                                <span title={tStamp('prunedHint')}>{tStamp('pruned')}</span>
+                              ) : (
+                                tStamp('retained')
+                              )}
+                            </Item>
+                          )}
+                        </Section>
+                        {!cancelled && crawl.type === 'full' && (
+                          <Section title={t('sections.analysis')}>
+                            <Item label={t('details.rules')}>{rulesLabel(version)}</Item>
+                            {isRenderedCrawl(crawl) && (
+                              <Item label={t('details.rendering')}>
+                                <RenderStamp crawl={crawl} showMode={false} />
+                              </Item>
+                            )}
+                          </Section>
                         )}
-                        {crawl.error && (
-                          <Detail label={t('details.error')} wide>
-                            {crawlError(crawl)}
-                          </Detail>
+                        {!cancelled && crawl.type !== 'full' && isRenderedCrawl(crawl) && (
+                          <Section title={t('sections.analysis')}>
+                            <Item label={t('details.rendering')}>
+                              <RenderStamp crawl={crawl} showMode={false} />
+                            </Item>
+                          </Section>
                         )}
-                        <div className="sm:col-span-2 xl:col-span-3">{buildLine(crawl)}</div>
                         {crawl.type === 'full' && crawl.status === 'completed' && (
-                          <Detail label={pairedTitle} wide>
-                            <PairedNotice host={domain.host} crawl={crawl} />
-                          </Detail>
+                          <section className="grid gap-2 text-sm">
+                            <h3 className="text-sm font-medium">{pairedTitle}</h3>
+                            <PairedNotice host={domain.host} crawl={crawl} lazyExamples />
+                          </section>
                         )}
-                      </dl>
+                      </div>
                     }
                   />
                 )

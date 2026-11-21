@@ -41,6 +41,7 @@ const PUBLIC_ACTIONS = new Set(['createAdmin', 'requestPasswordEmailAction', 'se
 const READ_ONLY_DOMAIN_ACTIONS = new Set([
   'loadLinksAction',
   'loadRedirectLinksAction',
+  'loadPairedExamplesAction',
   'searchUrlsAction',
   'crawlActivityAction',
   'dataStampAction',

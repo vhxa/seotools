@@ -3752,12 +3752,14 @@
     "metaTitle": "Rastreos · {host} · seotools",
     "description": "Todos los rastreos de este dominio, del más reciente al más antiguo. Un dominio ejecuta un solo rastreo a la vez. Un rastreo completo conserva las reglas con las que se analizó y sus resultados por URL hasta que la retención los elimina.",
     "columns": {
-      "crawl": "Rastreo",
+      "date": "Fecha",
       "started": "Iniciado por",
       "mode": "Modo",
       "state": "Estado",
-      "found": "Encontrado",
-      "findings": "Páginas con hallazgos",
+      "pages": "Páginas",
+      "pagesHelp": "Páginas HTML que respondieron bien. Las URL del rastreo, páginas y todo lo demás que encontró, están en sus detalles.",
+      "findings": "Problemas · Avisos",
+      "findingsHelp": "Páginas con al menos un problema y, después, páginas con al menos un aviso. Las oportunidades están en los detalles.",
       "actions": "Acciones"
     },
     "trigger": {
@@ -3765,21 +3767,19 @@
       "schedule": "Programado"
     },
     "latest": "Último",
-    "found": "{pages} páginas · {urls} URLs",
-    "findings": "{issues} problemas · {warnings} avisos",
-    "foundMore": "{pages} páginas · {urls} URLs · {external} URLs externas",
-    "findingsAll": "{issues} problemas · {warnings} avisos · {opportunities} oportunidades",
     "cancelledNotAnalysed": "Cancelado — no analizado",
     "details": {
-      "toggle": "Detalles",
+      "open": "Detalles",
+      "close": "Cerrar",
       "started": "Inicio",
       "finished": "Fin",
-      "found": "Encontrado",
-      "findings": "Páginas con hallazgos",
+      "version": "Versión",
+      "urls": "URL encontradas",
+      "external": "URL externas",
+      "opportunities": "Páginas con oportunidades",
+      "results": "Resultados por URL",
       "rules": "Reglas",
-      "results": "Resultados",
-      "rendering": "Renderizado",
-      "error": "Error"
+      "rendering": "Renderizado"
     },
     "view": "Ver",
     "compareWithPrevious": "Comparar con el anterior",
@@ -3806,10 +3806,13 @@
       "hint": "Una URL por línea, hasta 1000; no se siguen enlaces.",
       "start": "Iniciar rastreo de lista"
     },
-    "started": "Inicio: {when}",
-    "finished": "Fin: {when}",
     "requestCredentialsUnavailable": "Ya no están disponibles las credenciales de acceso que había al poner este rastreo en cola.",
-    "browserUnavailable": "El navegador de renderizado no estuvo disponible durante el plazo de recuperación del rastreo."
+    "browserUnavailable": "El navegador de renderizado no estuvo disponible durante el plazo de recuperación del rastreo.",
+    "sections": {
+      "run": "Ejecución",
+      "found": "Qué encontró",
+      "analysis": "Análisis"
+    }
   },
   "Schedules": {
     "metaTitle": "Programaciones · {host} · seotools",
@@ -4315,6 +4318,9 @@
     "transport": "La segunda solicitud no obtuvo respuesta.",
     "retry-after": "El servidor pidió una pausa mayor de la que admite el rastreo.",
     "incomplete": "No se pudo comparar el HTML completo.",
-    "titleField": "título de la página"
+    "titleField": "título de la página",
+    "loadingExamples": "Cargando ejemplos",
+    "examplesUnavailable": "No se han podido cargar los ejemplos.",
+    "examplesTitle": "Ejemplos"
   }
 }

@@ -3752,12 +3752,14 @@
     "metaTitle": "Crawls · {host} · seotools",
     "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the rules it was analysed with, and its results per URL until the retention setting removes them.",
     "columns": {
-      "crawl": "Crawl",
+      "date": "Date",
       "started": "Started by",
       "mode": "Mode",
       "state": "State",
-      "found": "Found",
-      "findings": "Pages with findings",
+      "pages": "Pages",
+      "pagesHelp": "HTML pages that answered successfully. The URLs of the crawl, pages and anything else it found, are in its details.",
+      "findings": "Issues · Warnings",
+      "findingsHelp": "Pages with at least one issue, then pages with at least one warning. Opportunities are in the details.",
       "actions": "Actions"
     },
     "trigger": {
@@ -3765,21 +3767,19 @@
       "schedule": "Scheduled"
     },
     "latest": "Latest",
-    "found": "{pages} pages · {urls} URLs",
-    "findings": "{issues} issues · {warnings} warnings",
-    "foundMore": "{pages} pages · {urls} URLs · {external} external URLs",
-    "findingsAll": "{issues} issues · {warnings} warnings · {opportunities} opportunities",
     "cancelledNotAnalysed": "Cancelled — not analysed",
     "details": {
-      "toggle": "Details",
+      "open": "Details",
+      "close": "Close",
       "started": "Started",
       "finished": "Finished",
-      "found": "Found",
-      "findings": "Pages with findings",
+      "version": "Version",
+      "urls": "URLs found",
+      "external": "External URLs",
+      "opportunities": "Pages with opportunities",
+      "results": "Results per URL",
       "rules": "Rules",
-      "results": "Results",
-      "rendering": "Rendering",
-      "error": "Error"
+      "rendering": "Rendering"
     },
     "view": "View",
     "compareWithPrevious": "Compare with previous",
@@ -3806,10 +3806,13 @@
       "hint": "One URL per line, up to 1000; links are not followed.",
       "start": "Start list crawl"
     },
-    "started": "Started {when}",
-    "finished": "Finished {when}",
     "requestCredentialsUnavailable": "The request credentials configured when this crawl was queued are no longer available.",
-    "browserUnavailable": "The rendering browser was unavailable for the crawl’s recovery limit."
+    "browserUnavailable": "The rendering browser was unavailable for the crawl’s recovery limit.",
+    "sections": {
+      "run": "Run",
+      "found": "What it found",
+      "analysis": "Analysis"
+    }
   },
   "Schedules": {
     "metaTitle": "Schedules · {host} · seotools",
@@ -4315,6 +4318,9 @@
     "transport": "The repeat request received no answer.",
     "retry-after": "The server requested a longer pause than the crawl supports.",
     "incomplete": "The complete HTML could not be compared.",
-    "titleField": "page title"
+    "titleField": "page title",
+    "loadingExamples": "Loading examples",
+    "examplesUnavailable": "The examples could not be loaded.",
+    "examplesTitle": "Examples"
   }
 }

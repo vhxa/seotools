@@ -2,14 +2,27 @@ import type { Crawl } from '@seotools/db'
 import type { AnswerPair } from '@seotools/core/crawl/paired'
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
+import { PairedExamples } from '@/components/crawl/paired-examples'
 import { getDb } from '@/lib/db'
 
-export async function PairedNotice({ crawl, host }: { crawl: Crawl; host: string }) {
+/**
+ * What the paired check of a crawl found. `lazyExamples` leaves the URLs it lists to be read when
+ * they are shown (a drawer that opens on demand), instead of reading them while rendering.
+ */
+export async function PairedNotice({
+  crawl,
+  host,
+  lazyExamples = false,
+}: {
+  crawl: Crawl
+  host: string
+  lazyExamples?: boolean
+}) {
   if (crawl.type !== 'full' || crawl.status !== 'completed') return null
   const t = await getTranslations('PairedAnswers')
   const summary = crawl.pairedSummary
   const examples =
-    crawl.pruned || !summary
+    lazyExamples || crawl.pruned || !summary
       ? []
       : await Promise.all(
           summary.examples.map(async (hash) => (await getDb()).crawls.getUrl(crawl.id, hash)),
@@ -27,6 +40,9 @@ export async function PairedNotice({ crawl, host }: { crawl: Crawl; host: string
         <p>{t('unknown', { count: summary.selected - summary.comparable })}</p>
       )}
       {summary && crawl.pruned && <p>{t('pruned')}</p>}
+      {lazyExamples && summary && !crawl.pruned && summary.examples.length > 0 && (
+        <PairedExamples host={host} crawlId={crawl.id} />
+      )}
       {examples.length > 0 && (
         <details>
           <summary className="cursor-pointer">{t('examples')}</summary>
