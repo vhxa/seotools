@@ -481,10 +481,13 @@ export class PageFactsCollector {
     const normalized = words.join(' ').toLowerCase()
     facts.servedTextDigest = createHash('sha256')
       .update(
+        // Characters only: where a browser puts spaces between elements is layout, not an answer,
+        // so markup moved around the same words (a comma beside a link, an empty closed dialog)
+        // never reads as a different answer. Reordered or repeated visible labels still do.
         this.visibleChunks
           .join('')
-          .replace(/[\s\p{White_Space}]+/gu, ' ')
-          .trim(),
+          .normalize('NFC')
+          .replace(/[\s\p{White_Space}]+/gu, ''),
       )
       .digest('hex')
     facts.servedTitleDigest = createHash('sha256').update(JSON.stringify(page.title)).digest('hex')

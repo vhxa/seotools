@@ -284,7 +284,6 @@ describe('paired answers', () => {
       '<a href="/b">Beta</a> | <a href="/a">Alpha</a>',
     ],
     ['<a href="/a">Read it</a>', '<a href="/a">Read it</a> <a href="/a">Read  it</a>'],
-    ['<a href="/a">can</a><a href="/b">not</a>', '<a href="/a">cannot</a><a href="/b"></a>'],
   ])(
     'reports changed link labels in reading order, with the same targets',
     async (first, second) => {
@@ -292,6 +291,21 @@ describe('paired answers', () => {
       const { pair } = await run(() => html(++calls === 1 ? first : second))
       expect(pair?.changed).toEqual(['text'])
       expect(pair?.examples).toEqual([])
+    },
+  )
+  it.each([
+    ['<a href="/a">can</a><a href="/b">not</a>', '<a href="/a">cannot</a><a href="/b"></a>'],
+    [
+      '<a href="/a">Read</a>, <a href="/b">please</a>.',
+      '<a href="/a">Read,</a> <a href="/b">please</a>.',
+    ],
+    ['<p>cooperate</p>', '<p>coop<dialog></dialog>erate</p>'],
+  ])(
+    'compares the characters a page shows, not where layout puts spaces',
+    async (first, second) => {
+      let calls = 0
+      const { pair } = await run(() => html(++calls === 1 ? first : second))
+      expect(pair?.changed).toEqual([])
     },
   )
   it('keeps full link digests when both stored samples are capped', async () => {
