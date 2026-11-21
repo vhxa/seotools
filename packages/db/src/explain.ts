@@ -489,7 +489,7 @@ async function classesOf(input: {
   captureTrust: CaptureTrust
   cache: Caches
 }): Promise<Map<number, Partial<Record<LinkClass, ClassTally>>>> {
-  const { work, pair, side, crawls, seqs, merged, conditions, captureTrust, cache } = input
+  const { work, pair, side, seqs, merged, conditions, captureTrust, cache } = input
   const classes = new Map<number, Partial<Record<LinkClass, ClassTally>>>()
   let after: { target: number; source: number; kind: string } | null = null
   for (;;) {
@@ -531,7 +531,6 @@ async function classesOf(input: {
     }
     if (links.length < LINK_PAGE) break
   }
-  void crawls
   return classes
 
   /** The renders these rendered links need, on both sides, read and parsed a group at a time. */
