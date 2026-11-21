@@ -3563,7 +3563,38 @@
       "month": "Full crawls of the last month",
       "quarter": "Full crawls of the last 3 months"
     },
-    "rangeEmpty": "No full crawl in this period."
+    "rangeEmpty": "No full crawl in this period.",
+    "basis": {
+      "legend": "A ringed point is where what the crawls measure changed (rendering, ignored parameters, crawl settings or audit rules). The line breaks there: the figures on each side are not comparable.",
+      "column": "Change of basis",
+      "rendering": {
+        "rendered": "Rendered instead of HTML",
+        "html": "HTML instead of rendered"
+      },
+      "ignoredAdded": "Now ignores{count, plural, one { parameter} other { parameters}} {parameters}{more, plural, =0 {} other { and # more}}",
+      "ignoredRemoved": "No longer ignores{count, plural, one { parameter} other { parameters}} {parameters}{more, plural, =0 {} other { and # more}}",
+      "settings": "Crawl settings changed: {settings}",
+      "catalog": "Issue checks changed",
+      "rules": "Rules changed",
+      "setting": {
+        "includePrefixes": "included paths",
+        "excludePrefixes": "excluded paths",
+        "maxDepth": "maximum depth",
+        "maxUrls": "URL limit",
+        "userAgent": "user agent",
+        "requestCredentialsSet": "request credentials",
+        "optionalFiles": "optional files",
+        "indexNowKey": "IndexNow key",
+        "concurrency": "simultaneous requests",
+        "requestsPerSecond": "requests per second",
+        "timeoutMs": "timeout",
+        "maxRetries": "retries",
+        "renderWaitMs": "render wait",
+        "renderOmittedHosts": "hosts left out of rendering",
+        "renderingMode": "rendering",
+        "ignoredParameters": "ignored parameters"
+      }
+    }
   },
   "Issues": {
     "metaTitle": "Issues · {host} · seotools",
