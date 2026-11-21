@@ -63,6 +63,7 @@ import {
 import { ExcessiveRetryAfterError, createRequester } from './requester'
 import { PERMANENT_ERRORS, RETRY_BASE_MS, abortableSleep, isRedirect } from './requests'
 import { MAX_ROBOTS_BYTES, analyseResponse, emptyResult, failureResult } from './response'
+import { explainLatestPair, type ExplainSources } from './explain'
 
 /** How many queued URLs are read from the database at a time. Must exceed the max concurrency. */
 const QUEUE_BATCH = 200
@@ -85,6 +86,8 @@ export interface CrawlEngineOptions {
   appVersion?: string
   /** Scales the waits between retries down in tests. */
   retryBaseMs?: number
+  /** What explaining the pair reads from other packages (capture rule, site variation, reach). */
+  explainSources?: ExplainSources
 }
 
 export interface CrawlSummary {
@@ -866,6 +869,20 @@ export async function runCrawl(
       await analyseCrawl(db, crawlId, await currentAuditConfig(db, crawl.domainId))
     } catch (error) {
       log.warn({ err: error }, 'could not check the pages for issues')
+    }
+    // Why URLs differ from the crawl it is compared with, before its alerts read the comparison.
+    try {
+      await explainLatestPair({
+        db,
+        crawlId,
+        runner: `crawl:${crawlId}`,
+        log,
+        signal,
+        ...(options.explainSources ? { sources: options.explainSources } : {}),
+      })
+    } catch (error) {
+      // The pair is marked failed; it is asked for again at startup or when the comparison opens.
+      log.warn({ err: error }, 'could not work out why URLs differ from the previous crawl')
     }
   }
   try {

@@ -2817,7 +2817,8 @@
       "canonical": "Canónica",
       "robots": "Robots",
       "gained": "Hallazgos detectados después",
-      "lost": "Hallazgos que ya no se detectan"
+      "lost": "Hallazgos que ya no se detectan",
+      "configuration": "Por tu configuración"
     },
     "fields": {
       "status": "Cambió la respuesta",
@@ -2826,16 +2827,17 @@
       "robots": "Cambió robots"
     },
     "hints": {
-      "added": "URL que encontró el rastreo posterior y que el anterior nunca encontró. Puede que el sitio las haya ganado, o que el rastreo anterior no llegara hasta ellas.",
+      "added": "URLs que encontró el rastreo posterior y no el anterior. Cada una dice por qué, a partir de lo que guardaron los dos rastreos; «no alcanzada antes» nunca significa nueva.",
       "addedIncomplete": "El rastreo anterior se detuvo en su límite de URL, así que no llegó a muchas URL. Es posible que algunas de estas existieran desde siempre.",
-      "missing": "URL que encontró el rastreo anterior y el posterior no. Pueden haberse eliminado, haber dejado de enlazarse o de aparecer en un sitemap, o no haberse alcanzado: esto no dice cuál fue el caso.",
+      "missing": "URLs que encontró el rastreo anterior y no el posterior. Cada una dice por qué, a partir de lo que guardaron los dos rastreos; «no alcanzada» nunca significa que haya desaparecido.",
       "missingIncomplete": "El rastreo posterior se detuvo en su límite de URL, así que lo más probable es que sean URL a las que no llegó. Nada de esto indica que se hayan eliminado.",
       "status": "URL que ambos rastreos solicitaron y que respondieron distinto: otro código de estado, otro tipo de URL u otro destino de redirección.",
       "title": "URL que ambos rastreos solicitaron y cuyo título cambió. Se compara exactamente, mayúsculas incluidas.",
       "canonical": "URL que ambos rastreos solicitaron y cuya canónica declarada cambió.",
       "robots": "URL que ambos rastreos solicitaron y cuyo meta robots o X-Robots-Tag cambió.",
       "gained": "URL que ambos rastreos solicitaron y en las que el rastreo posterior detecta hallazgos que el anterior no. La etiqueta dice lo que la evidencia respalda: nuevo o reaparecido, o sin atribuir cuando cambiaron las reglas, el catálogo o el propio rastreo.",
-      "lost": "URL que ambos rastreos solicitaron y en las que el rastreo anterior detectaba hallazgos que el posterior ya no. Solo es resuelto cuando únicamente el sitio puede explicarlo; una URL que ya no se audita aparece como excluida por regla, nunca como resuelta."
+      "lost": "URL que ambos rastreos solicitaron y en las que el rastreo anterior detectaba hallazgos que el posterior ya no. Solo es resuelto cuando únicamente el sitio puede explicarlo; una URL que ya no se audita aparece como excluida por regla, nunca como resuelta.",
+      "configuration": "URLs que solo tiene un rastreo por tus propios ajustes: parámetros ignorados que fusionan o separan direcciones, rutas excluidas, la lista de prioritarias, archivos opcionales, un cambio de profundidad o de límite de URLs, o enlaces que solo aparecen al renderizar cuando un rastreo no renderizó. No cuentan como no vistas ni como descubiertas."
     },
     "search": {
       "label": "Buscar URL",
@@ -2858,7 +2860,8 @@
         "depth": "Profundidad",
         "before": "Rastreo anterior",
         "after": "Rastreo posterior",
-        "findings": "Hallazgos"
+        "findings": "Hallazgos",
+        "why": "Por qué"
       },
       "findingsUnavailable": "No se pueden comparar los hallazgos de estos rastreos.",
       "samePersistent": "{count, plural, one {# hallazgo detectado por ambos} other {# hallazgos detectados por ambos}}"
@@ -2901,60 +2904,194 @@
       "dismissed": "Una persona descartó este hallazgo.",
       "basis": "un rastreo leyó el HTML recibido y el otro la página renderizada: solo se pueden comparar los hallazgos sobre la respuesta del servidor"
     },
-    "notes": {
-      "pruned": {
-        "title": {
-          "base": "El rastreo anterior ya no tiene sus resultados",
-          "target": "El rastreo posterior ya no tiene sus resultados",
-          "both": "Ninguno de los rastreos conserva sus resultados"
-        },
-        "description": "La retención eliminó los resultados por URL, así que solo se pueden comparar los totales. Elige rastreos que aún conserven sus resultados, o aumenta el número de rastreos que se conservan en los ajustes de rastreo."
-      },
-      "unanalysed": {
-        "title": {
-          "base": "El rastreo anterior no se analizó",
-          "target": "El rastreo posterior no se analizó",
-          "both": "Ninguno de los rastreos se analizó"
-        },
-        "description": "Sin análisis no hay hallazgos que comparar. Las URL y cómo respondieron (estado, título, canónica, robots) sí se siguen comparando."
-      },
-      "legacy": {
-        "title": {
-          "base": "El rastreo anterior se analizó antes de que se conservara el estado de auditoría por URL",
-          "target": "El rastreo posterior se analizó antes de que se conservara el estado de auditoría por URL",
-          "both": "Ambos rastreos se analizaron antes de que se conservara el estado de auditoría por URL"
-        },
-        "description": "No se sabe qué URL quedaron fuera de la auditoría entonces, así que un hallazgo que no está no puede interpretarse como corregido. Esos cambios se muestran sin atribuir."
-      },
-      "catalog": {
-        "title": "Los rastreos se analizaron con catálogos de problemas distintos",
-        "description": "Un hallazgo que aparece o desaparece puede deberse a una comprobación que cambió, no al sitio. Esas diferencias se listan como sin verificar, nunca como nuevas o resueltas."
-      },
-      "audit": {
-        "title": "Los rastreos se analizaron con configuraciones de auditoría distintas",
-        "description": "Entre ellos cambiaron las exclusiones, la indexación esperada o los directorios de idioma. Una URL que dejó de auditarse aparece como excluida por regla, no como resuelta. Los hallazgos que dependen de otras páginas no se llaman nuevos ni resueltos; los que solo dependen de la propia página sí, salvo que haya cambiado la expectativa de esa URL."
-      },
-      "incomplete": {
-        "title": {
-          "base": "El rastreo anterior se detuvo en su límite de URL",
-          "target": "El rastreo posterior se detuvo en su límite de URL",
-          "both": "Ambos rastreos se detuvieron en su límite de URL"
-        },
-        "description": "Las URL a las que no llegó no están ausentes, y los hallazgos que miran otras páginas (duplicados, enlaces entrantes, redirecciones) no se llaman nuevos ni resueltos para él."
-      },
-      "ignoredParameters": {
-        "title": "Han cambiado los parámetros ignorados",
-        "description": "Las URL añadidas o no vistas pueden reflejar cambios en los parámetros ignorados. Los resúmenes de cambios por problema no se verifican porque cambió la identidad de las URL."
-      },
-      "basis": {
-        "title": "Bases de observación distintas",
-        "description": "Un rastreo leyó el HTML recibido y el otro la página renderizada. Los hallazgos sobre la respuesta del servidor se comparan como siempre; los del contenido de cada página, los de qué páginas enlazan a cuáles y los de JavaScript aparecen como no comparables, nunca como nuevos ni corregidos."
-      }
-    },
     "rowsShown": "{shown, number} de {matching, number} URLs mostradas",
-    "rules": {
-      "same": "Los dos crawls se analizaron con las mismas reglas.",
-      "different": "Los crawls se analizaron con reglas distintas, así que algunas diferencias pueden venir de las reglas y no del sitio."
+    "why": {
+      "label": "Por qué difieren",
+      "all": "Todas",
+      "reasons": {
+        "merged": "Fusionadas",
+        "split": "Separadas",
+        "settings": "Excluidas por la configuración",
+        "mode": "Renderizado",
+        "unlinked": "Ya no enlazadas",
+        "linked": "Enlazadas ahora",
+        "notReached": "No alcanzadas",
+        "limit": "Límite de URLs",
+        "depth": "Más allá de la profundidad",
+        "unstable": "El sitio respondió distinto",
+        "unknown": "Desconocido"
+      },
+      "counted": {
+        "merged": "{count, plural, one {# fusionada} other {# fusionadas}}",
+        "split": "{count, plural, one {# separada} other {# separadas}}",
+        "settings": "{count, plural, one {# excluida por la configuración} other {# excluidas por la configuración}}",
+        "mode": "{count, plural, one {# por el renderizado} other {# por el renderizado}}",
+        "unlinked": "{count, plural, one {# ya no enlazada} other {# ya no enlazadas}}",
+        "linked": "{count, plural, one {# enlazada ahora} other {# enlazadas ahora}}",
+        "notReached": "{count, plural, one {# no alcanzada} other {# no alcanzadas}}",
+        "limit": "{count, plural, one {# tras el límite de URLs} other {# tras el límite de URLs}}",
+        "depth": "{count, plural, one {# más allá de la profundidad} other {# más allá de la profundidad}}",
+        "unstable": "{count, plural, one {# en la que el sitio respondió distinto} other {# en las que el sitio respondió distinto}}",
+        "unknown": "{count, plural, one {# desconocida} other {# desconocidas}}"
+      },
+      "pending": "Aún no se ha determinado por qué difiere.",
+      "merged": {
+        "present": "El rastreo posterior ignora {params}, así que allí es la misma URL que <link>{into}</link>.",
+        "absent": "El rastreo posterior ignora {params}, así que allí es la misma URL que <link>{into}</link>, que tampoco vio.",
+        "into": "El rastreo posterior ignora {params}, así que lee <link>{into}</link> del rastreo anterior como esta URL."
+      },
+      "split": {
+        "present": "El rastreo anterior ignoraba {params}, así que allí era la misma URL que <link>{into}</link>.",
+        "absent": "El rastreo anterior ignoraba {params}, así que allí era la misma URL que <link>{into}</link>, que tampoco vio.",
+        "into": "El rastreo anterior ignoraba {params}, así que leía <link>{into}</link> del rastreo posterior como esta URL."
+      },
+      "settings": {
+        "excluded": {
+          "base": "Las rutas del rastreo posterior dejan fuera <link>{via}</link>, la página que la enlazaba.",
+          "target": "Las rutas del rastreo anterior dejaban fuera <link>{via}</link>, la página que la enlaza."
+        },
+        "depth": {
+          "base": "<link>{via}</link>, que la enlazaba, estaba más allá de la profundidad máxima del rastreo posterior, y ese ajuste cambió.",
+          "target": "<link>{via}</link>, que la enlaza, estaba más allá de la profundidad máxima del rastreo anterior, y ese ajuste cambió."
+        },
+        "priority": {
+          "base": "Solo estaba en la lista de URLs prioritarias del rastreo anterior.",
+          "target": "Solo está en la lista de URLs prioritarias del rastreo posterior."
+        },
+        "files": {
+          "base": "Es un archivo opcional para rastreadores que el rastreo posterior no pidió.",
+          "target": "Es un archivo opcional para rastreadores que el rastreo anterior no pidió."
+        },
+        "limit": {
+          "base": "El rastreo posterior se detuvo en su límite de URLs, y ese límite cambió.",
+          "target": "El rastreo anterior se detuvo en su límite de URLs, y ese límite cambió."
+        },
+        "other": {
+          "base": "Un ajuste del rastreo posterior la dejó fuera.",
+          "target": "Un ajuste del rastreo anterior la dejó fuera."
+        }
+      },
+      "mode": {
+        "base": "Solo la enlazaba la página renderizada de <link>{via}</link>, y el rastreo posterior no renderizó.",
+        "target": "Solo aparece al renderizar <link>{via}</link>, y el rastreo anterior no renderizó."
+      },
+      "unlinked": {
+        "direct": "Ya no se enlaza: el rastreo posterior leyó entera <link>{via}</link> y no la enlaza. Es un cambio del sitio.",
+        "chain": "Ya no se enlaza: se llegaba a ella a través de <link>{through}</link>, que el rastreo posterior tampoco vio, y todas las vías de entrada se leyeron enteras. Es un cambio del sitio."
+      },
+      "linked": {
+        "direct": "Se enlaza ahora: el rastreo anterior leyó entera <link>{via}</link> y no la enlazaba. Es un cambio del sitio.",
+        "chain": "Se enlaza ahora: se llega a ella a través de <link>{through}</link>, que el rastreo anterior tampoco vio, y todas las vías de entrada se leyeron enteras. Es un cambio del sitio."
+      },
+      "notReached": {
+        "direct": {
+          "base": "No alcanzada: el rastreo posterior no leyó entera <link>{via}</link>, que la enlazaba: {state}. No ha desaparecido.",
+          "target": "No alcanzada antes: el rastreo anterior no leyó entera <link>{via}</link>, que la enlaza: {state}. No es nueva."
+        },
+        "chain": {
+          "base": "No alcanzada: se llegaba a ella a través de <link>{through}</link>, que el rastreo posterior tampoco alcanzó. No ha desaparecido.",
+          "target": "No alcanzada antes: se llega a ella a través de <link>{through}</link>, que el rastreo anterior tampoco alcanzó. No es nueva."
+        }
+      },
+      "states": {
+        "failed": "falló, se rechazó o no respondió",
+        "redirected": "ahora redirige",
+        "served-truncated": "su HTML se cortó en el límite de tamaño",
+        "render-missing": "no tiene renderizado",
+        "render-failed": "su renderizado falló",
+        "render-truncated": "su renderizado se cortó",
+        "render-unsettled": "su renderizado se capturó mientras la página aún cargaba",
+        "render-redirected": "su renderizado acabó en otra dirección",
+        "render-unreliable": "su renderizado es anterior a que seotools pudiera demostrar que falta un enlace en un renderizado",
+        "not-requested": "se encontró pero no se pidió",
+        "depth": "estaba más allá de la profundidad máxima",
+        "excluded": "quedaba fuera de las rutas que se rastrean",
+        "mode": "el enlace solo estaba en la página renderizada",
+        "other": "no se leyó entera"
+      },
+      "limit": {
+        "base": "El rastreo posterior se detuvo en su límite de URLs, así que no guardó las que encontró después.",
+        "target": "El rastreo anterior se detuvo en su límite de URLs, así que no guardó las que encontró después.",
+        "unrecorded": "No consta si el límite cambió."
+      },
+      "depth": {
+        "base": "<link>{via}</link>, que la enlazaba, estaba más allá de la profundidad máxima del rastreo posterior, así que no se siguieron sus enlaces.",
+        "target": "<link>{via}</link>, que la enlaza, estaba más allá de la profundidad máxima del rastreo anterior, así que no se siguieron sus enlaces.",
+        "unrecorded": "No consta si ese ajuste cambió.",
+        "unchanged": "Ese ajuste no cambió."
+      },
+      "unstable": "El sitio respondió distinto: el enlace desde <link>{via}</link> con el que se encontró estaba en una respuesta de esa página y no en otra.",
+      "unknown": {
+        "none": "Nada de lo guardado dice por qué. Puede que se borrara, que dejara de enlazarse o de estar en un sitemap, o que no se alcanzara.",
+        "legacy": "Nada de lo guardado dice por qué: el rastreo es anterior a que seotools guardara cómo encontró cada URL.",
+        "cap": "Solo se llega a ella por una cadena larga de URLs que el otro rastreo tampoco vio, y no se siguió hasta el final."
+      },
+      "allWhole": "Todas las páginas que la enlazaban ({count, plural, one {# enlace} other {# enlaces}}) se leyeron enteras.",
+      "linkWas": "El enlace tal como era: {kind}{hasRegion, select, yes {, en {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
+      "linkIs": "El enlace tal como es: {kind}{hasRegion, select, yes {, en {region}} other {}}{hasText, select, yes { «{text}»} other {}}."
+    },
+    "check": {
+      "url": "Comprobar ahora",
+      "page": "Comprobar las URLs de esta página",
+      "starting": "Empezando…",
+      "busy": "Hay una recomprobación de este dominio en curso: verla",
+      "answers": "Comprobada {when}: responde {status}.",
+      "redirects": "Comprobada {when}: responde {status} y redirige a {url}.",
+      "noAnswer": "Comprobada {when}: sin respuesta ({error}).",
+      "note": "Esto es lo que responde ahora; no cambia por qué difieren los dos rastreos."
+    },
+    "summary": {
+      "builds": "Rastreo anterior: {earlier}. Rastreo posterior: {later}.",
+      "settingsChanged": "Ajustes que difieren: {list}.",
+      "settingsSame": "Los ajustes que registraron ambos rastreos son iguales.",
+      "settingsUnrecorded": "Estos rastreos no los registraron, así que no se comparan: {list}.",
+      "ignoredChange": "parámetros ignorados ({changes})",
+      "settings": {
+        "renderingMode": "renderizado",
+        "renderWaitMs": "espera del renderizado",
+        "renderOmittedHosts": "hosts excluidos del renderizado",
+        "ignoredParameters": "parámetros ignorados",
+        "includePrefixes": "rutas a incluir",
+        "excludePrefixes": "rutas a excluir",
+        "maxDepth": "profundidad máxima",
+        "maxUrls": "límite de URLs",
+        "userAgent": "User-Agent",
+        "requestCredentialsSet": "credenciales de petición",
+        "optionalFiles": "archivos opcionales para rastreadores",
+        "indexNowKey": "clave de IndexNow",
+        "concurrency": "peticiones simultáneas",
+        "requestsPerSecond": "peticiones por segundo",
+        "timeoutMs": "tiempo de espera",
+        "maxRetries": "reintentos"
+      },
+      "urls": {
+        "done": "{configuration, plural, one {# URL cambia} other {# URLs cambian}} por tu configuración, {missing, plural, one {# no vista} other {# no vistas}}{missingReasons}, {added, plural, one {# descubierta} other {# descubiertas}}{addedReasons}.",
+        "preparing": "Averiguando por qué difieren las URLs de estos rastreos… Hasta entonces, las no vistas y las descubiertas incluyen URLs que pueden deberse a tus propios ajustes.",
+        "failed": "No se pudo averiguar por qué difieren las URLs de estos rastreos. Las no vistas y las descubiertas incluyen URLs que pueden deberse a tus propios ajustes.",
+        "unavailable": "Estos rastreos no pueden decir por qué difieren las URLs: uno es anterior a que seotools numerara las URLs que encontraba."
+      },
+      "limited": {
+        "base": "El rastreo anterior se detuvo en su límite de URLs.",
+        "target": "El rastreo posterior se detuvo en su límite de URLs.",
+        "both": "Ambos rastreos se detuvieron en su límite de URLs."
+      },
+      "findings": {
+        "usual": "Los hallazgos se comparan con normalidad.",
+        "basis": "Solo se comparan los hallazgos sobre la respuesta del servidor: un rastreo leyó el HTML y el otro la página renderizada.",
+        "unanalysed": "Los hallazgos no se pueden comparar: un rastreo no se analizó.",
+        "caveats": "Los cambios que esto pueda explicar se muestran sin verificar: {list}."
+      },
+      "caveats": {
+        "audit": "reglas de auditoría distintas",
+        "catalog": "comprobaciones distintas",
+        "ignoredParameters": "parámetros ignorados distintos",
+        "legacy": "un análisis que no guardó qué URLs se auditaron",
+        "incomplete": "un rastreo cortado en su límite de URLs",
+        "pruned": "resultados eliminados",
+        "unanalysed": "un rastreo sin analizar",
+        "basis": "formas distintas de leer las páginas"
+      },
+      "pruned": "Solo se pueden comparar los totales: la retención eliminó los resultados por URL de un rastreo."
     }
   },
   "HttpStatus": {
@@ -4221,12 +4358,6 @@
       "causes": "fallidas o ausentes: {failed} · cortadas: {truncated} · no se estabilizaron: {legacyUnsettled}",
       "linksNotEvaluated": "No se evaluaron los hallazgos que dependen de los enlaces entre páginas.",
       "linksEvaluated": "Se evaluaron los hallazgos que dependen de los enlaces entre páginas."
-    },
-    "pair": {
-      "htmlToRendered": "El rastreo anterior solo leyó HTML y el posterior renderizó sus páginas",
-      "renderedToHtml": "El rastreo anterior renderizó sus páginas y el posterior solo leyó HTML",
-      "cannotCompare": "Los hallazgos sobre el contenido de cada página (títulos, encabezados, texto, imágenes…), sobre qué páginas enlazan a cuáles (páginas huérfanas, profundidad de clics, páginas sin enlaces internos) y todos los hallazgos de JavaScript aparecen como no comparables, nunca como nuevos ni corregidos.",
-      "canCompare": "Los hallazgos sobre la respuesta del servidor (códigos de estado, redirecciones, tiempo de respuesta…) se comparan como siempre."
     },
     "noneObserved": "Ninguno entre las páginas observadas por completo",
     "linksUnknownGroup": "Desconocido en este rastreo"

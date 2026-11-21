@@ -8,6 +8,7 @@ import { describeBotAccess } from './bot-access'
 import { describeAuditModel } from './audit-model'
 import { describeIncidents } from './incidents'
 import { describeVitals } from './vitals'
+import { describeComparisonReasons } from './comparison-reasons'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -807,6 +808,7 @@ export function describeDatabaseContract(
     })
 
     describeVitals(() => db)
+    describeComparisonReasons(() => db)
     describeBotAccess(() => db)
     describeLifecycle(
       () => db,
@@ -5423,6 +5425,9 @@ export function describeDatabaseContract(
           const ids = await pair()
           expect(await db.crawls.compareCounts({ ...ids, view: 'pages' })).toEqual({
             added: 1,
+            configuration: 0,
+            explained: false,
+            reasons: { base: {}, target: {} },
             missing: 1,
             // Found by both, requested only by the later one.
             unrequested: 1,
@@ -5436,6 +5441,9 @@ export function describeDatabaseContract(
           })
           expect(await db.crawls.compareCounts({ ...ids, view: 'other' })).toEqual({
             added: 0,
+            configuration: 0,
+            explained: false,
+            reasons: { base: {}, target: {} },
             missing: 0,
             unrequested: 1,
             compared: 1,

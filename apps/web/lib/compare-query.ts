@@ -5,6 +5,7 @@ import {
   type CrawlChange,
 } from '@seotools/core/crawl/compare'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
+import { isComparisonReason, type ComparisonReason } from '@seotools/core/crawl/comparison-reasons'
 import { isCrawlId } from './pages-query'
 
 /**
@@ -26,6 +27,8 @@ export interface CompareQuery {
   search: string
   /** For the findings: only the ones about this issue (an id from `PAGE_ISSUES`). */
   issue: string | null
+  /** For the URLs one crawl lacks: only those given this reason (`COMPARISON_REASONS`). */
+  reason: ComparisonReason | null
 }
 
 type RawParams = Record<string, string | string[] | undefined>
@@ -38,6 +41,7 @@ export function parseCompareQuery(params: RawParams): CompareQuery {
   const from = first(params.from)
   const to = first(params.to)
   const issue = first(params.issue)
+  const reason = first(params.why)
   return {
     from: from && isCrawlId(from) ? from : null,
     to: to && isCrawlId(to) ? to : null,
@@ -46,11 +50,16 @@ export function parseCompareQuery(params: RawParams): CompareQuery {
     page: Math.max(1, Math.floor(Number(first(params.page))) || 1),
     search: (first(params.q) ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     issue: issue && isPageIssueId(issue) ? issue : null,
+    reason: reason && isComparisonReason(reason) ? reason : null,
   }
 }
 
 /** Whether the change lists findings, which is where narrowing by issue makes sense. */
 export const isFindingChange = (change: CrawlChange) => change === 'gained' || change === 'lost'
+
+/** Whether the change lists URLs one crawl lacks, which is where a reason is said and filtered by. */
+export const isOneSidedChange = (change: CrawlChange) =>
+  change === 'added' || change === 'missing' || change === 'configuration'
 
 /** The address of the comparison for a query, with `changes` applied. Defaults are left out. */
 export function compareHref(
@@ -66,6 +75,7 @@ export function compareHref(
   if (next.view !== 'pages') params.set('view', next.view)
   if (next.search) params.set('q', next.search)
   if (next.issue && isFindingChange(next.change)) params.set('issue', next.issue)
+  if (next.reason && isOneSidedChange(next.change)) params.set('why', next.reason)
   if (next.page > 1) params.set('page', String(next.page))
   const search = params.toString()
   return `/domains/${host}/crawls/compare${search ? `?${search}` : ''}`
