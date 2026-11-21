@@ -1,9 +1,9 @@
 import { CURRENT_CAPTURE_RULE, captureProvesAbsence } from '@seotools/core/crawl/render-state'
 import { describe, expect, it } from 'vitest'
 import { renderEvidence } from './explain'
-import type { CounterpartRender } from './types'
+import type { RenderRow } from './types'
 
-const row = (data: string, overrides: Partial<CounterpartRender> = {}): CounterpartRender => ({
+const row = (data: string, overrides: Partial<RenderRow> = {}): RenderRow => ({
   urlHash: 'h',
   status: 'rendered',
   settled: true,

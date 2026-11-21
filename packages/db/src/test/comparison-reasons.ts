@@ -7,9 +7,10 @@ import {
   type CrawlUrlKind,
   type CrawlUrlSource,
 } from '@seotools/core'
-import { EXPLANATION_VERSION, UNRECORDED_REACH } from '@seotools/core/crawl/comparison-reasons'
+import { EXPLANATION_VERSION } from '@seotools/core/crawl/comparison-reasons'
 import { describe, expect, it } from 'vitest'
 import { compareWithPrevious } from '../changes'
+import { ComparisonSupersededError } from '../comparison-errors'
 import { NO_CAPTURE_TRUST, explainPair, type ExplainOptions } from '../explain'
 import { CAPTURE_DELAY_TOLERANCE_MS, CURRENT_CAPTURE_RULE } from '@seotools/core/crawl/render-state'
 import type { AnswerPair } from '@seotools/core/crawl/paired'
@@ -56,6 +57,8 @@ interface Page {
   status?: number | null
   truncated?: boolean
   render?: RenderKind
+  /** Overrides how the crawl says it found the page, without a stored link (a missing edge). */
+  discoveredFrom?: string
 }
 
 interface CrawlSpec {
@@ -197,7 +200,9 @@ export function describeComparisonReasons(getDb: () => Database) {
         }
       }
       const urls: NewCrawlUrl[] = Object.entries(pages).map(([path, page]) => {
-        const found = foundFrom.get(path)
+        const found = page.discoveredFrom
+          ? { from: page.discoveredFrom, kind: 'anchor' as const }
+          : foundFrom.get(path)
         return {
           url: urlOf(path),
           urlHash: hashOf(path),
@@ -300,6 +305,8 @@ export function describeComparisonReasons(getDb: () => Database) {
               reason: explanation.reason,
               detail: explanation.detail,
               via: explanation.via,
+              viaKind: explanation.viaKind,
+              viaRendered: explanation.viaRendered,
               through: explanation.through,
               sources: explanation.sources,
               unseen: 0,
@@ -411,7 +418,7 @@ export function describeComparisonReasons(getDb: () => Database) {
       expect([row.reason, row.side, row.sources]).toEqual(['unlinked', 'base', 1])
       const details = await db.crawls.explanationDetails({
         ...ids,
-        rows: [{ side: 'base', seq: row.seq, via: row.via, through: null }],
+        rows: [{ side: 'base', seq: row.seq, via: row.via, viaKind: row.viaKind, through: null }],
       })
       expect(details.urls.base.get(row.via!)).toBe(urlOf('/'))
       expect(details.links.base.get(row.seq!)).toEqual({
@@ -427,8 +434,9 @@ export function describeComparisonReasons(getDb: () => Database) {
     })
 
     it.each([
-      ['a 404', { status: 404 }, 'unlinked', null],
-      ['a 410', { status: 410 }, 'unlinked', null],
+      // An error page is not the page: what it links proves nothing either way.
+      ['a 404', { status: 404 }, 'notReached', 'error-answer'],
+      ['a 410', { status: 410 }, 'notReached', 'error-answer'],
       ['a 503', { status: 503 }, 'notReached', 'failed'],
       ['no answer', { status: null }, 'notReached', 'failed'],
       ['a 401', { status: 401 }, 'notReached', 'failed'],
@@ -474,10 +482,11 @@ export function describeComparisonReasons(getDb: () => Database) {
       },
     )
 
+    // The crawl that has the link must hold a trusted render of it too.
     const renderedLink = (render: RenderKind) => ({
       base: {
         '/': { links: ['/hub'], render: 'complete' as const },
-        '/hub': { links: [{ to: '/js', rendered: true }], render: 'complete' as const },
+        '/hub': { links: [{ to: '/js', rendered: true }], render: 'proven' as const },
         '/js': { render: 'complete' as const },
       },
       target: { '/': { links: ['/hub'], render: 'complete' as const }, '/hub': { render } },
@@ -550,9 +559,6 @@ export function describeComparisonReasons(getDb: () => Database) {
         target: { settings: { maxDepth: 1 } },
       })
       expect(reasonOf(changed.rows, '/deeper')).toEqual(['settings', 'depth'])
-      // A crawl that did not record its settings (before 0.8.0): whether it changed is unknown.
-      const unrecorded = await explained(pages.base, pages.target, {}, { reach: UNRECORDED_REACH })
-      expect(reasonOf(unrecorded.rows, '/deeper')).toEqual(['depth', 'unrecorded'])
     })
 
     it('says the later crawl stopped at its URL limit, even when a whole page linked the URL', async () => {
@@ -566,13 +572,12 @@ export function describeComparisonReasons(getDb: () => Database) {
         target: { status: 'incomplete', settings: { maxUrls: 50 } },
       })
       expect(reasonOf(lowered.rows, '/a')).toEqual(['settings', 'limit'])
-      const unrecorded = await explained(
-        pages.base,
-        pages.target,
-        { target: { status: 'incomplete' } },
-        { reach: UNRECORDED_REACH },
-      )
-      expect(reasonOf(unrecorded.rows, '/a')).toEqual(['limit', 'unrecorded'])
+      // Finding 5: a raised limit (100 → 1000) cannot explain a URL the later crawl lacks.
+      const raised = await explained(pages.base, pages.target, {
+        base: { settings: { maxUrls: 100 } },
+        target: { status: 'incomplete', settings: { maxUrls: 1000 } },
+      })
+      expect(reasonOf(raised.rows, '/a')).toEqual(['limit', null])
     })
 
     it('puts links found only after rendering in the configuration group when a crawl did not render', async () => {
@@ -644,18 +649,29 @@ export function describeComparisonReasons(getDb: () => Database) {
       })
     })
 
-    it('follows a page merged by configuration to the address it has in the other crawl', async () => {
-      // `/list?duration=1` links `/item`; the later crawl reads `/list` instead, and it no longer does.
+    // Finding 3: a linker read at another address is not the same page.
+    it('never compares a linker the other crawl reads at another address', async () => {
+      // `/listing?language=es` links `/item`; the later crawl ignores `language` and reads `/listing`.
       const { rows } = await explained(
         {
-          '/': { links: ['/list?duration=1'] },
-          '/list?duration=1': { links: ['/item'] },
+          '/': { links: ['/listing?language=es'] },
+          '/listing?language=es': { links: ['/item'] },
           '/item': {},
         },
-        { '/': { links: ['/list'] }, '/list': {} },
-        { target: { ignored: ['duration'] } },
+        { '/': { links: ['/listing'] }, '/listing': {} },
+        { target: { ignored: ['language'] } },
       )
-      expect(reasonOf(rows, '/item')).toEqual(['unlinked', null])
+      expect(reasonOf(rows, '/item')).toEqual(['unknown', 'identity'])
+    })
+
+    // Finding 3: renders made with different waits are not compared.
+    it('never compares renders made with different rendering settings', async () => {
+      const proven = renderedLink('proven')
+      const { rows } = await explained(proven.base, proven.target, {
+        base: { rendered: true, settings: { renderWaitMs: 3000 } },
+        target: { rendered: true, settings: { renderWaitMs: 8000 } },
+      })
+      expect(reasonOf(rows, '/js')).toEqual(['unknown', 'render-settings'])
     })
 
     it('resolves a group of pages that only link each other through how the group was entered', async () => {
@@ -776,7 +792,8 @@ export function describeComparisonReasons(getDb: () => Database) {
           },
         },
       )
-      expect(reasonOf(rows, '/page/3')).toEqual(['unlinked', null])
+      // Requests made differently: neither a witness nor a change of the site.
+      expect(reasonOf(rows, '/page/3')).toEqual(['unknown', 'settings'])
     })
 
     it('lists each reason apart and filters by it, in both groups', async () => {
@@ -807,7 +824,8 @@ export function describeComparisonReasons(getDb: () => Database) {
           })
           .then((rows) => rows.map((row) => row.url.slice(site.length)))
       expect(await list('missing')).toEqual(['/gone', '/leaf'])
-      expect(await list('missing', 'unlinked')).toEqual(['/gone'])
+      // The crawls ignore different parameters: a missing link is not read as a change of the site.
+      expect(await list('missing', 'unlinked')).toEqual([])
       expect(await list('missing', 'notReached')).toEqual(['/leaf'])
       expect(await list('configuration')).toEqual(['/a?duration=1'])
       expect(await list('missing', 'merged')).toEqual([])
@@ -820,7 +838,7 @@ export function describeComparisonReasons(getDb: () => Database) {
         }),
       ).toBe(1)
       const counts = await db.crawls.compareCounts({ ...ids, view: 'pages' })
-      expect(counts?.reasons.base).toEqual({ merged: 1, unlinked: 1, notReached: 1 })
+      expect(counts?.reasons.base).toEqual({ merged: 1, unknown: 1, notReached: 1 })
     })
 
     it('works the pair out again from scratch: the same rows twice, and after a run that stopped', async () => {
@@ -870,7 +888,8 @@ export function describeComparisonReasons(getDb: () => Database) {
       expect(await work.finish({ ...ids, runner: 'new', state: 'done' })).toBe(true)
     })
 
-    it('queues one job per pair, again only when the explanation is out of date, failed or stale', async () => {
+    // Finding 9: one pair-level record with its back-off, and never a second job for a pair.
+    it('queues one job per pair, never a second while one waits, and a failed one after its back-off', async () => {
       const db = getDb()
       const domainId = await domain()
       const base = await crawlOf(domainId, { '/': { links: ['/a'] }, '/a': {} })
@@ -881,28 +900,74 @@ export function describeComparisonReasons(getDb: () => Database) {
       const before = (await explainJobs()).length
 
       const first = await db.crawls.requestComparison(ids)
-      expect(first).toMatchObject({ state: 'queued', version: EXPLANATION_VERSION })
+      expect(first).toMatchObject({ state: 'queued', version: EXPLANATION_VERSION, failures: 0 })
       expect(await db.crawls.requestComparison(ids)).toMatchObject({ jobId: first?.jobId })
-      expect((await explainJobs()).length).toBe(before + 1)
       const job = (await explainJobs()).find((found) => found.id === first?.jobId)
       expect(job?.payload).toEqual({ baseId: base.id, targetId: target.id })
-
-      // Stale: a run that started hours ago and never finished.
+      // Hours later, while its job still waits: still that one job.
       const later = new Date(Date.now() + 7 * 60 * 60_000)
-      expect((await db.crawls.requestComparison({ ...ids, now: later }))?.jobId).not.toBe(
-        first?.jobId,
-      )
+      expect((await db.crawls.requestComparison({ ...ids, now: later }))?.jobId).toBe(first?.jobId)
+      expect((await explainJobs()).length).toBe(before + 1)
+
+      // Its job ended without working it out (a crash): the header is an orphan, asked for again.
+      const [claimed] = await db.jobs.claim({ workerId: 'w', limit: 1, types: ['compare.explain'] })
+      await db.jobs.complete({ id: claimed!.id, workerId: 'w' })
+      const renewed = await db.crawls.requestComparison(ids)
+      expect(renewed?.jobId).not.toBe(first?.jobId)
       expect((await explainJobs()).length).toBe(before + 2)
+
+      // A failed run: one failure recorded, asked for again only once its back-off has passed.
+      const stop = new AbortController()
+      stop.abort()
+      await expect(
+        explainPair({ db, ...ids, runner: 'run', jobId: renewed!.jobId, signal: stop.signal }),
+      ).rejects.toThrow()
+      const failed = await db.crawls.comparisonHeader(ids)
+      expect(failed).toMatchObject({ state: 'failed', failures: 1 })
+      expect(failed!.retryAt!.getTime()).toBeGreaterThan(Date.now())
+      const [renewedJob] = await db.jobs.claim({
+        workerId: 'w',
+        limit: 1,
+        types: ['compare.explain'],
+      })
+      await db.jobs.complete({ id: renewedJob!.id, workerId: 'w' })
+      expect(await db.crawls.requestComparison(ids)).toMatchObject({ state: 'failed' })
+      expect((await explainJobs()).length).toBe(before + 2)
+      const afterBackOff = new Date(failed!.retryAt!.getTime() + 1)
+      expect(await db.crawls.requestComparison({ ...ids, now: afterBackOff })).toMatchObject({
+        state: 'queued',
+      })
+      expect((await explainJobs()).length).toBe(before + 3)
+
+      // A job attempt that will be retried leaves it queued for that same job, not failed.
+      const [third] = await db.jobs.claim({
+        workerId: 'w',
+        limit: 1,
+        types: ['compare.explain'],
+        now: afterBackOff,
+      })
+      await expect(
+        explainPair({
+          db,
+          ...ids,
+          runner: 'run',
+          jobId: third!.id,
+          signal: stop.signal,
+          onFailure: { state: 'queued' },
+        }),
+      ).rejects.toThrow()
+      expect(await db.crawls.comparisonHeader(ids)).toMatchObject({ state: 'queued' })
+      expect(await db.crawls.requestComparison(ids)).toMatchObject({ jobId: third!.id })
 
       await explainPair({ db, ...ids, runner: 'test' })
-      expect(await db.crawls.requestComparison(ids)).toMatchObject({ state: 'done' })
-      expect((await explainJobs()).length).toBe(before + 2)
+      expect(await db.crawls.comparisonHeader(ids)).toMatchObject({ state: 'done', failures: 0 })
 
       // Not a pair of the domain, or not two different crawls: nothing.
       expect(await db.crawls.requestComparison({ ...ids, targetId: base.id })).toBeNull()
       expect(await db.crawls.requestComparison({ ...ids, domainId: await domain() })).toBeNull()
 
       // An archived domain gets nothing new.
+      const count = (await explainJobs()).length
       const archived = await domain()
       const a = await crawlOf(archived, { '/': {} })
       const b = await crawlOf(archived, { '/': {} })
@@ -910,7 +975,56 @@ export function describeComparisonReasons(getDb: () => Database) {
       expect(
         await db.crawls.requestComparison({ domainId: archived, baseId: a.id, targetId: b.id }),
       ).toBeNull()
-      expect((await explainJobs()).length).toBe(before + 2)
+      expect((await explainJobs()).length).toBe(count)
+    })
+
+    // Finding 6: concurrent runs are fenced, and a pruned crawl never gets a header back.
+    it('fences every write by the run that holds the pair, and refuses pruned crawls', async () => {
+      const db = getDb()
+      const domainId = await domain()
+      const base = await crawlOf(domainId, { '/': { links: ['/a'] }, '/a': {} })
+      const target = await crawlOf(domainId, { '/': {} })
+      const ids = { domainId, baseId: base.id, targetId: target.id }
+      const work = db.crawls.comparisonWork
+      const row = (urlHash: string): ExplainedUrl => ({
+        side: 'base',
+        urlHash,
+        seq: 1,
+        reason: 'unknown',
+        detail: null,
+        via: null,
+        viaKind: null,
+        viaRendered: null,
+        through: null,
+        sources: 0,
+        unseen: 0,
+        intoHash: null,
+        intoUrl: null,
+        intoPresent: null,
+      })
+      expect(await work.begin({ ...ids, runner: 'a', version: EXPLANATION_VERSION })).toBe(true)
+      await work.save({ ...ids, runner: 'a', rows: [row('x1')] })
+      // Another run takes the pair over: the first one can no longer write anything.
+      expect(await work.begin({ ...ids, runner: 'b', version: EXPLANATION_VERSION })).toBe(true)
+      await expect(work.save({ ...ids, runner: 'a', rows: [row('x2')] })).rejects.toThrow(
+        ComparisonSupersededError,
+      )
+      await expect(work.resolve({ ...ids, runner: 'a', rows: [row('x2')] })).rejects.toThrow(
+        ComparisonSupersededError,
+      )
+      expect(await work.finish({ ...ids, runner: 'a', state: 'done' })).toBe(false)
+      await work.save({ ...ids, runner: 'b', rows: [row('x3')] })
+      // Pruned while running: the claim goes with the results, and nothing comes back.
+      await crawlOf(domainId, { '/': {} })
+      await db.crawls.prune({ domainId, type: 'full', keep: 2 })
+      await expect(work.save({ ...ids, runner: 'b', rows: [row('x4')] })).rejects.toThrow(
+        ComparisonSupersededError,
+      )
+      expect(await work.finish({ ...ids, runner: 'b', state: 'done' })).toBe(false)
+      expect(await work.begin({ ...ids, runner: 'c', version: EXPLANATION_VERSION })).toBe(false)
+      expect(await db.crawls.requestComparison(ids)).toBeNull()
+      expect(await db.crawls.comparisonHeader(ids)).toBeNull()
+      expect(await explainPair({ db, ...ids, runner: 'd' })).toBe('not-comparable')
     })
 
     it('removes the jobs that explain a pair with the domain', async () => {
