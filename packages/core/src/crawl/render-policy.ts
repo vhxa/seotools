@@ -23,9 +23,12 @@ export const RENDER_OMITTED_HOSTS = [
   ['amplitude.com', 'analytics'],
   // https://developers.heap.io/docs/web
   ['heapanalytics.com', 'analytics'],
+  // Riskified's browser beacon.
+  ['beacon.riskified.com', 'analytics'],
   // VWO/Wingify: https://help.vwo.com/hc/en-us/articles/360019422834
   ['visualwebsiteoptimizer.com', 'experiment'],
   ['vwo.com', 'experiment'],
+  ['wingify.net', 'experiment'],
   // Vendor deployment guides: https://docs.developers.optimizely.com/web-experimentation/
   ['optimizely.com', 'experiment'],
   // https://docs.abtasty.com/ https://developers.kameleoon.com/
@@ -92,9 +95,20 @@ export function renderRequestDecision(input: {
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return { action: 'scheme' }
   if (!allowedTypes.has(input.resourceType.toLowerCase())) return { action: 'omit', reason: 'type' }
+  const reason = renderOmittedEndpoint(url, input.extraOmittedHosts)
+  if (reason) return { action: 'omit', reason }
+  if (input.trackedSite && input.allowedByRobots(input.url) === false) return { action: 'robots' }
+  return { action: 'fetch' }
+}
+
+/** Host/path policy, independent of which resource types the browser downloads. */
+export function renderOmittedEndpoint(
+  url: URL,
+  extraOmittedHosts: readonly string[] = [],
+): Exclude<RenderOmitReason, 'type'> | undefined {
   const host = url.hostname.toLowerCase().replace(/\.$/, '')
   for (const [suffix, reason] of RENDER_OMITTED_HOSTS) {
-    if (hostMatches(host, suffix)) return { action: 'omit', reason }
+    if (hostMatches(host, suffix)) return reason
   }
   for (const rule of RENDER_OMITTED_PATHS) {
     if (
@@ -106,16 +120,13 @@ export function renderRequestDecision(input: {
             .split('/')
             .some((segment) => segment.startsWith(rule.path.slice(1))))
     ) {
-      return { action: 'omit', reason: rule.reason }
+      return rule.reason
     }
   }
   if (
-    (input.extraOmittedHosts ?? []).some((suffix) =>
-      hostMatches(host, suffix.toLowerCase().replace(/\.$/, '')),
-    )
+    extraOmittedHosts.some((suffix) => hostMatches(host, suffix.toLowerCase().replace(/\.$/, '')))
   ) {
-    return { action: 'omit', reason: 'domain-list' }
+    return 'domain-list'
   }
-  if (input.trackedSite && input.allowedByRobots(input.url) === false) return { action: 'robots' }
-  return { action: 'fetch' }
+  return undefined
 }

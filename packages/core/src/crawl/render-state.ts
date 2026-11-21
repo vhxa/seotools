@@ -4,8 +4,8 @@
  * (client components included) agree on it.
  *
  * A page is **observed** (`complete`, `unsettled`, `redirect`) when its render produced a whole DOM:
- * not cut at the size limit (nor was the served HTML) or by a request or byte budget, captured when
- * the network went quiet or at the end of the capture window (still loading), or explicitly stopped
+ * not cut at the size limit (nor was the served HTML) or by a request or byte budget, captured at
+ * the end of the window (quiet or still loading), settled by a legacy rule, or explicitly stopped
  * by a main-frame navigation to another address. Findings are raised from it. What a capture made
  * while still loading does not show is unverified for that page, never "fixed" (`documentLoading`).
  * The other states say which part is missing and leave what depends on it unknown, never "no
@@ -17,9 +17,9 @@
  * - `unknown`: a legacy render without truncation metadata, or an unsettled nonredirected render
  *   without capture metadata (rc.1 did not settle, so its findings stay unknown).
  * - `redirect`: JavaScript sent the page to another address; the abandoned document is not compared.
- * - `unsettled`: captured while still loading: at the end of the capture window, with requests in
- *   flight. An observation.
- * - `complete`: whole, captured once the network was quiet.
+ * - `unsettled`: the network was still active at capture or the browser snapshot arrived late.
+ *   An observation.
+ * - `complete`: whole, network quiet through capture and the browser snapshot was on time.
  */
 export const RENDER_STATES = [
   'complete',
@@ -30,6 +30,48 @@ export const RENDER_STATES = [
   'unknown',
 ] as const
 export type RenderState = (typeof RENDER_STATES)[number]
+
+/** Render captures with the browser snapshot and dependency accounting. */
+export const CURRENT_CAPTURE_RULE = 'v4'
+
+/** Allow for clock granularity and dispatching the CDP command across processes. */
+export const CAPTURE_DELAY_TOLERANCE_MS = 50
+
+export interface CaptureEvidence {
+  state: RenderState | null | undefined
+  data:
+    | {
+        capture?: {
+          rule?: string
+          pending?: number
+          afterMs?: number | null
+          delayMs?: number | null
+        }
+        requests?: unknown
+      }
+    | null
+    | undefined
+}
+
+/** Whether one stored observation can establish the absence of a JavaScript-built link. */
+export function captureProvesAbsence(observation: CaptureEvidence | null | undefined): boolean {
+  if (observation?.state !== 'complete') return false
+  const { capture, requests } = observation.data ?? {}
+  return (
+    capture?.rule === CURRENT_CAPTURE_RULE &&
+    capture.pending === 0 &&
+    typeof capture.afterMs === 'number' &&
+    Number.isFinite(capture.afterMs) &&
+    capture.afterMs >= 0 &&
+    typeof capture.delayMs === 'number' &&
+    capture.delayMs >= 0 &&
+    capture.delayMs <= CAPTURE_DELAY_TOLERANCE_MS &&
+    typeof requests === 'object' &&
+    requests !== null &&
+    'failedCount' in requests &&
+    requests.failedCount === 0
+  )
+}
 
 export interface RenderObservation {
   status: 'rendered' | 'failed'

@@ -2,6 +2,7 @@ import { getWorkerBuildInfo } from '../build-info'
 import { createHmac, createHash } from 'node:crypto'
 import { repeatAnswers } from './paired'
 import { createRenderResourceCache } from '../render/cache'
+import { fingerprintSet } from '../render/fingerprints'
 import { RENDER_LIMITS } from '../render/limits'
 import type { RenderService } from '../render/service'
 import { createSlots } from '../render/slots'
@@ -25,6 +26,7 @@ import {
   defaultCrawlerUserAgent,
   isInternalUrl,
   normalizeCrawlUrl,
+  renderOmittedEndpoint,
   stripIgnoredParameters,
   type CrawlLinkKind,
   type CrawlPageFacts,
@@ -100,6 +102,14 @@ interface Discovered {
 
 /** How a URL can be asked for that makes it a resource, whatever its server answers. */
 const RESOURCE_REFERENCES: ReadonlySet<CrawlLinkKind> = new Set(['script', 'style', 'image'])
+const BLOCKABLE_RENDER_REFERENCES: ReadonlySet<CrawlLinkKind> = new Set([
+  'script',
+  'style',
+  'frame',
+  'head-link',
+  'image',
+  'media',
+])
 
 /** Days of compact history when the default setting keeps it always (it does not today). */
 const HISTORY_DAYS_FALLBACK = 30
@@ -302,6 +312,8 @@ export async function runCrawl(
     renderedHtml?: string,
     servedLinks?: ReadonlySet<string>,
     observeLink?: (url: string, kind: CrawlLinkKind) => void,
+    keepLink?: (url: string, kind: CrawlLinkKind) => boolean,
+    renderedDocumentUrl?: string,
   ): { result: CrawlUrlResult; found: Discovered; sitemap?: ParsedSitemap | null } {
     const found: Discovered = { urls: [], links: [] }
     const depth = item.depth + 1
@@ -309,6 +321,8 @@ export async function runCrawl(
       item,
       response,
       renderedHtml,
+      renderedDocumentUrl,
+      keepLink,
       optionalFiles: settings.optionalFiles,
       extractors: settings.extractors,
       log,
@@ -341,8 +355,6 @@ export async function runCrawl(
   }[] = []
   let retryBytes = 0
   let retryPages = 0
-  const linksOf = (found: Discovered) =>
-    new Set(found.links.map((link) => `${link.targetHash} ${link.kind}`))
 
   async function renderUrl(
     item: NewCrawlUrl,
@@ -373,17 +385,18 @@ export async function runCrawl(
     let facts: CrawlPageFacts | null = null
     let page: CrawlUrlRender['data']['page']
     const anchors = new Set<string>()
+    const allAnchors = new Set<string>()
     const nofollow = new Set<string>()
     const embeds = new Set<string>()
     let embedsComplete = true
     const observeLink = (url: string, kind: CrawlLinkKind) => {
-      if (
-        (kind === 'anchor' || kind === 'anchor-nofollow') &&
-        isInternalUrl(url, host) &&
-        url !== identity(item.url)
-      ) {
-        anchors.add(kind + ':' + url)
-        if (kind === 'anchor-nofollow') nofollow.add(url)
+      if (kind === 'anchor' || kind === 'anchor-nofollow') {
+        const anchor = kind + ':' + url
+        allAnchors.add(anchor)
+        if (isInternalUrl(url, host) && url !== identity(item.url)) {
+          anchors.add(anchor)
+          if (kind === 'anchor-nofollow') nofollow.add(url)
+        }
       }
       if (['image', 'script', 'style', 'media', 'frame'].includes(kind)) {
         if (url.length > 2048 || (!embeds.has(url) && embeds.size >= 1000)) embedsComplete = false
@@ -392,6 +405,12 @@ export async function runCrawl(
     }
     let found: Discovered = { urls: [], links: [] }
     if (outcome.status === 'rendered' && !outcome.redirected) {
+      const keepLink = (url: string, kind: CrawlLinkKind) => {
+        if (!BLOCKABLE_RENDER_REFERENCES.has(kind) || isInternalUrl(url, host)) return true
+        if (served.has(`${crawlUrlHash(identity(url))} ${kind}`)) return true
+        // Keep facts about these elements with redacted samples, and omit their crawl links.
+        return !renderOmittedEndpoint(new URL(url), crawl!.rendering!.omittedHosts)
+      }
       const analysed = analyse(
         item,
         {
@@ -400,8 +419,10 @@ export async function runCrawl(
           truncated: response.truncated || outcome.truncated,
         },
         outcome.html,
-        new Set(),
+        served,
         observeLink,
+        keepLink,
+        outcome.documentUrl,
       )
       // analyseResponse supplies the same bounded facts as for the served document. Discard links
       // already present in HTML, including their first-occurrence context.
@@ -416,12 +437,7 @@ export async function runCrawl(
         botRobots: result.data?.botRobots ?? {},
         hreflang: result.data?.hreflang ?? [],
       }
-      found = {
-        urls: analysed.found.urls,
-        links: analysed.found.links.filter(
-          (link) => !served.has(`${link.targetHash} ${link.kind}`),
-        ),
-      }
+      found = analysed.found
     }
     const render = renderObservation(item.urlHash, outcome, facts)
     if (page) {
@@ -429,6 +445,7 @@ export async function runCrawl(
       render.data.documentLinks = {
         internal: anchors.size,
         nofollow: nofollow.size,
+        anchorsHash: fingerprintSet(allAnchors),
         embeds: [...embeds].sort(),
         embedsComplete,
       }
@@ -444,13 +461,21 @@ export async function runCrawl(
     let result: CrawlUrlResult
     let found: Discovered = { urls: [], links: [] }
     let sitemap: ParsedSitemap | null | undefined
+    const served = new Set<string>()
     if (outcome instanceof FetchError) {
       result = failureResult(outcome)
     } else {
       const servedAt = new Date().toISOString()
       const anchors = new Set<string>()
       const observe = (url: string, kind: CrawlLinkKind) => {
-        if ((kind === 'anchor' || kind === 'anchor-nofollow') && isInternalUrl(url, host)) {
+        // WP1: the served identities a render compares against, before graph admission.
+        if (rendered) served.add(`${crawlUrlHash(url)} ${kind}`)
+        // WP3: the internal anchors of this answer, for paired observations.
+        if (
+          followLinks &&
+          (kind === 'anchor' || kind === 'anchor-nofollow') &&
+          isInternalUrl(url, host)
+        ) {
           anchors.add(crawlUrlHash(url))
         }
       }
@@ -459,7 +484,7 @@ export async function runCrawl(
         outcome,
         undefined,
         undefined,
-        followLinks ? observe : undefined,
+        followLinks || rendered ? observe : undefined,
       ))
       if (followLinks && result.data?.facts && !outcome.truncated) {
         // A resumed render can retain edges from an earlier fetch. Authenticate the
@@ -523,7 +548,6 @@ export async function runCrawl(
       !fileKind &&
       !(outcome instanceof FetchError)
     ) {
-      const served = linksOf(found)
       const observation = await renderUrl(item, outcome, served)
       render = observation.render
       found.urls.push(...observation.found.urls)

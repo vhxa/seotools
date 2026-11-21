@@ -98,6 +98,8 @@ const NOT_CONTENT = new Set([
 ])
 
 /** Link kinds that load a resource into the page, which is what mixed content is about. */
+const redactQuery = (value: string) => value.split(/[?#]/, 1)[0]!
+
 const RESOURCE_LINK_KINDS = new Set(['script', 'style', 'image', 'media', 'frame', 'head-link'])
 
 /** Longest `lang`, viewport or charset kept: real ones are a few dozen characters. */
@@ -346,6 +348,8 @@ export class PageFactsCollector {
     private readonly pageUrl: string,
     /** Resolves against the page and its `<base>`. */
     private readonly resolve: (raw: string) => string | null,
+    /** Drops crawl links while retaining their document facts with redacted URL samples. */
+    private readonly keepLink?: (url: string, kind: ExtractedLink['kind']) => boolean,
   ) {}
 
   /** Whether what is being parsed now is in the head, written with a `<head>` tag or not. */
@@ -503,13 +507,17 @@ export class PageFactsCollector {
 
     const https = this.pageUrl.startsWith('https:')
     for (const { url, kind } of page.links) {
-      if (isLocalhost(url)) {
+      const localhost = isLocalhost(url)
+      const mixedContent = https && url.startsWith('http:') && RESOURCE_LINK_KINDS.has(kind)
+      if (!localhost && !mixedContent) continue
+      const sample = this.keepLink?.(url, kind) === false ? redactQuery(url) : url
+      if (localhost) {
         facts.localhostLinks++
-        this.sampleLink('localhost', { kind, url: boundedUrl(url), raw: url })
+        this.sampleLink('localhost', { kind, url: boundedUrl(sample), raw: sample })
       }
-      if (https && url.startsWith('http:') && RESOURCE_LINK_KINDS.has(kind)) {
+      if (mixedContent) {
         facts.mixedContent++
-        this.sampleLink('mixed-content', { kind, url: boundedUrl(url), raw: url })
+        this.sampleLink('mixed-content', { kind, url: boundedUrl(sample), raw: sample })
       }
     }
     if (this.evidence.images || this.evidence.links) facts.evidence = this.evidence
@@ -522,10 +530,14 @@ export class PageFactsCollector {
   }
 
   /** A URL in an attribute, before it gets resolved. */
-  sawUrl(raw: string, kind: ExtractedLink['kind']) {
-    if (raw.trim().startsWith('//') && RESOURCE_LINK_KINDS.has(kind)) {
+  sawUrl(raw: string, kind: ExtractedLink['kind'], url: string | null, redact: boolean) {
+    if (raw.startsWith('//') && RESOURCE_LINK_KINDS.has(kind)) {
       this.facts.protocolRelative++
-      this.sampleLink('protocol-relative', { kind, url: boundedUrl(this.resolve(raw)), raw })
+      this.sampleLink('protocol-relative', {
+        kind,
+        url: boundedUrl(redact && url ? redactQuery(url) : url),
+        raw: redact ? redactQuery(raw) : raw,
+      })
     }
   }
 
@@ -703,14 +715,16 @@ export class PageFactsCollector {
     ).trim()
     // An inline image is its own content: the type is all that identifies it.
     const inline = /^data:/i.test(raw)
+    const url = inline || raw === '' ? null : this.resolve(raw)
+    const redact = url !== null && this.keepLink?.(url, 'image') === false
     const src = inline
       ? `${boundedText(raw.slice(0, 64).split(',')[0] ?? 'data:')},…`
-      : boundedText(raw)
+      : boundedText(redact ? redactQuery(raw) : raw)
     const id = boundedText(attributes.id ?? '', 100)
     const className = boundedText(attributes.class ?? '')
     return {
       src,
-      url: inline || raw === '' ? null : boundedUrl(this.resolve(raw)),
+      url: boundedUrl(redact ? redactQuery(url) : url),
       ...(id ? { id } : {}),
       ...(className ? { class: className } : {}),
       ...(alt === undefined ? {} : { alt: boundedText(alt) }),

@@ -1,4 +1,5 @@
 import { type RenderStatus, isRobotsAllowed, parseRobots } from '@seotools/core'
+import { CURRENT_CAPTURE_RULE } from '@seotools/core/crawl/render-state'
 import type { Crawl, CrawlUrlRender, Database } from '@seotools/db'
 import type { RenderService } from '../render/service'
 import { BrowserUnavailableError } from '../render/types'
@@ -151,7 +152,13 @@ export function renderObservation(
     failure: outcome.failure?.code ?? null,
     data: {
       facts,
-      capture: { pending: outcome.pending, afterMs: outcome.captureMs },
+      capture: {
+        pending: outcome.pending,
+        afterMs: outcome.captureMs,
+        delayMs: outcome.captureDelayMs,
+        rule: CURRENT_CAPTURE_RULE,
+      },
+      ...(outcome.inputs ? { inputs: outcome.inputs } : {}),
       redirected: outcome.redirected,
       requests: outcome.requests,
       scriptErrors: outcome.scriptErrors,
@@ -171,6 +178,7 @@ export function notRenderedObservation(urlHash: string, url: string): CrawlUrlRe
     failure: 'not-rendered',
     data: {
       facts: null,
+      capture: { pending: 0, afterMs: null, delayMs: null, rule: CURRENT_CAPTURE_RULE },
       requests: {
         made: 0,
         cached: 0,

@@ -4,6 +4,7 @@ import { chromium } from '@playwright/test'
 import puppeteer, { type Browser } from 'puppeteer-core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createLogger, crawlUrlHash } from '@seotools/core'
+import { CURRENT_CAPTURE_RULE } from '@seotools/core/crawl/render-state'
 import { compareWithPrevious, createCompany } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { createRenderService, type RenderService } from '../render/service'
@@ -172,7 +173,12 @@ describe.skipIf(!executablePath || !existsSync(executablePath))(
       const stuck = crawlUrlHash(`${SITE}/stuck`)
       const render = run.renders.find((row) => row.urlHash === stuck)!
       expect(render).toMatchObject({ status: 'failed', failure: 'load-timeout' })
-      expect(render.data.capture).toEqual({ pending: 0, afterMs: null })
+      expect(render.data.capture).toEqual({
+        pending: 0,
+        afterMs: null,
+        delayMs: null,
+        rule: CURRENT_CAPTURE_RULE,
+      })
       expect(has(run.findings, '/stuck', 'render-failed')).toBe(true)
       const [audit] = await db.crawls.auditOf(run.crawl.id, [stuck])
       expect(audit!.documentUnobserved).toContain('title-changed-by-javascript')

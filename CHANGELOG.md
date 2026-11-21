@@ -33,6 +33,10 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - A worker left running through a database update stops claiming jobs when it detects migrations its image does not recognize.
 
+- Images and other requests the browser intentionally skips no longer cause a page render to be cut short.
+- Rendered crawls give scripts more time to build navigation and page content. History URL changes preserve observed links, and a capture with late activity or failed dependencies leaves missing rendered links unverified.
+- Tracking and experiment resources injected by JavaScript no longer inflate the list of external URLs when the browser blocks them.
+
 ### Upgrade notes
 
 - This version adds database migrations for crawl provenance and paired observations. Going back requires restoring the backup taken before updating, together with the previous image. Stop older deployments when updating, especially workers from versions that only check migrations at startup.

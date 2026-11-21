@@ -22,8 +22,10 @@ Raspberry Pi to a VPS.
   tags), pages linked only by JavaScript, client redirects, blocked resources, failed renders and
   script errors. Pages that were not observed completely stay unknown, HTML and rendered results
   are never mixed in comparisons, and HTML-only rechecks cannot settle rendered document findings.
-  Captures while loading report what they show; missing findings about links between pages or comparisons of their documents remain unverified across
-  the crawl. Older unsettled renders without capture metadata stay unknown.
+  The browser captures at the end of the domain's render window. Captures while loading report
+  what they show. Missing findings about links between pages or comparisons of their documents
+  remain unverified across the crawl. Failed dependencies also leave missing rendered links
+  unverified. Older unsettled renders without capture metadata stay unknown.
   Each URL shows what rendering observed and what it could not; see the
   [setup guide](docs/rendering.md).
 - **161 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken

@@ -12,9 +12,10 @@ structured data, directives, canonical, hreflang and exact outgoing references. 
 HTML link counts, encoding/placement/structure checks and social previews read served HTML.
 The explicit per-check table is `ISSUE_BASIS` in `packages/core/src/crawl/basis.ts`.
 
-A complete document requires whole served HTML, a whole nonredirect render (captured once the
-network was quiet, or at the end of the capture window while still loading) and stored extracted
-values. Unsettled nonredirected rc.1 rows without `data.capture` stay unknown on reanalysis:
+A complete document requires whole served HTML, a whole nonredirect render and stored extracted
+values. A capture at the end of the window counts as an observation even if the page was still
+loading. Settled renders from older versions remain observations. Unsettled nonredirected rc.1
+rows without `data.capture` stay unknown on reanalysis:
 they did not settle and are not capture-window observations. Coverage counts them separately as "did not settle", rather than failed or not rendered. Failed, truncated, missing/legacy and unrendered other-2xx documents are unknown, never
 judged on an HTML fallback. A document captured while still loading is an observation: its
 findings are reported, and an issue it does not show is unverified for that URL (never "fixed",
@@ -46,13 +47,15 @@ never for the whole crawl, and so are a JavaScript redirect's abandoned document
 without extracted values and a page whose canonical declarations do not resolve. Comparisons with
 incomplete observations remain unverified. HTML crawls leave every JavaScript finding unknown.
 
-A main-frame navigation to another URL identity stops the render and records `redirected: true`
+A cross-document main-frame navigation to another URL identity stops the render and records `redirected: true`
 and its target. This is a complete observation of a redirect, even though `settled` remains false
 (network quiet was not observed). It raises `javascript-redirect` unless the served HTML declares a meta refresh (reported by
 `refresh-redirect` instead), contributes no rendered-only
 links, and leaves the abandoned DOM's other differences unknown in comparisons. The served HTML's
-links still count. Fragment-only changes are same-document updates, not redirects; a stopped
-reload or navigation changing only ignored parameters is not a redirect and stays failed/unknown. A served meta or header noindex persists even if JavaScript removes it; a rendered noindex adds
+links still count. Fragment changes and History API updates retain the document. Relative links
+resolve against its address at capture. A reload or cross-document navigation to the same crawl URL
+identity fails the observation. A served meta or header noindex persists even if JavaScript removes
+it. A rendered noindex adds
 that restriction. Other directives, including nofollow, use rendered meta and unchanged headers;
 a page JavaScript redirects keeps the nofollow of its served meta and headers, since its served
 links still count.
@@ -222,6 +225,9 @@ experiments/personalisation. Google `gtag/js`, Facebook `/tr`, and Matomo/Piwik 
 endpoints are omitted by path. The exact short lists and their vendor sources live in
 [`render-policy.ts`](../packages/core/src/crawl/render-policy.ts). GTM's `gtm.js` is allowed:
 its individual tags are checked separately. The caller can add domain-specific omitted hosts.
+Riskified's browser beacon is omitted too. Links to blocked external scripts, stylesheets, frames
+and head resources that exist only in the rendered DOM are excluded from discovery and link
+evidence. Served references and navigation links are still recorded.
 
 Only `accept`, `accept-language`, `content-type`, `origin`, `referer`,
 `access-control-request-method`, `access-control-request-headers` and `x-requested-with` browser
@@ -235,30 +241,45 @@ scrolling or other simulated interaction. Open shadow roots are included in the 
 Client redirects record the target and stop; they never audit the target's content here.
 
 Determinism means two renders of the same served document with the same resources give the
-same outcome (excluding duration), except output depending on the real clock, `crypto` randomness
-or answers that change between requests. `Math.random()` uses a PRNG seeded from the page URL,
+same document observations. Diagnostic time, cache activity and unfinished requests can vary.
+The document itself can also vary when it depends on the real clock, `crypto` randomness, races
+between scripts, or answers that change between requests. `Math.random()` uses a PRNG seeded from the page URL,
 installed before document scripts in every frame, including cross-site out-of-process frames.
 `Date.now()` remains real so pages can display dates. Fresh contexts and sorted diagnostics
 complement that contract; they cannot make a changing API answer deterministic.
+Render records retain SHA-256 fingerprints of the served document response, the resource requests
+and responses supplied to the browser, and the render's normalized anchor set. If the resource
+request fingerprint is identical and the answer fingerprint differs, a response's status, browser-effective
+headers (including content type, CSP, CORS and redirect target), or body changed. A different request fingerprint can also reflect a different
+set of resources finishing before capture. Separate metadata digests also cover application headers
+that scripts can read, such as `X-Nav-Variant`. They exclude stripped headers and the volatile
+dates, cache age and expiry, server timing and request identifiers listed in
+`apps/worker/src/render/fingerprints.ts`.
 
 **Capture window.** The domain's wait setting is a capture window (default five seconds, at most
 thirty; some crawlers call it an AJAX timeout). It starts when the page's DOM is parsed
 (the main target's CDP `Page.domContentEventFired`, independent of loading child frames), so neither the document, the scripts it waits for nor the
-worker's own queues eat into it; the `load` event is not needed. The page is captured as it is at
-the earlier of: no request in flight for 500 ms since the DOM was parsed (`settled`), or the end of
-the window (captured while still loading: `settled` false, with the number of requests still in
-flight recorded). Then the page is stopped. A DOM that is not parsed within 25 seconds is a failed
+worker's own queues eat into it; the `load` event is not needed. Capture at the end of the window
+gives scripts that start after an idle period time to build the page. The browser records the DOM,
+its navigation state and the actual capture time in the same snapshot. A capture is settled if the
+network was quiet for at least 500 ms at cutoff and stays quiet through a snapshot within 50 ms of
+it. The render records the delay and requests outstanding at the snapshot. Missing rendered links
+remain unverified when captures are unsettled or dependencies fail, including scripts rejected by
+the browser for integrity, module or enforced content security policy errors. These captures still
+report the links they observed. Then the page is stopped. A DOM that is not parsed within 25 seconds is a failed
 render (`load-timeout`), unknown. What a page does after its capture (a later timer, a redirect,
 content that arrives later) is outside the observation, as with search engines that snapshot the
 page; what it lacks is never reported as fixed. Crashes/disconnections are retried only once.
-Limits in `apps/worker/src/render/limits.ts` bound requests (300), resource bytes (5 MiB), page
+Limits in `apps/worker/src/render/limits.ts` bound resources admitted for fetching or cache
+lookup (300, excluding address-policy refusals), interceptions (10,000, including requests refused
+by policy, with the context closed on the first excess interception), resource bytes (5 MiB), page
 bytes (30 MiB), request bodies (1 MiB), serialized DOM (10 MiB), script errors (count and five
 200-character samples) and resource lists (count and fifty sorted samples). A 64 MiB LRU cache
 created per crawl shares GET scripts/styles, including failures. API calls and documents are
 never cached. Every decoded download byte, including partial/error/truncated responses and retries,
 counts toward the page budget. Resources load in parallel, so which request crosses a budget
 depends on timing; the render is therefore made independent of it: **any** request left out for a
-limit (the 300 requests, the page bytes, a resource over 5 MiB, a request body) makes the whole
+limit (requests or interceptions, the page bytes, a resource over 5 MiB, a request body) makes the whole
 render incomplete (`truncated`, unknown), whichever request it was. A page well inside its budgets
 is unaffected by the order in which its resources arrive, and one that crosses them is unknown,
 never judged on a DOM that a different order would have changed. A non-cacheable resource (fetch,
@@ -415,3 +436,27 @@ container network boundary. Negative fixtures (no flags, a missing WebRTC flag, 
 for `[::1]`, another worker address and one loopback port, each with and without the resolver
 rule) must be refused; they disable Chromium's local-network access checks solely so the live
 canaries can receive actual traffic; render contexts deny permissions.
+
+### Live capture benchmark
+
+Run only with authorization to request the fixed list of public beaire.com pages. Start the pinned
+browser image from `docker-compose.yml` with the shipped Chrome isolation flags and limits. If
+running from the host, publish DevTools only on loopback or run the benchmark from a container on
+the browser's internal network. The render service checks isolation before making any site requests.
+
+```bash
+pnpm exec tsx apps/worker/src/render/capture.benchmark.ts http://127.0.0.1:9222 > capture.jsonl
+```
+
+The URL list lives in `apps/worker/src/render/capture-benchmark-paths.txt`. Each rule renders the
+same list three times through the regular requester and renderer. The benchmark uses the domain's
+default document concurrency and request pace, and resets the resource cache between passes. The
+rules are network quiet alone, the full five-second window, and network quiet with a 2.5-second
+minimum. The final JSON lines give each rule's repeatability based on both the extracted text hash
+and the exact normalized anchor set, plus the median and p95 render time. A URL must yield three
+whole renders to count as repeatable. The benchmark also reports the subset whose served bytes
+were identical.
+
+For a follow-up using only the production rule, append `--single-pass`. This renders each listed
+URL once and reports capture delays and timing. Compare its per-URL observations with a prior
+run to check agreement on identical served inputs.

@@ -75,6 +75,10 @@ export function analyseResponse(input: {
   response: FetchedResponse
   /** Browser DOM serialization is already Unicode, independent of the served charset. */
   renderedHtml?: string
+  /** Address of the retained document after a same-document history change. */
+  renderedDocumentUrl?: string
+  /** The render policy can drop crawl links while retaining facts about the observed elements. */
+  keepLink?: (url: string, kind: CrawlLinkKind) => boolean
   /** The domain's optional crawl files: a feed or OpenSearch link in a home page is one. */
   optionalFiles: readonly string[]
   /** The domain's custom extractors, run on every HTML page. */
@@ -174,7 +178,7 @@ export function analyseResponse(input: {
     kind = 'page'
     if (body) {
       const html = input.renderedHtml ?? decodeText(body, contentType)
-      const page = extractHtml(html, item.url)
+      const page = extractHtml(html, item.url, input.keepLink, input.renderedDocumentUrl)
       const extracted = extractCustom(html, input.extractors ?? [])
       if (Object.keys(extracted).length > 0) data.extracted = extracted
       // Before the links, which include them: the first source a URL is found under is the one.
