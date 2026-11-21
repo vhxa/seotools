@@ -38,7 +38,7 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
  * The directory column keeps room for ordinary names and only truncates (with the full path in a
  * tooltip) the very long ones: it is the column the page is about, the figures are narrow.
  */
-const DIRECTORY_CELL = 'min-w-64 max-w-[32rem]'
+const DIRECTORY_CELL = 'min-w-56 max-w-[22rem]'
 
 type Params = Promise<Record<string, string | string[] | undefined>>
 
@@ -123,7 +123,10 @@ export default async function StructurePage({
   ] as const
 
   const headCells = columns.map(({ key, label, help }) => (
-    <TableHead key={key} className={cn('text-right', key === 'errors' && 'border-l')}>
+    <TableHead
+      key={key}
+      className={cn('text-right whitespace-normal', key === 'errors' && 'border-l')}
+    >
       <span className="inline-flex items-center justify-end gap-0.5">
         {label}
         {help && (

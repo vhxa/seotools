@@ -3744,10 +3744,10 @@
       "development": "development build",
       "unrecorded": "not recorded",
       "multiple": "multiple builds",
-      "version": "Version: {version}",
+      "version": "{version}",
       "withUnrecordedRun": "{version} (earlier run not recorded)",
-      "withDifferentAnalysis": "Version: {version} · Analysed by a different build ({analysis})",
-      "withAnalysis": "Version: {version} · Analysis: {analysis}"
+      "withDifferentAnalysis": "{version} · analysed by a different build ({analysis})",
+      "withAnalysis": "{version} · analysis: {analysis}"
     },
     "metaTitle": "Crawls · {host} · seotools",
     "description": "Every crawl of this domain, newest first. A domain runs one crawl at a time. A full crawl keeps the rules it was analysed with, and its results per URL until the retention setting removes them.",

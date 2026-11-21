@@ -3744,10 +3744,10 @@
       "development": "compilación de desarrollo",
       "unrecorded": "sin registrar",
       "multiple": "varias compilaciones",
-      "version": "Versión: {version}",
+      "version": "{version}",
       "withUnrecordedRun": "{version} (ejecución anterior sin registrar)",
-      "withDifferentAnalysis": "Versión: {version} · Analizado con otra compilación ({analysis})",
-      "withAnalysis": "Versión: {version} · Análisis: {analysis}"
+      "withDifferentAnalysis": "{version} · analizado con otra compilación ({analysis})",
+      "withAnalysis": "{version} · análisis: {analysis}"
     },
     "metaTitle": "Rastreos · {host} · seotools",
     "description": "Todos los rastreos de este dominio, del más reciente al más antiguo. Un dominio ejecuta un solo rastreo a la vez. Un rastreo completo conserva las reglas con las que se analizó y sus resultados por URL hasta que la retención los elimina.",

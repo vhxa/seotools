@@ -29,9 +29,9 @@ which moves the entries of `[Unreleased]` into the new version.
 ### Changed
 
 - The trend charts on the overview no longer draw one line through crawls that did not measure the same thing. When the rendering mode, the ignored parameters, the crawl settings, the issue checks or the audit rules differ from the crawl before, the line breaks and the first point after the change is ringed, with what changed in its tooltip.
-- The list of crawls shows one short row per crawl (when, how it was started, HTML or rendered, state, pages and URLs, pages with issues and warnings); the rest (external URLs, opportunities, rules, retained results, rendering coverage, errors) opens under "Details".
+- The list of crawls is a bordered table with one row per crawl (date, who started it, HTML or rendered, state, pages, pages with issues and warnings); everything else about a crawl (when it ran, the version that ran it, URLs and external URLs, opportunities, the rules it was analysed with, retained results, rendering coverage, paired requests, errors) opens at once in a side drawer, from "Details" or by clicking the row.
 - "How it was found" in the detail of a URL is a numbered list of sentences ("/sitemap.xml lists /a", "that URL links to /b/", "that URL redirects to /b") instead of a list of labels, and says "not recorded" for what the crawl did not keep.
-- Structure names its columns for what they count: "Pages" (HTML that answered 2xx) and, apart and last, "Failing URLs" (every URL of the directory that failed, references such as hreflang targets included), each with its explanation.
+- Structure names its columns for what they count: "Pages" (HTML that answered 2xx) and, apart and last, "Failing URLs" (every URL of the directory that failed, references such as hreflang targets included), each with its explanation. The Directory column keeps room for ordinary names and only shortens very long ones.
 
 ### Fixed
 
