@@ -30,7 +30,6 @@ which moves the entries of `[Unreleased]` into the new version.
 ### Changed
 
 - URLs that only one crawl has because of your own settings (ignored query parameters that merge or split addresses, paths left out, the priority list, optional files, a depth recorded as narrower, links found only after rendering when a crawl did not render) are listed under "By your configuration", with the address they have in the other crawl, and are no longer counted as not seen or discovered, in the comparison and in the change summary email. A URL a lower URL limit may have left out stays counted, since nothing stored shows the limit is why. Until a comparison is worked out, the email leaves the added and not seen figures out.
-
 - The trend charts on the overview no longer draw one line through crawls that did not measure the same thing. When the rendering mode, the ignored parameters, the crawl settings, the issue checks or the audit rules differ from the crawl before, the line breaks and the first point after the change is ringed, with what changed in its tooltip.
 - The list of crawls is a bordered table with one row per crawl (date, who started it, HTML or rendered, state, pages, pages with issues and warnings); everything else about a crawl (when it ran, the version that ran it, URLs and external URLs, opportunities, the rules it was analysed with, retained results, rendering coverage, paired requests, errors) opens at once in a side drawer, from "Details" or by clicking the row.
 - "How it was found" in the detail of a URL is a numbered list of sentences ("/sitemap.xml lists /a", "that URL links to /b/", "that URL redirects to /b") instead of a list of labels, and says "not recorded" for what the crawl did not keep.
@@ -41,7 +40,6 @@ which moves the entries of `[Unreleased]` into the new version.
 - A worker left running through a database update stops claiming jobs when it detects migrations its image does not recognize.
 - A crawl that was cancelled reads "Cancelled — not analysed" instead of "Coverage not analysed yet".
 - On a crawl that did not render pages, the JavaScript category of the issues says "Not looked for: this crawl did not render pages" instead of showing nothing, which read as "no problems".
-
 - Images and other requests the browser intentionally skips no longer cause a page render to be cut short.
 - Rendered crawls give scripts more time to build navigation and page content. History URL changes preserve observed links, and a capture with late activity or failed dependencies leaves missing rendered links unverified.
 - Tracking and experiment resources injected by JavaScript no longer inflate the list of external URLs when the browser blocks them.
