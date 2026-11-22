@@ -131,10 +131,13 @@ export async function repeatAnswers(input: {
         }
         pair.repeat = repeat
         const repeated = new Targets()
+        // Only a whole 2xx page is read: an error page's links are not the page's links.
         if (
           html &&
           response.body &&
           !response.truncated &&
+          response.statusCode >= 200 &&
+          response.statusCode < 300 &&
           response.statusCode !== 206 &&
           response.headers['content-range'] === undefined
         ) {

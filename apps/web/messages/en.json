@@ -2817,7 +2817,8 @@
       "canonical": "Canonical",
       "robots": "Robots",
       "gained": "Findings reported later",
-      "lost": "Findings no longer reported"
+      "lost": "Findings no longer reported",
+      "configuration": "By your configuration"
     },
     "fields": {
       "status": "Response changed",
@@ -2826,16 +2827,17 @@
       "robots": "Robots changed"
     },
     "hints": {
-      "added": "URLs the later crawl found and the earlier one never did. The site may have gained them, or the earlier crawl may not have reached them.",
+      "added": "URLs the later crawl found and the earlier one did not. Each one says why, from what the two crawls stored; \"not reached before\" never means new.",
       "addedIncomplete": "The earlier crawl stopped at its URL limit, so it never reached many URLs. Some of these may have existed all along.",
-      "missing": "URLs the earlier crawl found and the later one did not. They may have been deleted, stopped being linked or listed in a sitemap, or not been reached: this does not say which.",
+      "missing": "URLs the earlier crawl found and the later one did not. Each one says why, from what the two crawls stored; \"not reached\" never means gone.",
       "missingIncomplete": "The later crawl stopped at its URL limit, so these are most likely URLs it did not reach. Nothing here says they were removed.",
       "status": "URLs both crawls requested that answered differently: another status code, another kind of URL or another redirect target.",
       "title": "URLs both crawls requested whose title changed. Compared exactly, capitals included.",
       "canonical": "URLs both crawls requested whose declared canonical changed.",
       "robots": "URLs both crawls requested whose meta robots or X-Robots-Tag changed.",
       "gained": "URLs both crawls requested where the later crawl reports findings the earlier one did not. The badge says what the evidence supports: new or reappeared, or not attributed when the rules, the catalog or the crawl itself changed.",
-      "lost": "URLs both crawls requested where the earlier crawl reported findings the later one no longer does. Resolved only when nothing but the site can explain it; a URL that is no longer audited is shown as excluded by rule, never as resolved."
+      "lost": "URLs both crawls requested where the earlier crawl reported findings the later one no longer does. Resolved only when nothing but the site can explain it; a URL that is no longer audited is shown as excluded by rule, never as resolved.",
+      "configuration": "URLs only one crawl has because of your own settings: ignored parameters that merge or split addresses, paths left out, the priority list, optional files, a changed depth or URL limit, or links found only after rendering when a crawl did not render. They are not counted as not seen or discovered."
     },
     "search": {
       "label": "Search URLs",
@@ -2858,7 +2860,8 @@
         "depth": "Depth",
         "before": "Earlier crawl",
         "after": "Later crawl",
-        "findings": "Findings"
+        "findings": "Findings",
+        "why": "Why"
       },
       "findingsUnavailable": "Findings cannot be compared for these crawls.",
       "samePersistent": "{count, plural, one {# finding reported by both} other {# findings reported by both}}"
@@ -2901,60 +2904,207 @@
       "dismissed": "A person dismissed this finding.",
       "basis": "one crawl read the served HTML and the other the rendered page: only findings about the server's answer can be compared"
     },
-    "notes": {
-      "pruned": {
-        "title": {
-          "base": "The earlier crawl no longer has its results",
-          "target": "The later crawl no longer has its results",
-          "both": "Neither crawl has its results any more"
-        },
-        "description": "Retention removed the results per URL, so only the totals can be compared. Choose crawls that still have their results, or raise the number of crawls kept in the crawl settings."
-      },
-      "unanalysed": {
-        "title": {
-          "base": "The earlier crawl was not analysed",
-          "target": "The later crawl was not analysed",
-          "both": "Neither crawl was analysed"
-        },
-        "description": "Without an analysis there are no findings to compare. URLs and how they answered (status, title, canonical, robots) are still compared."
-      },
-      "legacy": {
-        "title": {
-          "base": "The earlier crawl was analysed before the audit state per URL was kept",
-          "target": "The later crawl was analysed before the audit state per URL was kept",
-          "both": "Both crawls were analysed before the audit state per URL was kept"
-        },
-        "description": "It is not known which URLs were left out of the audit then, so a finding that is not there cannot be read as fixed. Those changes are shown as not attributed."
-      },
-      "catalog": {
-        "title": "The crawls were analysed with different issue catalogs",
-        "description": "A finding that appears or goes may come from a check that changed, not from the site. Such differences are listed as unverified, never as new or resolved."
-      },
-      "audit": {
-        "title": "The crawls were analysed with different audit configurations",
-        "description": "Exclusions, expected indexing or language directories changed between them. A URL that stopped being audited is shown as excluded by rule, not resolved. Findings that depend on other pages are not called new or resolved; findings that only depend on the page itself still are, unless the expectation for that URL changed."
-      },
-      "incomplete": {
-        "title": {
-          "base": "The earlier crawl stopped at its URL limit",
-          "target": "The later crawl stopped at its URL limit",
-          "both": "Both crawls stopped at their URL limit"
-        },
-        "description": "URLs it did not reach are not missing, and findings that look at other pages (duplicates, inbound links, redirects) are not called new or resolved for it."
-      },
-      "ignoredParameters": {
-        "title": "Ignored query parameters changed",
-        "description": "Added and not seen URLs may reflect changed ignored parameters. Per-issue change summaries are unverified because URL identity changed."
-      },
-      "basis": {
-        "title": "Different observation bases",
-        "description": "One crawl read the served HTML and the other the rendered page. Findings about the server's answer are compared as usual; findings about each page's content, about which pages link to which, and JavaScript findings show as not comparable, never as new or fixed."
-      }
-    },
     "rowsShown": "{shown, number} of {matching, number} URLs shown",
-    "rules": {
-      "same": "Both crawls were analysed with the same rules.",
-      "different": "The crawls were analysed with different rules, so some differences may come from the rules and not from the site."
+    "why": {
+      "label": "Why they differ",
+      "all": "All",
+      "reasons": {
+        "merged": "Merged",
+        "split": "Split",
+        "settings": "Left out by settings",
+        "mode": "Rendering",
+        "unlinked": "No longer linked",
+        "linked": "Newly linked",
+        "notReached": "Not reached",
+        "limit": "URL limit",
+        "depth": "Beyond depth",
+        "unstable": "Site answered differently",
+        "unknown": "Unknown"
+      },
+      "counted": {
+        "merged": "{count, plural, one {# merged} other {# merged}}",
+        "split": "{count, plural, one {# split} other {# split}}",
+        "settings": "{count, plural, one {# left out by settings} other {# left out by settings}}",
+        "mode": "{count, plural, one {# by rendering} other {# by rendering}}",
+        "unlinked": "{count, plural, one {# no longer linked} other {# no longer linked}}",
+        "linked": "{count, plural, one {# newly linked} other {# newly linked}}",
+        "notReached": "{count, plural, one {# not reached} other {# not reached}}",
+        "limit": "{count, plural, one {# past the URL limit} other {# past the URL limit}}",
+        "depth": "{count, plural, one {# beyond the depth} other {# beyond the depth}}",
+        "unstable": "{count, plural, one {# where the site answered differently} other {# where the site answered differently}}",
+        "unknown": "{count, plural, one {# unknown} other {# unknown}}"
+      },
+      "pending": "Why it differs has not been worked out yet.",
+      "merged": {
+        "present": "The later crawl ignores {params}, so there this is the same URL as <link>{into}</link>.",
+        "absent": "The later crawl ignores {params}, so there this is the same URL as <link>{into}</link>, which the later crawl did not see either.",
+        "into": "The later crawl ignores {params}, so it reads <link>{into}</link> of the earlier crawl as this URL."
+      },
+      "split": {
+        "present": "The earlier crawl ignored {params}, so there it was the same URL as <link>{into}</link>.",
+        "absent": "The earlier crawl ignored {params}, so there it was the same URL as <link>{into}</link>, which the earlier crawl did not see either.",
+        "into": "The earlier crawl ignored {params}, so it read <link>{into}</link> of the later crawl as this URL."
+      },
+      "settings": {
+        "excluded": {
+          "base": "The later crawl's paths to crawl leave out <link>{via}</link>, the page that linked it.",
+          "target": "The earlier crawl's paths to crawl left out <link>{via}</link>, the page that links it."
+        },
+        "depth": {
+          "base": "<link>{via}</link>, which linked it, was beyond the later crawl's maximum depth, and that setting changed.",
+          "target": "<link>{via}</link>, which links it, was beyond the earlier crawl's maximum depth, and that setting changed."
+        },
+        "priority": {
+          "base": "It was only on the earlier crawl's priority list.",
+          "target": "It is only on the later crawl's priority list."
+        },
+        "files": {
+          "base": "It is an optional crawl file the later crawl did not request.",
+          "target": "It is an optional crawl file the earlier crawl did not request."
+        },
+        "limit": {
+          "base": "The later crawl stopped at its URL limit, and that limit changed.",
+          "target": "The earlier crawl stopped at its URL limit, and that limit changed."
+        },
+        "other": {
+          "base": "A setting of the later crawl left it out.",
+          "target": "A setting of the earlier crawl left it out."
+        }
+      },
+      "mode": {
+        "base": "Linked only in the rendered page of <link>{via}</link>; the later crawl did not render.",
+        "target": "Found only after rendering <link>{via}</link>; the earlier crawl did not render."
+      },
+      "unlinked": {
+        "direct": "No longer linked: <link>{via}</link> was read whole by the later crawl and does not link it. A change of the site.",
+        "chain": "No longer linked: it was reached through <link>{through}</link>, which the later crawl did not see either, and every way into them was read whole. A change of the site."
+      },
+      "linked": {
+        "direct": "Newly linked: <link>{via}</link> was read whole by the earlier crawl and did not link it. A change of the site.",
+        "chain": "Newly linked: it is reached through <link>{through}</link>, which the earlier crawl did not see either, and every way into them was read whole. A change of the site."
+      },
+      "notReached": {
+        "direct": {
+          "base": "Not reached: <link>{via}</link>, which linked it, was not read whole by the later crawl: {state}. It is not gone.",
+          "target": "Not reached before: <link>{via}</link>, which links it, was not read whole by the earlier crawl: {state}. It is not new."
+        },
+        "chain": {
+          "base": "Not reached: it was reached through <link>{through}</link>, which the later crawl did not reach either. It is not gone.",
+          "target": "Not reached before: it is reached through <link>{through}</link>, which the earlier crawl did not reach either. It is not new."
+        }
+      },
+      "states": {
+        "failed": "it failed, was refused or gave no answer",
+        "redirected": "it now redirects",
+        "served-truncated": "its HTML was cut at the size limit",
+        "render-missing": "it has no render",
+        "render-failed": "its render failed",
+        "render-truncated": "its render was cut",
+        "render-unsettled": "its render was captured while the page was still loading",
+        "render-redirected": "its render went to another address",
+        "render-unreliable": "its render was made before seotools could prove a link missing from a render",
+        "not-requested": "it was found but not requested",
+        "depth": "it was beyond the maximum depth",
+        "excluded": "it was outside the paths to crawl",
+        "mode": "the link was only in the rendered page",
+        "other": "it was not read whole",
+        "error-answer": "it answered with an error page",
+        "other-answer": "it now answers a file that is not an HTML page"
+      },
+      "limit": {
+        "base": "The later crawl stopped at its URL limit, so URLs it found afterwards were not recorded.",
+        "target": "The earlier crawl stopped at its URL limit, so URLs it found afterwards were not recorded.",
+        "unrecorded": "Whether the limit changed was not recorded.",
+        "narrowed": "Its limit was lower than the other crawl's, but nothing stored shows that is why, so it stays counted."
+      },
+      "depth": {
+        "base": "<link>{via}</link>, which linked it, was beyond the later crawl's maximum depth, so its links were not followed.",
+        "target": "<link>{via}</link>, which links it, was beyond the earlier crawl's maximum depth, so its links were not followed.",
+        "unrecorded": "Whether that setting changed was not recorded.",
+        "unchanged": "That setting did not change."
+      },
+      "unstable": "The site answered differently: the link from <link>{via}</link> that found it was in one answer of that page and not in another.",
+      "unknown": {
+        "none": "Nothing stored says why. It may have been deleted, stopped being linked or listed in a sitemap, or not been reached.",
+        "legacy": "Nothing stored says why: the crawl was made before seotools kept how it found each URL.",
+        "cap": "It is reached only through a long chain of URLs the other crawl did not see either, which was not followed to its end.",
+        "cycle": "Nothing stored says why: it is only linked from URLs that link each other, and no page both crawls read whole links into them.",
+        "chain": "Nothing stored says why: it is reached only through a URL the other crawl did not have, for a reason that was not stored.",
+        "source-unobserved": "Nothing stored says why: <link>{via}</link>, which linked it, did not answer a whole page in the crawl that has it (an error, a redirect or a cut response).",
+        "identity": "Nothing stored says why: <link>{via}</link>, which linked it, is read at another address by the other crawl, which ignores another set of query parameters, so it is not the same page there.",
+        "render-own": "Nothing stored says why: the render of <link>{via}</link> that has the link is not a capture that can be compared.",
+        "render-settings": "Nothing stored says why: <link>{via}</link> was rendered with different rendering settings by the two crawls.",
+        "settings": "Nothing stored says why: the two crawls requested pages with different settings, or one did not record them, so a missing link is not read as a change of the site.",
+        "partial-configuration": "Nothing stored says why: a setting explains some of the links to it, but not all of them."
+      },
+      "allWhole": "Every page that linked it ({count, plural, one {# link} other {# links}}) was read whole.",
+      "linkWas": "The link as it was: {kind}{hasRegion, select, yes {, in {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
+      "linkIs": "The link as it is: {kind}{hasRegion, select, yes {, in {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
+      "unavailable": "These crawls cannot say why this URL differs: one was stored before seotools numbered the URLs it found.",
+      "failed": "Why it differs could not be worked out; it is tried again later."
+    },
+    "check": {
+      "url": "Check now",
+      "page": "Check the URLs on this page",
+      "starting": "Starting…",
+      "busy": "A recheck of this domain is under way: see it",
+      "answers": "Checked {when}: answers {status}.",
+      "redirects": "Checked {when}: answers {status} and redirects to {url}.",
+      "noAnswer": "Checked {when}: no answer ({error}).",
+      "note": "This is what it answers now; it does not change why the two crawls differ."
+    },
+    "summary": {
+      "builds": "Earlier crawl: {earlier}. Later crawl: {later}.",
+      "settingsChanged": "Settings that differ: {list}.",
+      "settingsSame": "The settings both crawls recorded are the same.",
+      "settingsUnrecorded": "Not recorded by these crawls, so not compared: {list}.",
+      "ignoredChange": "ignored parameters ({changes})",
+      "settings": {
+        "renderingMode": "rendering",
+        "renderWaitMs": "rendering wait",
+        "renderOmittedHosts": "hosts left out of rendering",
+        "ignoredParameters": "ignored parameters",
+        "includePrefixes": "paths to include",
+        "excludePrefixes": "paths to exclude",
+        "maxDepth": "maximum depth",
+        "maxUrls": "URL limit",
+        "userAgent": "User-Agent",
+        "requestCredentialsSet": "request credentials",
+        "optionalFiles": "optional crawl files",
+        "indexNowKey": "IndexNow key",
+        "concurrency": "simultaneous requests",
+        "requestsPerSecond": "requests per second",
+        "timeoutMs": "timeout",
+        "maxRetries": "retries"
+      },
+      "urls": {
+        "done": "{configuration, plural, one {# URL} other {# URLs}} changed by your configuration, {missing, plural, one {# not seen} other {# not seen}}{missingReasons}, {added, plural, one {# discovered} other {# discovered}}{addedReasons}.",
+        "preparing": "Working out why URLs differ between these crawls… Until then, not seen and discovered include URLs your own settings may explain.",
+        "failed": "Why URLs differ between these crawls could not be worked out. Not seen and discovered include URLs your own settings may explain.",
+        "unavailable": "These crawls cannot say why URLs differ: one was made before seotools numbered the URLs it found."
+      },
+      "limited": {
+        "base": "The earlier crawl stopped at its URL limit.",
+        "target": "The later crawl stopped at its URL limit.",
+        "both": "Both crawls stopped at their URL limit."
+      },
+      "findings": {
+        "usual": "Findings compare as usual.",
+        "basis": "Only findings about the server's answer compare: one crawl read the HTML and the other the rendered page.",
+        "unanalysed": "Findings cannot be compared: a crawl was not analysed.",
+        "caveats": "Changes these may explain are shown as unverified: {list}."
+      },
+      "caveats": {
+        "audit": "different audit rules",
+        "catalog": "different checks",
+        "ignoredParameters": "different ignored parameters",
+        "legacy": "an analysis that did not keep which URLs were audited",
+        "incomplete": "a crawl cut at its URL limit",
+        "pruned": "results removed",
+        "unanalysed": "a crawl not analysed",
+        "basis": "different ways of reading pages"
+      },
+      "pruned": "Only totals can be compared: retention removed the results per URL of a crawl."
     }
   },
   "HttpStatus": {
@@ -4221,12 +4371,6 @@
       "causes": "failed or missing: {failed} · cut: {truncated} · did not settle: {legacyUnsettled}",
       "linksNotEvaluated": "Findings that depend on links between pages were not evaluated.",
       "linksEvaluated": "Findings that depend on links between pages were evaluated."
-    },
-    "pair": {
-      "htmlToRendered": "The earlier crawl read HTML only and the later one rendered its pages",
-      "renderedToHtml": "The earlier crawl rendered its pages and the later one read HTML only",
-      "cannotCompare": "Findings about each page's content (titles, headings, text, images…), about which pages link to which (orphan pages, click depth, pages without internal links) and every JavaScript finding show as not comparable, never as new or fixed.",
-      "canCompare": "Findings about the server's answer (status codes, redirects, response time…) are compared as usual."
     },
     "noneObserved": "None among the pages observed completely",
     "linksUnknownGroup": "Unknown for this crawl"

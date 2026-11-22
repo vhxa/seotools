@@ -9,6 +9,7 @@ import {
   type NewAuditRule,
 } from '@seotools/core'
 import { createCompany, createFirstAdmin } from '@seotools/db'
+import { EXPLANATION_VERSION } from '@seotools/core/crawl/comparison-reasons'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { recomputeAudit } from '../crawl/audit-recompute'
@@ -303,6 +304,101 @@ describe('the change summary', () => {
     await run(second)
     expect(sent[0]!.text).toContain('cannot be compared')
     expect(sent[0]!.text).not.toContain('URLs added')
+  })
+})
+
+describe('URLs merged by a newly ignored parameter', () => {
+  const listing = (withDuration: boolean) =>
+    site({
+      '/': page('/', {
+        links: ['/e/1', '/e/2', '/e/3']
+          .map((path) => `<a href="${path}${withDuration ? '?duration=60' : ''}">e</a>`)
+          .join(''),
+      }),
+      ...(withDuration
+        ? Object.fromEntries(
+            ['/e/1', '/e/2', '/e/3'].map((path) => [`${path}?duration=60`, page(path)]),
+          )
+        : {}),
+      '/e/1': page('/e/1'),
+      '/e/2': page('/e/2'),
+      '/e/3': page('/e/3'),
+    })
+
+  it('are explained before the alert reads the comparison, and never reported as not seen', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'])
+    await crawl(listing(true))
+    await db.crawls.saveIgnoredParameters(domainId, ['duration'])
+    const second = await crawl(listing(true))
+    const target = (await db.crawls.get(second))!
+    const header = await db.crawls.comparisonHeader({
+      domainId,
+      baseId: (await db.crawls.list(domainId, { type: 'full' })).find((c) => c.id !== second)!.id,
+      targetId: second,
+    })
+    expect(header?.state).toBe('done')
+    await run(second)
+    const { text } = sent[0]!
+    expect(text).toContain('URLs not seen: 0.')
+    expect(text).toContain('URLs changed by your configuration: 3.')
+    expect(target.ignoredParameters).toEqual(['duration'])
+  })
+
+  it('waits for the explanation, and once given up on, says nothing about URLs added or not seen', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'])
+    const first = await crawl(listing(true))
+    await db.crawls.saveIgnoredParameters(domainId, ['duration'])
+    const second = await crawl(listing(true))
+    // As if the explanation had never run: a job is asked for and the alert waits.
+    const pair = { domainId, baseId: first, targetId: second }
+    await db.crawls.comparisonWork.begin({ ...pair, runner: 'gone', version: 0 })
+    await expect(run(second)).rejects.toBeInstanceOf(JobDeferredError)
+    expect(sent).toHaveLength(0)
+    const finished = (await db.crawls.get(second))!.finishedAt!
+    await run(second, { now: new Date(finished.getTime() + ANALYSIS_WAIT_MS + 1) })
+    expect(sent[0]!.text).not.toContain('URLs not seen')
+    expect(sent[0]!.text).toContain('Answers that changed')
+  })
+})
+
+describe('waiting for the explanation (WP4 fix round, finding 9)', () => {
+  it('waits for a retry that is queued, and sends at once after a failure still in its back-off', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'])
+    const first = await crawl(site())
+    const second = await crawl(site({ '/new': page('/new') }))
+    const pair = { domainId, baseId: first, targetId: second }
+    // A failed run: retried only after its back-off. The email does not wait, and leaves URLs out.
+    await db.crawls.comparisonWork.begin({ ...pair, runner: 'r1', version: EXPLANATION_VERSION })
+    await db.crawls.comparisonWork.finish({
+      ...pair,
+      runner: 'r1',
+      state: 'failed',
+      retryAt: new Date(Date.now() + 60 * 60_000),
+    })
+    await run(second)
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.text).not.toContain('URLs not seen')
+  })
+
+  it('waits while a job that will be retried has the pair queued', async () => {
+    const ana = await member()
+    await subscribe(ana, ['change-summary'])
+    const first = await crawl(site())
+    const second = await crawl(site({ '/new': page('/new') }))
+    const pair = { domainId, baseId: first, targetId: second }
+    const header = await db.crawls.requestComparison({ ...pair, now: new Date(0) })
+    await db.crawls.comparisonWork.begin({
+      ...pair,
+      runner: 'r1',
+      version: EXPLANATION_VERSION,
+      jobId: header?.jobId ?? null,
+    })
+    await db.crawls.comparisonWork.finish({ ...pair, runner: 'r1', state: 'queued' })
+    await expect(run(second)).rejects.toBeInstanceOf(JobDeferredError)
+    expect(sent).toHaveLength(0)
   })
 })
 

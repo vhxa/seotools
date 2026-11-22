@@ -45,6 +45,12 @@ describe.each([
     for (const changes of [
       { missing: { crawlId: b, pair: { ...pair, repeat: { ...answer(['t']), status: 206 } } } },
       { missing: { crawlId: b, pair: { ...pair, original: { ...answer([]), status: 206 } } } },
+      // WP4 fix round, finding 2: an error page that names the URL is no witness.
+      { missing: { crawlId: b, pair: { ...pair, repeat: { ...answer(['t']), status: 503 } } } },
+      { missing: { crawlId: b, pair: { ...pair, repeat: { ...answer(['t']), status: 404 } } } },
+      { missing: { crawlId: b, pair: { ...pair, original: { ...answer([]), status: 500 } } } },
+      { missing: { crawlId: b, pair: { ...pair, repeat: { ...answer(['t']), media: 'other' } } } },
+      { missing: { crawlId: b, pair: { ...pair, repeat: null } } },
       { discovery: null },
       { missing: null },
       { comparableCompletedCrawls: false },

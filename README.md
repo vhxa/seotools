@@ -49,7 +49,8 @@ Raspberry Pi to a VPS.
   found each URL, and where query parameters enter the site. Ignore selected parameter names or
   prefixes from the next crawl; review volatile/canonical suggestions, separately marked tracking
   names and currently ignored names on the Parameters page ([details](docs/ignored-parameters.md)).
-- **History and exports**: compare crawls, follow a URL's history, recheck individual URLs and
+- **History and exports**: compare crawls (each URL one of them lacks says why, from what they
+  stored, and can be checked again now), follow a URL's history, recheck individual URLs and
   export pages, findings, links and redirects as CSV. New crawls keep their discovery settings
   and the builds that queued, ran and analysed them. Administration warns about mixed or outdated workers.
 - **Crawl files and bot access**: inspect `robots.txt` with each AI bot's access, sitemaps, `llms.txt`

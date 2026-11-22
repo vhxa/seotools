@@ -1,4 +1,9 @@
 import { CRAWL_CHANGES, COMPARE_VIEWS, type CrawlChange } from '@seotools/core/crawl/compare'
+import {
+  CONFIGURATION_REASONS,
+  SIDE_REASONS,
+  type ComparisonReason,
+} from '@seotools/core/crawl/comparison-reasons'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
 import type { Crawl, CrawlComparisonCounts } from '@seotools/db'
 import { XIcon } from 'lucide-react'
@@ -8,11 +13,9 @@ import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { CrawlsHeader } from '@/components/crawl/crawls-header'
 import { CompareTable } from '@/components/history/compare-table'
-import { sameRulesOf } from '@/lib/rules-state'
-import { crawlConfigVersion, crawlMoment, CrawlStamp } from '@/components/history/crawl-stamp'
-import { PairNotes } from '@/components/history/pair-notes'
-import { RenderingPairNote } from '@/components/history/rendering-pair-note'
-import { isRenderedCrawl } from '@/lib/rendering'
+import { crawlMoment, CrawlStamp } from '@/components/history/crawl-stamp'
+import { CheckNowButton } from '@/components/history/check-now-button'
+import { ComparisonSummary } from '@/components/history/comparison-summary'
 import { PairPicker } from '@/components/history/pair-picker'
 import { IssueLabel } from '@/components/pages/issue-mark'
 import { Pagination } from '@/components/pagination'
@@ -27,7 +30,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { compareHref, isFindingChange, parseCompareQuery } from '@/lib/compare-query'
+import {
+  compareHref,
+  isFindingChange,
+  isOneSidedChange,
+  parseCompareQuery,
+} from '@/lib/compare-query'
 import { loadComparison } from '@/lib/crawl-compare'
 import { selectPair } from '@/lib/crawl-history'
 import { getDb } from '@/lib/db'
@@ -41,8 +49,30 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   return { title: t('metaTitle', { host }) }
 }
 
-/** How many URLs a change lists, from the counts of the comparison. */
-const countOf = (counts: CrawlComparisonCounts, change: CrawlChange) => counts[change]
+/** How many URLs a change lists, from the counts of the comparison. `null`: not known yet. */
+const countOf = (counts: CrawlComparisonCounts, change: CrawlChange) =>
+  change === 'configuration' && !counts.explained ? null : counts[change]
+
+/** The reasons a tab of URLs one crawl lacks is split by, with how many URLs each has. */
+function reasonChips(counts: CrawlComparisonCounts, change: CrawlChange) {
+  const configuration = CONFIGURATION_REASONS as readonly ComparisonReason[]
+  const pick = (side: 'base' | 'target', inGroup: boolean) =>
+    SIDE_REASONS[side]
+      .filter((reason) => configuration.includes(reason) === inGroup)
+      .map((reason) => ({ reason, count: counts.reasons[side][reason] ?? 0 }))
+  const merged = (items: { reason: ComparisonReason; count: number }[]) => {
+    const totals = new Map<ComparisonReason, number>()
+    for (const { reason, count } of items) totals.set(reason, (totals.get(reason) ?? 0) + count)
+    return [...totals].map(([reason, count]) => ({ reason, count }))
+  }
+  const chips =
+    change === 'missing'
+      ? pick('base', false)
+      : change === 'added'
+        ? pick('target', false)
+        : merged([...pick('base', true), ...pick('target', true)])
+  return chips.filter((chip) => chip.count > 0)
+}
 
 /**
  * Two retained full crawls of a domain, side by side. The address is the state (the two crawls, the
@@ -122,9 +152,9 @@ export default async function ComparePage({
   }
 
   const { base, target } = selection
-  const sameRules = sameRulesOf(crawlConfigVersion(base), crawlConfigVersion(target))
   const data = await loadComparison({
     crawls: db.crawls,
+    verifications: db.verifications,
     domainId: domain.id,
     base,
     target,
@@ -166,6 +196,7 @@ export default async function ComparePage({
   > = {
     added: incomplete('base') ? 'addedIncomplete' : 'added',
     missing: incomplete('target') ? 'missingIncomplete' : 'missing',
+    configuration: 'configuration',
     status: 'status',
     title: 'title',
     canonical: 'canonical',
@@ -204,19 +235,7 @@ export default async function ComparePage({
         ))}
       </div>
 
-      {sameRules !== null && (
-        <p className="text-sm text-muted-foreground">
-          {sameRules ? t('rules.same') : t('rules.different')}
-        </p>
-      )}
-
-      <RenderingPairNote earlier={isRenderedCrawl(base)} later={isRenderedCrawl(target)} />
-      <PairNotes
-        assessment={assessment}
-        renderingExplainsAudit={
-          sameRules === true && isRenderedCrawl(base) !== isRenderedCrawl(target)
-        }
-      />
+      <ComparisonSummary lines={data.summary} />
 
       <Card>
         <CardHeader>
@@ -256,7 +275,7 @@ export default async function ComparePage({
               {CRAWL_CHANGES.map((change) => (
                 <Link
                   key={change}
-                  href={href({ change, page: 1, issue: null })}
+                  href={href({ change, page: 1, issue: null, reason: null })}
                   scroll={false}
                   aria-current={change === query.change ? 'page' : undefined}
                   className={buttonVariants({
@@ -266,12 +285,38 @@ export default async function ComparePage({
                 >
                   {t(`changes.${change}`)}
                   <span className="text-muted-foreground tabular-nums">
-                    {format.number(countOf(counts, change))}
+                    {countOf(counts, change) === null
+                      ? '—'
+                      : format.number(countOf(counts, change)!)}
                   </span>
                 </Link>
               ))}
             </nav>
             <CardDescription>{t(`hints.${hintKey[query.change]}`)}</CardDescription>
+            {isOneSidedChange(query.change) && counts.explained && (
+              <nav aria-label={t('why.label')} className="flex flex-wrap gap-1">
+                {[
+                  { reason: null, count: countOf(counts, query.change) ?? 0 },
+                  ...reasonChips(counts, query.change),
+                ].map(({ reason, count }) => (
+                  <Link
+                    key={reason ?? 'all'}
+                    href={href({ reason, page: 1 })}
+                    scroll={false}
+                    aria-current={reason === query.reason ? 'page' : undefined}
+                    className={buttonVariants({
+                      variant: reason === query.reason ? 'secondary' : 'outline',
+                      size: 'xs',
+                    })}
+                  >
+                    {reason ? t(`why.reasons.${reason}`) : t('why.all')}
+                    <span className="text-muted-foreground tabular-nums">
+                      {format.number(count)}
+                    </span>
+                  </Link>
+                ))}
+              </nav>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <nav aria-label={t('viewsLabel')} className="flex gap-1">
                 {COMPARE_VIEWS.map((view) => (
@@ -302,6 +347,9 @@ export default async function ComparePage({
                 {query.issue && isFindingChange(query.change) && (
                   <input type="hidden" name="issue" value={query.issue} />
                 )}
+                {query.reason && isOneSidedChange(query.change) && (
+                  <input type="hidden" name="why" value={query.reason} />
+                )}
                 <Input
                   type="search"
                   name="q"
@@ -326,6 +374,17 @@ export default async function ComparePage({
                 </Button>
               )}
             </div>
+            {(query.change === 'added' || query.change === 'missing') && (
+              <CheckNowButton
+                host={domain.host}
+                from={base.id}
+                to={target.id}
+                side={query.change === 'added' ? 'target' : 'base'}
+                urlHashes={data.rows.filter((row) => row.why).map((row) => row.urlHash)}
+                activeRecheckId={data.activeRecheck?.id ?? null}
+                scope="page"
+              />
+            )}
             {counts.unrequested > 0 && (
               <p className="text-xs text-muted-foreground">
                 {t('unrequested', { count: counts.unrequested })}
@@ -340,6 +399,12 @@ export default async function ComparePage({
               rows={data.rows}
               baseId={base.id}
               targetId={target.id}
+              ignored={{
+                base: base.ignoredParameters ?? [],
+                target: target.ignoredParameters ?? [],
+              }}
+              activeRecheckId={data.activeRecheck?.id ?? null}
+              explanation={data.explanation}
               footer={
                 <Pagination
                   page={data.page}

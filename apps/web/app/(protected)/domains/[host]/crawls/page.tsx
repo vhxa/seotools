@@ -1,4 +1,5 @@
-import { CRAWL_TYPES, buildIdentity, type BuildInfo } from '@seotools/core'
+import { CRAWL_TYPES } from '@seotools/core'
+import { crawlBuildLine } from '@/lib/crawl-build'
 import { PairedNotice } from '@/components/crawl/paired-answers'
 import type { Crawl, CrawlSchedule } from '@seotools/db'
 import Link from 'next/link'
@@ -74,35 +75,8 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
   }
   const when = (crawl: Pick<Crawl, 'finishedAt' | 'createdAt'>) =>
     format.dateTime(crawlMoment(crawl), { dateStyle: 'medium', timeStyle: 'short' })
-  const buildLabel = (build: BuildInfo | null | undefined) =>
-    build?.channel === 'development'
-      ? t('build.development')
-      : (build?.version ?? t('build.unrecorded'))
-  const buildLine = (crawl: Crawl) => {
-    const run = crawl.runBuilds?.builds ?? []
-    const analysis = crawl.analysisBuild
-    const ranOnMultiple = run.length > 1 || crawl.runBuilds?.overflow
-    const first = run[0]
-    const label = ranOnMultiple ? t('build.multiple') : buildLabel(first)
-    const version = crawl.runBuilds?.earlierRunUnrecorded
-      ? t('build.withUnrecordedRun', { version: label })
-      : label
-    if (
-      !analysis ||
-      (first && !ranOnMultiple && buildIdentity(analysis) === buildIdentity(first))
-    ) {
-      return t('build.version', { version })
-    }
-    const different =
-      first &&
-      !crawl.runBuilds?.overflow &&
-      !crawl.runBuilds?.earlierRunUnrecorded &&
-      run.every((build) => buildIdentity(analysis) !== buildIdentity(build))
-    return t(different ? 'build.withDifferentAnalysis' : 'build.withAnalysis', {
-      version,
-      analysis: buildLabel(analysis),
-    })
-  }
+  const buildLine = (crawl: Crawl) =>
+    crawlBuildLine(crawl, (key, values) => t(`build.${key}`, values))
   function crawlError(crawl: Crawl) {
     switch (crawl.error) {
       case 'browser-unavailable':

@@ -20,6 +20,11 @@ import { snapshotCrawlDiscovery } from '@seotools/core/crawl/discovery'
 import { ANY_ACCEPTED, parseFindingAcceptance } from '@seotools/core/crawl/acceptance'
 import { renderFilterStates, type RenderState } from '@seotools/core/crawl/render-state'
 import {
+  EXPLANATION_VERSION,
+  isComparisonReason,
+  type ComparisonSide,
+} from '@seotools/core/crawl/comparison-reasons'
+import {
   ALERT_KINDS,
   DEFAULT_CRAWL_SETTINGS,
   JOB_TYPES,
@@ -70,6 +75,12 @@ import {
   type VerificationOutcome,
 } from '@seotools/core'
 import type {
+  ComparisonHeader,
+  ComparisonHeaderState,
+  ExplainedUrl,
+  StoredPage,
+  OneSidedUrl,
+  UrlExplanation,
   AlertSubscription,
   MailDelivery,
   Heartbeat,
@@ -1700,6 +1711,8 @@ export function compareWhere(
   other: CompareColumns,
   differs: Differs,
   findings: FindingDifferences,
+  /** For `added` and `missing` of an explained pair: which stored reasons are listed. */
+  explained?: SQL,
 ): SQL | undefined {
   const plan = comparePlan(query)
   const search = compareSearch(main.url, main.title, query.search)
@@ -1710,9 +1723,12 @@ export function compareWhere(
       compareViewOf(main, query.view),
       isNull(other.urlHash),
       search,
+      explained,
     )
   }
-  if (query.change === 'added' || query.change === 'missing') return undefined
+  // `configuration` is listed from the stored reasons (`explanationList` in each dialect).
+  if (query.change === 'added' || query.change === 'missing' || query.change === 'configuration')
+    return undefined
   return and(
     eq(main.crawlId, plan.mainCrawlId),
     eq(main.scope, 'internal'),
@@ -1763,13 +1779,25 @@ export function toUrlComparison(
     url: string
     main: SnapshotRow | null | undefined
     other: SnapshotRow | null | undefined
+    explanation?: Partial<ExplainedRow> | null
   },
 ): CrawlUrlComparison {
   const main = toUrlSnapshot(row.main)
   const other = toUrlSnapshot(row.other)
   const { urlHash, url } = row
-  if (change === 'added') return { urlHash, url, base: null, target: main }
-  if (change === 'missing') return { urlHash, url, base: main, target: null }
+  const explanation = 'explanation' in row ? { explanation: toUrlExplanation(row.explanation) } : {}
+  if (change === 'added') return { urlHash, url, base: null, target: main, ...explanation }
+  if (change === 'missing') return { urlHash, url, base: main, target: null, ...explanation }
+  if (change === 'configuration') {
+    const side = explanation.explanation?.side
+    return {
+      urlHash,
+      url,
+      base: side === 'base' ? main : null,
+      target: side === 'target' ? main : null,
+      ...explanation,
+    }
+  }
   return { urlHash, url, base: other, target: main }
 }
 
@@ -1981,3 +2009,145 @@ function readBlockerObservation(
       : [],
   }
 }
+
+// --- why URLs differ between two crawls (`explain.ts`) --------------------------------------------
+
+/** A run that started this long ago and did not finish is taken for dead: the pair is queued again. */
+export const STALE_EXPLANATION_MS = 6 * 60 * 60_000
+
+/** Render rows read at a time: their data can be large, so each group is parsed and dropped. */
+export const RENDER_BATCH = 200
+
+export function toComparisonHeader(row: {
+  baseRef: number
+  targetRef: number
+  version: number
+  state: string
+  runner: string | null
+  jobId: string | null
+  startedAt: Date
+  finishedAt: Date | null
+  failures: number
+  retryAt: Date | null
+}): ComparisonHeader {
+  return { ...row, failures: Number(row.failures), state: row.state as ComparisonHeaderState }
+}
+
+/** Whether a stored explanation can be shown: done with the rules of this version. */
+export const isCurrentExplanation = (header: ComparisonHeader | null | undefined) =>
+  header?.state === 'done' && header.version === EXPLANATION_VERSION
+
+export const comparisonUrlValues = (baseRef: number, targetRef: number, row: ExplainedUrl) => ({
+  baseRef,
+  targetRef,
+  urlHash: row.urlHash,
+  side: row.side,
+  seq: row.seq,
+  reason: row.reason,
+  detail: row.detail,
+  via: row.via,
+  viaKind: row.viaKind,
+  viaRendered: row.viaRendered === null ? null : row.viaRendered ? 1 : 0,
+  through: row.through,
+  sources: row.sources,
+  unseen: row.unseen,
+  intoHash: row.intoHash,
+  intoUrl: row.intoUrl,
+  intoPresent: row.intoPresent,
+})
+
+type ExplainedRow = {
+  side: string
+  urlHash: string
+  seq: number | null
+  reason: string
+  detail: string | null
+  via: number | null
+  viaKind: string | null
+  viaRendered: number | null
+  through: number | null
+  sources: number
+  unseen: number
+  intoHash: string | null
+  intoUrl: string | null
+  intoPresent: boolean | null
+}
+
+export const toExplainedUrl = (row: ExplainedRow): ExplainedUrl => ({
+  ...row,
+  side: row.side as ComparisonSide,
+  reason: row.reason as ExplainedUrl['reason'],
+  viaRendered: row.viaRendered === null ? null : row.viaRendered === 1,
+})
+
+/** A listed row's stored reason. `null`: no row, or one still `pending` (never shown as a reason). */
+export function toUrlExplanation(
+  row: Partial<ExplainedRow> | null | undefined,
+): UrlExplanation | null {
+  if (!row?.reason || !row.side || !isComparisonReason(row.reason)) return null
+  return {
+    side: row.side as ComparisonSide,
+    seq: row.seq ?? null,
+    reason: row.reason,
+    detail: row.detail ?? null,
+    via: row.via ?? null,
+    viaKind: row.viaKind ?? null,
+    viaRendered:
+      row.viaRendered === null || row.viaRendered === undefined ? null : row.viaRendered === 1,
+    through: row.through ?? null,
+    sources: row.sources ?? 0,
+    into:
+      row.intoUrl && row.intoHash
+        ? { url: row.intoUrl, urlHash: row.intoHash, present: row.intoPresent === true }
+        : null,
+  }
+}
+
+type StoredPageRow = {
+  urlHash: string
+  state: string | null
+  kind: string | null
+  statusCode: number | null
+  notRequested: string | null
+  servedTruncated: number | boolean
+}
+
+/** A page as one crawl stored it, from the columns `counterparts` selects. `null`: no row. */
+export function toStoredPage(row: StoredPageRow | null | undefined): StoredPage | null {
+  if (!row || row.state === null) return null
+  return {
+    urlHash: row.urlHash,
+    state: row.state as StoredPage['state'],
+    kind: (row.kind ?? 'unknown') as StoredPage['kind'],
+    statusCode: row.statusCode === null ? null : Number(row.statusCode),
+    notRequested:
+      row.notRequested === 'excluded' || row.notRequested === 'depth' ? row.notRequested : null,
+    servedTruncated: Boolean(Number(row.servedTruncated)),
+  }
+}
+
+export const toOneSidedUrl = (row: {
+  urlHash: string
+  url: string
+  seq: number | null
+  source: string
+  foundFrom: number | null
+  foundKind: string | null
+  viaHash: string | null
+  viaUrl: string | null
+  viaRendered: number | null
+  /** The joined discovering link's kind: `null` when that link row was not found. */
+  viaLinkKind: string | null
+}): OneSidedUrl => ({
+  urlHash: row.urlHash,
+  url: row.url,
+  seq: row.seq,
+  source: row.source,
+  foundFrom: row.foundFrom,
+  foundKind: row.foundKind,
+  // Only a discovering link that is stored: a missing row is never read as a served link.
+  foundVia:
+    row.viaHash !== null && row.viaUrl !== null && row.viaLinkKind !== null
+      ? { urlHash: row.viaHash, url: row.viaUrl, rendered: row.viaRendered === 1 }
+      : null,
+})

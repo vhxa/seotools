@@ -337,6 +337,24 @@ describe('the share preview of a recheck', () => {
 })
 
 describe('what a recheck leaves alone', () => {
+  it('checks a URL only the earlier crawl of a comparison has, based on that crawl ("Check now")', async () => {
+    const earlier = await fullCrawl(website())
+    const site = website()
+    delete site[absolute('/leaf')]
+    site[absolute('/')] = page('/', { links: '<a href="/good">A link to /good</a>' })
+    site[`${SITE}/sitemap.xml`] = xml(sitemapOf(['/', '/good']))
+    const latest = await fullCrawl(site)
+    expect(await db.crawls.getUrl(latest.id, hashOf('/leaf'))).toBeNull()
+    const verification = await recheck(['/leaf'], earlier.id)
+    const { result } = run(verification.id, site)
+    await result
+    const [checked] = await db.verifications.urlsOf(verification.id)
+    // It is no longer there: the recheck says what it answers now, nothing else changes.
+    expect(checked).toMatchObject({ state: 'done', statusCode: 404 })
+    expect((await db.verifications.get(verification.id))?.baseCrawlId).toBe(earlier.id)
+    expect(await db.crawls.getUrl(latest.id, hashOf('/leaf'))).toBeNull()
+  })
+
   it('does not change a crawl: its results, its analysis or its history', async () => {
     const site = website()
     const crawl = await fullCrawl(site)

@@ -25,6 +25,7 @@
     "./crawl/thresholds": "./src/crawl/thresholds.ts",
     "./crawl/paired": "./src/crawl/paired.ts",
     "./crawl/compare": "./src/crawl/compare.ts",
+    "./crawl/comparison-reasons": "./src/crawl/comparison-reasons.ts",
     "./crawl/verification": "./src/crawl/verification.ts",
     "./version": "./src/version.ts",
     "./vitals-state": "./src/vitals-state.ts",

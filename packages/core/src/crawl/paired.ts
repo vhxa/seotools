@@ -50,6 +50,15 @@ export function changedFields(a: Answer, b: Answer): ChangedField[] {
   return changes
 }
 
+/** A whole 2xx HTML answer (not 206): the only kind whose anchors can be compared. */
+const wholePage = (answer: Answer) =>
+  answer.status !== null &&
+  answer.status >= 200 &&
+  answer.status < 300 &&
+  answer.status !== 206 &&
+  answer.media === 'html' &&
+  answer.html !== null
+
 /** WP4 supplies the retained discovery join and its coverage/configuration decision. */
 export function discoveryLinkVaried(input: {
   comparableCompletedCrawls: boolean
@@ -77,8 +86,10 @@ export function discoveryLinkVaried(input: {
     !['anchor', 'anchor-nofollow'].includes(discovery.kind) ||
     discovery.targetHash !== targetHash ||
     discovery.sourceHash !== missing.pair.sourceHash ||
-    missing.pair.original.status === 206 ||
-    missing.pair.repeat?.status === 206 ||
+    // Both answers must be whole 2xx HTML: an error page's links say nothing about the page.
+    !wholePage(missing.pair.original) ||
+    !missing.pair.repeat ||
+    !wholePage(missing.pair.repeat) ||
     missing.pair.unknown ||
     !missing.pair.changed.includes('anchors')
   )
