@@ -248,9 +248,9 @@ describe('classifyDifference', () => {
       'narrowed',
       null,
     ])
-    expect(
-      decide({ 'not-seen': 1 }, { otherIncomplete: true, limitNarrowed: true })[0],
-    ).toBe('limit')
+    expect(decide({ 'not-seen': 1 }, { otherIncomplete: true, limitNarrowed: true })[0]).toBe(
+      'limit',
+    )
   })
 
   it('puts a witnessed variation below not reached and the limit', () => {
@@ -263,10 +263,7 @@ describe('classifyDifference', () => {
   it('names the exact discovering edge of a witnessed variation', () => {
     expect(
       classifyDifference(
-        input(
-          { whole: 1 },
-          { varied: { via: 5, kind: 'anchor-nofollow', rendered: false } },
-        ),
+        input({ whole: 1 }, { varied: { via: 5, kind: 'anchor-nofollow', rendered: false } }),
       ),
     ).toMatchObject({ reason: 'unstable', via: 5, viaKind: 'anchor-nofollow', viaRendered: false })
   })

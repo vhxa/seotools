@@ -10,6 +10,7 @@ import {
   identityChange,
   isComparisonReason,
   narrower,
+  observedWhole,
   type ClassTally,
   type ComparisonReason,
   type ComparisonSide,
@@ -357,12 +358,17 @@ export async function explainPair(options: ExplainOptions): Promise<ExplainOutco
           other,
           urls.flatMap((url) => (url.foundVia ? [url.foundVia.urlHash] : [])),
         )
-        const classes = await classesOf({
+        const discovering = new Map<number, { source: number; kind: string }>()
+        for (const url of urls)
+          if (url.seq !== null && url.foundFrom !== null && url.foundKind !== null)
+            discovering.set(url.seq, { source: url.foundFrom, kind: url.foundKind })
+        const { classes, edges } = await classesOf({
           work,
           pair,
           side,
           crawls: { own, other },
           seqs,
+          discovering,
           merged,
           conditions,
           captureTrust,
@@ -370,7 +376,16 @@ export async function explainPair(options: ExplainOptions): Promise<ExplainOutco
         })
         const rows = urls.map((url): ExplainedUrl => {
           const byClass = (url.seq !== null && classes.get(url.seq)) || {}
-          const varied = variedSource(url, own, other, otherPairs, witnessComparable, variation)
+          const edge = url.seq === null ? undefined : edges.get(url.seq)
+          const varied = variedSource(
+            url,
+            edge,
+            own,
+            other,
+            otherPairs,
+            witnessComparable,
+            variation,
+          )
           const explanation = classifyDifference({
             side,
             source: url.source,
@@ -478,51 +493,70 @@ const toObservation = (
  * pages whose links were found after rendering, `RENDER_BATCH` rows at a time, each group parsed into
  * its evidence and dropped.
  */
+/** The discovering edge of a URL, as classified: what WP3's witness may be applied to. */
+interface DiscoveringEdge {
+  via: number
+  kind: string
+  rendered: boolean
+  /** Its source answered a whole 2xx HTML page in the own crawl (`observedWhole`). */
+  whole: boolean
+}
+
 async function classesOf(input: {
   work: Database['crawls']['comparisonWork']
   pair: { baseId: string; targetId: string }
   side: ComparisonSide
   crawls: { own: Crawl; other: Crawl }
   seqs: number[]
+  /** The link each URL of the batch was found through, by its `seq`. */
+  discovering: Map<number, { source: number; kind: string }>
   merged: boolean
   conditions: PairConditions
   captureTrust: CaptureTrust
   cache: Caches
-}): Promise<Map<number, Partial<Record<LinkClass, ClassTally>>>> {
-  const { work, pair, side, seqs, merged, conditions, captureTrust, cache } = input
+}): Promise<{
+  classes: Map<number, Partial<Record<LinkClass, ClassTally>>>
+  edges: Map<number, DiscoveringEdge>
+}> {
+  const { work, pair, side, seqs, discovering, merged, conditions, captureTrust, cache } = input
   const classes = new Map<number, Partial<Record<LinkClass, ClassTally>>>()
+  const edges = new Map<number, DiscoveringEdge>()
   let after: { target: number; source: number; kind: string } | null = null
   for (;;) {
     const links: InLink[] = await work.inLinks({ ...pair, side, seqs, after, limit: LINK_PAGE })
     if (links.length === 0) break
     const last = links.at(-1)!
     after = { target: last.target, source: last.source, kind: last.kind }
-    const unknown = [...new Set(links.map((link) => link.source))].filter(
-      (seq) => !cache.pages.has(seq),
-    )
-    // Bounded: past the cap it starts again, which costs lookups, never memory.
-    if (cache.pages.size + unknown.length > COUNTERPART_CACHE) cache.pages.clear()
-    for (const found of await work.counterparts({ ...pair, side, sources: unknown, merged }))
-      cache.pages.set(found.source, found)
-    await readRenders(links, input)
+    // Everything this page of links needs, hits included: a cache that rolls over in between
+    // must never lose a page or a render that is about to be read.
+    const pages = await pagesOf(links)
+    const renders = await rendersOf(links, pages, input)
     for (const link of links) {
-      const page = cache.pages.get(link.source)
-      if (!page) continue
+      const page = pages.get(link.source)!
+      const own = toObservation(page.own, renders.own.get(page.own.urlHash))
       const name = classifyLink({
         rendered: link.rendered,
         kind: link.kind,
-        own: toObservation(page.own, cache.renders.own.get(page.own.urlHash)),
-        other: page.other && toObservation(page.other, cache.renders.other.get(page.other.urlHash)),
+        own,
+        other: page.other && toObservation(page.other, renders.other.get(page.other.urlHash)),
         identityChanged: page.identityChanged,
         conditions,
       })
+      const found = discovering.get(link.target)
+      if (found && found.source === link.source && found.kind === link.kind)
+        edges.set(link.target, {
+          via: link.source,
+          kind: link.kind,
+          rendered: link.rendered,
+          whole: observedWhole(own),
+        })
       const byClass = classes.get(link.target) ?? {}
-      const found = byClass[name]
+      const tally = byClass[name]
       byClass[name] =
-        found && found.via <= link.source
-          ? { ...found, count: found.count + 1 }
+        tally && tally.via <= link.source
+          ? { ...tally, count: tally.count + 1 }
           : {
-              count: (found?.count ?? 0) + 1,
+              count: (tally?.count ?? 0) + 1,
               via: link.source,
               kind: link.kind,
               rendered: link.rendered,
@@ -531,25 +565,57 @@ async function classesOf(input: {
     }
     if (links.length < LINK_PAGE) break
   }
-  return classes
+  return { classes, edges }
+
+  /**
+   * Each linking page of these links in both crawls: from the cache, the rest read once. A source
+   * the store does not return is read as not observed, never skipped.
+   */
+  async function pagesOf(links: InLink[]) {
+    const current = new Map<number, SourceCounterpart>()
+    const missing: number[] = []
+    for (const seq of new Set(links.map((link) => link.source))) {
+      const hit = cache.pages.get(seq)
+      if (hit) current.set(seq, hit)
+      else missing.push(seq)
+    }
+    for (const found of await work.counterparts({ ...pair, side, sources: missing, merged }))
+      current.set(found.source, found)
+    for (const seq of missing) if (!current.has(seq)) current.set(seq, unobservedSource(seq))
+    // Bounded: past the cap it starts again with what this page needs, which costs lookups.
+    if (cache.pages.size + missing.length > COUNTERPART_CACHE) cache.pages.clear()
+    for (const [seq, page] of current) cache.pages.set(seq, page)
+    return current
+  }
 
   /** The renders these rendered links need, on both sides, read and parsed a group at a time. */
-  async function readRenders(links: InLink[], { crawls: pairCrawls }: typeof input) {
-    if (!conditions.otherRendered) return
+  async function rendersOf(
+    links: InLink[],
+    pages: Map<number, SourceCounterpart>,
+    { crawls: pairCrawls }: typeof input,
+  ) {
+    const current = {
+      own: new Map<string, RenderEvidence | null>(),
+      other: new Map<string, RenderEvidence | null>(),
+    }
+    if (!conditions.otherRendered) return current
     const wanted = { own: new Map<string, boolean>(), other: new Map<string, boolean>() }
     for (const link of links) {
       if (!link.rendered) continue
-      const page = cache.pages.get(link.source)
-      if (!page) continue
-      if (!cache.renders.own.has(page.own.urlHash))
-        wanted.own.set(page.own.urlHash, page.own.servedTruncated)
-      if (page.other && !cache.renders.other.has(page.other.urlHash))
-        wanted.other.set(page.other.urlHash, page.other.servedTruncated)
+      const page = pages.get(link.source)!
+      for (const [which, stored] of [
+        ['own', page.own],
+        ['other', page.other],
+      ] as const) {
+        if (!stored || current[which].has(stored.urlHash) || wanted[which].has(stored.urlHash))
+          continue
+        const hit = cache.renders[which].get(stored.urlHash)
+        if (hit !== undefined) current[which].set(stored.urlHash, hit)
+        else wanted[which].set(stored.urlHash, stored.servedTruncated)
+      }
     }
     for (const which of ['own', 'other'] as const) {
-      const store = cache.renders[which]
       const hashes = [...wanted[which].keys()]
-      if (store.size + hashes.length > COUNTERPART_CACHE) store.clear()
       for (let i = 0; i < hashes.length; i += RENDER_BATCH) {
         const group = hashes.slice(i, i + RENDER_BATCH)
         const rows = await work.renders({
@@ -558,31 +624,54 @@ async function classesOf(input: {
           urlHashes: group,
         })
         for (const row of rows)
-          store.set(
+          current[which].set(
             row.urlHash,
             renderEvidence(row, wanted[which].get(row.urlHash) ?? false, captureTrust),
           )
-        for (const urlHash of group) if (!store.has(urlHash)) store.set(urlHash, null)
+        for (const urlHash of group)
+          if (!current[which].has(urlHash)) current[which].set(urlHash, null)
       }
+      const store = cache.renders[which]
+      if (store.size + hashes.length > COUNTERPART_CACHE) store.clear()
+      for (const [urlHash, evidence] of current[which]) store.set(urlHash, evidence)
     }
+    return current
   }
 }
 
+/** A linking page the store did not return: never observed, so it proves nothing. */
+const unobservedSource = (seq: number): SourceCounterpart => ({
+  source: seq,
+  own: {
+    urlHash: '',
+    state: 'queued',
+    kind: 'unknown',
+    statusCode: null,
+    notRequested: null,
+    servedTruncated: false,
+  },
+  other: null,
+  identityChanged: false,
+})
+
 /**
- * WP3: the `seq` of the page whose link to U is witnessed as varying in the crawl that lacks U, which
- * only WP3's direction-matched witness may say (an actual served anchor, its original answer lacking
- * U and its repeat having it, both whole 2xx). `null`: no witness.
+ * WP3: the discovering edge of U when the crawl that lacks U witnessed its link varying, which only
+ * WP3's direction-matched witness may say (an actual served anchor, its original answer lacking U and
+ * its repeat having it, both whole 2xx). The edge must be the stored link U was found through, read
+ * from a whole 2xx HTML page of the own crawl (`edge.whole`). `null`: no witness.
  */
 function variedSource(
   url: OneSidedUrl,
+  edge: DiscoveringEdge | undefined,
   own: Crawl,
   other: Crawl,
   otherPairs: unknown[],
   comparable: boolean,
   variation: SiteVariation,
-): number | null {
-  // The discovering link must have been stored: an unknown edge is never taken for a served one.
-  if (url.foundFrom === null || url.foundKind === null || url.foundVia === null) return null
+): { via: number; kind: string; rendered: boolean } | null {
+  // The discovering link must have been stored and read from a whole page: an unknown edge, or one
+  // read from an error page, is never taken for a served one.
+  if (!edge?.whole || url.foundVia === null) return null
   if (otherPairs.length === 0) return null
   const varied = variation.varied({
     comparable,
@@ -591,13 +680,13 @@ function variedSource(
     discovery: {
       sourceHash: url.foundVia.urlHash,
       targetHash: url.urlHash,
-      kind: url.foundKind,
-      rendered: url.foundVia.rendered,
+      kind: edge.kind,
+      rendered: edge.rendered,
     },
     pairs: otherPairs,
     targetHash: url.urlHash,
   })
-  return varied ? url.foundFrom : null
+  return varied ? { via: edge.via, kind: edge.kind, rendered: edge.rendered } : null
 }
 
 /**

@@ -687,6 +687,9 @@ export function createSqliteDatabase(options: {
     if (!claim) throw new ComparisonSupersededError()
   }
 
+  /** A claim's values without its job: an attempt with none keeps the pair's queued job. */
+  const withoutJob = <T extends { jobId: unknown }>({ jobId: _jobId, ...rest }: T) => rest
+
   /** What `counterparts` reads of a page in either crawl. */
   const pageColumns = (table: typeof sourceUrls | typeof counterpartUrls) => ({
     urlHash: table.urlHash,
@@ -2406,13 +2409,14 @@ export function createSqliteDatabase(options: {
             if (ref != null) {
               tx.delete(crawlUrlLinks).where(eq(crawlUrlLinks.crawlRef, ref)).run()
               // Why URLs differ is read with the links: it goes with the results it explains.
+              // The header first, then its rows, as on PostgreSQL.
+              tx.delete(crawlComparisons)
+                .where(or(eq(crawlComparisons.baseRef, ref), eq(crawlComparisons.targetRef, ref)))
+                .run()
               tx.delete(crawlComparisonUrls)
                 .where(
                   or(eq(crawlComparisonUrls.baseRef, ref), eq(crawlComparisonUrls.targetRef, ref)),
                 )
-                .run()
-              tx.delete(crawlComparisons)
-                .where(or(eq(crawlComparisons.baseRef, ref), eq(crawlComparisons.targetRef, ref)))
                 .run()
             }
             tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId)).run()
@@ -3807,6 +3811,20 @@ export function createSqliteDatabase(options: {
                     )
                     .returning({ ref: crawlComparisons.baseRef })
                     .all()
+            if (renewed.length === 0) {
+              // Failed inside a crawl while the pair's own job still waits: queued for that job.
+              tx.update(crawlComparisons)
+                .set({ state: 'queued', retryAt: null })
+                .where(
+                  and(
+                    ofPair(pair, crawlComparisons),
+                    eq(crawlComparisons.state, 'failed'),
+                    isNotNull(crawlComparisons.jobId),
+                    activeJob,
+                  ),
+                )
+                .run()
+            }
             if (renewed.length > 0) {
               tx.insert(jobs)
                 .values({
@@ -3895,7 +3913,8 @@ export function createSqliteDatabase(options: {
                 .values({ ...pair, ...values, failures: 0, retryAt: null })
                 .onConflictDoUpdate({
                   target: [crawlComparisons.baseRef, crawlComparisons.targetRef],
-                  set: values,
+                  // An attempt with no job of its own (inside a crawl) keeps the pair's queued job.
+                  set: jobId === null ? withoutJob(values) : values,
                 })
                 .run()
               tx.delete(crawlComparisonUrls).where(ofPair(pair)).run()

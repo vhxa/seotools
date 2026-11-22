@@ -655,6 +655,9 @@ export function createPgDatabase(options: {
     if (!claim) throw new ComparisonSupersededError()
   }
 
+  /** A claim's values without its job: an attempt with none keeps the pair's queued job. */
+  const withoutJob = <T extends { jobId: unknown }>({ jobId: _jobId, ...rest }: T) => rest
+
   /** What `counterparts` reads of a page in either crawl. */
   const pageColumns = (table: typeof sourceUrls | typeof counterpartUrls) => ({
     urlHash: table.urlHash,
@@ -2320,23 +2323,30 @@ export function createPgDatabase(options: {
           // What each URL of a usable full crawl was stays, compact, for the history of a URL.
           const keepHistory = type === 'full' && usableIds.has(crawlId)
           await db.transaction(async (tx) => {
-            if (keepHistory) await writeHistory(tx, crawlId)
+            // The crawl first: a claim of a pair holds it in share mode (`begin`,
+            // `requestComparison`), so this waits for one in progress, and none can start until the
+            // crawl is marked pruned. `no key update`: the foreign-key checks of a run's writes
+            // (key share) are not blocked, so a run that is saving finishes instead of deadlocking.
             const [crawl] = await tx
-              .select({ ref: crawls.ref })
+              .select({ ref: crawls.ref, pruned: crawls.pruned })
               .from(crawls)
               .where(eq(crawls.id, crawlId))
-            if (crawl?.ref != null) {
+              .for('no key update')
+            if (!crawl || crawl.pruned) return
+            if (keepHistory) await writeHistory(tx, crawlId)
+            if (crawl.ref != null) {
               const ref = crawl.ref
-              await tx.delete(crawlUrlLinks).where(eq(crawlUrlLinks.crawlRef, ref))
-              // Why URLs differ is read with the links: it goes with the results it explains.
+              // Why URLs differ goes with the results it explains: the header first (a run that is
+              // saving holds it), then its rows, so no row outlives it.
+              await tx
+                .delete(crawlComparisons)
+                .where(or(eq(crawlComparisons.baseRef, ref), eq(crawlComparisons.targetRef, ref)))
               await tx
                 .delete(crawlComparisonUrls)
                 .where(
                   or(eq(crawlComparisonUrls.baseRef, ref), eq(crawlComparisonUrls.targetRef, ref)),
                 )
-              await tx
-                .delete(crawlComparisons)
-                .where(or(eq(crawlComparisons.baseRef, ref), eq(crawlComparisons.targetRef, ref)))
+              await tx.delete(crawlUrlLinks).where(eq(crawlUrlLinks.crawlRef, ref))
             }
             await tx.delete(crawlUrlIssues).where(eq(crawlUrlIssues.crawlId, crawlId))
             await tx
@@ -3661,11 +3671,14 @@ export function createPgDatabase(options: {
           and(isNotNull(crawlComparisons.jobId), not(activeJob)),
         )
         await db.transaction(async (tx) => {
-          // Retention is checked in the same transaction: a pruned crawl never gets a header again.
+          // Retention is checked under a lock on both crawls, which pruning takes too: a pruned
+          // crawl never gets a header again.
           const kept = await tx
             .select({ id: crawls.id })
             .from(crawls)
             .where(and(inArray(crawls.id, [baseId, targetId]), eq(crawls.pruned, false)))
+            .orderBy(asc(crawls.id))
+            .for('share')
           if (kept.length < 2) return
           const created = await tx
             .insert(crawlComparisons)
@@ -3694,6 +3707,20 @@ export function createPgDatabase(options: {
                     ),
                   )
                   .returning({ ref: crawlComparisons.baseRef })
+          if (renewed.length === 0) {
+            // Failed inside a crawl while the pair's own job still waits: queued for that job.
+            await tx
+              .update(crawlComparisons)
+              .set({ state: 'queued', retryAt: null })
+              .where(
+                and(
+                  ofPair(pair, crawlComparisons),
+                  eq(crawlComparisons.state, 'failed'),
+                  isNotNull(crawlComparisons.jobId),
+                  activeJob,
+                ),
+              )
+          }
           if (renewed.length > 0) {
             await tx.insert(jobs).values({
               id: jobId,
@@ -3743,7 +3770,8 @@ export function createPgDatabase(options: {
       comparisonWork: {
         async begin({ baseId, targetId, runner, version, jobId = null, now = new Date() }) {
           return await db.transaction(async (tx) => {
-            // Claimed only while both crawls are still retained full results of the pair.
+            // Claimed only while both crawls are still retained full results of the pair, checked
+            // under a lock on both crawls that pruning takes too.
             const rows = await tx
               .select({
                 id: crawls.id,
@@ -3753,6 +3781,8 @@ export function createPgDatabase(options: {
               })
               .from(crawls)
               .where(inArray(crawls.id, [baseId, targetId]))
+              .orderBy(asc(crawls.id))
+              .for('share')
             const base = rows.find((row) => row.id === baseId)
             const target = rows.find((row) => row.id === targetId)
             const usable = (row: typeof base) =>
@@ -3775,7 +3805,8 @@ export function createPgDatabase(options: {
               .values({ ...pair, ...values, failures: 0, retryAt: null })
               .onConflictDoUpdate({
                 target: [crawlComparisons.baseRef, crawlComparisons.targetRef],
-                set: values,
+                // An attempt with no job of its own (inside a crawl) keeps the pair's queued job.
+                set: jobId === null ? withoutJob(values) : values,
               })
             await tx.delete(crawlComparisonUrls).where(ofPair(pair))
             return true

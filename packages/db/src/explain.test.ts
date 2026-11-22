@@ -70,7 +70,13 @@ function rollover(options: { rendered: boolean; failingSource: boolean }) {
   const pages = COUNTERPART_CACHE / LINK_PAGE
   let read = 0
   const saved = new Map<number, ExplainedUrl>()
-  const page = { state: 'done', kind: 'page', statusCode: 200, notRequested: null, servedTruncated: false }
+  const page = {
+    state: 'done',
+    kind: 'page',
+    statusCode: 200,
+    notRequested: null,
+    servedTruncated: false,
+  }
   const crawl = {
     domainId: 'd',
     ref: 1,
@@ -149,7 +155,12 @@ describe('the caches of linking pages and renders', () => {
   it('keeps every linking page the current page of links needs when it rolls over', async () => {
     const { db, saved } = rollover({ rendered: false, failingSource: true })
     await explainPair({ db, baseId: 'b', targetId: 't', runner: 'rollover' })
-    expect(saved.get(2)).toMatchObject({ reason: 'notReached', detail: 'failed', via: 3, sources: 2 })
+    expect(saved.get(2)).toMatchObject({
+      reason: 'notReached',
+      detail: 'failed',
+      via: 3,
+      sources: 2,
+    })
   }, 60_000)
 
   it('keeps every render the current page of links needs when it rolls over', async () => {

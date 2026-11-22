@@ -27,7 +27,7 @@ import type { CrawlLinkKind, CrawlUrlSource } from './types'
  * Bumped whenever the rules here change what a URL is given, so that stored explanations made
  * with older rules are worked out again instead of being shown.
  */
-export const EXPLANATION_VERSION = 2
+export const EXPLANATION_VERSION = 3
 
 /**
  * - `merged`: the later crawl ignores a parameter, so two addresses of the earlier crawl are one
@@ -128,8 +128,8 @@ export const SIDE_REASONS = {
  *    - `not-requested`: it found the source and stopped before requesting it.
  *    - `failed`: no answer, 401, 403, 408, 429 or 5xx.
  *    - `error-answer`: another 4xx: an error page is not the page.
- *    - `redirected`: it now redirects (and the link was not a redirect).
- *    - `other-answer`: the link was a redirect and the source now answers a page.
+ *    - `redirected`: it now redirects.
+ *    - `other-answer`: it answers 2xx with something that is not an HTML page.
  *    - `served-truncated`: its served response was cut at the size limit.
  * 4. A link found only after rendering.
  *    - `mode`: the other crawl did not render (a setting; only after the failures above).
@@ -246,16 +246,22 @@ const NOT_AN_ANSWER = new Set([401, 403, 408, 429])
 const isRedirect = (status: number) => status >= 300 && status < 400
 const isSuccess = (status: number) => status >= 200 && status < 300 && status !== 206
 
-/** The source answered the way a link of this kind is observed, whole. */
-function answeredWhole(page: PageObservation, redirectLink: boolean): boolean {
-  if (page.state !== 'done' || page.statusCode === null) return false
-  if (redirectLink) return isRedirect(page.statusCode)
-  return isSuccess(page.statusCode) && !page.servedTruncated
+/**
+ * The only observation of a page's links: a whole 2xx HTML page (not 206, not cut). A redirect, an
+ * error page or a file is never one, whatever links were read from it.
+ */
+export function observedWhole(page: PageObservation): boolean {
+  return (
+    page.state === 'done' &&
+    page.kind === 'page' &&
+    page.statusCode !== null &&
+    isSuccess(page.statusCode) &&
+    !page.servedTruncated
+  )
 }
 
 export function classifyLink(link: LinkObservation): LinkClass {
-  const redirectLink = link.kind === 'redirect'
-  if (!answeredWhole(link.own, redirectLink)) return 'source-unobserved'
+  if (!observedWhole(link.own)) return 'source-unobserved'
   if (link.identityChanged) return 'identity'
   const other = link.other
   if (!other) return 'not-seen'
@@ -266,13 +272,10 @@ export function classifyLink(link: LinkObservation): LinkClass {
   const status = other.statusCode
   if (status === null || status >= 500 || NOT_AN_ANSWER.has(status)) return 'failed'
   if (status >= 400) return 'error-answer'
-  if (redirectLink) {
-    if (!isRedirect(status)) return 'other-answer'
-  } else {
-    if (isRedirect(status)) return 'redirected'
-    if (!isSuccess(status)) return 'error-answer'
-    if (other.servedTruncated) return 'served-truncated'
-  }
+  if (isRedirect(status)) return 'redirected'
+  if (!isSuccess(status)) return 'error-answer'
+  if (other.kind !== 'page') return 'other-answer'
+  if (other.servedTruncated) return 'served-truncated'
   if (link.rendered) {
     if (!link.conditions.otherRendered) return 'mode'
     if (!link.conditions.rendersComparable) return 'render-settings'
@@ -355,10 +358,11 @@ export interface DifferenceInput {
   /** Whether the other crawl's maximum depth is narrower, said for a `depth` reason. */
   depthNarrowed: boolean | null
   /**
-   * WP3: `seq` of the source whose link to U varied between two requests of it in the other crawl
-   * (`discoveryLinkVaried`). `null`: no such witness.
+   * WP3: the discovering edge of U (its source `seq`, kind and whether it was found after rendering),
+   * read from a whole page of the own crawl, whose link to U varied between two requests of that
+   * source in the other crawl (`discoveryLinkVaried`). `null`: no such witness.
    */
-  varied: number | null
+  varied: { via: number; kind: string; rendered: boolean } | null
   /** The own crawl numbers its URLs and links (made after migration 0019). */
   numbered: boolean
 }
@@ -369,7 +373,7 @@ export interface DifferenceInput {
  *   for `notReached`, the class of `via` (or `not-seen` for a chain); for `depth`, whether the
  *   setting was recorded (`unrecorded`/`unchanged`); for `unknown`, why (`legacy`, `no-links`,
  *   an unknown link class, `partial-configuration`, `cycle`, `cap`); for `limit`, `unrecorded`
- *   when whether the limit changed was not recorded.
+ *   when whether the limit changed was not recorded and `narrowed` when the other limit was lower.
  * - `viaKind`, `viaRendered`: the link from `via` the reason is about, exactly.
  */
 export interface Explanation {
@@ -404,7 +408,8 @@ const lowest = (tallies: (ClassTally | undefined)[]) => {
 /**
  * The reason of a URL that is not merged or split. The weaker reason always wins:
  * 1. a link the other crawl did not read whole: `notReached` (before any setting);
- * 2. the other crawl stopped at its URL limit: `limit`, or `settings` when its limit is narrower;
+ * 2. the other crawl stopped at its URL limit: `limit`, in the counts even when its limit was lower
+ *    (nothing stored shows the limit is why: past it, neither the URL nor the link is recorded);
  * 3. WP3's witness: `unstable`;
  * 4. a link neither observation can decide: `unknown`;
  * 5. beyond the other crawl's depth, which is not narrower: `depth`;
@@ -442,12 +447,11 @@ export function classifyDifference(input: DifferenceInput): Explanation {
   }
   // A whole page may have linked it: past the limit nothing is recorded, link or URL.
   if (input.otherIncomplete) {
-    if (input.limitNarrowed === true) return result('settings', 'limit')
-    return result('limit', input.limitNarrowed === null ? 'unrecorded' : null)
+    const narrowed = input.limitNarrowed
+    return result('limit', narrowed === null ? 'unrecorded' : narrowed ? 'narrowed' : null)
   }
   if (input.varied !== null) {
-    const tally = entries.find(([, found]) => found.via === input.varied)?.[1] ?? null
-    return { ...result('unstable', null, tally), via: input.varied }
+    return result('unstable', null, { count: 1, ...input.varied })
   }
   for (const name of UNKNOWN_ORDER) {
     if (has(name)) return result('unknown', name, input.classes[name]!)

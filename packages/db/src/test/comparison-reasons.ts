@@ -1341,10 +1341,7 @@ export function describeComparisonReasons(
         throw new Error('timed out')
       }
       /** The statement of `session` waits for the advisory lock `key`. */
-      const waitsForAdvisory = (
-        watcher: Awaited<ReturnType<RawSessions['open']>>,
-        key: number,
-      ) =>
+      const waitsForAdvisory = (watcher: Awaited<ReturnType<RawSessions['open']>>, key: number) =>
         waitFor(async () => {
           const [row] = await watcher.query(
             `select exists (select 1 from pg_locks where locktype = 'advisory' and objid = ${key} and not granted) as waiting`,
