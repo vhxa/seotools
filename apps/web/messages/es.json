@@ -3009,12 +3009,13 @@
         "mode": "el enlace solo estaba en la página renderizada",
         "other": "no se leyó entera",
         "error-answer": "respondió con una página de error",
-        "other-answer": "ahora responde una página en lugar de la redirección"
+        "other-answer": "ahora responde un archivo que no es una página HTML"
       },
       "limit": {
         "base": "El rastreo posterior se detuvo en su límite de URLs, así que no guardó las que encontró después.",
         "target": "El rastreo anterior se detuvo en su límite de URLs, así que no guardó las que encontró después.",
-        "unrecorded": "No consta si el límite cambió."
+        "unrecorded": "No consta si el límite cambió.",
+        "narrowed": "Su límite era más bajo que el del otro rastreo, pero nada de lo guardado demuestra que sea el motivo, así que se sigue contando."
       },
       "depth": {
         "base": "<link>{via}</link>, que la enlazaba, estaba más allá de la profundidad máxima del rastreo posterior, así que no se siguieron sus enlaces.",

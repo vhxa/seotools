@@ -3009,12 +3009,13 @@
         "mode": "the link was only in the rendered page",
         "other": "it was not read whole",
         "error-answer": "it answered with an error page",
-        "other-answer": "it now answers a page instead of the redirect"
+        "other-answer": "it now answers a file that is not an HTML page"
       },
       "limit": {
         "base": "The later crawl stopped at its URL limit, so URLs it found afterwards were not recorded.",
         "target": "The earlier crawl stopped at its URL limit, so URLs it found afterwards were not recorded.",
-        "unrecorded": "Whether the limit changed was not recorded."
+        "unrecorded": "Whether the limit changed was not recorded.",
+        "narrowed": "Its limit was lower than the other crawl's, but nothing stored shows that is why, so it stays counted."
       },
       "depth": {
         "base": "<link>{via}</link>, which linked it, was beyond the later crawl's maximum depth, so its links were not followed.",

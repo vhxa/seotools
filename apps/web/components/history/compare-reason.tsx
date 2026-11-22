@@ -126,6 +126,8 @@ export function CompareReason({
   const notes: string[] = []
   if (explanation.reason === 'limit' && explanation.detail === 'unrecorded')
     notes.push(t('limit.unrecorded'))
+  if (explanation.reason === 'limit' && explanation.detail === 'narrowed')
+    notes.push(t('limit.narrowed'))
   if (explanation.reason === 'depth')
     notes.push(t(explanation.detail === 'unchanged' ? 'depth.unchanged' : 'depth.unrecorded'))
   if (
@@ -142,6 +144,7 @@ export function CompareReason({
       explanation.reason === 'linked' ||
       explanation.reason === 'notReached' ||
       explanation.reason === 'unknown' ||
+      explanation.reason === 'unstable' ||
       explanation.reason === 'mode')
       ? why.link
       : null
