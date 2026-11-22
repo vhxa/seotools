@@ -413,6 +413,7 @@ export default async function PagesDetailsPage({
                   counts={issueCounts}
                   hasAccepted={hasAccepted}
                   checked={browsable.pagesByWorstIssue !== null}
+                  rendered={isRenderedCrawl(browsable)}
                   analysis={
                     <CrawlSwitcher
                       crawls={history}

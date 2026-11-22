@@ -12,9 +12,12 @@ import { coverageGapOf, isRenderedCrawl, renderCoverageOf } from '@/lib/renderin
 export function RenderStamp({
   crawl,
   detailed = true,
+  showMode = true,
 }: {
-  crawl: Pick<Crawl, 'rendering' | 'renderObservation' | 'auditVersion' | 'type'>
+  crawl: Pick<Crawl, 'rendering' | 'renderObservation' | 'auditVersion' | 'type' | 'status'>
   detailed?: boolean
+  /** Show the HTML / Rendered badge: a list that has its own column for it leaves it out. */
+  showMode?: boolean
 }) {
   const t = useTranslations('RenderingSummary.stamp')
   const rendered = isRenderedCrawl(crawl)
@@ -22,17 +25,22 @@ export function RenderStamp({
   return (
     <span className="grid gap-0.5">
       <span className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline" title={t(`hints.${rendered ? 'rendered' : 'html'}`)}>
-          {t(rendered ? 'rendered' : 'html')}
-        </Badge>
+        {showMode && (
+          <Badge variant="outline" title={t(`hints.${rendered ? 'rendered' : 'html'}`)}>
+            {t(rendered ? 'rendered' : 'html')}
+          </Badge>
+        )}
         {rendered && detailed && (
           <span className="text-xs text-muted-foreground">
             {coverage === null
-              ? t(
-                  coverageGapOf(crawl) === 'not-analysed'
-                    ? 'coverageUnknown'
-                    : 'coverageNotRecorded',
-                )
+              ? crawl.status === 'cancelled'
+                ? // A cancelled crawl is never analysed: that is not "not analysed yet".
+                  t('cancelledNotAnalysed')
+                : t(
+                    coverageGapOf(crawl) === 'not-analysed'
+                      ? 'coverageUnknown'
+                      : 'coverageNotRecorded',
+                  )
               : coverage.unobserved === 0
                 ? t('allObserved')
                 : t('someUnobserved', { count: coverage.unobserved })}
