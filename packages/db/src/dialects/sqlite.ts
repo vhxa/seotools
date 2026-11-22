@@ -2410,9 +2410,17 @@ export function createSqliteDatabase(options: {
               tx.delete(crawlUrlLinks).where(eq(crawlUrlLinks.crawlRef, ref)).run()
               // Why URLs differ is read with the links: it goes with the results it explains.
               // The header first, then its rows, as on PostgreSQL.
-              tx.delete(crawlComparisons)
+              const headers = tx
+                .delete(crawlComparisons)
                 .where(or(eq(crawlComparisons.baseRef, ref), eq(crawlComparisons.targetRef, ref)))
-                .run()
+                .returning({ jobId: crawlComparisons.jobId })
+                .all()
+              // Their jobs that have not started have nothing left to explain.
+              const queued = headers.flatMap((header) => (header.jobId ? [header.jobId] : []))
+              if (queued.length > 0)
+                tx.delete(jobs)
+                  .where(and(inArray(jobs.id, queued), eq(jobs.status, 'pending')))
+                  .run()
               tx.delete(crawlComparisonUrls)
                 .where(
                   or(eq(crawlComparisonUrls.baseRef, ref), eq(crawlComparisonUrls.targetRef, ref)),

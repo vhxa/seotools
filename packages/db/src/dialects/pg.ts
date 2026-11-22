@@ -2338,9 +2338,16 @@ export function createPgDatabase(options: {
               const ref = crawl.ref
               // Why URLs differ goes with the results it explains: the header first (a run that is
               // saving holds it), then its rows, so no row outlives it.
-              await tx
+              const headers = await tx
                 .delete(crawlComparisons)
                 .where(or(eq(crawlComparisons.baseRef, ref), eq(crawlComparisons.targetRef, ref)))
+                .returning({ jobId: crawlComparisons.jobId })
+              // Their jobs that have not started have nothing left to explain.
+              const queued = headers.flatMap((header) => (header.jobId ? [header.jobId] : []))
+              if (queued.length > 0)
+                await tx
+                  .delete(jobs)
+                  .where(and(inArray(jobs.id, queued), eq(jobs.status, 'pending')))
               await tx
                 .delete(crawlComparisonUrls)
                 .where(

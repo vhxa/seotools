@@ -1411,6 +1411,14 @@ export function describeComparisonReasons(
               ).rejects.toThrow(ComparisonSupersededError)
             }
             expect(await db.crawls.requestComparison(ids)).toBeNull()
+            // Nor a job left waiting for a pair that no longer exists.
+            const waiting = (await db.jobs.list()).filter(
+              (job) =>
+                job.type === JOB_TYPES.compareExplain &&
+                job.status === 'pending' &&
+                (job.payload as { baseId: string }).baseId === base.id,
+            )
+            expect(waiting).toEqual([])
           } finally {
             await holder.query(`select pg_advisory_unlock_all()`)
             await holder.query(`drop trigger if exists wp4_pause_header on crawl_comparisons`)
@@ -1510,9 +1518,11 @@ export function describeComparisonReasons(
       const ids = { domainId, baseId: base.id, targetId: target.id }
       await explainPair({ db, ...ids, runner: 'test' })
       expect(await db.crawls.comparisonHeader(ids)).not.toBeNull()
+      const queued = await db.crawls.requestComparison(ids)
       await db.crawls.prune({ domainId, type: 'full', keep: 1 })
       expect(await db.crawls.comparisonHeader(ids)).toBeNull()
       expect(await db.crawls.comparisonWork.pending({ ...ids, after: null, limit: 10 })).toEqual([])
+      expect(await db.jobs.get(queued!.jobId!)).toBeNull()
     })
   })
 }
