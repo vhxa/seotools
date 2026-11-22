@@ -38,6 +38,7 @@ export const CLIENT_NAMESPACES: readonly string[] = [
   'Login',
   'NewDomain',
   'PageIssues',
+  'PairedAnswers',
   'Pages',
   'PagesDetails',
   'Pagination',

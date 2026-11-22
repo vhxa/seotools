@@ -6,6 +6,7 @@ import {
 } from '@seotools/core/crawl/links'
 import { findCrawl, type CrawlSource } from './crawl-history'
 import { isCrawlId, isUrlHash } from './pages-query'
+import { loadRedirectLinks, type RedirectLinksPage } from './redirect-links'
 import { loadUrlLinks, type LinkSource, type UrlLinksPage } from './url-links'
 
 /** What a client asks the server for. */
@@ -69,6 +70,34 @@ export async function answerLinksRequest(
       direction: request.direction,
       filter: request.filter,
       page: request.page,
+    }),
+  }
+}
+
+/** What a client asks for: a page of the URLs that redirect to one, with the links to them. */
+export type RedirectLinksResult =
+  { kind: 'ok'; links: RedirectLinksPage } | { kind: 'unavailable' } | { kind: 'pruned' }
+
+/** Like `answerLinksRequest`, for the links that reach a URL through redirects. */
+export async function answerRedirectLinksRequest(
+  crawls: CrawlSource & LinkSource,
+  domainId: string,
+  input: unknown,
+): Promise<RedirectLinksResult> {
+  if (typeof input !== 'object' || input === null) return { kind: 'unavailable' }
+  const raw = input as Record<string, unknown>
+  if (typeof raw.crawlId !== 'string' || !isCrawlId(raw.crawlId)) return { kind: 'unavailable' }
+  if (typeof raw.urlHash !== 'string' || !isUrlHash(raw.urlHash)) return { kind: 'unavailable' }
+  const page = typeof raw.page === 'number' && Number.isFinite(raw.page) ? raw.page : 1
+  const crawl = await findCrawl(crawls, domainId, raw.crawlId)
+  if (!crawl) return { kind: 'unavailable' }
+  if (crawl.pruned) return { kind: 'pruned' }
+  return {
+    kind: 'ok',
+    links: await loadRedirectLinks(crawls, {
+      crawlId: crawl.id,
+      urlHash: raw.urlHash,
+      page: Math.max(1, Math.trunc(page)),
     }),
   }
 }

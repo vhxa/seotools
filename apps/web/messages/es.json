@@ -896,6 +896,36 @@
     "characters": "({count} caracteres)",
     "self": "Propia",
     "discovery": "Cómo se encontró",
+    "discoveryChain": {
+      "step": "<subject></subject> {relation} <target></target>",
+      "intro": "Paso a paso, desde donde empezó el rastreo hasta esta URL.",
+      "thatUrl": "Esa URL",
+      "thisUrl": "esta URL",
+      "earlierMissing": "Pasos anteriores: no registrados.",
+      "howMissing": "cómo llevó hasta aquí: no registrado",
+      "contextMissing": "texto y posición del enlace: no registrados",
+      "relations": {
+        "anchor": "enlaza a",
+        "anchor-nofollow": "enlaza, con nofollow, a",
+        "canonical": "declara como su URL canónica a",
+        "hreflang": "declara como alternativa hreflang a",
+        "head-link": "tiene en su cabecera un enlace a",
+        "script": "carga el script",
+        "style": "carga la hoja de estilos",
+        "image": "muestra la imagen",
+        "media": "incrusta el archivo multimedia",
+        "frame": "incrusta el marco",
+        "form": "tiene un formulario que envía a",
+        "meta": "apunta, en una etiqueta meta, a",
+        "structured-data": "menciona en sus datos estructurados a",
+        "http-header": "apunta, en una cabecera HTTP, a",
+        "redirect": "redirige a",
+        "sitemap": "lista a",
+        "llms": "lista en llms.txt a",
+        "other": "hace referencia a",
+        "unknown": "llevó a"
+      }
+    },
     "tabs": {
       "findings": "Hallazgos",
       "links": "Enlaces",
@@ -943,6 +973,18 @@
       "empty": "El rastreo no registró enlaces desde esta URL.",
       "unread": "El rastreo no leyó esta URL, así que no se sabe a qué enlaza.",
       "note": "Una URL cuenta una vez por cada tipo de enlace con el que esta página apunta a ella, aunque lo repita."
+    },
+    "viaRedirects": {
+      "title": "A través de redirecciones",
+      "count": "{count, plural, one {# URL redirige aquí} other {# URLs redirigen aquí}}",
+      "note": "Estas URLs redirigen a esta. Los enlaces de debajo apuntan a la URL que redirige, no a esta: personas y rastreadores solo llegan aquí porque la redirección los envía.",
+      "noLinks": "Ninguna página de este rastreo enlaza a ella.",
+      "more": "y {count, plural, one {# enlace más} other {# enlaces más}}: abre la URL que redirige para verlos todos",
+      "errors": {
+        "unavailable": "No se pueden mostrar estos enlaces: el rastreo no está disponible.",
+        "pruned": "Los resultados de este rastreo se eliminaron, así que sus enlaces ya no se conservan.",
+        "failed": "No se pudieron cargar los enlaces. Inténtalo de nuevo."
+      }
     },
     "count": "{count, plural, one {# enlace} other {# enlaces}}",
     "groupsLabel": "Tipos de enlace",
@@ -2302,6 +2344,7 @@
     "add": "Añadir"
   },
   "IssueCatalog": {
+    "notLookedFor": "No se ha buscado: este rastreo no renderizó las páginas",
     "noFindings": "Sin hallazgos registrados; la aplicabilidad puede ser incompleta",
     "unavailable": "No comprobable: datos de indexación no disponibles",
     "groups": {
@@ -3851,27 +3894,43 @@
       "development": "compilación de desarrollo",
       "unrecorded": "sin registrar",
       "multiple": "varias compilaciones",
-      "version": "Versión: {version}",
+      "version": "{version}",
       "withUnrecordedRun": "{version} (ejecución anterior sin registrar)",
-      "withDifferentAnalysis": "Versión: {version} · Analizado con otra compilación ({analysis})",
-      "withAnalysis": "Versión: {version} · Análisis: {analysis}"
+      "withDifferentAnalysis": "{version} · analizado con otra compilación ({analysis})",
+      "withAnalysis": "{version} · análisis: {analysis}"
     },
     "metaTitle": "Rastreos · {host} · seotools",
     "description": "Todos los rastreos de este dominio, del más reciente al más antiguo. Un dominio ejecuta un solo rastreo a la vez. Un rastreo completo conserva las reglas con las que se analizó y sus resultados por URL hasta que la retención los elimina.",
     "columns": {
-      "crawl": "Rastreo",
-      "results": "Resultados",
-      "found": "Encontrado",
-      "findings": "Páginas con hallazgos",
-      "rules": "Reglas"
+      "date": "Fecha",
+      "started": "Iniciado por",
+      "mode": "Modo",
+      "state": "Estado",
+      "pages": "Páginas",
+      "pagesHelp": "Páginas HTML que respondieron bien. Las URL del rastreo, páginas y todo lo demás que encontró, están en sus detalles.",
+      "findings": "Problemas · Avisos",
+      "findingsHelp": "Páginas con al menos un problema y, después, páginas con al menos un aviso. Las oportunidades están en los detalles.",
+      "actions": "Acciones"
     },
     "trigger": {
       "manual": "Manual",
       "schedule": "Programado"
     },
     "latest": "Último",
-    "found": "{pages} páginas · {urls} URL · {external} externas",
-    "findings": "{issues} problemas · {warnings} avisos · {opportunities} oportunidades",
+    "cancelledNotAnalysed": "Cancelado — no analizado",
+    "details": {
+      "open": "Detalles",
+      "close": "Cerrar",
+      "started": "Inicio",
+      "finished": "Fin",
+      "version": "Versión",
+      "urls": "URL encontradas",
+      "external": "URL externas",
+      "opportunities": "Páginas con oportunidades",
+      "results": "Resultados por URL",
+      "rules": "Reglas",
+      "rendering": "Renderizado"
+    },
     "view": "Ver",
     "compareWithPrevious": "Comparar con el anterior",
     "retention": "Cuántos rastreos conservan sus resultados por URL se define en los ajustes de rastreo; los más antiguos solo conservan sus totales.",
@@ -3897,10 +3956,13 @@
       "hint": "Una URL por línea, hasta 1000; no se siguen enlaces.",
       "start": "Iniciar rastreo de lista"
     },
-    "started": "Inicio: {when}",
-    "finished": "Fin: {when}",
     "requestCredentialsUnavailable": "Ya no están disponibles las credenciales de acceso que había al poner este rastreo en cola.",
-    "browserUnavailable": "El navegador de renderizado no estuvo disponible durante el plazo de recuperación del rastreo."
+    "browserUnavailable": "El navegador de renderizado no estuvo disponible durante el plazo de recuperación del rastreo.",
+    "sections": {
+      "run": "Ejecución",
+      "found": "Qué encontró",
+      "analysis": "Análisis"
+    }
   },
   "Schedules": {
     "metaTitle": "Programaciones · {host} · seotools",
@@ -3940,9 +4002,9 @@
   "Structure": {
     "metaTitle": "Estructura · {host} · seotools",
     "title": "Estructura",
-    "description": "Los directorios del último rastreo completo y lo que hay en cada uno: páginas, errores y páginas con hallazgos.",
+    "description": "Los directorios del último rastreo completo y lo que hay en cada uno: páginas, los hallazgos en ellas y las URLs que fallaron.",
     "noCrawl": "La estructura aparece aquí cuando el dominio se ha rastreado.",
-    "notChecked": "El último rastreo completo no se ha comprobado en busca de hallazgos, así que solo se cuentan páginas y errores. Lanza un rastreo completo nuevo para verlos aquí.",
+    "notChecked": "El último rastreo completo no se ha comprobado en busca de hallazgos, así que solo se cuentan páginas y URLs con error. Lanza un rastreo completo nuevo para verlos aquí.",
     "findingsHidden": "Los hallazgos no se muestran mientras el análisis no refleje la configuración de auditoría actual.",
     "incomplete": "El último rastreo se detuvo en su límite de URLs tras {urls, number} URLs: estas cifras no cubren todo el sitio.",
     "tree": "Directorios",
@@ -3950,7 +4012,10 @@
     "breadcrumb": "Directorio",
     "directory": "Directorio",
     "columns": {
-      "errors": "Errores",
+      "pages": "Páginas",
+      "pagesHelp": "Páginas: HTML que respondió con un estado 2xx. Las redirecciones, los archivos y las URLs que fallaron no son páginas.",
+      "errors": "URLs con error",
+      "errorsHelp": "Todas las URLs del directorio que fallaron (4xx, 5xx o sin respuesta), no solo páginas: incluye referencias como destinos hreflang, imágenes o scripts. No es comparable con la columna Páginas.",
       "issue": "Páginas con problemas",
       "warning": "Páginas con avisos",
       "opportunity": "Páginas con oportunidades"
@@ -4364,6 +4429,7 @@
         "html": "Solo leyó el HTML servido: no se abrió ninguna página en un navegador.",
         "rendered": "Las páginas se abrieron en un navegador que ejecutó su JavaScript."
       },
+      "cancelledNotAnalysed": "Cancelado — no analizado",
       "coverageUnknown": "Cobertura aún sin analizar",
       "coverageNotRecorded": "Cobertura no registrada",
       "allObserved": "Todas las páginas observadas por completo",
@@ -4396,6 +4462,9 @@
     "transport": "La segunda solicitud no obtuvo respuesta.",
     "retry-after": "El servidor pidió una pausa mayor de la que admite el rastreo.",
     "incomplete": "No se pudo comparar el HTML completo.",
-    "titleField": "título de la página"
+    "titleField": "título de la página",
+    "loadingExamples": "Cargando ejemplos",
+    "examplesUnavailable": "No se han podido cargar los ejemplos.",
+    "examplesTitle": "Ejemplos"
   }
 }
