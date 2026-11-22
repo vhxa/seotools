@@ -2904,7 +2904,9 @@
         "before": "Rastreo anterior",
         "after": "Rastreo posterior",
         "findings": "Hallazgos",
-        "why": "Por qué"
+        "why": "Por qué",
+        "reason": "Motivo",
+        "action": "Acción"
       },
       "findingsUnavailable": "No se pueden comparar los hallazgos de estos rastreos.",
       "samePersistent": "{count, plural, one {# hallazgo detectado por ambos} other {# hallazgos detectados por ambos}}"
@@ -2952,8 +2954,8 @@
       "label": "Por qué difieren",
       "all": "Todas",
       "reasons": {
-        "merged": "Fusionadas",
-        "split": "Separadas",
+        "merged": "Fusionadas por la configuración",
+        "split": "Separadas por la configuración",
         "settings": "Excluidas por la configuración",
         "mode": "Renderizado",
         "unlinked": "Ya no enlazadas",
@@ -3084,7 +3086,12 @@
       "linkWas": "El enlace tal como era: {kind}{hasRegion, select, yes {, en {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
       "linkIs": "El enlace tal como es: {kind}{hasRegion, select, yes {, en {region}} other {}}{hasText, select, yes { «{text}»} other {}}.",
       "unavailable": "Estos rastreos no pueden decir por qué difiere esta URL: uno se guardó antes de que seotools numerara las URLs que encontraba.",
-      "failed": "No se pudo averiguar por qué difiere; se volverá a intentar más tarde."
+      "failed": "No se pudo averiguar por qué difiere; se volverá a intentar más tarde.",
+      "notExplained": {
+        "pending": "Calculándolo",
+        "failed": "Sin calcular",
+        "unavailable": "No disponible"
+      }
     },
     "check": {
       "url": "Comprobar ahora",
@@ -3148,6 +3155,58 @@
         "basis": "formas distintas de leer las páginas"
       },
       "pruned": "Solo se pueden comparar los totales: la retención eliminó los resultados por URL de un rastreo."
+    },
+    "groups": {
+      "urls": "URL",
+      "answers": "Respuestas",
+      "findings": "Hallazgos"
+    },
+    "groupsLabel": "Grupos de cambios",
+    "stat": {
+      "preparing": "Calculándolo…"
+    },
+    "helps": {
+      "added": "Las encontró el rastreo posterior y no el anterior.",
+      "addedIncomplete": "El rastreo anterior se detuvo en su límite de URL, así que algunas pueden existir desde siempre.",
+      "missing": "Las encontró el rastreo anterior y no el posterior. No vista no es desaparecida.",
+      "missingIncomplete": "El rastreo posterior se detuvo en su límite de URL: lo más probable es que no las alcanzara, no que las quitaran.",
+      "configuration": "Solo las tiene un rastreo por tu propia configuración.",
+      "status": "Respondieron distinto en cada rastreo.",
+      "title": "El título difiere entre los rastreos.",
+      "canonical": "La canónica declarada difiere entre los rastreos.",
+      "robots": "Las directivas de robots difieren entre los rastreos.",
+      "gained": "Las detecta el rastreo posterior y no el anterior.",
+      "lost": "Las detectaba el rastreo anterior y el posterior ya no."
+    },
+    "differences": {
+      "label": "Qué difiere entre los rastreos",
+      "differ": "Difieren:",
+      "same": "Sin diferencias registradas en la configuración ni en las versiones",
+      "nothing": "Nada que comparar",
+      "builds": "Versiones distintas",
+      "unrecorded": "{count, plural, one {# ajuste sin registrar} other {# ajustes sin registrar}}",
+      "limited": {
+        "base": "El rastreo anterior llegó a su límite de URL",
+        "target": "El rastreo posterior llegó a su límite de URL",
+        "both": "Ambos rastreos llegaron a su límite de URL"
+      }
+    },
+    "about": {
+      "open": "Sobre esta comparación",
+      "title": "Sobre esta comparación",
+      "description": "Los dos rastreos, qué difiere entre ellos y sus totales.",
+      "crawls": "Los rastreos",
+      "summary": "Resumen"
+    },
+    "detail": {
+      "description": "Por qué esta URL está solo en uno de los dos rastreos.",
+      "open": "Detalles",
+      "openFor": "Detalles de {url}",
+      "earlierHas": "Lo que guardó el rastreo anterior",
+      "laterHas": "Lo que guardó el rastreo posterior",
+      "response": "Respuesta",
+      "title": "Título",
+      "why": "Por qué difiere"
     }
   },
   "HttpStatus": {

@@ -1,8 +1,7 @@
 import { BlockCardSkeleton, SkeletonPage, TabsSkeleton, TextSkeleton } from '@/components/skeletons'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
-/** The comparison: header of the area, the pair picker, the two crawls, the totals and the changes. */
+/** The comparison: header of the area, the pair picker, the figures, the line of differences and the list. */
 export default function CompareLoading() {
   return (
     <SkeletonPage>
@@ -11,19 +10,21 @@ export default function CompareLoading() {
         <TabsSkeleton count={3} />
         <TextSkeleton />
       </div>
-      <Skeleton className="h-[68px] w-full rounded-xl" />
-      <div className="grid gap-3 md:grid-cols-2">
-        {[0, 1].map((index) => (
-          <Card key={index} size="sm">
-            <CardHeader>
-              <Skeleton className="h-5 w-16" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-10 w-full" />
-            </CardContent>
-          </Card>
+      <div className="grid gap-3 lg:grid-cols-[3fr_4fr]">
+        {[3, 4].map((cards) => (
+          <div key={cards} className="grid gap-2">
+            <Skeleton className="h-6 w-16" />
+            <div
+              className={`grid grid-cols-2 gap-3 ${cards === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-4'}`}
+            >
+              {Array.from({ length: cards }, (_, index) => (
+                <Skeleton key={index} className="h-[7.25rem] w-full rounded-xl" />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
+      <Skeleton className="h-6 w-2/3" />
       <BlockCardSkeleton height="h-40" />
     </SkeletonPage>
   )

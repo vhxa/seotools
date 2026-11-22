@@ -1,4 +1,4 @@
-import { CRAWL_CHANGES, COMPARE_VIEWS, type CrawlChange } from '@seotools/core/crawl/compare'
+import { COMPARE_VIEWS, type CrawlChange } from '@seotools/core/crawl/compare'
 import {
   CONFIGURATION_REASONS,
   SIDE_REASONS,
@@ -12,13 +12,22 @@ import Form from 'next/form'
 import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
 import { CrawlsHeader } from '@/components/crawl/crawls-header'
+import { CompareAbout } from '@/components/history/compare-about'
+import { CompareDrawer, type RowDetail } from '@/components/history/compare-drawer'
+import { CompareRowDetail } from '@/components/history/compare-row-detail'
 import { CompareTable } from '@/components/history/compare-table'
 import { crawlMoment, CrawlStamp } from '@/components/history/crawl-stamp'
 import { CheckNowButton } from '@/components/history/check-now-button'
-import { ComparisonSummary } from '@/components/history/comparison-summary'
+import {
+  ComparisonDifferences,
+  ComparisonPruned,
+  ComparisonSummary,
+} from '@/components/history/comparison-summary'
 import { PairPicker } from '@/components/history/pair-picker'
+import { InfoHelp } from '@/components/help'
 import { IssueLabel } from '@/components/pages/issue-mark'
 import { Pagination } from '@/components/pagination'
+import { Stat } from '@/components/stat'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -31,7 +40,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  COMPARE_GROUPS,
   compareHref,
+  groupOfChange,
   isFindingChange,
   isOneSidedChange,
   parseCompareQuery,
@@ -39,6 +50,7 @@ import {
 import { loadComparison } from '@/lib/crawl-compare'
 import { selectPair } from '@/lib/crawl-history'
 import { getDb } from '@/lib/db'
+import { cn } from '@/lib/utils'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
@@ -189,7 +201,7 @@ export default async function ComparePage({
       ? '—'
       : format.number(after - before, { signDisplay: 'exceptZero' })
 
-  // What each kind of change means is said above the list; two of them need more when a crawl is cut short.
+  // The short line under the tabs, and the longer text behind its info button.
   const hintKey: Record<
     CrawlChange,
     'added' | 'addedIncomplete' | 'missing' | 'missingIncomplete' | CrawlChange
@@ -205,6 +217,104 @@ export default async function ComparePage({
     lost: 'lost',
   }
 
+  const totalsTable = (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t('totals.measure')}</TableHead>
+          <TableHead className="text-right">{t('roles.earlier')}</TableHead>
+          <TableHead className="text-right">{t('roles.later')}</TableHead>
+          <TableHead className="text-right">{t('totals.difference')}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {totals.map(([key, before, after]) => (
+          <TableRow key={key}>
+            <TableCell>{t(`totals.rows.${key}`)}</TableCell>
+            <TableCell className="text-right tabular-nums">{number(before)}</TableCell>
+            <TableCell className="text-right tabular-nums">{number(after)}</TableCell>
+            <TableCell className="text-right tabular-nums">{difference(before, after)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+
+  // One figure that is also the way to its list: the cards are the tabs of the first two groups.
+  const statCard = (change: CrawlChange) => {
+    const count = counts ? countOf(counts, change) : null
+    return (
+      <Link
+        key={change}
+        href={href({ change, page: 1, issue: null, reason: null })}
+        scroll={false}
+        aria-current={change === query.change ? 'page' : undefined}
+        className="block h-full rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:ring-2 aria-[current=page]:ring-ring [&>[data-slot=card]]:h-full"
+      >
+        <Stat
+          label={t(`changes.${change}`)}
+          value={count === null ? '—' : format.number(count)}
+          hint={count === null ? t('stat.preparing') : null}
+        />
+      </Link>
+    )
+  }
+  const group = groupOfChange(query.change)
+  const oneSided = isOneSidedChange(query.change)
+  const longHint = (
+    <div className="grid gap-2">
+      <p>{t(`hints.${hintKey[query.change]}`)}</p>
+      {isFindingChange(query.change) && (
+        <ComparisonSummary lines={data.summary} kinds={['findings']} />
+      )}
+    </div>
+  )
+
+  // What the drawer shows of each listed URL: rendered here, with the page, so it opens at once.
+  const ignored = { base: base.ignoredParameters ?? [], target: target.ignoredParameters ?? [] }
+  const details: Record<string, RowDetail> = oneSided
+    ? Object.fromEntries(
+        data.rows.map((row) => [
+          row.urlHash,
+          {
+            url: row.url,
+            href: `/domains/${domain.host}/urls/${row.urlHash}?crawl=${row.target ? target.id : base.id}`,
+            body: (
+              <CompareRowDetail
+                host={domain.host}
+                row={row}
+                baseId={base.id}
+                targetId={target.id}
+                ignored={ignored}
+                state={data.explanation}
+                activeRecheckId={data.activeRecheck?.id ?? null}
+              />
+            ),
+          },
+        ]),
+      )
+    : {}
+
+  const table = counts && (
+    <CompareTable
+      host={domain.host}
+      query={{ ...query, ...pinned }}
+      change={query.change}
+      rows={data.rows}
+      baseId={base.id}
+      targetId={target.id}
+      explanation={data.explanation}
+      footer={
+        <Pagination
+          page={data.page}
+          pageCount={data.pageCount}
+          href={(page) => href({ page })}
+          details={<span>{t('rowsShown', { shown: data.rows.length, matching: data.total })}</span>}
+        />
+      }
+    />
+  )
+
   return (
     <main className="grid gap-6">
       {header}
@@ -217,206 +327,228 @@ export default async function ComparePage({
         to={target.id}
       />
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {(
-          [
-            ['earlier', base],
-            ['later', target],
-          ] as const
-        ).map(([role, crawl]) => (
-          <Card key={role} size="sm">
-            <CardHeader>
-              <CardDescription>{t(`roles.${role}`)}</CardDescription>
+      <ComparisonPruned lines={data.summary} />
+
+      {counts ? (
+        <>
+          <div className="grid gap-3 lg:grid-cols-[3fr_4fr]">
+            {COMPARE_GROUPS.filter((entry) => entry.id !== 'findings').map((entry) => (
+              <section
+                key={entry.id}
+                aria-labelledby={`compare-stats-${entry.id}`}
+                className="grid gap-2"
+              >
+                <h2 id={`compare-stats-${entry.id}`} className="text-base font-medium">
+                  {t(`groups.${entry.id}`)}
+                </h2>
+                <div
+                  className={cn(
+                    'grid grid-cols-2 gap-3',
+                    entry.id === 'urls' ? 'sm:grid-cols-3' : 'sm:grid-cols-4',
+                  )}
+                >
+                  {entry.changes.map(statCard)}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <ComparisonDifferences lines={data.summary} />
+            <CompareAbout>
+              <div className="grid gap-6">
+                <section className="grid gap-3">
+                  <h3 className="text-sm font-medium">{t('about.crawls')}</h3>
+                  {(
+                    [
+                      ['earlier', base],
+                      ['later', target],
+                    ] as const
+                  ).map(([role, crawl]) => (
+                    <div key={role} className="grid gap-1">
+                      <p className="text-xs text-muted-foreground">{t(`roles.${role}`)}</p>
+                      <CrawlStamp crawl={crawl} currentVersion={config.version} />
+                    </div>
+                  ))}
+                </section>
+                <section className="grid gap-3">
+                  <h3 className="text-sm font-medium">{t('about.summary')}</h3>
+                  <ComparisonSummary lines={data.summary} />
+                </section>
+                <section className="grid gap-3">
+                  <h3 className="text-sm font-medium">{t('totals.title')}</h3>
+                  <p className="text-sm text-muted-foreground">{t('totals.description')}</p>
+                  {totalsTable}
+                </section>
+              </div>
+            </CompareAbout>
+          </div>
+
+          <Card className="flex h-[calc(100svh-5.75rem)] min-h-[32rem] flex-col md:-mb-4 md:h-[calc(100svh-6.25rem)]">
+            <CardHeader className="shrink-0 gap-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <nav
+                  aria-label={t('groupsLabel')}
+                  className="inline-flex rounded-lg bg-muted p-[3px] text-sm"
+                >
+                  {COMPARE_GROUPS.map((entry) => (
+                    <Link
+                      key={entry.id}
+                      href={href({ change: entry.changes[0], page: 1, issue: null, reason: null })}
+                      scroll={false}
+                      aria-current={entry.id === group.id ? 'page' : undefined}
+                      className="inline-flex h-7 items-center rounded-md px-3 font-medium text-foreground/60 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-[current=page]:bg-background aria-[current=page]:text-foreground aria-[current=page]:shadow-sm"
+                    >
+                      {t(`groups.${entry.id}`)}
+                    </Link>
+                  ))}
+                </nav>
+                <nav aria-label={t('changesLabel')} className="flex flex-wrap gap-1">
+                  {group.changes.map((change) => (
+                    <Link
+                      key={change}
+                      href={href({ change, page: 1, issue: null, reason: null })}
+                      scroll={false}
+                      aria-current={change === query.change ? 'page' : undefined}
+                      className={buttonVariants({
+                        variant: change === query.change ? 'secondary' : 'ghost',
+                        size: 'sm',
+                      })}
+                    >
+                      {t(`changes.${change}`)}
+                      {group.id === 'findings' && (
+                        <span className="text-muted-foreground tabular-nums">
+                          {format.number(countOf(counts, change) ?? 0)}
+                        </span>
+                      )}
+                    </Link>
+                  ))}
+                </nav>
+              </div>
+              <div className="flex items-center gap-1">
+                <CardDescription>{t(`helps.${hintKey[query.change]}`)}</CardDescription>
+                <InfoHelp label={t(`changes.${query.change}`)} compact>
+                  {longHint}
+                </InfoHelp>
+              </div>
+              {oneSided && counts.explained && (
+                <nav aria-label={t('why.label')} className="flex flex-wrap gap-1">
+                  {[
+                    { reason: null, count: countOf(counts, query.change) ?? 0 },
+                    ...reasonChips(counts, query.change),
+                  ].map(({ reason, count }) => (
+                    <Link
+                      key={reason ?? 'all'}
+                      href={href({ reason, page: 1 })}
+                      scroll={false}
+                      aria-current={reason === query.reason ? 'page' : undefined}
+                      className={buttonVariants({
+                        variant: reason === query.reason ? 'secondary' : 'outline',
+                        size: 'xs',
+                      })}
+                    >
+                      {reason ? t(`why.reasons.${reason}`) : t('why.all')}
+                      <span className="text-muted-foreground tabular-nums">
+                        {format.number(count)}
+                      </span>
+                    </Link>
+                  ))}
+                </nav>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <nav aria-label={t('viewsLabel')} className="flex gap-1">
+                  {COMPARE_VIEWS.map((view) => (
+                    <Link
+                      key={view}
+                      href={href({ view, page: 1 })}
+                      scroll={false}
+                      aria-current={view === query.view ? 'page' : undefined}
+                      className={buttonVariants({
+                        variant: view === query.view ? 'secondary' : 'outline',
+                        size: 'sm',
+                      })}
+                    >
+                      {t(`views.${view}`)}
+                    </Link>
+                  ))}
+                </nav>
+                <Form
+                  action={`/domains/${domain.host}/crawls/compare`}
+                  scroll={false}
+                  role="search"
+                  className="flex min-w-0 items-center gap-2"
+                >
+                  <input type="hidden" name="from" value={base.id} />
+                  <input type="hidden" name="to" value={target.id} />
+                  <input type="hidden" name="change" value={query.change} />
+                  <input type="hidden" name="view" value={query.view} />
+                  {query.issue && isFindingChange(query.change) && (
+                    <input type="hidden" name="issue" value={query.issue} />
+                  )}
+                  {query.reason && oneSided && (
+                    <input type="hidden" name="why" value={query.reason} />
+                  )}
+                  <Input
+                    type="search"
+                    name="q"
+                    defaultValue={query.search}
+                    placeholder={t('search.placeholder')}
+                    aria-label={t('search.label')}
+                    className="h-7 w-full min-w-0 sm:w-64"
+                  />
+                  <Button type="submit" variant="outline" size="sm">
+                    {t('search.submit')}
+                  </Button>
+                </Form>
+                {query.issue && isFindingChange(query.change) && isPageIssueId(query.issue) && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    render={<Link href={href({ issue: null, page: 1 })} />}
+                  >
+                    <IssueLabel issue={query.issue} />
+                    <XIcon />
+                    <span className="sr-only">{t('clearIssue')}</span>
+                  </Button>
+                )}
+                {(query.change === 'added' || query.change === 'missing') && (
+                  <div className="ml-auto">
+                    <CheckNowButton
+                      host={domain.host}
+                      from={base.id}
+                      to={target.id}
+                      side={query.change === 'added' ? 'target' : 'base'}
+                      urlHashes={data.rows.filter((row) => row.why).map((row) => row.urlHash)}
+                      activeRecheckId={data.activeRecheck?.id ?? null}
+                      scope="page"
+                    />
+                  </div>
+                )}
+              </div>
+              {counts.unrequested > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t('unrequested', { count: counts.unrequested })}
+                </p>
+              )}
             </CardHeader>
-            <CardContent>
-              <CrawlStamp crawl={crawl} currentVersion={config.version} />
+            <CardContent className="flex min-h-0 flex-1 flex-col">
+              {oneSided ? (
+                <CompareDrawer host={domain.host} query={{ ...query, ...pinned }} details={details}>
+                  {table}
+                </CompareDrawer>
+              ) : (
+                table
+              )}
             </CardContent>
           </Card>
-        ))}
-      </div>
-
-      <ComparisonSummary lines={data.summary} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('totals.title')}</CardTitle>
-          <CardDescription>{t('totals.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('totals.measure')}</TableHead>
-                <TableHead className="text-right">{t('roles.earlier')}</TableHead>
-                <TableHead className="text-right">{t('roles.later')}</TableHead>
-                <TableHead className="text-right">{t('totals.difference')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {totals.map(([key, before, after]) => (
-                <TableRow key={key}>
-                  <TableCell>{t(`totals.rows.${key}`)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{number(before)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{number(after)}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {difference(before, after)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {counts && (
-        <Card className="flex h-[calc(100svh-5.75rem)] min-h-[32rem] flex-col md:-mb-4 md:h-[calc(100svh-6.25rem)]">
-          <CardHeader className="shrink-0 gap-3">
-            <nav aria-label={t('changesLabel')} className="flex flex-wrap gap-1">
-              {CRAWL_CHANGES.map((change) => (
-                <Link
-                  key={change}
-                  href={href({ change, page: 1, issue: null, reason: null })}
-                  scroll={false}
-                  aria-current={change === query.change ? 'page' : undefined}
-                  className={buttonVariants({
-                    variant: change === query.change ? 'secondary' : 'ghost',
-                    size: 'sm',
-                  })}
-                >
-                  {t(`changes.${change}`)}
-                  <span className="text-muted-foreground tabular-nums">
-                    {countOf(counts, change) === null
-                      ? '—'
-                      : format.number(countOf(counts, change)!)}
-                  </span>
-                </Link>
-              ))}
-            </nav>
-            <CardDescription>{t(`hints.${hintKey[query.change]}`)}</CardDescription>
-            {isOneSidedChange(query.change) && counts.explained && (
-              <nav aria-label={t('why.label')} className="flex flex-wrap gap-1">
-                {[
-                  { reason: null, count: countOf(counts, query.change) ?? 0 },
-                  ...reasonChips(counts, query.change),
-                ].map(({ reason, count }) => (
-                  <Link
-                    key={reason ?? 'all'}
-                    href={href({ reason, page: 1 })}
-                    scroll={false}
-                    aria-current={reason === query.reason ? 'page' : undefined}
-                    className={buttonVariants({
-                      variant: reason === query.reason ? 'secondary' : 'outline',
-                      size: 'xs',
-                    })}
-                  >
-                    {reason ? t(`why.reasons.${reason}`) : t('why.all')}
-                    <span className="text-muted-foreground tabular-nums">
-                      {format.number(count)}
-                    </span>
-                  </Link>
-                ))}
-              </nav>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <nav aria-label={t('viewsLabel')} className="flex gap-1">
-                {COMPARE_VIEWS.map((view) => (
-                  <Link
-                    key={view}
-                    href={href({ view, page: 1 })}
-                    scroll={false}
-                    aria-current={view === query.view ? 'page' : undefined}
-                    className={buttonVariants({
-                      variant: view === query.view ? 'secondary' : 'outline',
-                      size: 'sm',
-                    })}
-                  >
-                    {t(`views.${view}`)}
-                  </Link>
-                ))}
-              </nav>
-              <Form
-                action={`/domains/${domain.host}/crawls/compare`}
-                scroll={false}
-                role="search"
-                className="flex min-w-0 items-center gap-2"
-              >
-                <input type="hidden" name="from" value={base.id} />
-                <input type="hidden" name="to" value={target.id} />
-                <input type="hidden" name="change" value={query.change} />
-                <input type="hidden" name="view" value={query.view} />
-                {query.issue && isFindingChange(query.change) && (
-                  <input type="hidden" name="issue" value={query.issue} />
-                )}
-                {query.reason && isOneSidedChange(query.change) && (
-                  <input type="hidden" name="why" value={query.reason} />
-                )}
-                <Input
-                  type="search"
-                  name="q"
-                  defaultValue={query.search}
-                  placeholder={t('search.placeholder')}
-                  aria-label={t('search.label')}
-                  className="h-7 w-full min-w-0 sm:w-64"
-                />
-                <Button type="submit" variant="outline" size="sm">
-                  {t('search.submit')}
-                </Button>
-              </Form>
-              {query.issue && isFindingChange(query.change) && isPageIssueId(query.issue) && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  render={<Link href={href({ issue: null, page: 1 })} />}
-                >
-                  <IssueLabel issue={query.issue} />
-                  <XIcon />
-                  <span className="sr-only">{t('clearIssue')}</span>
-                </Button>
-              )}
-            </div>
-            {(query.change === 'added' || query.change === 'missing') && (
-              <CheckNowButton
-                host={domain.host}
-                from={base.id}
-                to={target.id}
-                side={query.change === 'added' ? 'target' : 'base'}
-                urlHashes={data.rows.filter((row) => row.why).map((row) => row.urlHash)}
-                activeRecheckId={data.activeRecheck?.id ?? null}
-                scope="page"
-              />
-            )}
-            {counts.unrequested > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {t('unrequested', { count: counts.unrequested })}
-              </p>
-            )}
+        </>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('totals.title')}</CardTitle>
+            <CardDescription>{t('totals.description')}</CardDescription>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col">
-            <CompareTable
-              host={domain.host}
-              query={{ ...query, ...pinned }}
-              change={query.change}
-              rows={data.rows}
-              baseId={base.id}
-              targetId={target.id}
-              ignored={{
-                base: base.ignoredParameters ?? [],
-                target: target.ignoredParameters ?? [],
-              }}
-              activeRecheckId={data.activeRecheck?.id ?? null}
-              explanation={data.explanation}
-              footer={
-                <Pagination
-                  page={data.page}
-                  pageCount={data.pageCount}
-                  href={(page) => href({ page })}
-                  details={
-                    <span>{t('rowsShown', { shown: data.rows.length, matching: data.total })}</span>
-                  }
-                />
-              }
-            />
-          </CardContent>
+          <CardContent>{totalsTable}</CardContent>
         </Card>
       )}
     </main>

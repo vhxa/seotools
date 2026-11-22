@@ -1,9 +1,32 @@
-import { ignoredParametersOf } from '@seotools/core/crawl/comparison-reasons'
+import { ignoredParametersOf, isConfigurationReason } from '@seotools/core/crawl/comparison-reasons'
 import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
+import { Badge } from '@/components/ui/badge'
 import type { ExplanationState } from '@/lib/compare-summary'
 import type { CheckAnswer, RowReason } from '@/lib/crawl-compare'
+
+/**
+ * The reason a URL differs, in a few words, for a table: what the explanation says (`Not reached`,
+ * `No longer linked`, `Merged by settings`…), or why it is not known yet. The sentence behind it
+ * is `CompareReason`, which the drawer shows.
+ */
+export function ReasonChip({ why, state }: { why: RowReason | null; state: ExplanationState }) {
+  const t = useTranslations('CrawlCompare.why')
+  if (!why) {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        {t(`notExplained.${state === 'unavailable' || state === 'failed' ? state : 'pending'}`)}
+      </Badge>
+    )
+  }
+  const reason = why.explanation.reason
+  return (
+    <Badge variant={isConfigurationReason(reason) ? 'secondary' : 'outline'}>
+      {t(`reasons.${reason}`)}
+    </Badge>
+  )
+}
 
 /**
  * Why a URL is in one crawl only, in one sentence, from the reason stored for the pair: it names the
@@ -20,7 +43,10 @@ export function CompareReason({
   baseId,
   targetId,
   ignored,
+  large = false,
 }: {
+  /** Text at the size of a drawer, not of a table cell. */
+  large?: boolean
   host: string
   /** The URL being explained. */
   url: string
@@ -38,7 +64,7 @@ export function CompareReason({
   const tRegions = useTranslations('LinkRegions')
   if (!why)
     return (
-      <p className="text-xs text-muted-foreground">
+      <p className={large ? 'text-sm text-muted-foreground' : 'text-xs text-muted-foreground'}>
         {t(state === 'unavailable' ? 'unavailable' : state === 'failed' ? 'failed' : 'pending')}
       </p>
     )
@@ -150,7 +176,7 @@ export function CompareReason({
       : null
 
   return (
-    <div className="grid gap-1 text-xs">
+    <div className={large ? 'grid gap-2 text-sm' : 'grid gap-1 text-xs'}>
       <p>{sentence}</p>
       {notes.map((note) => (
         <p key={note} className="text-muted-foreground">
