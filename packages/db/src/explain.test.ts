@@ -67,7 +67,6 @@ describe('renderEvidence', () => {
  * page already cached (seq 3) and from a new one, which makes the caches roll over.
  */
 function rollover(options: { rendered: boolean; failingSource: boolean }) {
-  const pages = COUNTERPART_CACHE / LINK_PAGE
   let read = 0
   const saved = new Map<number, ExplainedUrl>()
   const page = {
