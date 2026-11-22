@@ -5,8 +5,14 @@ import { chromium } from '@playwright/test'
 import puppeteer, { type Browser, type Target } from 'puppeteer-core'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createLogger, DEFAULT_CRAWL_SETTINGS } from '@seotools/core'
+import {
+  CAPTURE_DELAY_TOLERANCE_MS,
+  captureProvesAbsence,
+  renderStateOf,
+} from '@seotools/core/crawl/render-state'
+import { renderObservation } from '../crawl/rendering'
 import { fakeRenderSite, moved, type Answer } from '../crawl/fake-site'
-import { createHttpFetcher, type Fetcher } from '../crawl/fetcher'
+import { createHttpFetcher, FetchError, type Fetcher } from '../crawl/fetcher'
 import { createRequester } from '../crawl/requester'
 import { createRenderResourceCache } from './cache'
 import { checkIsolation, workerAddresses } from './isolation'
@@ -163,6 +169,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
   const render = (key: keyof typeof pages, extra: Partial<RenderInput> = {}) =>
     renderPage(browser, {
       ...base,
+      waitMs: 1200,
       url: `http://site.test/${key}`,
       document: {
         statusCode: 200,
@@ -291,10 +298,157 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     })
     expect(result.status).toBe('rendered')
     expect(result.redirected).toBe(false)
-    expect(result.settled).toBe(true)
+    expect(result.captureDelayMs).not.toBeNull()
+    expect(result.settled).toBe(result.captureDelayMs! <= CAPTURE_DELAY_TOLERANCE_MS)
     expect(result.html).toContain('<title>Fragment</title>')
     expect(result.requests.omitted.some((item) => item.reason === 'redirect')).toBe(false)
   })
+  it.each(['replaceState', 'pushState'])(
+    'keeps observed links after history.%s',
+    async (method) => {
+      const result = await render('head', {
+        document: baseDocument(
+          `<script>history.${method}({}, '', '/clean/path')</script><a href="menu">Menu</a>`,
+        ),
+      })
+      expect(result.status).toBe('rendered')
+      expect(result.redirected).toBe(false)
+      expect(result.documentUrl).toBe('http://site.test/clean/path')
+      expect(result.html).toContain('<a href="menu">Menu</a>')
+    },
+  )
+
+  function duringCapture(action: string) {
+    return baseDocument(`<main>Before capture</main><script>
+      addEventListener('DOMContentLoaded', () => setTimeout(() => {
+        const parsedAt = performance.getEntriesByType('navigation')[0].domContentLoadedEventEnd
+        while (performance.now() - parsedAt < 1025) {}
+        ${action}
+        document.querySelector('main').textContent = 'Observed at capture'
+      }, 350))
+    </script>`)
+  }
+
+  it('fails a same-URL reload initiated before the browser snapshot', async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const outcome = await render('head', {
+        waitMs: 1000,
+        document: duringCapture('location.reload()'),
+      })
+      expect(outcome.status).toBe('failed')
+      expect(outcome.failure?.code).toBe('navigation')
+      expect(outcome.redirected).toBe(false)
+      expect(outcome.html).toBe('')
+    }
+  }, 15_000)
+
+  it('fails a reload of the current history address after replaceState', async () => {
+    const outcome = await render('head', {
+      waitMs: 1000,
+      document: duringCapture("history.replaceState({}, '', '/clean/path'); location.reload()"),
+    })
+    expect(outcome.status).toBe('failed')
+    expect(outcome.failure?.code).toBe('navigation')
+    expect(outcome.redirected).toBe(false)
+    expect(outcome.html).toBe('')
+  })
+
+  it('counts a dependency initiated inside the capture delay', async () => {
+    const outcome = await render('head', {
+      waitMs: 1000,
+      document: duringCapture("fetch('/hang').catch(() => {})"),
+    })
+    const observation = renderObservation('home', outcome, null)
+    const state = renderStateOf({ ...observation, redirected: false, servedTruncated: false })
+    expect(outcome.html).toContain('<main>Observed at capture</main>')
+    expect(outcome.pending).toBe(1)
+    expect(captureProvesAbsence({ state, data: observation.data })).toBe(false)
+  })
+
+  it.each([
+    [
+      'integrity mismatch',
+      '<script src="/nav.js" integrity="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="></script>',
+      '/nav.js',
+    ],
+    [
+      'invalid module dependency',
+      '<script type="module">import "/invalid-module.js"</script>',
+      '/invalid-module.js',
+    ],
+    [
+      'module served with an invalid MIME type',
+      '<script type="module" src="/wrong-mime.js"></script>',
+      '/wrong-mime.js',
+    ],
+    [
+      'inline module whose import has an invalid MIME type',
+      '<script type="module">import "/wrong-mime.js"</script>',
+      '/head',
+    ],
+    [
+      'CSP blocked external script',
+      `<meta http-equiv="Content-Security-Policy" content="script-src 'none'"><script src="/nav.js"></script>`,
+      '/nav.js',
+    ],
+    [
+      'CSP blocked inline script',
+      `<meta http-equiv="Content-Security-Policy" content="script-src 'none'"><script>document.title = "Blocked"</script>`,
+      '/head',
+    ],
+  ])('keeps positive DOM after %s but cannot prove absence', async (_, script, url) => {
+    const outcome = await render('head', {
+      document: baseDocument(script + '<main><a href="/kept">Keep</a></main>'),
+      requester: {
+        ...base.requester,
+        async fetchWithRetries(url, options) {
+          if (url.endsWith('/wrong-mime.js')) return baseDocument('export const valid = true')
+          if (url.endsWith('/invalid-module.js'))
+            return {
+              ...baseDocument('export {'),
+              headers: { 'content-type': 'application/javascript' },
+            }
+          return base.requester.fetchWithRetries(url, options)
+        },
+      },
+    })
+    const observation = renderObservation('home', outcome, null)
+    const state = renderStateOf({ ...observation, redirected: false, servedTruncated: false })
+    expect(outcome.html).toContain('<a href="/kept">Keep</a>')
+    expect(outcome.requests.failed).toEqual([
+      expect.objectContaining({ url: 'http://site.test' + url }),
+    ])
+    expect(outcome.requests.failedCount).toBe(1)
+    expect(captureProvesAbsence({ state, data: observation.data })).toBe(false)
+  })
+
+  it('fingerprints the response metadata a script reads to choose its DOM', async () => {
+    const outcomes = await Promise.all(
+      ['A', 'B'].map((variant) =>
+        render('head', {
+          document: baseDocument(`<main></main><script>fetch('/config').then(r => {
+          document.querySelector('main').textContent = r.headers.get('X-Nav-Variant')
+        })</script>`),
+          requester: {
+            ...base.requester,
+            async fetchWithRetries() {
+              return { ...baseDocument('same body'), headers: { 'X-Nav-Variant': variant } }
+            },
+          },
+        }),
+      ),
+    )
+    expect(outcomes.map((outcome) => outcome.html.match(/<main>.*?<\/main>/)?.[0])).toEqual([
+      '<main>A</main>',
+      '<main>B</main>',
+    ])
+    expect(outcomes[0]?.inputs?.resourceAnswers).toBe(outcomes[1]?.inputs?.resourceAnswers)
+    expect(outcomes[0]?.inputs?.resourceResponseMetadata).toBeDefined()
+    expect(outcomes[0]?.inputs?.resourceResponseMetadata).not.toBe(
+      outcomes[1]?.inputs?.resourceResponseMetadata,
+    )
+  })
+
   it.each(['location.reload()', 'location.href="?noise=1"'])(
     'does not claim a redirect for a navigation to the same identity: %s',
     async (script) => {
@@ -323,16 +477,28 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       ]),
     )
   })
+  it('redacts blocked pixel and media endpoints in type omission samples', async () => {
+    const outcome = await render('head', {
+      document: baseDocument(`<img src="http://beacon.riskified.com/pixel?uuid=random">
+        <video preload="auto" src="http://edge.wingify.net/video?uuid=random"></video>`),
+    })
+    expect(outcome.requests.omitted).toEqual(
+      expect.arrayContaining([
+        { url: 'http://beacon.riskified.com/pixel', reason: 'type' },
+        { url: 'http://edge.wingify.net/video', reason: 'type' },
+      ]),
+    )
+  })
   it('obeys robots only for tracked resources, and shares script answers across a crawl', async () => {
     const cache = createRenderResourceCache()
-    const first = await render('nav', { cache })
-    const second = await render('nav', { cache })
+    const first = await render('nav', { cache, waitMs: 600 })
+    const second = await render('nav', { cache, waitMs: 600 })
     expect(first.requests.made).toBe(1)
     expect(second.requests.cached).toBe(1)
-    const blocked = await render('nav', { allowedByRobots: () => false })
+    const blocked = await render('nav', { allowedByRobots: () => false, waitMs: 600 })
     expect(blocked.requests.blockedByRobots).toEqual(['http://site.test/nav.js'])
     expect(blocked.requests.made).toBe(0)
-  })
+  }, 12_000)
   it('charges truncated resources and stops downloading at the page budget', async () => {
     let downloads = 0
     const resource = Buffer.alloc(RENDER_LIMITS.resourceBytes)
@@ -401,6 +567,217 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(second.requests.cached).toBe(1)
     expect(downloads).toBe(1)
   }, 15000)
+  it('keeps positive DOM from a timed-out navigation script but cannot prove absence', async () => {
+    const outcome = await render('nav', {
+      cache: createRenderResourceCache(),
+      document: baseDocument('<a href="/served">Served link</a>' + pages.nav),
+      requester: {
+        ...base.requester,
+        async fetchWithRetries() {
+          return new FetchError('TIMEOUT', 'Navigation script timed out')
+        },
+      },
+    })
+    const observation = renderObservation('home', outcome, null)
+    const state = renderStateOf({
+      ...observation,
+      redirected: outcome.redirected,
+      servedTruncated: false,
+    })
+    expect(state).toBe('complete')
+    expect(outcome.requests.failedCount).toBe(1)
+    expect(outcome.html).toContain('href="/served"')
+    expect(captureProvesAbsence({ state, data: observation.data })).toBe(false)
+  })
+
+  it('counts an admitted response the browser rejects for CORS as a failed dependency', async () => {
+    const outcome = await render('head', {
+      document: baseDocument(`<main>Positive DOM</main>
+        <script>fetch('http://api.other.test/no-cors').catch(() => {})</script>`),
+      requester: {
+        ...base.requester,
+        async fetchWithRetries() {
+          return baseDocument('no access-control header')
+        },
+      },
+    })
+    expect(outcome.status).toBe('rendered')
+    expect(outcome.html).toContain('<main>Positive DOM</main>')
+    expect(outcome.requests.failedCount).toBe(1)
+  })
+
+  it('marks the 301st eligible request as cut with all six page slots busy at capture', async () => {
+    const first = Array.from(
+      { length: RENDER_LIMITS.requests - RENDER_LIMITS.pageResources },
+      (_, n) => `<script defer src="/queued-${n}.js"></script>`,
+    ).join('')
+    const outcome = await render('head', {
+      waitMs: 600,
+      cache: createRenderResourceCache(),
+      document: baseDocument(
+        first +
+          `<script>
+        addEventListener('DOMContentLoaded', () => {
+          for (let i = 0; i < 7; i++) fetch('/held-' + i).catch(() => {})
+        })
+      </script>`,
+      ),
+      requester: {
+        ...base.requester,
+        async fetchWithRetries(url, options) {
+          if (url.includes('/held-')) {
+            await new Promise<void>((resolve) =>
+              options?.signal?.addEventListener('abort', () => resolve(), { once: true }),
+            )
+          }
+          return { ...baseDocument(''), headers: { 'content-type': 'application/javascript' } }
+        },
+      },
+    })
+    expect(outcome.requests.made).toBe(300)
+    expect(outcome.truncated).toBe(true)
+    expect(outcome.requests.omitted).toContainEqual({
+      url: 'http://site.test/held-6',
+      reason: 'limit',
+    })
+  }, 15_000)
+
+  it('reuses budget reservations from address refusals before sending valid resources', async () => {
+    const count = RENDER_LIMITS.requests
+    const scripts = Array.from(
+      { length: count },
+      (_, n) => `<script defer src="http://refused.test/${n}.js"></script>`,
+    ).join('')
+    const outcome = await render('head', {
+      waitMs: 600,
+      cache: createRenderResourceCache(),
+      document: baseDocument(
+        scripts +
+          `<main></main><script>
+        addEventListener('DOMContentLoaded', () => {
+          fetch('/after-refusal').then(r => r.text()).then(text => document.querySelector('main').textContent = text)
+        })
+      </script>`,
+      ),
+      requester: {
+        ...base.requester,
+        async fetchWithRetries(url) {
+          return url.startsWith('http://refused.test/')
+            ? new FetchError('BLOCKED_ADDRESS', 'Address refused')
+            : baseDocument('Loaded after refusals')
+        },
+      },
+    })
+    expect(outcome.requests.refusedCount).toBe(count)
+    expect(outcome.requests.made).toBe(1)
+    expect(outcome.truncated).toBe(false)
+    expect(outcome.html).toContain('<main>Loaded after refusals</main>')
+  }, 15_000)
+
+  it('waits for the last reservation to be refunded before omitting a queued request', async () => {
+    const scripts = Array.from(
+      { length: RENDER_LIMITS.requests - 3 },
+      (_, n) => `<script defer src="/script-${n}.js"></script>`,
+    ).join('')
+    const outcome = await render('head', {
+      cache: createRenderResourceCache(),
+      document: baseDocument(
+        scripts +
+          `<main></main><script>
+        addEventListener('DOMContentLoaded', () => {
+          for (const url of ['/one', '/two', '/blocked']) fetch(url).catch(() => {})
+          fetch('/nav').then(r => r.text()).then(text => document.querySelector('main').textContent = text)
+        })
+      </script>`,
+      ),
+      requester: {
+        ...base.requester,
+        async fetchWithRetries(url) {
+          if (url.endsWith('/blocked')) {
+            await new Promise((resolve) => setTimeout(resolve, 100))
+            return new FetchError('BLOCKED_ADDRESS', 'Address refused')
+          }
+          return {
+            ...baseDocument(url.endsWith('/nav') ? 'Navigation' : ''),
+            headers: {
+              'content-type': 'application/javascript',
+            },
+          }
+        },
+      },
+    })
+    expect(outcome.requests.made).toBe(RENDER_LIMITS.requests)
+    expect(outcome.requests.refusedCount).toBe(1)
+    expect(outcome.truncated).toBe(false)
+    expect(outcome.html).toContain('<main>Navigation</main>')
+  }, 15_000)
+
+  it('records the time of the browser DOM snapshot when a long task spans the cutoff', async () => {
+    const outcome = await render('head', {
+      waitMs: 600,
+      document: baseDocument(`<main></main><script>
+        addEventListener('DOMContentLoaded', () => setTimeout(() => {
+          const until = performance.now() + 600
+          while (performance.now() < until) {}
+          document.querySelector('main').textContent = Math.floor(
+            performance.now() - performance.getEntriesByType('navigation')[0].domContentLoadedEventStart
+          )
+        }, 300))
+      </script>`),
+    })
+    const mutationMs = Number(/<main>([0-9]+)<\/main>/.exec(outcome.html)?.[1])
+    expect(mutationMs).toBeGreaterThan(850)
+    expect(outcome.captureMs).toBeGreaterThanOrEqual(mutationMs)
+    expect(outcome.captureDelayMs).toBeGreaterThan(200)
+    expect(outcome.settled).toBe(false)
+  })
+
+  it('sees a main-frame redirect made during a task that spans the cutoff', async () => {
+    const outcome = await render('head', {
+      waitMs: 600,
+      document: baseDocument(`<title>Before redirect</title><script>
+        addEventListener('DOMContentLoaded', () => setTimeout(() => {
+          const until = performance.now() + 600
+          while (performance.now() < until) {}
+          location.href = '/redirect-in-gap'
+        }, 300))
+      </script>`),
+    })
+    expect(outcome.redirected).toBe(true)
+    expect(outcome.finalUrl).toBe('http://site.test/redirect-in-gap')
+    expect(outcome.html).toBe('')
+  })
+
+  it('closes the context at the first interception beyond the ceiling', async () => {
+    const context = await browser.createBrowserContext()
+    const close = vi.spyOn(context, 'close')
+    const ceiling = RENDER_LIMITS.interceptions
+    Object.defineProperty(RENDER_LIMITS, 'interceptions', { value: 12 })
+    try {
+      const outcome = await renderPage(
+        browser,
+        {
+          ...base,
+          url: 'http://site.test/ceiling',
+          waitMs: 2500,
+          document: baseDocument(`<script>
+          addEventListener('DOMContentLoaded', () => {
+            setInterval(() => fetch('/poll').catch(() => {}), 20)
+          })
+        </script>`),
+        },
+        context,
+      )
+      expect(outcome.truncated).toBe(true)
+      expect(outcome.status).toBe('rendered')
+      expect(outcome.requests.made).toBe(11)
+      expect(outcome.durationMs).toBeLessThan(1500)
+      expect(close).toHaveBeenCalledTimes(1)
+    } finally {
+      Object.defineProperty(RENDER_LIMITS, 'interceptions', { value: ceiling })
+    }
+  })
+
   it('takes a never-quiet page at the wait limit without reporting failure', async () => {
     const document = {
       body: Buffer.from(
@@ -480,12 +857,21 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(result.html).toContain('<main>unchanged</main>')
   })
   it('bounds requests, diagnostics and script errors', async () => {
+    const scripts = Array.from(
+      { length: 400 },
+      (_, n) => `<script defer src="/budget-${n}.js"></script>`,
+    ).join('')
     const body = `<main>bounded</main><script>
-      for(let n=0;n<400;n++) fetch('/poll').catch(()=>{});
       for(let n=0;n<60;n++) setTimeout(()=>{throw new Error('error '+n+' '+ 'x'.repeat(300))},0);
-    </script>`
+    </script>${scripts}`
     const result = await render('head', {
-      waitMs: 1500,
+      waitMs: 600,
+      requester: {
+        ...base.requester,
+        async fetchWithRetries() {
+          return { ...baseDocument(''), headers: { 'content-type': 'application/javascript' } }
+        },
+      },
       document: {
         statusCode: 200,
         headers: { 'content-type': 'text/html' },
@@ -497,12 +883,53 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     })
     expect(result.status).toBe('rendered')
     expect(result.truncated).toBe(true)
-    expect(result.requests.made).toBeLessThanOrEqual(RENDER_LIMITS.requests)
+    expect(result.requests.made).toBe(RENDER_LIMITS.requests)
     expect(result.requests.omittedCount).toBeGreaterThan(50)
     expect(result.requests.omitted).toHaveLength(RENDER_LIMITS.diagnosticItems)
     expect(result.scriptErrors.count).toBe(60)
     expect(result.scriptErrors.first).toHaveLength(RENDER_LIMITS.scriptErrors)
     expect(result.scriptErrors.first.every((error) => error.length <= 200)).toBe(true)
+    expect(
+      result.scriptErrors.first.map((error) => error.split(' ').slice(0, 2).join(' ')),
+    ).toEqual(['error 0', 'error 1', 'error 10', 'error 11', 'error 12'])
+  }, 15_000)
+  it('admits 20 scripts after omitting 400 images without truncating', async () => {
+    const images = Array.from({ length: 400 }, (_, n) => `<img src="/image-${n}">`).join('')
+    const scripts = Array.from(
+      { length: 20 },
+      (_, n) => `<script defer src="/test-${n}.js"></script>`,
+    ).join('')
+    const result = await render('head', {
+      document: baseDocument(`${images}${scripts}<main></main>`),
+      requester: {
+        ...base.requester,
+        async fetchWithRetries(url) {
+          if (!url.endsWith('.js')) throw new Error('An omitted image was fetched')
+          return {
+            ...baseDocument("document.querySelector('main').append('x')"),
+            headers: { 'content-type': 'application/javascript' },
+          }
+        },
+      },
+    })
+    expect(result.status).toBe('rendered')
+    expect(result.truncated).toBe(false)
+    expect(result.requests).toMatchObject({ made: 20, omittedCount: 400, failedCount: 0 })
+    expect(result.html).toContain(`<main>${'x'.repeat(20)}</main>`)
+  }, 15_000)
+  it('captures a late mutation after the network has already gone quiet', async () => {
+    const result = await render('head', {
+      waitMs: 1200,
+      document: baseDocument(`<nav></nav><script>
+        setTimeout(() => document.querySelector('nav').innerHTML = '<a href="/late">Late</a>', 800)
+      </script>`),
+    })
+    expect(result.status).toBe('rendered')
+    expect(result.captureDelayMs).not.toBeNull()
+    expect(result.settled).toBe(result.captureDelayMs! <= CAPTURE_DELAY_TOLERANCE_MS)
+    expect(result.pending).toBe(0)
+    expect(result.captureMs).toBeGreaterThanOrEqual(1200)
+    expect(result.html).toContain('<a href="/late">Late</a>')
   })
   it('bounds UTF-8 DOM bytes and ignores page overrides of serialization builtins', async () => {
     const body = `<main>${'é'.repeat(RENDER_LIMITS.domBytes / 2 + 100)}</main><script>Element.prototype.getHTML=()=>'<p>fake</p>';window.TextEncoder=function(){throw Error('fake')}</script>`
@@ -572,14 +999,19 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
       const {
         durationMs: _duration,
         captureMs: _capture,
+        captureDelayMs,
+        settled,
         ...outcome
       } = await render('nav', {
         cache: createRenderResourceCache(),
+        waitMs: 650,
       })
+      expect(captureDelayMs).not.toBeNull()
+      expect(settled).toBe(captureDelayMs! <= CAPTURE_DELAY_TOLERANCE_MS)
       outcomes.add(JSON.stringify(outcome))
     }
     expect(outcomes.size).toBe(1)
-  }, 30_000)
+  }, 45_000)
   it('retries a crashed page once and then returns failed', async () => {
     const service = createRenderService({
       browserUrl: `http://127.0.0.1:${new URL(browser.wsEndpoint()).port}`,

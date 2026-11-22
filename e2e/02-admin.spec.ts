@@ -1,6 +1,17 @@
-import { readFile } from 'node:fs/promises'
+import { createDatabase } from '@seotools/db'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from './support/test'
-import { ADMIN, ADMIN_STATE, HOST, RENDERED_HOST, RENDERED_UNOBSERVED } from './support/env'
+import {
+  ADMIN,
+  ADMIN_STATE,
+  DATABASE_URL,
+  HOST,
+  RENDERED_HOST,
+  RENDERED_UNOBSERVED,
+} from './support/env'
 import { signIn } from './support/helpers'
 
 const domain = `/domains/${HOST}`
@@ -187,6 +198,59 @@ test('the pages export downloads a CSV with its header row', async ({ page }) =>
   expect(rows.join('\n')).toContain('https://example.com/about')
 })
 
+test('Administration identifies different builds and a database that is newer than the web app', async ({
+  page,
+}) => {
+  const db = await createDatabase({ url: DATABASE_URL, dialect: 'sqlite' })
+  const migrations = await mkdtemp(join(tmpdir(), 'seotools-e2e-newer-'))
+  try {
+    const startedAt = new Date()
+    await db.heartbeats.beat({
+      workerId: 'previous-deployment',
+      startedAt,
+      build: { version: '0.5.0', channel: 'release', commit: null },
+      outdated: true,
+    })
+    await db.heartbeats.beat({
+      workerId: 'current-deployment',
+      startedAt,
+      build: { version: '0.6.0', channel: 'release', commit: null },
+      outdated: false,
+    })
+
+    await page.goto('/system')
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'recently reported different builds' }),
+    ).toContainText(/0\.5\.0.*0\.6\.0|0\.6\.0.*0\.5\.0/)
+    await expect(page.getByRole('alert').filter({ hasText: 'Outdated workers' })).toContainText(
+      '0.5.0',
+    )
+    await expect(page.getByText('This web app does not recognize')).toHaveCount(0)
+
+    // Advance only the throwaway smoke database's journal, leaving the web build as it was.
+    const source = fileURLToPath(new URL('../packages/db/migrations/sqlite/', import.meta.url))
+    await cp(source, migrations, { recursive: true })
+    const journalPath = join(migrations, 'meta/_journal.json')
+    const journal: { entries: { idx: number; when: number; tag: string; breakpoints: boolean }[] } =
+      JSON.parse(await readFile(journalPath, 'utf8'))
+    journal.entries.push({
+      idx: journal.entries.length,
+      when: journal.entries.at(-1)!.when + 1,
+      tag: 'future',
+      breakpoints: true,
+    })
+    await writeFile(journalPath, JSON.stringify(journal))
+    await writeFile(join(migrations, 'future.sql'), 'CREATE TABLE future_probe (id integer)')
+    await db.migrate(migrations)
+
+    expect((await page.reload())?.status()).toBe(200)
+    await expect(page.getByText('This web app does not recognize')).toBeVisible()
+  } finally {
+    await db.close()
+    await rm(migrations, { recursive: true, force: true })
+  }
+})
+
 test('the Crawls area lists the crawls, with the run actions and its own sections', async ({
   page,
 }) => {
@@ -201,6 +265,14 @@ test('the Crawls area lists the crawls, with the run actions and its own section
   await expect(crawls.getByText('Full crawl').first()).toBeVisible()
   await expect(crawls.getByText('completed')).toBeVisible()
   await expect(crawls.getByRole('link', { name: 'View', exact: true })).toBeVisible()
+  // Everything else about the crawl is in its details, in a drawer that opens at once.
+  await crawls.getByRole('button', { name: 'Details' }).click()
+  const details = page.getByRole('dialog')
+  await expect(details.getByText('Version', { exact: true })).toBeVisible()
+  await expect(details.getByText('development build', { exact: true })).toBeVisible()
+  await expect(details.getByRole('heading', { name: 'Run' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(details).toHaveCount(0)
 
   // One entry in the sidebar, and tabs in the page.
   const sidebar = page.getByRole('navigation', { name: 'Main' })
@@ -557,7 +629,9 @@ test('a rendered crawl of over a thousand pages shows its number and coverage in
   await expect(block.getByText('None', { exact: true })).toHaveCount(0)
 
   await page.goto(`/domains/${RENDERED_HOST}/crawls`)
+  // The short row says the crawl was rendered; the coverage is in its details.
   const row = page.getByRole('row').filter({ hasText: 'Rendered' }).first()
-  await expect(row.getByText(`${unobserved} pages not observed completely`)).toBeVisible()
-  await expect(row.getByText('Coverage not analysed yet')).toHaveCount(0)
+  await row.getByRole('button', { name: 'Details' }).click()
+  await expect(page.getByText(`${unobserved} pages not observed completely`)).toBeVisible()
+  await expect(page.getByText('Coverage not analysed yet')).toHaveCount(0)
 })

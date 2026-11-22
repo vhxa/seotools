@@ -44,6 +44,11 @@ export const JOB_TYPES = {
   cwvCollect: 'cwv.collect',
   incidentAlerts: 'incident.alerts',
   vitalsAlerts: 'vitals.alerts',
+  /**
+   * Works out why each URL that one crawl of a pair has and the other lacks differs, from what the
+   * two crawls stored. Requests nothing. One per pair (`compareExplainJobId`).
+   */
+  compareExplain: 'compare.explain',
 } as const
 
 export const exampleEchoPayload = z.object({
@@ -84,6 +89,16 @@ export const accessEmailPayload = z.object({
   locale: z.enum(['en', 'es']),
 })
 export type AccessEmailPayload = z.infer<typeof accessEmailPayload>
+
+export const compareExplainPayload = z.object({
+  baseId: z.string().min(1),
+  targetId: z.string().min(1),
+})
+export type CompareExplainPayload = z.infer<typeof compareExplainPayload>
+
+/** The id of the job that explains a pair: queuing it again while it waits adds nothing. */
+export const compareExplainJobId = (baseRef: number, targetRef: number) =>
+  `compare.explain:${baseRef}:${targetRef}`
 
 export const crawlAlertsPayload = z.object({ crawlId: z.string().min(1) })
 export type CrawlAlertsPayload = z.infer<typeof crawlAlertsPayload>

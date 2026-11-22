@@ -120,6 +120,9 @@ async function seed() {
       depth: 1,
     },
   ])
+  await db
+    .insert(sqliteSchema.crawlAnswerPairs)
+    .values({ crawlId: crawl.id, sourceHash: 'h1', detail: JSON.stringify({ version: 1 }) })
   await db.insert(sqliteSchema.crawlUrlLinks).values({
     crawlRef: crawl.ref!,
     source: 1,
@@ -164,6 +167,7 @@ describe.skipIf(!baseUrl)('copySqliteToPostgres', () => {
         expect(count('jobs')).toBeGreaterThanOrEqual(2)
         expect(count('crawl_urls')).toBe(2)
         expect(count('crawl_url_links')).toBe(1)
+        expect(count('crawl_answer_pairs')).toBe(1)
         // The mail setting and the record of what audit rules mean.
         expect(count('settings')).toBe(2)
 

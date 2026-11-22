@@ -22,8 +22,10 @@ Raspberry Pi to a VPS.
   tags), pages linked only by JavaScript, client redirects, blocked resources, failed renders and
   script errors. Pages that were not observed completely stay unknown, HTML and rendered results
   are never mixed in comparisons, and HTML-only rechecks cannot settle rendered document findings.
-  Captures while loading report what they show; missing findings about links between pages or comparisons of their documents remain unverified across
-  the crawl. Older unsettled renders without capture metadata stay unknown.
+  The browser captures at the end of the domain's render window. Captures while loading report
+  what they show. Missing findings about links between pages or comparisons of their documents
+  remain unverified across the crawl. Failed dependencies also leave missing rendered links
+  unverified. Older unsettled renders without capture metadata stay unknown.
   Each URL shows what rendering observed and what it could not; see the
   [setup guide](docs/rendering.md).
 - **161 checks** for indexation (noindex, robots.txt, canonicals, sitemaps, hreflang), broken
@@ -47,8 +49,10 @@ Raspberry Pi to a VPS.
   found each URL, and where query parameters enter the site. Ignore selected parameter names or
   prefixes from the next crawl; review volatile/canonical suggestions, separately marked tracking
   names and currently ignored names on the Parameters page ([details](docs/ignored-parameters.md)).
-- **History and exports**: compare crawls, follow a URL's history, recheck individual URLs and
-  export pages, findings, links and redirects as CSV.
+- **History and exports**: compare crawls (each URL one of them lacks says why, from what they
+  stored, and can be checked again now), follow a URL's history, recheck individual URLs and
+  export pages, findings, links and redirects as CSV. New crawls keep their discovery settings
+  and the builds that queued, ran and analysed them. Administration warns about mixed or outdated workers.
 - **Crawl files and bot access**: inspect `robots.txt` with each AI bot's access, sitemaps, `llms.txt`
   and optional `ads.txt`, `security.txt`, feeds, OpenSearch and IndexNow. From robots.txt, compare
   homepage responses to published bot User-Agent strings on demand; simulated requests cannot
@@ -107,6 +111,8 @@ This pulls the newest **stable release**. For anything you rely on, pin a versio
 (`SEOTOOLS_IMAGE` in `.env`) and update it on purpose: see [Updating](#updating).
 
 ## Configuration
+
+Completed full crawls repeat up to 24 served HTML requests. Crawl details show how many comparable answers differed, with both observations available on the URL detail.
 
 Administrators can save an encrypted Google API key in **Administration → Integrations**. With collection enabled in a domain’s Crawling settings, its page addresses and origin are sent to Google after each full crawl. The key's Google Cloud project needs the **Chrome UX Report API** (field data) and the **PageSpeed Insights API** (lab data) enabled, and a key restricted to APIs must allow both. Data is collected after the next full crawl; earlier crawls are not filled in.
 

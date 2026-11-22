@@ -20,9 +20,12 @@
     "./crawl/normalize": "./src/crawl/normalize.ts",
     "./crawl/render-state": "./src/crawl/render-state.ts",
     "./crawl/settings": "./src/crawl/settings.ts",
+    "./crawl/discovery": "./src/crawl/discovery.ts",
     "./crawl/structured-data": "./src/crawl/structured-data.ts",
     "./crawl/thresholds": "./src/crawl/thresholds.ts",
+    "./crawl/paired": "./src/crawl/paired.ts",
     "./crawl/compare": "./src/crawl/compare.ts",
+    "./crawl/comparison-reasons": "./src/crawl/comparison-reasons.ts",
     "./crawl/verification": "./src/crawl/verification.ts",
     "./version": "./src/version.ts",
     "./vitals-state": "./src/vitals-state.ts",
@@ -39,9 +42,9 @@
   },
   "dependencies": {
     "css-what": "^8.0.0",
-    "nodemailer": "^10.4.0",
+    "nodemailer": "^10.6.0",
     "pino": "^10.4.0",
-    "resend": "^6.37.0",
+    "resend": "^6.38.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {

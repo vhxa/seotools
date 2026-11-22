@@ -18,6 +18,7 @@ export interface RunnerOptions {
   pollIntervalMs: number
   /** Jobs `running` longer than this are assumed orphaned and recovered. */
   lockTimeoutMs: number
+  canStart?: () => Promise<boolean>
   retryBaseMs?: number
   /** How often to look for orphaned jobs. */
   staleCheckIntervalMs?: number
@@ -94,13 +95,14 @@ export function createRunner(options: RunnerOptions) {
 
   /** Claims as many jobs as there are free slots and starts them. Returns how many started. */
   async function tick(): Promise<number> {
-    if (Date.now() - lastStaleCheck >= staleCheckIntervalMs) {
-      lastStaleCheck = Date.now()
-      await recoverStale()
-    }
     if (Date.now() - lastRenewal >= renewIntervalMs) {
       lastRenewal = Date.now()
       await renewLocks()
+    }
+    if (options.canStart && !(await options.canStart())) return 0
+    if (Date.now() - lastStaleCheck >= staleCheckIntervalMs) {
+      lastStaleCheck = Date.now()
+      await recoverStale()
     }
     const free = concurrency - inFlight.size
     if (free <= 0) return 0

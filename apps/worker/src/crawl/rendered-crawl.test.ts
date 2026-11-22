@@ -82,6 +82,10 @@ it('discovers and follows the rendered menu, retains HTML checks and both graph 
   expect(await issues(crawl.id, '/only-js')).toContain('linked-only-by-javascript')
   expect(await issues(crawl.id, '/')).toContain('links-only-after-rendering')
   expect(await issues(crawl.id, '/')).toContain('few-html-links')
+  expect((await db.crawls.get(crawl.id))?.pairedSummary).toMatchObject({
+    comparable: 4,
+    different: 0,
+  })
   expect(fake.requests).toContain(`${SITE}/only-js`)
   const links = await db.crawls.linksFrom(crawl.id, [hash('/')])
   expect(links.filter((link) => link.rendered === 1)).toHaveLength(2)
@@ -93,6 +97,27 @@ it('discovers and follows the rendered menu, retains HTML checks and both graph 
   expect(homeInput.allowedByRobots('https://unseen.test/a')).toBe('unknown')
   expect((await db.crawls.get(crawl.id))?.auditSnapshot?.rendersUnobserved).toBe(0)
 })
+it('never flags a stable served answer when the rendered menu rotates between crawls', async () => {
+  for (const target of ['/only-js', '/orphan']) {
+    const crawl = await start()
+    await runCrawl(
+      crawl.id,
+      options({
+        renderService: {
+          check: ready,
+          render: async (input) =>
+            renderedOutcome(input, input.url === SITE + '/' ? `<a href="${target}">Offer</a>` : ''),
+        },
+      }),
+    )
+    const links = await db.crawls.linksFrom(crawl.id, [hash('/')])
+    expect(links.some((link) => link.rendered === 1 && link.targetHash === hash(target))).toBe(true)
+    const [home] = await db.crawls.answerPairs(crawl.id, [hash('/')])
+    expect(home).toMatchObject({ unknown: null, changed: [] })
+    expect((await db.crawls.get(crawl.id))?.pairedSummary?.different).toBe(0)
+  }
+})
+
 it('HTML crawls do not render and report the sitemap orphan with JavaScript unknown', async () => {
   await db.crawls.saveSettings(domainId, {
     ...(await db.crawls.settings(domainId)),

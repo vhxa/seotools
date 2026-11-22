@@ -180,8 +180,13 @@ function collectAbsoluteUrls(value: unknown, into: string[]) {
 }
 
 /** Extracts the data of an HTML document, and every URL referenced anywhere in it. */
-export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
-  const collector = new PageFactsCollector(pageUrl, (raw) => normalizeCrawlUrl(raw, base))
+export function extractHtml(
+  html: string,
+  pageUrl: string,
+  keepLink?: (url: string, kind: CrawlLinkKind) => boolean,
+  documentUrl = pageUrl,
+): ExtractedHtml {
+  const collector = new PageFactsCollector(pageUrl, (raw) => normalizeCrawlUrl(raw, base), keepLink)
   const result: ExtractedHtml = {
     title: null,
     description: null,
@@ -195,7 +200,15 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
     links: [],
     facts: collector.facts,
   }
-  let base = pageUrl
+  const observedLinks: ExtractedLink[] = keepLink ? [] : result.links
+  const observeLink = (url: string, kind: CrawlLinkKind) => {
+    if (!keepLink) return true
+    observedLinks.push({ url, kind })
+    const keep = keepLink(url, kind)
+    if (!keep && element) element.omitsReference = true
+    return keep
+  }
+  let base = documentUrl
   let baseSet = false
   let title: string | null = null
   let h1: string | null = null
@@ -208,7 +221,8 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
   /** Every element open, with the landmark it starts if any: where a link sits. */
   const open: { name: string; region: LinkRegion | null }[] = []
   /** The element whose attributes are being read: the context of what `add` finds in it. */
-  let element: { name: string; attributes: Record<string, string> } | null = null
+  type LinkElement = { name: string; attributes: Record<string, string> }
+  let element: (LinkElement & { snippets: LinkContext[]; omitsReference: boolean }) | null = null
   /** The outermost anchor open, collecting its text into the context of its link. */
   let anchor: { context: LinkContext; text: string } | null = null
   let anchorDepth = 0
@@ -224,24 +238,31 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
     return false
   }
 
-  const contextOf = (url: string, from: typeof element): LinkContext | undefined => {
+  const contextOf = (url: string, from: LinkElement | null): LinkContext | undefined => {
     if (!from) return undefined
     const region = regionHere()
-    return {
+    const context: LinkContext = {
       element: describeElement(from.name, from.attributes),
       ...(region ? { region } : {}),
       ...(bringsParameters(url) ? { snippet: openingTag(from.name, from.attributes) } : {}),
     }
+    if (keepLink && context.snippet && from === element) element.snippets.push(context)
+    return context
   }
 
-  const add = (raw: string | undefined, kind: CrawlLinkKind, from = element) => {
+  const add = (
+    raw: string | undefined,
+    kind: CrawlLinkKind,
+    from: LinkElement | null = element,
+  ) => {
     if (raw === undefined) return
     const value = raw.trim()
     // `#section` and an empty href point at the page itself: they are not links to anything.
     if (!value || value.startsWith('#')) return
-    collector.sawUrl(value, kind)
     const url = normalizeCrawlUrl(value, base)
-    if (!url) return
+    const keep = url ? observeLink(url, kind) : false
+    collector.sawUrl(value, kind, url, !!url && !keep)
+    if (!url || !keep) return
     const context = contextOf(url, from)
     result.links.push(context ? { url, kind, context } : { url, kind })
     const isAnchor = kind === 'anchor' || kind === 'anchor-nofollow'
@@ -251,7 +272,8 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
   }
 
   const addCss = (css: string) => {
-    for (const link of extractCssUrls(css, base)) result.links.push(link)
+    for (const link of extractCssUrls(css, base))
+      if (observeLink(link.url, link.kind)) result.links.push(link)
   }
 
   const onLink = (attributes: Record<string, string>) => {
@@ -259,10 +281,20 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
     const href = attributes.href
     const announced = href === undefined ? null : normalizeCrawlUrl(href, base)
     const type = attributes.type ?? ''
-    if (announced && rel.includes('alternate') && FEED_TYPE.test(type)) {
+    if (
+      announced &&
+      rel.includes('alternate') &&
+      FEED_TYPE.test(type) &&
+      (!keepLink || keepLink(announced, 'head-link'))
+    ) {
       if (result.feeds.length < MAX_ANNOUNCED_FILES) result.feeds.push(announced)
     }
-    if (announced && rel.includes('search') && OPENSEARCH_TYPE.test(type)) {
+    if (
+      announced &&
+      rel.includes('search') &&
+      OPENSEARCH_TYPE.test(type) &&
+      (!keepLink || keepLink(announced, 'head-link'))
+    ) {
       if (result.openSearch.length < MAX_ANNOUNCED_FILES) result.openSearch.push(announced)
     }
     if (rel.includes('canonical')) {
@@ -322,7 +354,7 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
             open.at(-1)?.region ??
             null,
         })
-        element = { name, attributes }
+        element = { name, attributes, snippets: [], omitsReference: false }
         if (anchor && name === 'img' && attributes.alt) anchor.text += ` ${attributes.alt}`
         if (name === 'svg') svgDepth++
         if (name === 'base' && !baseSet && attributes.href) {
@@ -358,6 +390,9 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
         }
         if ((name === 'a' || name === 'area') && attributes.href !== undefined) anchorDepth++
         if (attributes.style) addCss(attributes.style)
+        // One tag may refer to several URLs (for example src and srcset). Its verbatim opening tag
+        // cannot be evidence for a kept link if it would disclose a refused co-reference.
+        if (element.omitsReference) for (const context of element.snippets) delete context.snippet
         element = null
       },
       ontext(text) {
@@ -419,7 +454,7 @@ export function extractHtml(html: string, pageUrl: string): ExtractedHtml {
   parser.end()
 
   if (robots.length > 0) result.metaRobots = robots.join(', ')
-  collector.finish({ title: result.title, h1: result.h1[0] ?? null, links: result.links })
+  collector.finish({ title: result.title, h1: result.h1[0] ?? null, links: observedLinks })
   return result
 }
 

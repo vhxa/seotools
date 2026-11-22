@@ -38,6 +38,7 @@ export async function IssuesFilter({
   counts,
   hasAccepted = false,
   checked,
+  rendered = true,
   analysis,
   className,
 }: {
@@ -50,6 +51,11 @@ export async function IssuesFilter({
   hasAccepted?: boolean
   /** Whether the crawl was checked for issues at all. */
   checked: boolean
+  /**
+   * The crawl rendered its pages. If not, the JavaScript category was never looked for: it says so
+   * instead of showing "no findings", which would read as "no problems".
+   */
+  rendered?: boolean
   /** Which crawl the page shows: it heads the panel. */
   analysis: ReactNode
   className?: string
@@ -146,7 +152,11 @@ export async function IssuesFilter({
                             <span className="min-w-0 flex-1 truncate">
                               {tCatalog(`categories.${category.id}`)}
                             </span>
-                            {category.worst ? (
+                            {category.id === 'javascript' && !rendered ? (
+                              <span className="text-muted-foreground">
+                                -<span className="sr-only">{tCatalog('notLookedFor')}</span>
+                              </span>
+                            ) : category.worst ? (
                               <Badge
                                 aria-label={tDetails('issueList.findings', {
                                   count: category.total,
@@ -167,8 +177,17 @@ export async function IssuesFilter({
                         }
                       >
                         <SidebarMenuSub>
+                          {category.id === 'javascript' && !rendered && (
+                            <li className="px-2 py-1 text-xs text-muted-foreground">
+                              {tCatalog('notLookedFor')}
+                            </li>
+                          )}
                           {category.issues.map(({ issue, pages: count }) => {
                             const { type } = PAGE_ISSUES[issue]
+                            const zeroState =
+                              category.id === 'javascript' && !rendered
+                                ? ('notLookedFor' as const)
+                                : zeroFindingState(issue)
                             return (
                               <SidebarMenuSubItem key={issue}>
                                 <SidebarMenuSubButton
@@ -209,11 +228,8 @@ export async function IssuesFilter({
                                       {format.number(count)}
                                     </Badge>
                                   ) : (
-                                    <span title={tCatalog(zeroFindingState(issue))}>
-                                      -
-                                      <span className="sr-only">
-                                        {tCatalog(zeroFindingState(issue))}
-                                      </span>
+                                    <span title={tCatalog(zeroState)}>
+                                      -<span className="sr-only">{tCatalog(zeroState)}</span>
                                     </span>
                                   )}
                                 </SidebarMenuSubButton>

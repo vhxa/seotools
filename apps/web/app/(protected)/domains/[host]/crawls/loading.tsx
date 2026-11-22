@@ -18,7 +18,7 @@ export default function CrawlsLoading() {
         <TextSkeleton />
       </div>
       <Skeleton className="h-5 w-96 max-w-full" />
-      <TableSkeleton rows={4} columns={6} />
+      <TableSkeleton rows={4} columns={7} />
     </SkeletonPage>
   )
 }

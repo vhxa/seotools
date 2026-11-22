@@ -2,6 +2,7 @@ import {
   real,
   index,
   integer,
+  foreignKey,
   primaryKey,
   sqliteTable,
   text,
@@ -110,6 +111,8 @@ export const workerHeartbeats = sqliteTable('worker_heartbeats', {
   workerId: text('worker_id').primaryKey(),
   startedAt: ts('started_at').notNull(),
   lastSeenAt: ts('last_seen_at').notNull(),
+  build: text('build'),
+  outdated: integer('outdated', { mode: 'boolean' }),
 })
 
 export const settings = sqliteTable('settings', {
@@ -243,10 +246,17 @@ export const crawls = sqliteTable(
     jobId: text('job_id').notNull(),
     /** The domain id while the crawl is active, `null` after: unique, so one per domain at most. */
     seedUrls: text('seed_urls'),
+    startedBuild: text('started_build'),
+    runBuilds: text('run_builds'),
+    analysisBuild: text('analysis_build'),
+    discoverySettings: text('discovery_settings'),
     ignoredParameters: text('ignored_parameters'),
     activeKey: text('active_key').unique(),
     pagesCount: integer('pages_count').notNull().default(0),
     urlsCount: integer('urls_count').notNull().default(0),
+    pairedSummary: text('paired_summary'),
+    retryAfterUntil: ts('retry_after_until'),
+    admissionDropped: integer('admission_dropped', { mode: 'boolean' }),
     urlsDoneCount: integer('urls_done_count').notNull().default(0),
     externalCount: integer('external_count').notNull().default(0),
     robots: text('robots'),
@@ -346,6 +356,22 @@ export const crawlUrls = sqliteTable(
   ],
 )
 
+export const crawlAnswerPairs = sqliteTable(
+  'crawl_answer_pairs',
+  {
+    crawlId: text('crawl_id').notNull(),
+    sourceHash: text('source_hash').notNull(),
+    detail: text('detail').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.crawlId, t.sourceHash] }),
+    foreignKey({
+      columns: [t.crawlId, t.sourceHash],
+      foreignColumns: [crawlUrls.crawlId, crawlUrls.urlHash],
+    }).onDelete('cascade'),
+  ],
+)
+
 /**
  * Which URL of a crawl links to which, how, and where in the page (`LinkContext`). The URLs are
  * their `seq` in the crawl and the crawl its `ref`, so that the most numerous rows of the database
@@ -373,6 +399,78 @@ export const crawlUrlLinks = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.crawlRef, t.source, t.target, t.kind] }),
     index('crawl_url_links_target_idx').on(t.crawlRef, t.target),
+  ],
+)
+
+/**
+ * Why the URLs that one crawl of a pair has and the other lacks differ: one row per pair, written by
+ * `explainPair` (worker) and read by the comparison and the alerts. Crawls by `ref`, like the links.
+ * `version` is `EXPLANATION_VERSION`: rows made with other rules are worked out again, never shown.
+ * `runner` is whoever is working it out, so that a run replaced by another cannot mark it done.
+ */
+export const crawlComparisons = sqliteTable(
+  'crawl_comparisons',
+  {
+    baseRef: integer('base_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    targetRef: integer('target_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    /** `queued`, `running`, `done` or `failed`. */
+    state: text('state').notNull(),
+    runner: text('runner'),
+    jobId: text('job_id'),
+    startedAt: ts('started_at').notNull(),
+    finishedAt: ts('finished_at'),
+    /** Failed attempts in a row, and when a failed explanation may be asked for again. */
+    failures: integer('failures').notNull().default(0),
+    retryAt: ts('retry_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.baseRef, t.targetRef] }),
+    index('crawl_comparisons_target_idx').on(t.targetRef),
+  ],
+)
+
+/**
+ * One row per URL that one crawl of the pair has and the other does not (`side`: which has it),
+ * with its reason (`COMPARISON_REASONS`). `seq`, `via` and `through` are numbers of URLs in the crawl
+ * that has it; `into_*` is the address it has in the other crawl when ignored parameters merged or
+ * split it.
+ */
+export const crawlComparisonUrls = sqliteTable(
+  'crawl_comparison_urls',
+  {
+    baseRef: integer('base_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    targetRef: integer('target_ref')
+      .notNull()
+      .references(() => crawls.ref, { onDelete: 'cascade' }),
+    urlHash: text('url_hash').notNull(),
+    side: text('side').notNull(),
+    seq: integer('seq'),
+    reason: text('reason').notNull(),
+    detail: text('detail'),
+    via: integer('via'),
+    /** The exact link from `via` the reason is about. */
+    viaKind: text('via_kind'),
+    viaRendered: integer('via_rendered'),
+    through: integer('through'),
+    /** In-links of the URL in the crawl that has it. */
+    sources: integer('sources').notNull().default(0),
+    /** Of them, from URLs the other crawl does not have either (a chain). */
+    unseen: integer('unseen').notNull().default(0),
+    intoHash: text('into_hash'),
+    intoUrl: text('into_url'),
+    intoPresent: integer('into_present', { mode: 'boolean' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.baseRef, t.targetRef, t.urlHash] }),
+    index('crawl_comparison_urls_reason_idx').on(t.baseRef, t.targetRef, t.side, t.reason),
+    index('crawl_comparison_urls_target_idx').on(t.targetRef),
   ],
 )
 

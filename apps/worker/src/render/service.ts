@@ -11,6 +11,8 @@ export function createRenderService(options: {
   browserUrl?: string
   concurrency: number
   writeStatus: (status: RenderStatus) => Promise<void>
+  /** Capture-rule benchmark override. Production uses the default in renderPage. */
+  minQuietCaptureMs?: number
 }) {
   if (!Number.isInteger(options.concurrency) || options.concurrency < 1 || options.concurrency > 4)
     throw new Error('Invalid render concurrency')
@@ -49,7 +51,7 @@ export function createRenderService(options: {
           try {
             const lease = await connection.get()
             browser = lease.browser
-            return await renderPage(browser, input, lease.context)
+            return await renderPage(browser, input, lease.context, options.minQuietCaptureMs)
           } catch (error) {
             input.signal.throwIfAborted()
             if (!(error instanceof RenderInterruptedError)) throw error
@@ -60,6 +62,7 @@ export function createRenderService(options: {
               settled: false,
               pending: 0,
               captureMs: null,
+              captureDelayMs: null,
               redirected: false,
               finalUrl: input.url,
               html: '',

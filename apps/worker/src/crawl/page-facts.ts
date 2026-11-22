@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   checkStructuredData,
   MAX_EVIDENCE_ITEMS,
@@ -34,7 +35,52 @@ const HEAD_ELEMENTS = new Set([
 /** What `<noscript>` may hold in a head. */
 const HEAD_NOSCRIPT_ELEMENTS = new Set(['link', 'meta', 'style'])
 
-/** Where the text is not the content of the page: code, or what every page repeats. */
+/** Block boundaries separate adjacent words in served text. */
+const TEXT_BLOCKS = new Set([
+  'p',
+  'br',
+  'div',
+  'li',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'td',
+  'tr',
+  'address',
+  'aside',
+  'blockquote',
+  'caption',
+  'dd',
+  'details',
+  'dialog',
+  'dl',
+  'dt',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'header',
+  'hgroup',
+  'hr',
+  'main',
+  'menu',
+  'nav',
+  'ol',
+  'pre',
+  'summary',
+  'table',
+  'th',
+  'ul',
+  'section',
+  'article',
+])
+// Visible navigation and footers count in paired answers, even though duplicate-content
+// analysis excludes text shared across a site's pages.
+const NOT_SERVED_TEXT = new Set(['head', 'title', 'script', 'style', 'noscript', 'template', 'svg'])
 const NOT_CONTENT = new Set([
   'head',
   'title',
@@ -52,6 +98,8 @@ const NOT_CONTENT = new Set([
 ])
 
 /** Link kinds that load a resource into the page, which is what mixed content is about. */
+const redactQuery = (value: string) => value.split(/[?#]/, 1)[0]!
+
 const RESOURCE_LINK_KINDS = new Set(['script', 'style', 'image', 'media', 'frame', 'head-link'])
 
 /** Longest `lang`, viewport or charset kept: real ones are a few dozen characters. */
@@ -276,6 +324,14 @@ export class PageFactsCollector {
   private jsonLd: string | null = null
   /** The JSON-LD blocks parsed so far, for `checkStructuredData`. */
   private jsonLdBlocks: unknown[] = []
+  // The fetcher's decoded body cap bounds these chunks. Join parser callbacks before
+  // normalizing so entity encoding and inline markup do not change a word.
+  private excludedTextDepth = 0
+  private readonly visibleChunks: string[] = []
+  // Two neighbouring labels are separate words even when their tags touch.
+  private labelSequence = 0
+  private currentLabel = 0
+  private previousTextLabel = 0
   private textLength = 0
   private readonly text: string[] = []
   private readonly invalidHead = new Set<string>()
@@ -292,6 +348,8 @@ export class PageFactsCollector {
     private readonly pageUrl: string,
     /** Resolves against the page and its `<base>`. */
     private readonly resolve: (raw: string) => string | null,
+    /** Drops crawl links while retaining their document facts with redacted URL samples. */
+    private readonly keepLink?: (url: string, kind: ExtractedLink['kind']) => boolean,
   ) {}
 
   /** Whether what is being parsed now is in the head, written with a `<head>` tag or not. */
@@ -305,6 +363,12 @@ export class PageFactsCollector {
   }
 
   open(name: string, attributes: Record<string, string>) {
+    if (this.excludedTextDepth || NOT_SERVED_TEXT.has(name) || attributes.hidden !== undefined) {
+      this.excludedTextDepth++
+    } else {
+      if (TEXT_BLOCKS.has(name)) this.visibleChunks.push(' ')
+      if (name === 'a') this.currentLabel = ++this.labelSequence
+    }
     this.trackHead(name)
     if (NOT_CONTENT.has(name)) this.notContentDepth++
     if (name === 'script' || name === 'style') this.codeDepth++
@@ -362,6 +426,16 @@ export class PageFactsCollector {
     if (this.codeDepth > 0) return
     if (this.heading) this.heading.text += chunk
     if (this.anchor && this.anchor.text.length < MAX_ANCHOR_TEXT) this.anchor.text += chunk
+    if (!this.excludedTextDepth) {
+      if (
+        this.currentLabel &&
+        this.previousTextLabel &&
+        this.currentLabel !== this.previousTextLabel
+      )
+        this.visibleChunks.push(' ')
+      this.visibleChunks.push(chunk)
+      this.previousTextLabel = this.currentLabel
+    }
     if (this.notContentDepth === 0 && this.textLength < MAX_TEXT_CHARACTERS) {
       this.text.push(chunk)
       this.textLength += chunk.length
@@ -369,6 +443,11 @@ export class PageFactsCollector {
   }
 
   close(name: string) {
+    if (this.excludedTextDepth) this.excludedTextDepth--
+    else {
+      if (TEXT_BLOCKS.has(name)) this.visibleChunks.push(' ')
+      if (name === 'a') this.currentLabel = 0
+    }
     if (NOT_CONTENT.has(name) && this.notContentDepth > 0) this.notContentDepth--
     if ((name === 'script' || name === 'style') && this.codeDepth > 0) this.codeDepth--
     if (name === 'svg' && this.svgDepth > 0) this.svgDepth--
@@ -404,6 +483,18 @@ export class PageFactsCollector {
     const text = collapse(this.text.join(' '))
     const words = text.split(' ').filter((word) => /[\p{L}\p{N}]/u.test(word))
     const normalized = words.join(' ').toLowerCase()
+    facts.servedTextDigest = createHash('sha256')
+      .update(
+        // Characters only: where a browser puts spaces between elements is layout, not an answer,
+        // so markup moved around the same words (a comma beside a link, an empty closed dialog)
+        // never reads as a different answer. Reordered or repeated visible labels still do.
+        this.visibleChunks
+          .join('')
+          .normalize('NFC')
+          .replace(/[\s\p{White_Space}]+/gu, ''),
+      )
+      .digest('hex')
+    facts.servedTitleDigest = createHash('sha256').update(JSON.stringify(page.title)).digest('hex')
     facts.words = words.length
     facts.placeholderText = normalized.includes('lorem ipsum')
     if (words.length >= MIN_WORDS_TO_COMPARE) facts.textHash = crawlUrlHash(normalized)
@@ -416,13 +507,17 @@ export class PageFactsCollector {
 
     const https = this.pageUrl.startsWith('https:')
     for (const { url, kind } of page.links) {
-      if (isLocalhost(url)) {
+      const localhost = isLocalhost(url)
+      const mixedContent = https && url.startsWith('http:') && RESOURCE_LINK_KINDS.has(kind)
+      if (!localhost && !mixedContent) continue
+      const sample = this.keepLink?.(url, kind) === false ? redactQuery(url) : url
+      if (localhost) {
         facts.localhostLinks++
-        this.sampleLink('localhost', { kind, url: boundedUrl(url), raw: url })
+        this.sampleLink('localhost', { kind, url: boundedUrl(sample), raw: sample })
       }
-      if (https && url.startsWith('http:') && RESOURCE_LINK_KINDS.has(kind)) {
+      if (mixedContent) {
         facts.mixedContent++
-        this.sampleLink('mixed-content', { kind, url: boundedUrl(url), raw: url })
+        this.sampleLink('mixed-content', { kind, url: boundedUrl(sample), raw: sample })
       }
     }
     if (this.evidence.images || this.evidence.links) facts.evidence = this.evidence
@@ -435,10 +530,14 @@ export class PageFactsCollector {
   }
 
   /** A URL in an attribute, before it gets resolved. */
-  sawUrl(raw: string, kind: ExtractedLink['kind']) {
-    if (raw.trim().startsWith('//') && RESOURCE_LINK_KINDS.has(kind)) {
+  sawUrl(raw: string, kind: ExtractedLink['kind'], url: string | null, redact: boolean) {
+    if (raw.startsWith('//') && RESOURCE_LINK_KINDS.has(kind)) {
       this.facts.protocolRelative++
-      this.sampleLink('protocol-relative', { kind, url: boundedUrl(this.resolve(raw)), raw })
+      this.sampleLink('protocol-relative', {
+        kind,
+        url: boundedUrl(redact && url ? redactQuery(url) : url),
+        raw: redact ? redactQuery(raw) : raw,
+      })
     }
   }
 
@@ -616,14 +715,16 @@ export class PageFactsCollector {
     ).trim()
     // An inline image is its own content: the type is all that identifies it.
     const inline = /^data:/i.test(raw)
+    const url = inline || raw === '' ? null : this.resolve(raw)
+    const redact = url !== null && this.keepLink?.(url, 'image') === false
     const src = inline
       ? `${boundedText(raw.slice(0, 64).split(',')[0] ?? 'data:')},…`
-      : boundedText(raw)
+      : boundedText(redact ? redactQuery(raw) : raw)
     const id = boundedText(attributes.id ?? '', 100)
     const className = boundedText(attributes.class ?? '')
     return {
       src,
-      url: inline || raw === '' ? null : boundedUrl(this.resolve(raw)),
+      url: boundedUrl(redact ? redactQuery(url) : url),
       ...(id ? { id } : {}),
       ...(className ? { class: className } : {}),
       ...(alt === undefined ? {} : { alt: boundedText(alt) }),

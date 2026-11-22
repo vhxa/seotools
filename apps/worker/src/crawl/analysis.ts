@@ -1,3 +1,4 @@
+import { getWorkerBuildInfo } from '../build-info'
 import { unobservedCanonicalDifferences } from './render-differences'
 import {
   EMPTY_AUDIT_SNAPSHOT,
@@ -205,6 +206,7 @@ export async function analyseCrawl(
     pages: pagesByWorstIssue,
     withType: pagesWithType,
     catalog: ISSUE_CATALOG_VERSION,
+    build: getWorkerBuildInfo(),
     audit: {
       snapshot: {
         ...config,

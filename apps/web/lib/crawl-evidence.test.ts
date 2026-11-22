@@ -6,6 +6,10 @@ import { evidenceOf, findingChangesBetween, indexTraces, urlEvidenceOf } from '.
 let n = 0
 const crawl = (id: string, overrides: Partial<Crawl> = {}): Crawl => ({
   id,
+  startedBuild: null,
+  runBuilds: null,
+  analysisBuild: null,
+  discoverySettings: null,
   rendering: null,
   browserWaitMs: 0,
   domainId: 'd1',

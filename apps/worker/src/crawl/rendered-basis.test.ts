@@ -17,6 +17,7 @@ import {
   indexTraces,
   type PageIssueId,
 } from '@seotools/core'
+import { CURRENT_CAPTURE_RULE } from '@seotools/core/crawl/render-state'
 import { createCompany, compareWithPrevious, type Crawl } from '@seotools/db'
 import { createTestDatabase, type Database } from '@seotools/db/test'
 import { runCrawl } from './engine'
@@ -126,6 +127,126 @@ it('uses rendered scalars, directives, canonical, facts and exact link removals,
     embedsComplete: true,
   })
 })
+
+it('resolves relative links against the retained document address after a history change', async () => {
+  const result = await crawl(
+    {
+      [`${SITE}/`]: page('/'),
+      [`${SITE}/clean/menu`]: page('/clean/menu'),
+    },
+    async (input) => ({
+      ...renderedOutcome(input),
+      ...(input.url === `${SITE}/`
+        ? {
+            documentUrl: `${SITE}/clean/path`,
+            html: '<a href="menu">Menu</a>',
+          }
+        : {}),
+    }),
+  )
+  expect(await db.crawls.linksFrom(result.id, [hash('/')])).toContainEqual(
+    expect.objectContaining({ targetHash: hash('/clean/menu'), kind: 'anchor', rendered: 1 }),
+  )
+  expect(await db.crawls.getUrl(result.id, hash('/menu'))).toBeNull()
+  expect(await ids(result)).not.toContain('javascript-redirect')
+})
+
+it('omits policy-blocked, render-injected external code from crawl targets and evidence', async () => {
+  const wingify = 'https://edge.wingify.net/v2/dyn'
+  const riskified = 'https://beacon.riskified.com/loader.js'
+  const mixedScript = 'http://edge.wingify.net/mixed.js?uuid=random'
+  const pixel = 'https://beacon.riskified.com/pixel?uuid=random'
+  const media = 'https://edge.wingify.net/video?uuid=random'
+  const servedScript = `${wingify}?id=served`
+  const injectedScript = `${wingify}?uuid=random`
+  const source = page('/', {
+    head: `<script src="${servedScript}"></script>`,
+  })
+  const result = await crawl(
+    {
+      [`${SITE}/`]: source,
+      [`${SITE}/broken.js`]: { statusCode: 404, headers: {}, body: Buffer.from('missing') },
+    },
+    async (input) => ({
+      ...renderedOutcome(input),
+      ...(input.url === `${SITE}/`
+        ? {
+            html: body('/', {
+              head: `<script src="${servedScript}"></script><script src="//edge.wingify.net/v2/dyn?uuid=random"></script><link rel="preload" as="script" href="${injectedScript}"><script src="${riskified}"></script><script src="${mixedScript}"></script><script src="/broken.js"></script>`,
+              links: `<a href="${wingify}">An external anchor is still a link</a><img src="${pixel}" srcset="/kept.jpg?size=1 2x"><video src="${media}"></video>`,
+            }),
+          }
+        : {}),
+    }),
+  )
+  const links = await db.crawls.linksFrom(result.id, [hash('/')])
+  expect(links).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ targetHash: crawlUrlHash(servedScript), kind: 'script' }),
+      expect.objectContaining({ targetHash: crawlUrlHash(wingify), kind: 'anchor' }),
+      expect.objectContaining({ targetHash: hash('/broken.js'), kind: 'script' }),
+    ]),
+  )
+  for (const address of [injectedScript, riskified, mixedScript, pixel, media]) {
+    expect(await db.crawls.getUrl(result.id, crawlUrlHash(address))).toBeNull()
+    expect(links.some(({ targetHash }) => targetHash === crawlUrlHash(address))).toBe(false)
+  }
+  const keptImage = links.find(({ targetHash }) => targetHash === hash('/kept.jpg?size=1'))
+  expect(keptImage).toBeDefined()
+  expect(keptImage?.context?.snippet ?? '').not.toContain(pixel)
+  const observation = await db.crawls.renderOf(result.id, hash('/'))
+  expect(observation?.data.capture?.rule).toBe(CURRENT_CAPTURE_RULE)
+  expect(observation?.data.documentLinks?.embeds).toEqual([
+    servedScript,
+    `${SITE}/broken.js`,
+    `${SITE}/kept.jpg?size=1`,
+  ])
+  expect(observation?.data.facts).toMatchObject({
+    protocolRelative: 1,
+    mixedContent: 1,
+    imagesNoAlt: 1,
+  })
+  expect(JSON.stringify(observation?.data.facts?.evidence)).not.toContain('uuid=random')
+  expect(observation?.data.facts?.evidence?.images?.['no-alt']).toContainEqual(
+    expect.objectContaining({ src: 'https://beacon.riskified.com/pixel' }),
+  )
+  expect(await ids(result)).toEqual(
+    expect.arrayContaining(['resources-broken', 'protocol-relative', 'mixed-content']),
+  )
+})
+
+it.each(['priority', 'url ceiling'] as const)(
+  'preserves served blocked-host reference identities before graph admission (%s)',
+  async (mode) => {
+    const image = 'https://beacon.riskified.com/served.png'
+    const script = 'https://edge.wingify.net/served.js'
+    const document = page('/', {
+      head: `<link rel="preconnect" href="https://first.test/"><script src="${script}"></script>`,
+      links: `<img src="${image}">`,
+    })
+    if (mode === 'url ceiling') {
+      await db.crawls.saveSettings(domainId, {
+        ...(await db.crawls.settings(domainId)),
+        maxUrls: 1,
+      })
+    }
+    const started = (await db.crawls.start({
+      domainId,
+      type: mode === 'priority' ? 'priority' : 'full',
+      trigger: 'manual',
+      ...(mode === 'priority' ? { seedUrls: [`${SITE}/`] } : {}),
+    }))!
+    await runCrawl(started.id, {
+      db,
+      log,
+      createFetcher: fakeSite({ [`${SITE}/`]: document }, 0).createFetcher,
+      renderService: { check: ready, render: async (input) => renderedOutcome(input) },
+      signal: new AbortController().signal,
+    })
+    const observation = await db.crawls.renderOf(started.id, hash('/'))
+    expect(observation?.data.documentLinks?.embeds).toEqual([image, script])
+  },
+)
 
 it.each([
   {

@@ -159,7 +159,33 @@ export function describeLifecycle(
       await db.incidents.claim(incident.id, member.id, incident.stage)
       await db.crawlFiles.requestCheck({ domainId, now: new Date() })
 
-      // An older crawl, whose results are pruned to the compact history below.
+      // The oldest crawl, whose results are pruned to the compact history below, and an older one
+      // kept with the latest, so the two can be compared.
+      const oldest = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
+      if (!oldest) throw new Error('crawl did not start')
+      await db.crawls.addUrls(oldest.id, [
+        { url, urlHash: crawlUrlHash(url), scope: 'internal', source: 'seed', depth: 0, seq: 1 },
+      ])
+      await db.crawls.recordResult({
+        crawlId: oldest.id,
+        urlHash: crawlUrlHash(url),
+        result: {
+          kind: 'page',
+          statusCode: 200,
+          contentType: 'text/html',
+          redirectTo: null,
+          title: 'Home',
+          metaRobots: null,
+          xRobotsTag: null,
+          canonical: null,
+          responseTimeMs: 10,
+          bytes: 100,
+          error: null,
+          data: null,
+        },
+      })
+      await db.crawls.finish(oldest.id, { status: 'completed' })
+      await new Promise((resolve) => setTimeout(resolve, 5))
       const older = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
       if (!older) throw new Error('crawl did not start')
       await db.crawls.addUrls(older.id, [
@@ -184,6 +210,7 @@ export function describeLifecycle(
         },
       })
       await db.crawls.finish(older.id, { status: 'completed' })
+      await new Promise((resolve) => setTimeout(resolve, 5))
 
       const crawl = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
       if (!crawl) throw new Error('crawl did not start')
@@ -228,7 +255,37 @@ export function describeLifecycle(
       await db.crawls.addSitemapHreflang(crawl.id, [
         { pageHash: crawlUrlHash(url), lang: 'es', url: `${url}es` },
       ])
-      await db.crawls.finish(crawl.id, { status: 'completed' })
+      await db.crawls.finish(crawl.id, {
+        status: 'completed',
+        observations: {
+          summary: {
+            version: 1,
+            eligible: 1,
+            selected: 1,
+            comparable: 0,
+            different: 0,
+            unknown: { transport: 1 },
+            examples: [],
+          },
+          pairs: [
+            {
+              version: 1,
+              sourceHash: crawlUrlHash(url),
+              original: {
+                at: new Date().toISOString(),
+                status: 200,
+                media: 'html',
+                location: null,
+                html: null,
+              },
+              repeat: null,
+              unknown: 'transport',
+              changed: [],
+              examples: [],
+            },
+          ],
+        },
+      })
       await db.vitals.queueAlerts(crawl.id)
       const vital = {
         ...emptyVitals(),
@@ -240,7 +297,34 @@ export function describeLifecycle(
       }
       await db.vitals.saveOrigin(vital)
       await db.vitals.saveUrl({ ...vital, urlHash: crawlUrlHash(url), source: 'field' })
-      expect(await db.crawls.prune({ domainId, type: 'full', keep: 1 })).toBe(1)
+      expect(await db.crawls.prune({ domainId, type: 'full', keep: 2 })).toBe(1)
+      // Why URLs differ between two crawls, as `explainPair` stores it.
+      const pair = { baseId: older.id, targetId: crawl.id }
+      expect(await db.crawls.comparisonWork.begin({ ...pair, runner: 'test', version: 1 })).toBe(
+        true,
+      )
+      await db.crawls.comparisonWork.save({
+        ...pair,
+        runner: 'test',
+        rows: [
+          {
+            side: 'target',
+            urlHash: crawlUrlHash(other),
+            seq: 2,
+            reason: 'linked',
+            detail: null,
+            via: 1,
+            viaKind: 'anchor',
+            viaRendered: false,
+            through: null,
+            sources: 1,
+            unseen: 0,
+            intoHash: null,
+            intoUrl: null,
+            intoPresent: null,
+          },
+        ],
+      })
       await db.alerts.save({
         userId: member.id,
         locale: 'en',
@@ -528,6 +612,8 @@ export function describeLifecycle(
         expect(tables).toEqual(
           expect.arrayContaining([
             'audit_rules',
+            'crawl_comparison_urls',
+            'crawl_comparisons',
             'crawl_files',
             'crawl_url_history',
             'crawl_url_links',
@@ -780,10 +866,10 @@ export function describeLifecycle(
         const empty = await company('Empty', 'empty.com')
 
         const usage = await db.domains.usage()
-        // The crawl and an older one pruned to its compact history.
+        // The crawl, an older one kept, and the oldest pruned to its compact history.
         expect(usage.get(site.domainId)).toEqual({
-          crawls: 2,
-          urls: 2,
+          crawls: 3,
+          urls: 3,
           rules: 1,
           rechecks: 1,
           schedules: 1,

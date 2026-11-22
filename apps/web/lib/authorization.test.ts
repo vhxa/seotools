@@ -40,6 +40,8 @@ const PUBLIC_ACTIONS = new Set(['createAdmin', 'requestPasswordEmailAction', 'se
 /** Inside a domain and only reading, so anyone who can see the domain may call them. */
 const READ_ONLY_DOMAIN_ACTIONS = new Set([
   'loadLinksAction',
+  'loadRedirectLinksAction',
+  'loadPairedExamplesAction',
   'searchUrlsAction',
   'crawlActivityAction',
   'dataStampAction',
@@ -110,7 +112,10 @@ describe('what a viewer is offered', () => {
       source,
     )
   /** Reads nothing but values: it does not change the domain, so a viewer may use it. */
-  const READ_ONLY = new Set(['components/pages/url-links-panel.tsx'])
+  const READ_ONLY = new Set([
+    'components/pages/url-links-panel.tsx',
+    'components/pages/redirect-links-panel.tsx',
+  ])
   /** Only rendered by what already checks, which is why it does not ask again. */
   const INSIDE_GATED = new Set([
     // Dialogs opened by `UrlAuditActions`, `CreateRuleButton`, `RuleRowActions` and the table's

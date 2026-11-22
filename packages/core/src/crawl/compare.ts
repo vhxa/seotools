@@ -39,8 +39,13 @@ import type { CrawlStatus, CrawlUrlKind, CrawlUrlState } from './types'
 
 /**
  * How two crawls differ at a URL, or whether they have it at all.
- * - `added`: the later crawl has the URL and the earlier one does not.
- * - `missing`: the earlier crawl has it and the later one does not. Never "deleted": see above.
+ * - `added`: the later crawl has the URL and the earlier one does not, and no setting explains it.
+ * - `missing`: the earlier crawl has it and the later one does not, and no setting explains it.
+ *   Never "deleted": see above.
+ * - `configuration`: one crawl has it and the other does not because of the user's own settings
+ *   (`CONFIGURATION_REASONS` in `./comparison-reasons`): ignored parameters merged or split it, the
+ *   paths, priority list, files or limits left it out, or it was linked only in a rendered page.
+ *   Only once the pair is explained: until then `added` and `missing` count everything.
  * - `status`, `title`, `canonical`, `robots`: both crawls requested it and it answered differently.
  * - `gained`, `lost`: both requested it and the findings reported for it differ: some are reported
  *   by the later crawl only (`gained`) or by the earlier one only (`lost`). What each means is for
@@ -49,6 +54,7 @@ import type { CrawlStatus, CrawlUrlKind, CrawlUrlState } from './types'
 export const CRAWL_CHANGES = [
   'added',
   'missing',
+  'configuration',
   'status',
   'title',
   'canonical',

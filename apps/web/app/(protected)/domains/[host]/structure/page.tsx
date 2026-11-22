@@ -23,6 +23,7 @@ import {
   type StructureCounts,
   type StructureNode,
 } from '@/lib/structure'
+import { cn } from '@/lib/utils'
 import { requireDomain } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,12 @@ export async function generateMetadata({ params }: { params: Promise<{ host: str
   const t = await getTranslations('Structure')
   return { title: t('metaTitle', { host }) }
 }
+
+/**
+ * The directory column keeps room for ordinary names and only truncates (with the full path in a
+ * tooltip) the very long ones: it is the column the page is about, the figures are narrow.
+ */
+const DIRECTORY_CELL = 'min-w-56 max-w-[22rem]'
 
 type Params = Promise<Record<string, string | string[] | undefined>>
 
@@ -105,13 +112,31 @@ export default async function StructurePage({
       ? `/domains/${domain.host}/structure`
       : `/domains/${domain.host}/structure?${new URLSearchParams({ path: pathOfDirectories(directories) })}`
 
+  // Pages and what is found on them first; failing URLs last, apart: they are not pages and are
+  // not comparable with them (hreflang targets and other references that failed count too).
   const columns = [
-    { key: 'pages', label: tDashboard('tiles.crawled') },
-    { key: 'errors', label: t('columns.errors') },
-    { key: 'issue', label: t('columns.issue') },
-    { key: 'warning', label: t('columns.warning') },
-    { key: 'opportunity', label: t('columns.opportunity') },
+    { key: 'pages', label: t('columns.pages'), help: t('columns.pagesHelp') },
+    { key: 'issue', label: t('columns.issue'), help: null },
+    { key: 'warning', label: t('columns.warning'), help: null },
+    { key: 'opportunity', label: t('columns.opportunity'), help: null },
+    { key: 'errors', label: t('columns.errors'), help: t('columns.errorsHelp') },
   ] as const
+
+  const headCells = columns.map(({ key, label, help }) => (
+    <TableHead
+      key={key}
+      className={cn('text-right whitespace-normal', key === 'errors' && 'border-l')}
+    >
+      <span className="inline-flex items-center justify-end gap-0.5">
+        {label}
+        {help && (
+          <InfoHelp label={label} compact>
+            {help}
+          </InfoHelp>
+        )}
+      </span>
+    </TableHead>
+  ))
 
   /** The figures of a row, each leading to its URLs; `path: null` for a sum with no one address. */
   function cells(path: string | null, counts: StructureCounts) {
@@ -119,7 +144,10 @@ export default async function StructurePage({
       const value = counts[key]
       const unknown = !findings && (key === 'issue' || key === 'warning' || key === 'opportunity')
       return (
-        <TableCell key={key} className="text-right tabular-nums">
+        <TableCell
+          key={key}
+          className={cn('text-right tabular-nums', key === 'errors' && 'border-l')}
+        >
           {unknown ? (
             <span className="text-muted-foreground">—</span>
           ) : value === 0 ? (
@@ -144,7 +172,7 @@ export default async function StructurePage({
     for (const child of nodes) {
       out.push(
         <TableRow key={child.path}>
-          <TableCell className="max-w-0">
+          <TableCell className={DIRECTORY_CELL}>
             <div
               className="flex min-w-0 items-center gap-2"
               style={{ paddingLeft: `${level * 1.25}rem` }}
@@ -169,7 +197,7 @@ export default async function StructurePage({
     if (parent.other) {
       out.push(
         <TableRow key={`${parent.path}…other`}>
-          <TableCell className="max-w-0">
+          <TableCell className={DIRECTORY_CELL}>
             <span
               className="block truncate text-sm text-muted-foreground"
               style={{ paddingLeft: `${level * 1.25}rem` }}
@@ -255,16 +283,15 @@ export default async function StructurePage({
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t('directory')}</TableHead>
-                        {columns.map(({ key, label }) => (
-                          <TableHead key={key} className="text-right">
-                            {label}
-                          </TableHead>
-                        ))}
+                        {headCells}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       <TableRow className="bg-muted/40 font-medium">
-                        <TableCell className="max-w-0 truncate font-mono text-sm">
+                        <TableCell
+                          className={cn(DIRECTORY_CELL, 'truncate font-mono text-sm')}
+                          title={top.path}
+                        >
                           <FolderTreeIcon className="mr-2 inline size-4 align-text-bottom" />
                           {top.path}
                         </TableCell>
@@ -292,11 +319,7 @@ export default async function StructurePage({
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t('directory')}</TableHead>
-                      {columns.map(({ key, label }) => (
-                        <TableHead key={key} className="text-right">
-                          {label}
-                        </TableHead>
-                      ))}
+                      {headCells}
                     </TableRow>
                   </TableHeader>
                   <TableBody>

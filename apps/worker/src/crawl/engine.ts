@@ -1,4 +1,8 @@
+import { getWorkerBuildInfo } from '../build-info'
+import { createHmac, createHash } from 'node:crypto'
+import { repeatAnswers } from './paired'
 import { createRenderResourceCache } from '../render/cache'
+import { fingerprintSet } from '../render/fingerprints'
 import { RENDER_LIMITS } from '../render/limits'
 import type { RenderService } from '../render/service'
 import { createSlots } from '../render/slots'
@@ -22,6 +26,7 @@ import {
   defaultCrawlerUserAgent,
   isInternalUrl,
   normalizeCrawlUrl,
+  renderOmittedEndpoint,
   stripIgnoredParameters,
   type CrawlLinkKind,
   type CrawlPageFacts,
@@ -39,7 +44,7 @@ import type {
   Database,
   NewCrawlUrl,
 } from '@seotools/db'
-import { JobInterruptedError } from '../types'
+import { JobInterruptedError, PermanentJobError } from '../types'
 import { analyseCrawl, currentAuditConfig } from './analysis'
 import type { ParsedSitemap } from './extract'
 import {
@@ -55,9 +60,10 @@ import {
   crawlFileFetchOptions,
   fetchCrawlFiles,
 } from './files'
-import { createRequester } from './requester'
+import { ExcessiveRetryAfterError, createRequester } from './requester'
 import { PERMANENT_ERRORS, RETRY_BASE_MS, abortableSleep, isRedirect } from './requests'
 import { MAX_ROBOTS_BYTES, analyseResponse, emptyResult, failureResult } from './response'
+import { explainLatestPair, type ExplainSources } from './explain'
 
 /** How many queued URLs are read from the database at a time. Must exceed the max concurrency. */
 const QUEUE_BATCH = 200
@@ -80,6 +86,8 @@ export interface CrawlEngineOptions {
   appVersion?: string
   /** Scales the waits between retries down in tests. */
   retryBaseMs?: number
+  /** What explaining the pair reads from other packages (capture rule, site variation, reach). */
+  explainSources?: ExplainSources
 }
 
 export interface CrawlSummary {
@@ -97,6 +105,14 @@ interface Discovered {
 
 /** How a URL can be asked for that makes it a resource, whatever its server answers. */
 const RESOURCE_REFERENCES: ReadonlySet<CrawlLinkKind> = new Set(['script', 'style', 'image'])
+const BLOCKABLE_RENDER_REFERENCES: ReadonlySet<CrawlLinkKind> = new Set([
+  'script',
+  'style',
+  'frame',
+  'head-link',
+  'image',
+  'media',
+])
 
 /** Days of compact history when the default setting keeps it always (it does not today). */
 const HISTORY_DAYS_FALLBACK = 30
@@ -109,14 +125,18 @@ export async function runCrawl(
   const { db, log: parentLog, signal } = options
   const retryBaseMs = options.retryBaseMs ?? RETRY_BASE_MS
 
-  const crawl = await db.crawls.markRunning(crawlId)
+  const crawl = await db.crawls.markRunning(crawlId, getWorkerBuildInfo())
   // Cancelled before it got to run. Its job has nothing left to do.
   if (!crawl) return null
   const domain = await db.domains.get(crawl.domainId)
   if (!domain) return null
 
-  const settings: CrawlSettings = await db.crawls.settings(crawl.domainId)
-  settings.ignoredParameters = crawl.ignoredParameters ?? []
+  const snapshot = crawl.discoverySettings
+  const settings: CrawlSettings = {
+    ...(await db.crawls.settings(crawl.domainId)),
+    ...snapshot,
+    ignoredParameters: crawl.ignoredParameters ?? [],
+  }
   const { host } = domain
   const identity = (url: string) => stripIgnoredParameters(url, settings.ignoredParameters, host)
   const followLinks = crawl.type === 'full'
@@ -127,9 +147,30 @@ export async function runCrawl(
   const resourceSlots = createSlots(
     RENDER_LIMITS.pageResources * Math.max(1, options.renderService?.concurrency ?? 1),
   )
+  const headers =
+    snapshot?.requestCredentialsSet === false
+      ? undefined
+      : await siteHeaders(db, domain.id, domain.host, options.settingsSecret)
+  if (snapshot?.requestCredentialsSet && !headers) {
+    throw new PermanentJobError('request-credentials-unavailable')
+  }
+  const userAgent = settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion)
+  // A restart can change credentials or the build's default User-Agent. A keyed fingerprint
+  // permits a repeat only under the same settings without retaining credentials.
+  const context = (headers ? createHmac('sha256', options.settingsSecret!) : createHash('sha256'))
+    .update(
+      JSON.stringify([
+        // Change this version if the paired extractor or identity contract changes.
+        3,
+        userAgent,
+        Object.entries(headers?.headers ?? {}).sort(),
+        settings.ignoredParameters,
+      ]),
+    )
+    .digest('hex')
   const fetcher = options.createFetcher({
-    siteHeaders: await siteHeaders(db, domain.id, domain.host, options.settingsSecret),
-    userAgent: settings.userAgent ?? defaultCrawlerUserAgent(options.appVersion),
+    siteHeaders: headers,
+    userAgent,
     timeoutMs: settings.timeoutMs,
     concurrency:
       settings.concurrency +
@@ -159,7 +200,16 @@ export async function runCrawl(
   let doneCount = counts.urlsDoneCount
   const robots: CrawlRobotsFiles = { ...(crawl.robots ?? {}) }
   // A resumed crawl that was already at the limit has lost track of what it left out.
-  let truncated = !crawl.seedUrls && settings.maxUrls !== null && internalCount >= settings.maxUrls
+  let truncated =
+    crawl.admissionDropped ??
+    (!crawl.seedUrls &&
+      settings.maxUrls !== null &&
+      Math.max(internalCount, externalCount) >= settings.maxUrls)
+  let admissionWrite: Promise<void> | undefined
+  function persistAdmissionDrop() {
+    if (truncated && !crawl?.admissionDropped)
+      return (admissionWrite ??= db.crawls.markAdmissionDropped(crawlId))
+  }
 
   /** Adds a URL to the crawl unless it is known, or the limit says otherwise. `false` if dropped. */
   function admit(
@@ -238,6 +288,7 @@ export async function runCrawl(
       (await db.priorityUrls.list(crawl!.domainId))) {
       admit(url, 'priority', 0, urls)
     }
+    await persistAdmissionDrop()
     await db.crawls.addUrls(crawlId, urls)
   }
 
@@ -245,11 +296,13 @@ export async function runCrawl(
     fetcher,
     settings,
     signal: stopSignal,
+    retryAfterUntil: crawl.retryAfterUntil?.getTime(),
+    persistRetryAfter: (until) => db.crawls.extendRetryAfter(crawlId, new Date(until)),
     retryBaseMs,
     log,
   })
 
-  const { waitForSlot, fetchWithRetries: request } = requester
+  const { dispatch, fetchWithRetries: request } = requester
 
   function fetchWithRetries(item: NewCrawlUrl) {
     const fileKind = crawlFileKindOf(item.source)
@@ -262,6 +315,8 @@ export async function runCrawl(
     renderedHtml?: string,
     servedLinks?: ReadonlySet<string>,
     observeLink?: (url: string, kind: CrawlLinkKind) => void,
+    keepLink?: (url: string, kind: CrawlLinkKind) => boolean,
+    renderedDocumentUrl?: string,
   ): { result: CrawlUrlResult; found: Discovered; sitemap?: ParsedSitemap | null } {
     const found: Discovered = { urls: [], links: [] }
     const depth = item.depth + 1
@@ -269,6 +324,8 @@ export async function runCrawl(
       item,
       response,
       renderedHtml,
+      renderedDocumentUrl,
+      keepLink,
       optionalFiles: settings.optionalFiles,
       extractors: settings.extractors,
       log,
@@ -301,8 +358,6 @@ export async function runCrawl(
   }[] = []
   let retryBytes = 0
   let retryPages = 0
-  const linksOf = (found: Discovered) =>
-    new Set(found.links.map((link) => `${link.targetHash} ${link.kind}`))
 
   async function renderUrl(
     item: NewCrawlUrl,
@@ -333,17 +388,18 @@ export async function runCrawl(
     let facts: CrawlPageFacts | null = null
     let page: CrawlUrlRender['data']['page']
     const anchors = new Set<string>()
+    const allAnchors = new Set<string>()
     const nofollow = new Set<string>()
     const embeds = new Set<string>()
     let embedsComplete = true
     const observeLink = (url: string, kind: CrawlLinkKind) => {
-      if (
-        (kind === 'anchor' || kind === 'anchor-nofollow') &&
-        isInternalUrl(url, host) &&
-        url !== identity(item.url)
-      ) {
-        anchors.add(kind + ':' + url)
-        if (kind === 'anchor-nofollow') nofollow.add(url)
+      if (kind === 'anchor' || kind === 'anchor-nofollow') {
+        const anchor = kind + ':' + url
+        allAnchors.add(anchor)
+        if (isInternalUrl(url, host) && url !== identity(item.url)) {
+          anchors.add(anchor)
+          if (kind === 'anchor-nofollow') nofollow.add(url)
+        }
       }
       if (['image', 'script', 'style', 'media', 'frame'].includes(kind)) {
         if (url.length > 2048 || (!embeds.has(url) && embeds.size >= 1000)) embedsComplete = false
@@ -352,6 +408,12 @@ export async function runCrawl(
     }
     let found: Discovered = { urls: [], links: [] }
     if (outcome.status === 'rendered' && !outcome.redirected) {
+      const keepLink = (url: string, kind: CrawlLinkKind) => {
+        if (!BLOCKABLE_RENDER_REFERENCES.has(kind) || isInternalUrl(url, host)) return true
+        if (served.has(`${crawlUrlHash(identity(url))} ${kind}`)) return true
+        // Keep facts about these elements with redacted samples, and omit their crawl links.
+        return !renderOmittedEndpoint(new URL(url), crawl!.rendering!.omittedHosts)
+      }
       const analysed = analyse(
         item,
         {
@@ -360,8 +422,10 @@ export async function runCrawl(
           truncated: response.truncated || outcome.truncated,
         },
         outcome.html,
-        new Set(),
+        served,
         observeLink,
+        keepLink,
+        outcome.documentUrl,
       )
       // analyseResponse supplies the same bounded facts as for the served document. Discard links
       // already present in HTML, including their first-occurrence context.
@@ -376,12 +440,7 @@ export async function runCrawl(
         botRobots: result.data?.botRobots ?? {},
         hreflang: result.data?.hreflang ?? [],
       }
-      found = {
-        urls: analysed.found.urls,
-        links: analysed.found.links.filter(
-          (link) => !served.has(`${link.targetHash} ${link.kind}`),
-        ),
-      }
+      found = analysed.found
     }
     const render = renderObservation(item.urlHash, outcome, facts)
     if (page) {
@@ -389,6 +448,7 @@ export async function runCrawl(
       render.data.documentLinks = {
         internal: anchors.size,
         nofollow: nofollow.size,
+        anchorsHash: fingerprintSet(allAnchors),
         embeds: [...embeds].sort(),
         embedsComplete,
       }
@@ -404,10 +464,43 @@ export async function runCrawl(
     let result: CrawlUrlResult
     let found: Discovered = { urls: [], links: [] }
     let sitemap: ParsedSitemap | null | undefined
+    const served = new Set<string>()
     if (outcome instanceof FetchError) {
       result = failureResult(outcome)
     } else {
-      ;({ result, found, sitemap } = analyse(item, outcome))
+      const servedAt = new Date().toISOString()
+      const anchors = new Set<string>()
+      const observe = (url: string, kind: CrawlLinkKind) => {
+        // WP1: the served identities a render compares against, before graph admission.
+        if (rendered) served.add(`${crawlUrlHash(url)} ${kind}`)
+        // WP3: the internal anchors of this answer, for paired observations.
+        if (
+          followLinks &&
+          (kind === 'anchor' || kind === 'anchor-nofollow') &&
+          isInternalUrl(url, host)
+        ) {
+          anchors.add(crawlUrlHash(url))
+        }
+      }
+      ;({ result, found, sitemap } = analyse(
+        item,
+        outcome,
+        undefined,
+        undefined,
+        followLinks || rendered ? observe : undefined,
+      ))
+      if (followLinks && result.data?.facts && !outcome.truncated) {
+        // A resumed render can retain edges from an earlier fetch. Authenticate the
+        // stored graph against this response before using it as membership evidence.
+        result.data.facts.servedAnchors = {
+          count: anchors.size,
+          digest: createHash('sha256')
+            .update([...anchors].sort().join(''))
+            .digest('hex'),
+        }
+        result.data.facts.requestContext = context
+        result.data.facts.servedAt = servedAt
+      }
       // Asked for as a script, stylesheet, image or media file, it is one, whatever it answered:
       // a missing `.js` that answers with an HTML error page is a broken resource, not a page.
       if (result.kind === 'page' && item.foundKind && RESOURCE_REFERENCES.has(item.foundKind)) {
@@ -458,7 +551,6 @@ export async function runCrawl(
       !fileKind &&
       !(outcome instanceof FetchError)
     ) {
-      const served = linksOf(found)
       const observation = await renderUrl(item, outcome, served)
       render = observation.render
       found.urls.push(...observation.found.urls)
@@ -475,6 +567,7 @@ export async function runCrawl(
     }
     if (rendered) await recovery.ready()
     stopSignal.throwIfAborted()
+    await persistAdmissionDrop()
     await db.crawls.recordResult({ crawlId, urlHash: item.urlHash, result, render, ...found })
     doneCount++
     // What counts as a page: HTML that answered 2xx (a page that fails is an error).
@@ -492,13 +585,13 @@ export async function runCrawl(
     let result: CrawlUrlResult = emptyResult
     if (port === '' || port === '80' || port === '443') {
       for (let attempt = 0; ; attempt++) {
-        await waitForSlot()
-        if (stopSignal.aborted) throw new DOMException('Crawl stopped', 'AbortError')
         try {
-          const response = await fetcher.fetch(item.url, {
-            signal: stopSignal,
-            maxBytes: EXTERNAL_BODY_BYTES,
-          })
+          const response = await dispatch(() =>
+            fetcher.fetch(item.url, {
+              signal: stopSignal,
+              maxBytes: EXTERNAL_BODY_BYTES,
+            }),
+          )
           result = {
             ...emptyResult,
             statusCode: response.statusCode,
@@ -613,6 +706,7 @@ export async function runCrawl(
       if (observation.render.status === 'rendered') {
         await recovery.ready()
         stopSignal.throwIfAborted()
+        await persistAdmissionDrop()
         await db.crawls.recordResult({
           crawlId,
           urlHash: retry.item.urlHash,
@@ -652,6 +746,7 @@ export async function runCrawl(
     }
   }
 
+  let observations: Awaited<ReturnType<typeof repeatAnswers>>
   try {
     if (rendered) await recovery.start()
     await seed()
@@ -665,20 +760,40 @@ export async function runCrawl(
     // Done URLs survive a shutdown; the in-memory file batch does not. Re-acquire a complete
     // observation on resumed attempts before publishing or pruning any current file rows.
     if (counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
-      const fresh = await fetchCrawlFiles({
+      observedFiles.length = 0
+      try {
+        const fresh = await fetchCrawlFiles({
+          requester,
+          host,
+          settings,
+          fetcher,
+          signal: stopSignal,
+          now: () => new Date(),
+          retryBaseMs,
+        })
+        if (!requester.excessiveDelay()) {
+          observedFiles.push(...fresh.files.map((file) => ({ ...file, via: 'crawl' as const })))
+          filesCapped = fresh.capped
+        }
+      } catch (error) {
+        if (!(error instanceof ExcessiveRetryAfterError)) throw error
+        // An incomplete refresh cannot replace or prune the previous file records.
+      }
+    }
+    if (followLinks && !truncated && !fatal && !stopSignal.aborted) {
+      observations = await repeatAnswers({
+        db,
+        crawl,
         host,
-        settings,
-        fetcher,
+        context,
+        identity,
+        requester,
+        onCancelled: () => {
+          cancelled = true
+          stop.abort()
+        },
         signal: stopSignal,
-        now: () => new Date(),
-        retryBaseMs,
       })
-      observedFiles.splice(
-        0,
-        observedFiles.length,
-        ...fresh.files.map((file) => ({ ...file, via: 'crawl' as const })),
-      )
-      filesCapped = fresh.capped
     }
   } catch (error) {
     if (error instanceof BrowserWaitExpiredError) fatal = error
@@ -714,7 +829,7 @@ export async function runCrawl(
 
   // A cancellation can also arrive after the last URL: `finish` then reports nothing changed.
   const status = truncated ? 'incomplete' : 'completed'
-  const finished = !cancelled && (await db.crawls.finish(crawlId, { status }))
+  const finished = !cancelled && (await db.crawls.finish(crawlId, { status, observations }))
   if (finished && !followLinks) {
     await db.crawlFiles
       .save(crawl.domainId, observedFiles)
@@ -754,6 +869,20 @@ export async function runCrawl(
       await analyseCrawl(db, crawlId, await currentAuditConfig(db, crawl.domainId))
     } catch (error) {
       log.warn({ err: error }, 'could not check the pages for issues')
+    }
+    // Why URLs differ from the crawl it is compared with, before its alerts read the comparison.
+    try {
+      await explainLatestPair({
+        db,
+        crawlId,
+        runner: `crawl:${crawlId}`,
+        log,
+        signal,
+        ...(options.explainSources ? { sources: options.explainSources } : {}),
+      })
+    } catch (error) {
+      // A job is queued to work it out again (`explainLatestPair`); alerts wait for it.
+      log.warn({ err: error }, 'could not work out why URLs differ from the previous crawl')
     }
   }
   try {

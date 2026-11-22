@@ -5,7 +5,8 @@ import {
   type CrawlChange,
 } from '@seotools/core/crawl/compare'
 import { isPageIssueId } from '@seotools/core/crawl/issues'
-import { isCrawlId } from './pages-query'
+import { isComparisonReason, type ComparisonReason } from '@seotools/core/crawl/comparison-reasons'
+import { isCrawlId, isUrlHash } from './pages-query'
 
 /**
  * What the comparison of two crawls shows is kept in the address, like the pages table: it can be
@@ -26,18 +27,25 @@ export interface CompareQuery {
   search: string
   /** For the findings: only the ones about this issue (an id from `PAGE_ISSUES`). */
   issue: string | null
+  /** For the URLs one crawl lacks: only those given this reason (`COMPARISON_REASONS`). */
+  reason: ComparisonReason | null
+  /** The URL whose details are open in the drawer, by hash (`null`: none). */
+  row: string | null
 }
 
 type RawParams = Record<string, string | string[] | undefined>
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value)
 
-const DEFAULT_CHANGE: CrawlChange = 'added'
+// Not seen first: it is the first tab of its group and what a person comparing two crawls looks for.
+const DEFAULT_CHANGE: CrawlChange = 'missing'
 
 /** Reads the address of the comparison, ignoring whatever is not valid instead of failing. */
 export function parseCompareQuery(params: RawParams): CompareQuery {
   const from = first(params.from)
   const to = first(params.to)
   const issue = first(params.issue)
+  const reason = first(params.why)
+  const row = first(params.row)
   return {
     from: from && isCrawlId(from) ? from : null,
     to: to && isCrawlId(to) ? to : null,
@@ -46,11 +54,34 @@ export function parseCompareQuery(params: RawParams): CompareQuery {
     page: Math.max(1, Math.floor(Number(first(params.page))) || 1),
     search: (first(params.q) ?? '').trim().slice(0, MAX_SEARCH_LENGTH),
     issue: issue && isPageIssueId(issue) ? issue : null,
+    reason: reason && isComparisonReason(reason) ? reason : null,
+    row: row && isUrlHash(row) ? row : null,
   }
 }
 
 /** Whether the change lists findings, which is where narrowing by issue makes sense. */
 export const isFindingChange = (change: CrawlChange) => change === 'gained' || change === 'lost'
+
+/** Whether the change lists URLs one crawl lacks, which is where a reason is said and filtered by. */
+export const isOneSidedChange = (change: CrawlChange) =>
+  change === 'added' || change === 'missing' || change === 'configuration'
+
+/**
+ * How the kinds of change are grouped on the page: what URLs differ, how the same URLs answered
+ * differently, and how their findings changed. A group opens on its first change.
+ */
+export const COMPARE_GROUPS = [
+  { id: 'urls', changes: ['missing', 'added', 'configuration'] },
+  { id: 'answers', changes: ['status', 'title', 'canonical', 'robots'] },
+  { id: 'findings', changes: ['gained', 'lost'] },
+] as const satisfies readonly { id: string; changes: readonly CrawlChange[] }[]
+
+export type CompareGroupId = (typeof COMPARE_GROUPS)[number]['id']
+
+/** The group a kind of change belongs to. */
+export const groupOfChange = (change: CrawlChange) =>
+  COMPARE_GROUPS.find((group) => (group.changes as readonly CrawlChange[]).includes(change)) ??
+  COMPARE_GROUPS[0]
 
 /** The address of the comparison for a query, with `changes` applied. Defaults are left out. */
 export function compareHref(
@@ -66,6 +97,8 @@ export function compareHref(
   if (next.view !== 'pages') params.set('view', next.view)
   if (next.search) params.set('q', next.search)
   if (next.issue && isFindingChange(next.change)) params.set('issue', next.issue)
+  if (next.reason && isOneSidedChange(next.change)) params.set('why', next.reason)
+  if (next.row && isOneSidedChange(next.change)) params.set('row', next.row)
   if (next.page > 1) params.set('page', String(next.page))
   const search = params.toString()
   return `/domains/${host}/crawls/compare${search ? `?${search}` : ''}`

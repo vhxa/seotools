@@ -3,11 +3,14 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import { ResultsTable } from '@/components/results-table'
+import { DetailRow, DetailsButton } from '@/components/history/compare-drawer'
+import { ReasonChip } from '@/components/history/compare-reason'
 import { FindingChangeBadge } from '@/components/history/finding-badge'
 import { Answer, Robots, Text } from '@/components/history/snapshot-cells'
 import { IssueBadge } from '@/components/pages/issue-mark'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { compareHref, type CompareQuery } from '@/lib/compare-query'
+import { compareHref, isOneSidedChange, type CompareQuery } from '@/lib/compare-query'
+import type { ExplanationState } from '@/lib/compare-summary'
 import type { ComparisonRow } from '@/lib/crawl-compare'
 
 const FIELD_CHANGES: readonly CrawlChange[] = ['status', 'title', 'canonical', 'robots']
@@ -31,6 +34,7 @@ export function CompareTable({
   baseId,
   targetId,
   footer,
+  explanation = 'done',
 }: {
   footer: ReactNode
   host: string
@@ -39,6 +43,8 @@ export function CompareTable({
   rows: ComparisonRow[]
   baseId: string
   targetId: string
+  /** Whether the pair's reasons were worked out. */
+  explanation?: ExplanationState
 }) {
   const t = useTranslations('CrawlCompare.table')
   if (rows.length === 0)
@@ -48,42 +54,52 @@ export function CompareTable({
       </ResultsTable>
     )
 
+  const oneSided = isOneSidedChange(change)
   const urlCell = (row: ComparisonRow) => (
-    <TableCell className="results-url bg-background align-top">
-      <Link
-        href={`/domains/${host}/urls/${row.urlHash}?crawl=${row.target ? targetId : baseId}`}
-        title={row.url}
-        className="block font-mono text-xs break-all whitespace-normal hover:underline"
-      >
-        {row.url}
-      </Link>
+    <TableCell
+      className={oneSided ? 'results-url bg-background' : 'results-url bg-background align-top'}
+    >
+      {oneSided ? (
+        <span title={row.url} className="block font-mono text-xs break-all whitespace-normal">
+          {row.url}
+        </span>
+      ) : (
+        <Link
+          href={`/domains/${host}/urls/${row.urlHash}?crawl=${row.target ? targetId : baseId}`}
+          title={row.url}
+          className="block font-mono text-xs break-all whitespace-normal hover:underline"
+        >
+          {row.url}
+        </Link>
+      )}
     </TableCell>
   )
 
   let head: ReactNode
   let cells: (row: ComparisonRow) => ReactNode
-  if (change === 'added' || change === 'missing') {
-    const side = (row: ComparisonRow) => (change === 'added' ? row.target : row.base)
+  if (oneSided) {
     head = (
       <>
         <TableHead>{t('columns.answer')}</TableHead>
-        <TableHead>{t('columns.title')}</TableHead>
-        <TableHead>{t('columns.depth')}</TableHead>
+        <TableHead>{t('columns.reason')}</TableHead>
+        <TableHead className="text-right">
+          <span className="sr-only">{t('columns.action')}</span>
+        </TableHead>
       </>
     )
     cells = (row) => {
-      const snapshot = side(row)
-      return snapshot ? (
+      const snapshot = row.target ?? row.base
+      return (
         <>
-          <TableCell className="align-top">
-            <Answer snapshot={snapshot} />
+          <TableCell>{snapshot && <Answer snapshot={snapshot} />}</TableCell>
+          <TableCell>
+            <ReasonChip why={row.why ?? null} state={explanation} />
           </TableCell>
-          <TableCell className="max-w-xs align-top">
-            <Text value={snapshot.title} />
+          <TableCell className="text-right">
+            <DetailsButton hash={row.urlHash} url={row.url} />
           </TableCell>
-          <TableCell className="align-top tabular-nums">{snapshot.depth}</TableCell>
         </>
-      ) : null
+      )
     }
   } else if (FIELD_CHANGES.includes(change)) {
     const field = change as FieldChange
@@ -139,14 +155,14 @@ export function CompareTable({
 
   return (
     <ResultsTable footer={footer} fill>
-      <table className="w-full min-w-[56rem] table-fixed text-sm [&_td]:overflow-hidden [&_td]:[overflow-wrap:anywhere] [&_td]:whitespace-normal">
+      <table className="w-full min-w-[44rem] table-fixed text-sm [&_td]:overflow-hidden [&_td]:[overflow-wrap:anywhere] [&_td]:whitespace-normal [&_td:not(:last-child)]:border-r [&_th:not(:last-child)]:border-r">
         <colgroup>
-          <col className="w-[36%]" />
-          {change === 'added' || change === 'missing' ? (
+          <col className={oneSided ? undefined : 'w-[36%]'} />
+          {oneSided ? (
             <>
-              <col className="w-[18%]" />
-              <col className="w-[36%]" />
-              <col className="w-[10%]" />
+              <col className="w-[20%]" />
+              <col className="w-[24%]" />
+              <col className="w-[8rem]" />
             </>
           ) : FIELD_CHANGES.includes(change) ? (
             <>
@@ -164,12 +180,19 @@ export function CompareTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.urlHash}>
-              {urlCell(row)}
-              {cells(row)}
-            </TableRow>
-          ))}
+          {rows.map((row) =>
+            oneSided ? (
+              <DetailRow key={row.urlHash} hash={row.urlHash}>
+                {urlCell(row)}
+                {cells(row)}
+              </DetailRow>
+            ) : (
+              <TableRow key={row.urlHash}>
+                {urlCell(row)}
+                {cells(row)}
+              </TableRow>
+            ),
+          )}
         </TableBody>
       </table>
     </ResultsTable>

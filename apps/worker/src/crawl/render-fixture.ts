@@ -7,6 +7,7 @@ export function renderedOutcome(input: RenderInput, extra = ''): RenderOutcome {
     settled: true,
     pending: 0,
     captureMs: 1,
+    captureDelayMs: 0,
     redirected: false,
     finalUrl: input.url,
     html: (input.document.body?.toString() ?? '') + extra,

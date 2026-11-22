@@ -56,8 +56,11 @@ export interface CrawlComparison {
   /** `first`: no earlier crawl with results. `no-base`: some, but none that completed and kept its results. */
   state: 'first' | 'no-base' | 'compared'
   urls: {
+    /** Not counting `configuration`, once the pair is explained (`explained`). */
     added: number
     missing: number
+    /** In one crawl only because of the user's settings (merged, split, paths, mode…). */
+    configuration: number
     status: number
     title: number
     canonical: number
@@ -83,6 +86,12 @@ export interface CrawlComparison {
   notes: PairNoteName[]
   /** Some change was counted only up to `MAX_CLASSIFIED_URLS`. */
   cut: boolean
+  /**
+   * Why each URL is in one crawl only was worked out (`explainPair`): `added` and `missing` leave
+   * out what the user's settings explain. `false`: they count everything, and must not be reported
+   * as URLs that appeared or were not seen.
+   */
+  explained: boolean
 }
 
 const tallyOf = (byIssue: Map<string, IssueChangeTally>, issue: string): IssueChangeTally => {
@@ -96,12 +105,41 @@ const tallyOf = (byIssue: Map<string, IssueChangeTally>, issue: string): IssueCh
 const EMPTY_URLS = {
   added: 0,
   missing: 0,
+  configuration: 0,
   status: 0,
   title: 0,
   canonical: 0,
   robots: 0,
   gained: 0,
   lost: 0,
+}
+
+/**
+ * The crawls a comparison with `target` reads: the domain's browsable full crawls up to it, oldest
+ * first, and its base: the latest earlier crawl that completed and still has its results (`null`:
+ * none). The pair a finished crawl is explained against (`explainPair`) and its alerts compare.
+ */
+export async function comparisonHistory(
+  db: Pick<Database, 'crawls'>,
+  target: Crawl,
+): Promise<{ history: Crawl[]; earlier: Crawl[]; base: Crawl | null }> {
+  const found = await db.crawls.list(target.domainId, { type: 'full', limit: HISTORY_CRAWLS })
+  const history = found
+    .filter((crawl) => isBrowsableStatus(crawl.status) && byAge(crawl, target) <= 0)
+    .sort(byAge)
+  if (!history.some((crawl) => crawl.id === target.id)) history.push(target)
+  const earlier = history.filter((crawl) => byAge(crawl, target) < 0)
+  const base =
+    [...earlier].reverse().find((crawl) => crawl.status === 'completed' && !crawl.pruned) ?? null
+  return { history, earlier, base }
+}
+
+/** The crawl `target` is compared with, if any (see `comparisonHistory`). */
+export async function comparisonBaseOf(
+  db: Pick<Database, 'crawls'>,
+  target: Crawl,
+): Promise<Crawl | null> {
+  return (await comparisonHistory(db, target)).base
 }
 
 /**
@@ -128,12 +166,7 @@ export async function compareWithPrevious(input: {
 }): Promise<CrawlComparison> {
   const { db, target, signal } = input
   const maximum = input.exact ? Number.POSITIVE_INFINITY : MAX_CLASSIFIED_URLS
-  const found = await db.crawls.list(target.domainId, { type: 'full', limit: HISTORY_CRAWLS })
-  const history = found
-    .filter((crawl) => isBrowsableStatus(crawl.status) && byAge(crawl, target) <= 0)
-    .sort(byAge)
-  if (!history.some((crawl) => crawl.id === target.id)) history.push(target)
-  const earlier = history.filter((crawl) => byAge(crawl, target) < 0)
+  const { history, earlier, base } = await comparisonHistory(db, target)
   const result: CrawlComparison = {
     base: null,
     state: 'first',
@@ -143,10 +176,9 @@ export async function compareWithPrevious(input: {
     byIssue: new Map(),
     notes: [],
     cut: false,
+    explained: false,
   }
   if (earlier.length === 0) return result
-
-  const base = [...earlier].reverse().find((crawl) => crawl.status === 'completed' && !crawl.pruned)
   if (!base) return { ...result, state: 'no-base' }
   const assessment = assessPair(base, target)
   if (!assessment.urls) return { ...result, state: 'no-base' }
@@ -155,10 +187,13 @@ export async function compareWithPrevious(input: {
   result.notes = assessment.notes.map((note) => note.code satisfies PairNoteName)
   const ids = { domainId: target.domainId, baseId: base.id, targetId: target.id }
 
+  let explained = true
   for (const view of VIEWS) {
     const counts = await db.crawls.compareCounts({ ...ids, view })
     if (!counts) continue
+    explained &&= counts.explained
     result.urls = {
+      configuration: result.urls.configuration + counts.configuration,
       gained: result.urls.gained + counts.gained,
       lost: result.urls.lost + counts.lost,
       added: result.urls.added + counts.added,
@@ -169,6 +204,7 @@ export async function compareWithPrevious(input: {
       robots: result.urls.robots + counts.robots,
     }
   }
+  result.explained = explained
   if (!assessment.findings || input.findings === false) return result
 
   const totals = {

@@ -2,6 +2,8 @@ import { MAX_BODY_BYTES } from '../crawl/fetcher'
 
 export const RENDER_LIMITS = {
   requests: 300,
+  /** Bound interception bookkeeping independently of the subresource budget. */
+  interceptions: 10_000,
   /** Subresources of one page fetched at the same time, like a browser's connections to a host. */
   pageResources: 6,
   urlChars: 2048,
@@ -33,8 +35,13 @@ export const oneLine = (value: string) =>
   value.replace(/[\r\n\t]+/g, ' ').slice(0, RENDER_LIMITS.messageChars)
 
 /** Keep a deterministic sample, including when requests complete in a different order. */
-export function addSample<T>(list: T[], item: T, key: (value: T) => string) {
+export function addSample<T>(
+  list: T[],
+  item: T,
+  key: (value: T) => string,
+  limit: number = RENDER_LIMITS.diagnosticItems,
+) {
   list.push(item)
   list.sort((a, b) => key(a).localeCompare(key(b), 'en'))
-  if (list.length > RENDER_LIMITS.diagnosticItems) list.pop()
+  if (list.length > limit) list.pop()
 }

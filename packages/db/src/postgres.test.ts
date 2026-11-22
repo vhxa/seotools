@@ -23,12 +23,21 @@ describeDatabaseContract(
           await sql`update audit_rules set accept_nofollow = ${accept} where id = ${ruleId}`
         },
       },
+      sessions: {
+        async open() {
+          const session = postgres(url!, { max: 1, onnotice: () => {} })
+          return {
+            query: async (text: string) => [...(await session.unsafe(text))],
+            close: () => session.end(),
+          }
+        },
+      },
       countRows: async (table: string) => {
         const [row] = await sql.unsafe(`select count(*)::int as n from "${table}"`)
         return Number(row?.n)
       },
       reset: async () => {
-        await sql`truncate table bot_test_results, bot_test_runs, jobs, incident_notices, site_incidents, alert_notices, alert_subscriptions, mail_deliveries, worker_heartbeats, settings, user_preferences, user_tokens, user_access, "user", crawl_url_audit, crawl_url_accepted_issues, crawl_url_issues, crawl_sitemap_hreflang, crawl_url_links, crawl_vitals, crawl_url_vitals, crawl_url_renders, crawl_url_history, crawl_urls, crawls, crawl_schedules, crawl_settings, url_verification_urls, url_verifications, priority_urls, domain_favicons, crawl_files, crawl_file_checks, finding_states, audit_rules, domain_audit_config, domains, companies cascade`
+        await sql`truncate table bot_test_results, bot_test_runs, jobs, incident_notices, site_incidents, alert_notices, alert_subscriptions, mail_deliveries, worker_heartbeats, settings, user_preferences, user_tokens, user_access, "user", crawl_url_audit, crawl_url_accepted_issues, crawl_url_issues, crawl_sitemap_hreflang, crawl_answer_pairs, crawl_comparison_urls, crawl_comparisons, crawl_url_links, crawl_vitals, crawl_url_vitals, crawl_url_renders, crawl_url_history, crawl_urls, crawls, crawl_schedules, crawl_settings, url_verification_urls, url_verifications, priority_urls, domain_favicons, crawl_files, crawl_file_checks, finding_states, audit_rules, domain_audit_config, domains, companies cascade`
       },
     }
   },
