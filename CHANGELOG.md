@@ -20,6 +20,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-22
+
 ### Added
 
 - Completed full crawls check up to 24 HTML pages twice and show the measured differences in crawl and URL details.
@@ -48,6 +50,7 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - This version adds database migrations for crawl provenance, paired observations and comparison reasons. Going back requires restoring the backup taken before updating, together with the previous image. Stop older deployments when updating, especially workers from versions that only check migrations at startup.
 - At startup the worker works out, for every domain that is not archived, why URLs differ between its latest two crawls. It reads what they stored and requests nothing from the sites.
+- Crawls made before this version did not record their settings, and their rendered pages could be cut short, so a comparison with one of them says more often "not reached" or "unknown" instead of naming a cause. Two crawls made with this version give the full reasons.
 
 ## [0.7.1] - 2026-11-20
 
