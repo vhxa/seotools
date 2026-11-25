@@ -1272,7 +1272,7 @@ describe('the delayed retry pass', () => {
             ? '<a href="/blog">Blog</a>'
             : '<a href="/blog">Blog</a><a href="/more">More</a>',
         ),
-        [blog]: () => ({
+        [blog]: (): Partial<FetchedResponse> => ({
           statusCode: 503,
           headers: ++calls === (phase === 'before' ? 1 : 2) ? { 'retry-after': '86400' } : {},
         }),
