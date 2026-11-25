@@ -155,6 +155,7 @@ export interface FetchedCrawlFiles {
   files: NewCrawlFile[]
   /** There were more sitemaps than a refresh requests, so `files` does not hold them all. */
   capped: boolean
+  skipped: boolean
 }
 
 /**
@@ -170,6 +171,7 @@ export async function fetchCrawlFiles(input: {
   now: () => Date
   /** Scales the waits between retries down in tests. */
   retryBaseMs?: number
+  skipRequest?: (url: string) => boolean
 }): Promise<FetchedCrawlFiles> {
   const { host, settings, fetcher, signal, now } = input
   const retryBaseMs = input.retryBaseMs ?? RETRY_BASE_MS
@@ -211,11 +213,16 @@ export async function fetchCrawlFiles(input: {
   for (const { url, kind } of crawlFileRequests(host, settings)) enqueue(url, kind)
 
   // Sites announce feeds and search descriptions from their pages, at whatever URL they like.
+  let skipped = false
   const wanted = settings.optionalFiles
   if (wanted.includes('feed') || wanted.includes('opensearch')) {
     for (const start of [`https://${host}/`, `https://www.${host}/`]) {
       let url: string | null = start
       for (let hop = 0; url && hop < MAX_HOME_HOPS; hop++) {
+        if (input.skipRequest?.(url)) {
+          skipped = true
+          break
+        }
         const answer: FetchedResponse | FetchError = await request(url, {})
         if (answer instanceof FetchError) break
         if (isRedirect(answer.statusCode)) {
@@ -247,6 +254,10 @@ export async function fetchCrawlFiles(input: {
     }
     if (next.kind === 'sitemap') sitemaps++
 
+    if (input.skipRequest?.(next.url)) {
+      skipped = true
+      continue
+    }
     const outcome = await request(next.url, crawlFileFetchOptions(next.kind))
     const sitemap =
       next.kind === 'sitemap' && !(outcome instanceof FetchError)
@@ -267,5 +278,5 @@ export async function fetchCrawlFiles(input: {
     }
     for (const url of sitemap?.sitemaps ?? []) enqueue(url, 'sitemap')
   }
-  return { files, capped }
+  return { files, capped, skipped }
 }

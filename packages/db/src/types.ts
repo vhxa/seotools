@@ -417,6 +417,11 @@ export interface CrawlRunBuilds {
   overflow: boolean
 }
 
+export type CrawlSecondPass =
+  | { state: 'pending'; notBefore: number }
+  | { state: 'skipped'; limit: number }
+  | { state: 'done'; answered: number; failed: number; unconfirmed: number }
+
 export interface Crawl {
   startedBuild: BuildInfo | null
   runBuilds: CrawlRunBuilds | null
@@ -426,6 +431,7 @@ export interface Crawl {
   admissionDropped?: boolean | null
   retryAfterUntil?: Date | null
   pairedSummary?: PairSummary | null
+  secondPass?: CrawlSecondPass | null
   browserWaitMs: number
   ignoredParameters?: string[]
   seedUrls?: string[] | null
@@ -520,6 +526,13 @@ export interface NewCrawlUrl {
   /** `seq` of the URL whose response it was first found in, and how. Absent: not found in one. */
   foundFrom?: number | null
   foundKind?: CrawlLinkKind | null
+}
+
+export type SecondAttemptCandidate = NewCrawlUrl & {
+  statusCode: number | null
+  error: string | null
+  fetchedAt: Date | null
+  firstRequestFailure?: CrawlPageData['firstRequestFailure']
 }
 
 export interface CrawlUrlResult {
@@ -834,6 +847,19 @@ export interface CrawlRepository {
   ): Promise<{ hash: string; url: string }[]>
   answerPairs(crawlId: string, sourceHashes: readonly string[]): Promise<AnswerPair[]>
   nextQueued(crawlId: string, limit: number): Promise<NewCrawlUrl[]>
+  transientFailureCandidates(input: {
+    crawlId: string
+    ref: number | null
+    guessSources: readonly CrawlUrlSource[]
+    after: string
+    limit: number
+  }): Promise<Pick<SecondAttemptCandidate, 'urlHash' | 'error'>[]>
+  /** Freeze the pass and its queue in one transaction. An empty queue may be skipped or done. */
+  planSecondPass(crawlId: string, pass: CrawlSecondPass, hashes: string[]): Promise<boolean>
+  nextSecondAttempt(crawlId: string, limit: number): Promise<SecondAttemptCandidate[]>
+  claimSecondAttempt(crawlId: string, urlHash: string): Promise<boolean>
+  finishSecondPass(crawlId: string): Promise<void>
+  secondAttemptedUrls(crawlId: string): Promise<string[]>
   /** Every URL of the crawl, to pick up where a previous attempt left off. */
   knownUrls(
     crawlId: string,
@@ -867,6 +893,7 @@ export interface CrawlRepository {
   /** Stores renders of URLs whose result is already recorded, replacing any they had. */
   saveRenders(crawlId: string, renders: readonly CrawlUrlRender[]): Promise<void>
   recordResult(input: {
+    secondAttempt?: 'answered' | 'failed'
     render?: CrawlUrlRender
     crawlId: string
     urlHash: string

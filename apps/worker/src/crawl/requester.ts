@@ -15,9 +15,13 @@ export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   signal?: AbortSignal
   /** Rechecked before every attempt, after pacing. */
   beforeAttempt?: () => void | Promise<void>
-  /** Each paired observation permits exactly one wire attempt. */
+  /** Observe the first failure if it is about to be retried. */
+  onFirstRetry?: (code: number | string, at: string) => void
+  /** One observation permits exactly one wire attempt. */
   singleAttempt?: boolean
   stopOnExcessiveDelay?: boolean
+  /** A delayed crawl retry must honor even an unusually long server deadline. */
+  honorFullRetryAfter?: boolean
   /**
    * `false`: not held to the requests per second (a rendered page's resources, which their own
    * parallelism bounds). A server that asked to slow down still holds it.
@@ -56,14 +60,17 @@ export function createRequester(options: {
     paced = true,
     beforeAttempt?: RequestOptions['beforeAttempt'],
     stopOnExcessiveDelay = false,
+    honorFullRetryAfter = false,
   ) {
     for (;;) {
       signal.throwIfAborted()
       if (stopOnExcessiveDelay && Date.now() < unsupportedUntil)
         throw new ExcessiveRetryAfterError()
-      const wait = Math.max(paced ? nextSlot : 0, pausedUntil) - Date.now()
+      const deadline = () =>
+        Math.max(paced ? nextSlot : 0, pausedUntil, honorFullRetryAfter ? retryAfterUntil : 0)
+      const wait = deadline() - Date.now()
       if (wait > 0) {
-        await abortableSleep(wait, signal)
+        await abortableSleep(Math.min(wait, MAX_RETRY_AFTER_MS), signal)
         continue
       }
       await beforeAttempt?.()
@@ -71,7 +78,7 @@ export function createRequester(options: {
       if (stopOnExcessiveDelay && Date.now() < unsupportedUntil)
         throw new ExcessiveRetryAfterError()
       const now = Date.now()
-      if (now < Math.max(paced ? nextSlot : 0, pausedUntil)) continue
+      if (now < deadline()) continue
       if (paced) nextSlot = now + interval
       return send()
     }
@@ -84,6 +91,8 @@ export function createRequester(options: {
       singleAttempt = false,
       beforeAttempt,
       stopOnExcessiveDelay,
+      honorFullRetryAfter,
+      onFirstRetry,
       ...fetchOptions
     }: RequestOptions,
   ): Promise<FetchedResponse | FetchError> {
@@ -106,6 +115,7 @@ export function createRequester(options: {
       })
       // Alternate fetchers may report only a completed body. Never miss those bytes.
       if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
+      const at = new Date().toISOString()
       const delay = parseRetryAfter(response.headers['retry-after'], Infinity)
       if (delay !== null && delay > MAX_RETRY_AFTER_MS)
         unsupportedUntil = Math.max(unsupportedUntil, Date.now() + delay)
@@ -119,20 +129,22 @@ export function createRequester(options: {
           await options.persistRetryAfter?.(until)
         }
       }
-      return { response, delay }
+      return { response, delay, at }
     }
 
     for (let attempt = 0; ; attempt++) {
       const backoff = retryBaseMs * 2 ** attempt
       try {
-        const { response, delay } = await dispatch(
+        const { response, delay, at } = await dispatch(
           send,
           signal,
           paced,
           beforeAttempt,
           stopOnExcessiveDelay,
+          honorFullRetryAfter,
         )
         if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) return response
+        if (attempt === 0) onFirstRetry?.(response.statusCode, at)
         // The server asked to slow down: every request of the domain waits, not just this one.
         const wait = delay === null ? backoff : Math.min(delay, MAX_RETRY_AFTER_MS)
         pausedUntil = Math.max(pausedUntil, Date.now() + wait)
@@ -140,6 +152,7 @@ export function createRequester(options: {
       } catch (error) {
         if (!(error instanceof FetchError)) throw error
         if (PERMANENT_ERRORS.has(error.code) || attempt >= maxRetries) return error
+        if (attempt === 0) onFirstRetry?.(error.code, new Date().toISOString())
         await abortableSleep(backoff, signal)
       }
     }

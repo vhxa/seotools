@@ -18,6 +18,7 @@ import type { NewCrawlFile } from '@seotools/db'
 import { siteHeaders } from './credentials'
 import {
   DEFAULT_CRAWL_SETTINGS,
+  CRAWL_URL_SOURCES,
   crawlFileKindOf,
   crawlFileRequests,
   crawlFileSource,
@@ -30,6 +31,7 @@ import {
   stripIgnoredParameters,
   type CrawlLinkKind,
   type CrawlPageFacts,
+  type FirstRequestFailure,
   type LinkContext,
   type CrawlRobotsFiles,
   type CrawlSettings,
@@ -43,6 +45,7 @@ import type {
   CrawlUrlRender,
   Database,
   NewCrawlUrl,
+  SecondAttemptCandidate,
 } from '@seotools/db'
 import { JobInterruptedError, PermanentJobError } from '../types'
 import { analyseCrawl, currentAuditConfig } from './analysis'
@@ -60,15 +63,19 @@ import {
   crawlFileFetchOptions,
   fetchCrawlFiles,
 } from './files'
-import { ExcessiveRetryAfterError, createRequester } from './requester'
-import { PERMANENT_ERRORS, RETRY_BASE_MS, abortableSleep, isRedirect } from './requests'
+import { ExcessiveRetryAfterError, createRequester, type RequestOptions } from './requester'
+import { PERMANENT_ERRORS, RETRY_BASE_MS, abortableSleep, isRedirect, isTemporaryStatus } from './requests'
 import { MAX_ROBOTS_BYTES, analyseResponse, emptyResult, failureResult } from './response'
+import { isGuessSource } from './site-audit'
 import { explainLatestPair, type ExplainSources } from './explain'
 
 /** How many queued URLs are read from the database at a time. Must exceed the max concurrency. */
 const QUEUE_BATCH = 200
 /** How often the progress is saved and a cancellation looked for. */
 const PROGRESS_INTERVAL_MS = 2000
+/** Give a transient failure time to clear, with an all-or-nothing cap on extra traffic. */
+const SECOND_PASS_WAIT_MS = 60_000
+export const SECOND_PASS_LIMIT = 2000
 
 /** Whether a link to another site works does not depend on its body: the least that can be read. */
 const EXTERNAL_BODY_BYTES = 1
@@ -86,6 +93,8 @@ export interface CrawlEngineOptions {
   appVersion?: string
   /** Scales the waits between retries down in tests. */
   retryBaseMs?: number
+  /** Scales the pause before the delayed retry in tests. */
+  secondPassWaitMs?: number
   /** What explaining the pair reads from other packages (capture rule, site variation, reach). */
   explainSources?: ExplainSources
 }
@@ -97,6 +106,8 @@ export interface CrawlSummary {
   urls: number
   external: number
 }
+
+class SecondAttemptUnavailable extends Error {}
 
 interface Discovered {
   urls: NewCrawlUrl[]
@@ -304,9 +315,12 @@ export async function runCrawl(
 
   const { dispatch, fetchWithRetries: request } = requester
 
-  function fetchWithRetries(item: NewCrawlUrl) {
+  function fetchWithRetries(item: NewCrawlUrl, requestOptions: RequestOptions) {
     const fileKind = crawlFileKindOf(item.source)
-    return request(item.url, fileKind ? crawlFileFetchOptions(fileKind) : { readBody: 'auto' })
+    return request(item.url, {
+      ...(fileKind ? crawlFileFetchOptions(fileKind) : { readBody: 'auto' }),
+      ...requestOptions,
+    })
   }
 
   function analyse(
@@ -458,9 +472,27 @@ export async function runCrawl(
 
   const observedFiles: NewCrawlFile[] = []
   let filesCapped = false
-  async function processUrl(item: NewCrawlUrl) {
+  let filesRefreshIncomplete = false
+  async function processUrl(item: NewCrawlUrl, earlier?: SecondAttemptCandidate) {
     if (rendered) await recovery.ready()
-    const outcome = await fetchWithRetries(item)
+    let firstFailure: FirstRequestFailure | undefined = earlier?.firstRequestFailure
+    if (earlier && !firstFailure && earlier.fetchedAt) {
+      const code = earlier.statusCode ?? earlier.error?.split(':', 1)[0]
+      if (code !== undefined) firstFailure = { code, at: earlier.fetchedAt.toISOString() }
+    }
+    let claimed = false
+    const outcome = await fetchWithRetries(item, earlier
+      ? {
+          singleAttempt: true,
+          honorFullRetryAfter: true,
+          beforeAttempt: async () => {
+            if (claimed) return
+            claimed = await db.crawls.claimSecondAttempt(crawlId, item.urlHash)
+            if (!claimed) throw new SecondAttemptUnavailable()
+          },
+        }
+      : { onFirstRetry: (code, at) => { firstFailure = { code, at } } })
+    const failed = outcome instanceof FetchError || isTemporaryStatus(outcome.statusCode)
     let result: CrawlUrlResult
     let found: Discovered = { urls: [], links: [] }
     let sitemap: ParsedSitemap | null | undefined
@@ -543,6 +575,15 @@ export async function runCrawl(
         })),
       )
     }
+    if (firstFailure) {
+      result.data = {
+        ...result.data,
+        firstRequestFailure: {
+          ...firstFailure,
+          ...(!failed && { recoveredOn: earlier ? 'second-pass' : 'retry' }),
+        },
+      }
+    }
     let render: CrawlUrlRender | undefined
     if (
       rendered &&
@@ -568,8 +609,11 @@ export async function runCrawl(
     if (rendered) await recovery.ready()
     stopSignal.throwIfAborted()
     await persistAdmissionDrop()
-    await db.crawls.recordResult({ crawlId, urlHash: item.urlHash, result, render, ...found })
-    doneCount++
+    await db.crawls.recordResult({
+      crawlId, urlHash: item.urlHash, result, render, ...found,
+      ...(earlier && { secondAttempt: failed ? 'failed' : 'answered' }),
+    })
+    if (!earlier) doneCount++
     // What counts as a page: HTML that answered 2xx (a page that fails is an error).
     const ok = result.statusCode !== null && result.statusCode >= 200 && result.statusCode < 300
     if (result.kind === 'page' && ok) pagesCount++
@@ -627,7 +671,7 @@ export async function runCrawl(
   const inFlight = new Map<string, Promise<void>>()
   const inFlightDepth = new Map<string, number>()
   let fatal: unknown
-  const start = (item: NewCrawlUrl, handle: (item: NewCrawlUrl) => Promise<void>) => {
+  const start = <Item extends NewCrawlUrl>(item: Item, handle: (item: Item) => Promise<void>) => {
     inFlightDepth.set(item.urlHash, item.depth)
     const task: Promise<void> = handle(item)
       .catch((error) => {
@@ -661,11 +705,12 @@ export async function runCrawl(
   }
 
   /** Goes through what `next` returns, until it returns nothing and nothing is in flight. */
-  async function drain(
-    next: (limit: number) => Promise<NewCrawlUrl[]>,
-    handle: (item: NewCrawlUrl) => Promise<void>,
+  async function drain<Item extends NewCrawlUrl>(
+    next: (limit: number) => Promise<Item[]>,
+    handle: (item: Item) => Promise<void>,
+    concurrency = settings.concurrency,
   ) {
-    const queue: NewCrawlUrl[] = []
+    const queue: Item[] = []
     // A URL that finishes while a batch is being read can still be in it: never start one twice.
     const started = new Set<string>()
     while (!stopSignal.aborted) {
@@ -686,7 +731,7 @@ export async function runCrawl(
       // Finish a breadth level before starting the next: depth is the shortest discovered path,
       // even when a slow sibling links directly to something a fast branch also reaches.
       if (
-        inFlight.size >= settings.concurrency ||
+        inFlight.size >= concurrency ||
         (settings.maxDepth !== null && item.depth > Math.min(...inFlightDepth.values()))
       ) {
         await waitForProgress()
@@ -746,13 +791,72 @@ export async function runCrawl(
     }
   }
 
+  const drainMain = () => drain((limit) => db.crawls.nextQueued(crawlId, limit), processUrl)
+
+  async function planSecondPass() {
+    const hashes: string[] = []
+    const guessSources = pagesCount > 0 ? CRAWL_URL_SOURCES.filter(isGuessSource) : []
+    let after = ''
+    for (;;) {
+      await heartbeat()
+      stopSignal.throwIfAborted()
+      const batch = await db.crawls.transientFailureCandidates({
+        crawlId, ref: crawl!.ref, guessSources, after, limit: QUEUE_BATCH,
+      })
+      for (const item of batch) {
+        const code = item.error?.split(':', 1)[0]
+        if (code && PERMANENT_ERRORS.has(code)) continue
+        hashes.push(item.urlHash)
+        if (hashes.length > SECOND_PASS_LIMIT)
+          return { pass: { state: 'skipped', limit: SECOND_PASS_LIMIT } as const, hashes: [] }
+      }
+      if (batch.length < QUEUE_BATCH) break
+      after = batch[batch.length - 1]!.urlHash
+    }
+    const pass = hashes.length
+      ? { state: 'pending', notBefore: Date.now() + (options.secondPassWaitMs ?? SECOND_PASS_WAIT_MS) } as const
+      : { state: 'done', answered: 0, failed: 0, unconfirmed: 0 } as const
+    return { pass, hashes }
+  }
+
+  async function runSecondPass() {
+    let pass = crawl!.secondPass
+    if (!pass) {
+      const plan = await planSecondPass()
+      if (!(await db.crawls.planSecondPass(crawlId, plan.pass, plan.hashes))) return
+      pass = plan.pass
+    }
+    if (pass.state !== 'pending') return
+    while (!stopSignal.aborted && Date.now() < pass.notBefore) {
+      await abortableSleep(Math.min(pass.notBefore - Date.now(), PROGRESS_INTERVAL_MS), stopSignal)
+      await heartbeat()
+    }
+    await drain(
+      (limit) => db.crawls.nextSecondAttempt(crawlId, limit),
+      async (item) => {
+        try {
+          await processUrl(item, item)
+        } catch (error) {
+          if (!(error instanceof SecondAttemptUnavailable)) throw error
+        }
+      },
+      1,
+    )
+    if (!stopSignal.aborted) await db.crawls.finishSecondPass(crawlId)
+  }
+
   let observations: Awaited<ReturnType<typeof repeatAnswers>>
   try {
     if (rendered) await recovery.start()
     await seed()
-    await drain((limit) => db.crawls.nextQueued(crawlId, limit), processUrl)
+    if (!crawl.secondPass) {
+      await drainMain()
+      await retryFailedRenders()
+      if (rendered) await ensureRendered()
+    }
+    if (!stopSignal.aborted) await runSecondPass()
+    await drainMain()
     await retryFailedRenders()
-    if (rendered) await ensureRendered()
     // Last, with the site done: while it runs, the crawl is still active and can be cancelled.
     if (followLinks) {
       await drain((limit) => db.crawls.pendingExternalLinks(crawlId, limit), checkExternalLink)
@@ -760,7 +864,10 @@ export async function runCrawl(
     // Done URLs survive a shutdown; the in-memory file batch does not. Re-acquire a complete
     // observation on resumed attempts before publishing or pruning any current file rows.
     if (counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
+      const alreadyRetried = new Set(await db.crawls.secondAttemptedUrls(crawlId))
+      const retriedFiles = observedFiles.filter((file) => alreadyRetried.has(file.url))
       observedFiles.length = 0
+      observedFiles.push(...retriedFiles)
       try {
         const fresh = await fetchCrawlFiles({
           requester,
@@ -770,10 +877,12 @@ export async function runCrawl(
           signal: stopSignal,
           now: () => new Date(),
           retryBaseMs,
+          skipRequest: (url) => alreadyRetried.has(identity(url)),
         })
         if (!requester.excessiveDelay()) {
           observedFiles.push(...fresh.files.map((file) => ({ ...file, via: 'crawl' as const })))
           filesCapped = fresh.capped
+          filesRefreshIncomplete = fresh.skipped
         }
       } catch (error) {
         if (!(error instanceof ExcessiveRetryAfterError)) throw error
@@ -852,7 +961,7 @@ export async function runCrawl(
       })
 
       // A crawl that stopped at its limit may not have got to every file, so it removes none.
-      if (status === 'completed' && reachable) {
+      if (status === 'completed' && reachable && !filesRefreshIncomplete) {
         await db.crawlFiles.prune({
           domainId: crawl.domainId,
           before: crawl.createdAt,

@@ -25,7 +25,7 @@ import { decodeSitemapBody, decodeText, type FetchError, type FetchedResponse } 
 import { extractCustom } from './custom-extraction'
 import { readTextFile } from './files'
 import { missingSecurityHeaders, withResponseFacts } from './page-facts'
-import { isRedirect } from './requests'
+import { isRedirect, isTemporaryStatus } from './requests'
 
 /** robots.txt files past this size are ignored by Google, so nothing past it matters to an audit. */
 export const MAX_ROBOTS_BYTES = 512 * 1024
@@ -112,6 +112,21 @@ export function analyseResponse(input: {
   const data: CrawlPageData = {}
   const fileKind = crawlFileKindOf(item.source)
   let sitemap: ParsedSitemap | null = null
+
+  // An overload/error document is not the site's page and contributes no discovery edges.
+  if (isTemporaryStatus(statusCode)) {
+    return {
+      sitemap,
+      result: {
+        ...emptyResult,
+        kind: !fileKind && contentType && HTML_MEDIA_TYPE.test(contentType) ? 'page' : 'resource',
+        statusCode,
+        contentType,
+        responseTimeMs: response.responseTimeMs,
+        bytes: response.bytes,
+      },
+    }
+  }
 
   const linkHeader = headers.link ? parseLinkHeader(headers.link, item.url) : null
   if (linkHeader) {

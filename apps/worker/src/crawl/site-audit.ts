@@ -252,9 +252,11 @@ export const comparable = (text: string | null | undefined) =>
  */
 export function isGuess(url: AuditedUrl, site: Site): boolean {
   const { source } = url.url
-  const tried = source === 'seed' || crawlFileKindOf(source) !== null
-  return tried && url.linksIn === 0 && site.answered
+  return isGuessSource(source) && url.linksIn === 0 && site.answered
 }
+
+export const isGuessSource = (source: CrawlUrl['source']) =>
+  source === 'seed' || crawlFileKindOf(source) !== null
 
 export type SitemapCoverage = 'complete' | 'unknown'
 
