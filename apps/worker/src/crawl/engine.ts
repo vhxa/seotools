@@ -492,7 +492,7 @@ export async function runCrawl(
       earlier
         ? {
             singleAttempt: true,
-            honorFullRetryAfter: true,
+            stopOnExcessiveDelay: true,
             beforeAttempt: async () => {
               if (claimed) return
               claimed = await db.crawls.claimSecondAttempt(crawlId, item.urlHash)
@@ -724,11 +724,12 @@ export async function runCrawl(
     next: (limit: number) => Promise<Item[]>,
     handle: (item: Item) => Promise<void>,
     concurrency = settings.concurrency,
+    shouldContinue = () => true,
   ) {
     const queue: Item[] = []
     // A URL that finishes while a batch is being read can still be in it: never start one twice.
     const started = new Set<string>()
-    while (!stopSignal.aborted) {
+    while (!stopSignal.aborted && shouldContinue()) {
       await heartbeat()
       if (rendered) await recovery.ready()
       if (queue.length === 0) {
@@ -827,7 +828,10 @@ export async function runCrawl(
         if (code && PERMANENT_ERRORS.has(code)) continue
         hashes.push(item.urlHash)
         if (hashes.length > SECOND_PASS_LIMIT)
-          return { pass: { state: 'skipped', limit: SECOND_PASS_LIMIT } as const, hashes: [] }
+          return {
+            pass: { state: 'skipped', reason: 'limit', limit: SECOND_PASS_LIMIT } as const,
+            hashes: [],
+          }
       }
       if (batch.length < QUEUE_BATCH) break
       after = batch[batch.length - 1]!.urlHash
@@ -849,7 +853,8 @@ export async function runCrawl(
       pass = plan.pass
     }
     if (pass.state !== 'pending') return
-    while (!stopSignal.aborted && Date.now() < pass.notBefore) {
+    const canRetry = () => !requester.excessiveDelay()
+    while (!stopSignal.aborted && canRetry() && Date.now() < pass.notBefore) {
       await abortableSleep(Math.min(pass.notBefore - Date.now(), PROGRESS_INTERVAL_MS), stopSignal)
       await heartbeat()
     }
@@ -859,12 +864,18 @@ export async function runCrawl(
         try {
           await processUrl(item, item)
         } catch (error) {
-          if (!(error instanceof SecondAttemptUnavailable)) throw error
+          if (
+            !(error instanceof SecondAttemptUnavailable) &&
+            !(error instanceof ExcessiveRetryAfterError)
+          )
+            throw error
         }
       },
       1,
+      canRetry,
     )
-    if (!stopSignal.aborted) await db.crawls.finishSecondPass(crawlId)
+    if (!stopSignal.aborted)
+      await db.crawls.finishSecondPass(crawlId, canRetry() ? undefined : 'retry-after')
   }
 
   let observations: Awaited<ReturnType<typeof repeatAnswers>>
@@ -879,6 +890,7 @@ export async function runCrawl(
     if (!stopSignal.aborted) await runSecondPass()
     await drainMain()
     await retryFailedRenders()
+    if (rendered) await ensureRendered()
     // Last, with the site done: while it runs, the crawl is still active and can be cancelled.
     if (followLinks) {
       await drain((limit) => db.crawls.pendingExternalLinks(crawlId, limit), checkExternalLink)

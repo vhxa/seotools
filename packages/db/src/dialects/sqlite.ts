@@ -2722,26 +2722,35 @@ export function createSqliteDatabase(options: {
         return rows.length > 0
       },
 
-      async finishSecondPass(crawlId) {
-        const rows = db
-          .select({ state: crawlUrls.secondAttempt, count: sql<number>`count(*)` })
-          .from(crawlUrls)
-          .where(and(eq(crawlUrls.crawlId, crawlId), isNotNull(crawlUrls.secondAttempt)))
-          .groupBy(crawlUrls.secondAttempt)
-          .all()
-        const counts = new Map(rows.map(({ state, count }) => [state, Number(count)]))
-        if (counts.has('queued')) return
-        db.update(crawls)
-          .set({
-            secondPass: JSON.stringify({
-              state: 'done',
-              answered: counts.get('answered') ?? 0,
-              failed: counts.get('failed') ?? 0,
-              unconfirmed: counts.get('started') ?? 0,
-            }),
-          })
-          .where(and(eq(crawls.id, crawlId), eq(crawls.status, 'running')))
-          .run()
+      async finishSecondPass(crawlId, skip) {
+        db.transaction((tx) => {
+          const rows = tx
+            .select({ state: crawlUrls.secondAttempt, count: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .where(and(eq(crawlUrls.crawlId, crawlId), isNotNull(crawlUrls.secondAttempt)))
+            .groupBy(crawlUrls.secondAttempt)
+            .all()
+          const counts = new Map(rows.map(({ state, count }) => [state, Number(count)]))
+          if (counts.has('queued') && !skip) return
+          const totals = {
+            answered: counts.get('answered') ?? 0,
+            failed: counts.get('failed') ?? 0,
+            unconfirmed: counts.get('started') ?? 0,
+          }
+          const pass = skip
+            ? { state: 'skipped', reason: skip, ...totals }
+            : { state: 'done', ...totals }
+          tx.update(crawls)
+            .set({ secondPass: JSON.stringify(pass) })
+            .where(and(eq(crawls.id, crawlId), eq(crawls.status, 'running')))
+            .run()
+          if (skip) {
+            tx.update(crawlUrls)
+              .set({ secondAttempt: null })
+              .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.secondAttempt, 'queued')))
+              .run()
+          }
+        })
       },
 
       async secondAttemptedUrls(crawlId) {

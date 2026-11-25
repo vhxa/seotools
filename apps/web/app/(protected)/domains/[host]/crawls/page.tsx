@@ -347,40 +347,48 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                             </Item>
                           )}
                         </Section>
-                        {retry?.state === 'skipped' && (
+                        {retry && retry.state !== 'pending' && (
                           <Section title={tRetry('title')}>
-                            <Item label={tRetry('status')}>
-                              {tRetry('skipped', { limit: retry.limit })}
-                            </Item>
-                          </Section>
-                        )}
-                        {retry?.state === 'done' && (
-                          <Section title={tRetry('title')}>
-                            <Item label={tRetry('requested')}>
-                              {format.number(retry.answered + retry.failed)}
-                            </Item>
-                            <Item label={tRetry('answered')}>{format.number(retry.answered)}</Item>
-                            <Item label={tRetry('failed')}>
-                              {format.number(retry.failed)}
-                              {retry.failed > 0 && isBrowsable && !crawl.pruned && (
-                                <>
-                                  {' '}
-                                  <Link
-                                    href={detailHref(domain.host, detail, {
-                                      crawl: crawl.id,
-                                      view: 'errors',
-                                    })}
-                                    className="underline"
-                                  >
-                                    {tRetry('errors')}
-                                  </Link>
-                                </>
-                              )}
-                            </Item>
-                            {retry.unconfirmed > 0 && (
-                              <Item label={tRetry('unconfirmed')}>
-                                {format.number(retry.unconfirmed)}
+                            {retry.state === 'skipped' && (
+                              <Item label={tRetry('status')}>
+                                {retry.reason === 'limit'
+                                  ? tRetry('skippedLimit', { limit: retry.limit })
+                                  : tRetry('skippedRetryAfter')}
                               </Item>
+                            )}
+                            {(retry.state === 'done' ||
+                              (retry.reason === 'retry-after' &&
+                                retry.answered + retry.failed + retry.unconfirmed > 0)) && (
+                              <>
+                                <Item label={tRetry('requested')}>
+                                  {format.number(retry.answered + retry.failed)}
+                                </Item>
+                                <Item label={tRetry('answered')}>
+                                  {format.number(retry.answered)}
+                                </Item>
+                                <Item label={tRetry('failed')}>
+                                  {format.number(retry.failed)}
+                                  {retry.failed > 0 && isBrowsable && !crawl.pruned && (
+                                    <>
+                                      {' '}
+                                      <Link
+                                        href={detailHref(domain.host, detail, {
+                                          crawl: crawl.id,
+                                          view: 'errors',
+                                        })}
+                                        className="underline"
+                                      >
+                                        {tRetry('errors')}
+                                      </Link>
+                                    </>
+                                  )}
+                                </Item>
+                                {retry.unconfirmed > 0 && (
+                                  <Item label={tRetry('unconfirmed')}>
+                                    {format.number(retry.unconfirmed)}
+                                  </Item>
+                                )}
+                              </>
                             )}
                           </Section>
                         )}

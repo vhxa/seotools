@@ -22,7 +22,7 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Fixed
 
-- A page that fails briefly no longer makes the pages it links to look unlinked. Crawls retry temporary failures and show the outcome in the crawl and URL details.
+- A page that fails briefly no longer makes the pages it links to look unlinked. Crawls retry temporary failures and show the outcome in the crawl and URL details. Like Google, the crawler ignores the content and links of 429 and 5xx error responses.
 
 ### Upgrade notes
 

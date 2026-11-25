@@ -20,8 +20,6 @@ export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   /** One observation permits exactly one wire attempt. */
   singleAttempt?: boolean
   stopOnExcessiveDelay?: boolean
-  /** A delayed crawl retry must honor even an unusually long server deadline. */
-  honorFullRetryAfter?: boolean
   /**
    * `false`: not held to the requests per second (a rendered page's resources, which their own
    * parallelism bounds). A server that asked to slow down still holds it.
@@ -60,17 +58,14 @@ export function createRequester(options: {
     paced = true,
     beforeAttempt?: RequestOptions['beforeAttempt'],
     stopOnExcessiveDelay = false,
-    honorFullRetryAfter = false,
   ) {
     for (;;) {
       signal.throwIfAborted()
       if (stopOnExcessiveDelay && Date.now() < unsupportedUntil)
         throw new ExcessiveRetryAfterError()
-      const deadline = () =>
-        Math.max(paced ? nextSlot : 0, pausedUntil, honorFullRetryAfter ? retryAfterUntil : 0)
-      const wait = deadline() - Date.now()
+      const wait = Math.max(paced ? nextSlot : 0, pausedUntil) - Date.now()
       if (wait > 0) {
-        await abortableSleep(Math.min(wait, MAX_RETRY_AFTER_MS), signal)
+        await abortableSleep(wait, signal)
         continue
       }
       await beforeAttempt?.()
@@ -78,7 +73,7 @@ export function createRequester(options: {
       if (stopOnExcessiveDelay && Date.now() < unsupportedUntil)
         throw new ExcessiveRetryAfterError()
       const now = Date.now()
-      if (now < deadline()) continue
+      if (now < Math.max(paced ? nextSlot : 0, pausedUntil)) continue
       if (paced) nextSlot = now + interval
       return send()
     }
@@ -91,7 +86,6 @@ export function createRequester(options: {
       singleAttempt = false,
       beforeAttempt,
       stopOnExcessiveDelay,
-      honorFullRetryAfter,
       onFirstRetry,
       ...fetchOptions
     }: RequestOptions,
@@ -141,7 +135,6 @@ export function createRequester(options: {
           paced,
           beforeAttempt,
           stopOnExcessiveDelay,
-          honorFullRetryAfter,
         )
         if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) return response
         if (attempt === 0) onFirstRetry?.(response.statusCode, at)

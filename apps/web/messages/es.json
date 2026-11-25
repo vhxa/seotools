@@ -807,7 +807,8 @@
   "CrawlRetry": {
     "title": "Segundo intento",
     "status": "Estado",
-    "skipped": "Se omitió porque hubo fallos temporales en más de {limit, number} URL.",
+    "skippedLimit": "Se omitió porque hubo fallos temporales en más de {limit, number} URL.",
+    "skippedRetryAfter": "Se omitió porque el servidor pidió esperar más tiempo del que permite el rastreo.",
     "requested": "Solicitadas de nuevo",
     "answered": "Respondieron",
     "failed": "Siguieron fallando",

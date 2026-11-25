@@ -1096,9 +1096,12 @@ describe('the delayed retry pass', () => {
     links: posts.map((post) => `<a href="${post}">Read the post</a>`).join(''),
   })
   const failedPage = {
-    ...html('<a href="/error-template">Unavailable</a>', {
-      link: '<header-template>; rel="canonical"',
-    }),
+    ...html(
+      '<title>Gateway template</title><meta name="robots" content="noindex"><link rel="canonical" href="/template"><a href="/error-template">Unavailable</a>',
+      {
+        link: '<header-template>; rel="canonical"',
+      },
+    ),
     statusCode: 502,
   }
   const siteWith = (answer: Parameters<typeof fakeSite>[0][string]) =>
@@ -1163,7 +1166,13 @@ describe('the delayed retry pass', () => {
     expect(site.requests.filter((url) => url === blog)).toHaveLength(4)
     expect(site.requests).not.toContain(SITE + '/error-template')
     expect(site.requests).not.toContain(SITE + '/header-template')
-    expect(await db.crawls.getUrl(crawl.id, crawlUrlHash(blog))).toMatchObject({ statusCode })
+    expect(await db.crawls.getUrl(crawl.id, crawlUrlHash(blog))).toMatchObject({
+      statusCode,
+      title: null,
+      canonical: null,
+      metaRobots: null,
+    })
+    expect(await db.crawls.linksFrom(crawl.id, [crawlUrlHash(blog)])).toEqual([])
     expect(await postIssues(crawl.id, '/blog')).toContain(issue)
     for (const post of posts)
       expect(await postIssues(crawl.id, post)).toContain('orphan-in-sitemap')
@@ -1242,9 +1251,64 @@ describe('the delayed retry pass', () => {
     expect(site.requests).toEqual([])
     expect((await db.crawls.get(crawl.id))?.secondPass).toEqual({
       state: 'skipped',
+      reason: 'limit',
       limit: SECOND_PASS_LIMIT,
     })
   })
+
+  it.each(['before', 'during'])(
+    'skips promptly on a day-long Retry-After %s the pass',
+    async (phase) => {
+      await db.crawls.saveSettings(domainId, {
+        ...(await db.crawls.settings(domainId)),
+        maxRetries: 0,
+        concurrency: 1,
+      })
+      const more = SITE + '/more'
+      let calls = 0
+      const site = fakeSite({
+        [SITE + '/']: html(
+          phase === 'before'
+            ? '<a href="/blog">Blog</a>'
+            : '<a href="/blog">Blog</a><a href="/more">More</a>',
+        ),
+        [blog]: () => ({
+          statusCode: 503,
+          headers: ++calls === (phase === 'before' ? 1 : 2) ? { 'retry-after': '86400' } : {},
+        }),
+        [more]: { statusCode: 502, headers: {} },
+      })
+
+      vi.useFakeTimers()
+      try {
+        const began = Date.now()
+        const running = crawlWith(site, 'full', { secondPassWaitMs: 50 })
+        const ended = running.then(() => Date.now())
+        await vi.runAllTimersAsync()
+        const { crawl } = await running
+
+        expect((await ended) - began).toBeLessThan(10_000)
+        expect(crawl.status).toBe('completed')
+        expect(crawl.secondPass).toEqual({
+          state: 'skipped',
+          reason: 'retry-after',
+          answered: 0,
+          failed: phase === 'before' ? 0 : 1,
+          unconfirmed: 0,
+        })
+        expect(calls).toBe(phase === 'before' ? 1 : 2)
+        expect(await db.crawls.nextSecondAttempt(crawl.id, 10)).toEqual([])
+        if (phase === 'during') {
+          expect(site.requests.filter((url) => url === more)).toHaveLength(1)
+          expect(await db.crawls.getUrl(crawl.id, crawlUrlHash(more))).toMatchObject({
+            statusCode: 502,
+          })
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
 
   it('waits for Retry-After after the main drain and between serial second attempts', async () => {
     await db.crawls.saveSettings(domainId, {

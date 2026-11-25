@@ -807,7 +807,8 @@
   "CrawlRetry": {
     "title": "Second attempt",
     "status": "Status",
-    "skipped": "Skipped because more than {limit, number} URLs had temporary failures.",
+    "skippedLimit": "Skipped because more than {limit, number} URLs had temporary failures.",
+    "skippedRetryAfter": "Skipped because the server asked for a longer wait than the crawler allows.",
     "requested": "Requested again",
     "answered": "Answered",
     "failed": "Still failed",

@@ -1436,6 +1436,49 @@ export function describeDatabaseContract(
         expect((await db.crawls.getUrl(id, other.urlHash))?.statusCode).toBe(502)
       })
 
+      it('stores why a delayed pass stopped and leaves its unattempted URLs as they were', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        await db.crawls.markRunning(id)
+        const hub = newUrl('https://acme.com/hub')
+        const waiting = newUrl('https://acme.com/waiting')
+        await db.crawls.addUrls(id, [hub, waiting])
+        for (const { urlHash } of [hub, waiting]) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash,
+            result: result('page', { statusCode: 502 }),
+          })
+        }
+        await db.crawls.planSecondPass(id, { state: 'pending', notBefore: 0 }, [
+          hub.urlHash,
+          waiting.urlHash,
+        ])
+        expect(await db.crawls.claimSecondAttempt(id, hub.urlHash)).toBe(true)
+        await db.crawls.recordResult({
+          crawlId: id,
+          urlHash: hub.urlHash,
+          result: result('page', { statusCode: 503 }),
+          secondAttempt: 'failed',
+        })
+
+        await db.crawls.finishSecondPass(id, 'retry-after')
+        expect((await db.crawls.get(id))?.secondPass).toEqual({
+          state: 'skipped',
+          reason: 'retry-after',
+          answered: 0,
+          failed: 1,
+          unconfirmed: 0,
+        })
+        expect(await db.crawls.nextSecondAttempt(id, 10)).toEqual([])
+        expect(await db.crawls.secondAttemptedUrls(id)).toEqual([hub.url])
+        expect(await db.crawls.getUrl(id, waiting.urlHash)).toMatchObject({
+          state: 'done',
+          statusCode: 502,
+        })
+        expect(await db.crawls.claimSecondAttempt(id, waiting.urlHash)).toBe(false)
+      })
+
       it('records a result with what it discovered, atomically and idempotently', async () => {
         const domainId = await domain()
         const { id } = await startCrawl(domainId)

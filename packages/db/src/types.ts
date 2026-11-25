@@ -417,10 +417,17 @@ export interface CrawlRunBuilds {
   overflow: boolean
 }
 
+interface SecondPassCounts {
+  answered: number
+  failed: number
+  unconfirmed: number
+}
+
 export type CrawlSecondPass =
   | { state: 'pending'; notBefore: number }
-  | { state: 'skipped'; limit: number }
-  | { state: 'done'; answered: number; failed: number; unconfirmed: number }
+  | { state: 'skipped'; reason: 'limit'; limit: number }
+  | ({ state: 'skipped'; reason: 'retry-after' } & SecondPassCounts)
+  | ({ state: 'done' } & SecondPassCounts)
 
 export interface Crawl {
   startedBuild: BuildInfo | null
@@ -858,7 +865,7 @@ export interface CrawlRepository {
   planSecondPass(crawlId: string, pass: CrawlSecondPass, hashes: string[]): Promise<boolean>
   nextSecondAttempt(crawlId: string, limit: number): Promise<SecondAttemptCandidate[]>
   claimSecondAttempt(crawlId: string, urlHash: string): Promise<boolean>
-  finishSecondPass(crawlId: string): Promise<void>
+  finishSecondPass(crawlId: string, skip?: 'retry-after'): Promise<void>
   secondAttemptedUrls(crawlId: string): Promise<string[]>
   /** Every URL of the crawl, to pick up where a previous attempt left off. */
   knownUrls(
