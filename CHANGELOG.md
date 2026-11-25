@@ -20,6 +20,14 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Fixed
+
+- A page that fails briefly no longer makes the pages it links to look unlinked. Crawls retry temporary failures and show the outcome in the crawl and URL details.
+
+### Upgrade notes
+
+- This version adds migrations to store crawl retry outcomes. Going back requires restoring the backup taken before updating.
+
 ## [0.8.0] - 2026-11-22
 
 ### Added

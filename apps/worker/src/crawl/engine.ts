@@ -64,7 +64,13 @@ import {
   fetchCrawlFiles,
 } from './files'
 import { ExcessiveRetryAfterError, createRequester, type RequestOptions } from './requester'
-import { PERMANENT_ERRORS, RETRY_BASE_MS, abortableSleep, isRedirect, isTemporaryStatus } from './requests'
+import {
+  PERMANENT_ERRORS,
+  RETRY_BASE_MS,
+  abortableSleep,
+  isRedirect,
+  isTemporaryStatus,
+} from './requests'
 import { MAX_ROBOTS_BYTES, analyseResponse, emptyResult, failureResult } from './response'
 import { isGuessSource } from './site-audit'
 import { explainLatestPair, type ExplainSources } from './explain'
@@ -470,7 +476,7 @@ export async function runCrawl(
     return { render, found }
   }
 
-  const observedFiles: NewCrawlFile[] = []
+  const observedFiles = new Map<string, NewCrawlFile>()
   let filesCapped = false
   let filesRefreshIncomplete = false
   async function processUrl(item: NewCrawlUrl, earlier?: SecondAttemptCandidate) {
@@ -481,17 +487,24 @@ export async function runCrawl(
       if (code !== undefined) firstFailure = { code, at: earlier.fetchedAt.toISOString() }
     }
     let claimed = false
-    const outcome = await fetchWithRetries(item, earlier
-      ? {
-          singleAttempt: true,
-          honorFullRetryAfter: true,
-          beforeAttempt: async () => {
-            if (claimed) return
-            claimed = await db.crawls.claimSecondAttempt(crawlId, item.urlHash)
-            if (!claimed) throw new SecondAttemptUnavailable()
+    const outcome = await fetchWithRetries(
+      item,
+      earlier
+        ? {
+            singleAttempt: true,
+            honorFullRetryAfter: true,
+            beforeAttempt: async () => {
+              if (claimed) return
+              claimed = await db.crawls.claimSecondAttempt(crawlId, item.urlHash)
+              if (!claimed) throw new SecondAttemptUnavailable()
+            },
+          }
+        : {
+            onFirstRetry: (code, at) => {
+              firstFailure = { code, at }
+            },
           },
-        }
-      : { onFirstRetry: (code, at) => { firstFailure = { code, at } } })
+    )
     const failed = outcome instanceof FetchError || isTemporaryStatus(outcome.statusCode)
     let result: CrawlUrlResult
     let found: Discovered = { urls: [], links: [] }
@@ -541,7 +554,8 @@ export async function runCrawl(
     }
     const fileKind = crawlFileKindOf(item.source)
     if (fileKind) {
-      observedFiles.push(
+      observedFiles.set(
+        item.url,
         captureCrawlFile({
           request: { url: item.url, kind: fileKind },
           outcome,
@@ -562,19 +576,14 @@ export async function runCrawl(
             )
           : null
       robots[origin] = { status: answered?.statusCode ?? null, body: text }
-      await db.crawls.saveRobots(crawlId, robots)
     }
-    if (sitemap && followLinks && sitemap.hreflang.length > 0) {
-      // Before the result: a crawl resumed in between requests the sitemap again, not the reverse.
-      await db.crawls.addSitemapHreflang(
-        crawlId,
-        sitemap.hreflang.map(({ page, lang, url }) => ({
+    const sitemapHreflang = followLinks
+      ? sitemap?.hreflang.map(({ page, lang, url }) => ({
           pageHash: crawlUrlHash(identity(page)),
           lang,
           url,
-        })),
-      )
-    }
+        }))
+      : undefined
     if (firstFailure) {
       result.data = {
         ...result.data,
@@ -610,7 +619,13 @@ export async function runCrawl(
     stopSignal.throwIfAborted()
     await persistAdmissionDrop()
     await db.crawls.recordResult({
-      crawlId, urlHash: item.urlHash, result, render, ...found,
+      crawlId,
+      urlHash: item.urlHash,
+      result,
+      render,
+      robots: item.source === 'robots' ? robots : undefined,
+      sitemapHreflang,
+      ...found,
       ...(earlier && { secondAttempt: failed ? 'failed' : 'answered' }),
     })
     if (!earlier) doneCount++
@@ -801,7 +816,11 @@ export async function runCrawl(
       await heartbeat()
       stopSignal.throwIfAborted()
       const batch = await db.crawls.transientFailureCandidates({
-        crawlId, ref: crawl!.ref, guessSources, after, limit: QUEUE_BATCH,
+        crawlId,
+        ref: crawl!.ref,
+        guessSources,
+        after,
+        limit: QUEUE_BATCH,
       })
       for (const item of batch) {
         const code = item.error?.split(':', 1)[0]
@@ -814,8 +833,11 @@ export async function runCrawl(
       after = batch[batch.length - 1]!.urlHash
     }
     const pass = hashes.length
-      ? { state: 'pending', notBefore: Date.now() + (options.secondPassWaitMs ?? SECOND_PASS_WAIT_MS) } as const
-      : { state: 'done', answered: 0, failed: 0, unconfirmed: 0 } as const
+      ? ({
+          state: 'pending',
+          notBefore: Date.now() + (options.secondPassWaitMs ?? SECOND_PASS_WAIT_MS),
+        } as const)
+      : ({ state: 'done', answered: 0, failed: 0, unconfirmed: 0 } as const)
     return { pass, hashes }
   }
 
@@ -863,11 +885,11 @@ export async function runCrawl(
     }
     // Done URLs survive a shutdown; the in-memory file batch does not. Re-acquire a complete
     // observation on resumed attempts before publishing or pruning any current file rows.
-    if (counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
+    if (followLinks && counts.urlsDoneCount > 0 && !signal.aborted && !cancelled && !fatal) {
       const alreadyRetried = new Set(await db.crawls.secondAttemptedUrls(crawlId))
-      const retriedFiles = observedFiles.filter((file) => alreadyRetried.has(file.url))
-      observedFiles.length = 0
-      observedFiles.push(...retriedFiles)
+      for (const url of observedFiles.keys()) {
+        if (!alreadyRetried.has(url)) observedFiles.delete(url)
+      }
       try {
         const fresh = await fetchCrawlFiles({
           requester,
@@ -880,7 +902,7 @@ export async function runCrawl(
           skipRequest: (url) => alreadyRetried.has(identity(url)),
         })
         if (!requester.excessiveDelay()) {
-          observedFiles.push(...fresh.files.map((file) => ({ ...file, via: 'crawl' as const })))
+          for (const file of fresh.files) observedFiles.set(file.url, { ...file, via: 'crawl' })
           filesCapped = fresh.capped
           filesRefreshIncomplete = fresh.skipped
         }
@@ -941,22 +963,25 @@ export async function runCrawl(
   const finished = !cancelled && (await db.crawls.finish(crawlId, { status, observations }))
   if (finished && !followLinks) {
     await db.crawlFiles
-      .save(crawl.domainId, observedFiles)
+      .save(crawl.domainId, [...observedFiles.values()])
       .catch((error) => log.warn({ err: error }, 'could not update crawl files'))
   }
-  if (finished && followLinks && observedFiles.length > 0) {
+  if (finished && followLinks && observedFiles.size > 0) {
     try {
       // The files were just requested: asking again in a moment would only add traffic.
       const checkedAt = new Date()
-      const reachable = observedFiles.some((file) => file.statusCode !== null)
+      const files = [...observedFiles.values()]
+      const reachable = files.some((file) => file.statusCode !== null)
       await db.crawlFiles.finishCheck({
         domainId: crawl.domainId,
         outcome: reachable ? 'ok' : 'unreachable',
-        files: observedFiles,
+        files,
         checkedAt,
         nextCheckAt: new Date(
           checkedAt.getTime() +
-            (reachable ? CRAWL_FILE_REFRESH_INTERVAL_MS : CRAWL_FILE_RETRY_INTERVAL_MS),
+            (reachable && !filesRefreshIncomplete
+              ? CRAWL_FILE_REFRESH_INTERVAL_MS
+              : CRAWL_FILE_RETRY_INTERVAL_MS),
         ),
       })
 

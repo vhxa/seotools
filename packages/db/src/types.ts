@@ -894,6 +894,8 @@ export interface CrawlRepository {
   saveRenders(crawlId: string, renders: readonly CrawlUrlRender[]): Promise<void>
   recordResult(input: {
     secondAttempt?: 'answered' | 'failed'
+    robots?: CrawlRobotsFiles
+    sitemapHreflang?: SitemapHreflang[]
     render?: CrawlUrlRender
     crawlId: string
     urlHash: string

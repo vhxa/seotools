@@ -3,7 +3,8 @@ export const MAX_RETRY_AFTER_MS = 5 * 60_000
 
 export const RETRY_BASE_MS = 1000
 export const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
-export const isTemporaryStatus = (status: number) => status === 429 || (status >= 500 && status < 600)
+export const isTemporaryStatus = (status: number) =>
+  status === 429 || (status >= 500 && status < 600)
 
 /** Errors that will fail the same way on a second try, seconds later. */
 export const PERMANENT_ERRORS = new Set([

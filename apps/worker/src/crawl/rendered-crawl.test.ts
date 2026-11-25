@@ -97,6 +97,40 @@ it('discovers and follows the rendered menu, retains HTML checks and both graph 
   expect(homeInput.allowedByRobots('https://unseen.test/a')).toBe('unknown')
   expect((await db.crawls.get(crawl.id))?.auditSnapshot?.rendersUnobserved).toBe(0)
 })
+it('renders a page recovered by the delayed retry and drains links found in its render', async () => {
+  const crawl = await start()
+  let calls = 0
+  const site = fakeSite(
+    {
+      [SITE + '/']: page('/', { links: '<a href="/hub">Hub</a>' }),
+      [SITE + '/hub']: () =>
+        ++calls === 1 ? { statusCode: 502, headers: {} } : page('/hub', { links: '' }),
+      [SITE + '/child']: page('/child'),
+    },
+    0,
+  )
+  await runCrawl(
+    crawl.id,
+    options({
+      createFetcher: site.createFetcher,
+      secondPassWaitMs: 0,
+      renderService: {
+        check: ready,
+        render: async (input) =>
+          renderedOutcome(input, input.url === SITE + '/hub' ? '<a href="/child">Child</a>' : ''),
+      },
+    }),
+  )
+
+  expect(calls).toBe(2)
+  expect((await db.crawls.get(crawl.id))?.secondPass).toMatchObject({ state: 'done', answered: 1 })
+  expect(await db.crawls.renderOf(crawl.id, hash('/hub'))).toMatchObject({ status: 'rendered' })
+  expect(await db.crawls.linksFrom(crawl.id, [hash('/hub')])).toContainEqual(
+    expect.objectContaining({ targetHash: hash('/child'), rendered: 1 }),
+  )
+  expect(await db.crawls.renderOf(crawl.id, hash('/child'))).toMatchObject({ status: 'rendered' })
+})
+
 it('never flags a stable served answer when the rendered menu rotates between crawls', async () => {
   for (const target of ['/only-js', '/orphan']) {
     const crawl = await start()

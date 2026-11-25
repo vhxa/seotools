@@ -92,6 +92,7 @@ async function fullCrawl(site: Record<string, Answer>) {
     signal: new AbortController().signal,
     createFetcher: fakeSite(site, 0).createFetcher,
     retryBaseMs: 1,
+    secondPassWaitMs: 0,
   })
   return (await db.crawls.get(started.id))!
 }
@@ -499,7 +500,7 @@ describe('what is requested', () => {
       requestsPerSecond: 100,
     })
     let busy = 0
-    site[absolute('/good')] = () => (busy++ < 2 ? { statusCode: 503, headers: {} } : page('/good'))
+    site[absolute('/good')] = () => (busy++ < 2 ? { statusCode: 504, headers: {} } : page('/good'))
     site[absolute('/broken')] = page('/broken')
     site[absolute('/dup1')] = page('/dup1')
     const { fake, urls } = await verify(['/good', '/broken', '/dup1'], site)

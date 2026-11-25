@@ -804,6 +804,18 @@
       "view": "Vista: {value}"
     }
   },
+  "CrawlRetry": {
+    "title": "Segundo intento",
+    "status": "Estado",
+    "skipped": "Se omitió porque hubo fallos temporales en más de {limit, number} URL.",
+    "requested": "Solicitadas de nuevo",
+    "answered": "Respondieron",
+    "failed": "Siguieron fallando",
+    "unconfirmed": "Sin confirmar tras la interrupción",
+    "errors": "Ver errores",
+    "recoveredOnSecondPass": "Falló al principio ({code}, {date}) y respondió en el segundo intento.",
+    "recoveredOnRetry": "Falló al principio ({code}, {date}) y respondió tras reintentar la solicitud."
+  },
   "UrlDetail": {
     "back": "Volver a URLs",
     "openFullScreen": "Abrir en pantalla completa",

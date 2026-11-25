@@ -138,6 +138,7 @@ async function crawl(site: Record<string, Answer>) {
     signal: new AbortController().signal,
     createFetcher: fakeSite(site, 0).createFetcher,
     retryBaseMs: 1,
+    secondPassWaitMs: 0,
   })
   return started.id
 }

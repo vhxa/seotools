@@ -11,10 +11,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JobInterruptedError } from '../types'
 import { analyseCrawl } from './analysis'
 import { reanalyseOutdatedCrawls } from './reanalysis'
-import { runCrawl, type CrawlEngineOptions } from './engine'
+import { runCrawl, SECOND_PASS_LIMIT, type CrawlEngineOptions } from './engine'
 import { htmlBaseline } from './html-baseline'
 import { fakeSite, html, moved, notFound } from './fake-site'
 import { FetchError, type FetchedResponse } from './fetcher'
+import { emptyResult } from './response'
+import { SITE, page, sitemapOf, xml } from './test-site'
 
 const log = createLogger('test', 'silent')
 
@@ -59,6 +61,7 @@ async function crawlWith(
     signal: new AbortController().signal,
     createFetcher: site.createFetcher,
     retryBaseMs: 1,
+    secondPassWaitMs: 0,
     ...overrides,
   })
   return { crawl: (await db.crawls.get(crawl.id))!, summary }
@@ -1083,6 +1086,193 @@ describe('politeness and failures', () => {
     })
     const { crawl } = await crawlWith(site)
     expect(crawl.status).toBe('completed')
+  })
+})
+
+describe('the delayed retry pass', () => {
+  const blog = `${SITE}/blog`
+  const posts = ['/blog/post-1', '/blog/post-2']
+  const blogPage = page('/blog', {
+    links: posts.map((post) => `<a href="${post}">Read the post</a>`).join(''),
+  })
+  const failedPage = {
+    ...html('<a href="/error-template">Unavailable</a>', {
+      link: '<header-template>; rel="canonical"',
+    }),
+    statusCode: 502,
+  }
+  const siteWith = (answer: Parameters<typeof fakeSite>[0][string]) =>
+    fakeSite({
+      [`${SITE}/`]: page('/', { links: '<a href="/blog">Blog</a>' }),
+      [`${SITE}/sitemap.xml`]: xml(sitemapOf(['/', '/blog', ...posts])),
+      [blog]: answer,
+      ...Object.fromEntries(posts.map((post) => [`${SITE}${post}`, page(post, { links: '' })])),
+    })
+  const postIssues = async (id: string, post: string) =>
+    (await db.crawls.issuesOf(id, [crawlUrlHash(SITE + post)])).map(({ issue }) => issue)
+
+  it.each([1, 3])(
+    'recovers and keeps both posts linked after %i gateway failures',
+    async (failures) => {
+      let calls = 0
+      const site = siteWith(() => (++calls <= failures ? failedPage : blogPage))
+      const { crawl } = await crawlWith(site)
+      const later = failures === 3
+
+      expect(crawl.status).toBe('completed')
+      expect(crawl.secondPass).toEqual({
+        state: 'done',
+        answered: later ? 1 : 0,
+        failed: 0,
+        unconfirmed: 0,
+      })
+      const stored = await db.crawls.getUrl(crawl.id, crawlUrlHash(blog))
+      expect(stored).toMatchObject({
+        statusCode: 200,
+        data: {
+          firstRequestFailure: {
+            code: 502,
+            at: expect.any(String),
+            recoveredOn: later ? 'second-pass' : 'retry',
+          },
+        },
+      })
+      expect(Date.parse(stored!.data!.firstRequestFailure!.at)).toBeLessThanOrEqual(
+        stored!.fetchedAt!.getTime(),
+      )
+      if (later) expect(calls).toBe(4)
+      const links = await db.crawls.linksFrom(crawl.id, [crawlUrlHash(blog)])
+      for (const post of posts) {
+        expect(links).toContainEqual(
+          expect.objectContaining({ targetHash: crawlUrlHash(SITE + post), kind: 'anchor' }),
+        )
+        expect(await postIssues(crawl.id, post)).not.toContain('orphan-in-sitemap')
+      }
+    },
+  )
+
+  it.each([
+    ['persistent 502', failedPage, 502, 'server-error'],
+    ['persistent timeout', new FetchError('TIMEOUT', 'timed out'), null, 'no-response'],
+  ] as const)('keeps the orphans after a %s', async (_name, answer, statusCode, issue) => {
+    const site = siteWith(answer)
+    const { crawl } = await crawlWith(site)
+
+    expect(crawl.status).toBe('completed')
+    expect(crawl.secondPass).toEqual({ state: 'done', answered: 0, failed: 1, unconfirmed: 0 })
+    expect(site.requests.filter((url) => url === blog)).toHaveLength(4)
+    expect(site.requests).not.toContain(SITE + '/error-template')
+    expect(site.requests).not.toContain(SITE + '/header-template')
+    expect(await db.crawls.getUrl(crawl.id, crawlUrlHash(blog))).toMatchObject({ statusCode })
+    expect(await postIssues(crawl.id, '/blog')).toContain(issue)
+    for (const post of posts)
+      expect(await postIssues(crawl.id, post)).toContain('orphan-in-sitemap')
+  })
+
+  it.each(['during', 'after'])(
+    'resumes %s the pass without sending a claimed request again',
+    async (when) => {
+      const stop = new AbortController()
+      let calls = 0
+      const site = siteWith(() => {
+        if (++calls <= 3) return failedPage
+        if (when === 'during') stop.abort()
+        return blogPage
+      })
+      const started = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      const options = {
+        db,
+        log,
+        signal: stop.signal,
+        createFetcher: site.createFetcher,
+        retryBaseMs: 1,
+        secondPassWaitMs: 0,
+      }
+      const finish = db.crawls.finishSecondPass.bind(db.crawls)
+      const save = vi.spyOn(db.crawls, 'finishSecondPass').mockImplementation(async (id) => {
+        await finish(id)
+        if (when === 'after') stop.abort()
+      })
+      const plan = vi.spyOn(db.crawls, 'planSecondPass')
+
+      await expect(runCrawl(started.id, options)).rejects.toBeInstanceOf(JobInterruptedError)
+      await runCrawl(started.id, { ...options, signal: new AbortController().signal })
+      expect(calls).toBe(4)
+      expect(plan).toHaveBeenCalledTimes(1)
+      expect(save).toHaveBeenCalledTimes(1)
+      expect((await db.crawls.get(started.id))?.secondPass).toEqual({
+        state: 'done',
+        answered: when === 'after' ? 1 : 0,
+        failed: 0,
+        unconfirmed: when === 'during' ? 1 : 0,
+      })
+      expect(await db.crawls.getUrl(started.id, crawlUrlHash(blog))).toMatchObject({
+        statusCode: when === 'after' ? 200 : 502,
+      })
+    },
+  )
+
+  it('skips the whole pass when the eligible failure count exceeds the cap', async () => {
+    const crawl = (await db.crawls.start({ domainId, type: 'priority', trigger: 'manual' }))!
+    const failures = Array.from({ length: SECOND_PASS_LIMIT + 1 }, (_, i) => ({
+      url: `${SITE}/failed-${i}`,
+      urlHash: crawlUrlHash(`${SITE}/failed-${i}`),
+      scope: 'internal' as const,
+      source: 'priority' as const,
+      depth: 0,
+      seq: i + 1,
+    }))
+    await db.crawls.addUrls(crawl.id, failures)
+    for (const { urlHash } of failures) {
+      await db.crawls.recordResult({
+        crawlId: crawl.id,
+        urlHash,
+        result: { ...emptyResult, statusCode: 501 },
+      })
+    }
+    const site = fakeSite({})
+    await runCrawl(crawl.id, {
+      db,
+      log,
+      signal: new AbortController().signal,
+      createFetcher: site.createFetcher,
+      secondPassWaitMs: 0,
+    })
+
+    expect(site.requests).toEqual([])
+    expect((await db.crawls.get(crawl.id))?.secondPass).toEqual({
+      state: 'skipped',
+      limit: SECOND_PASS_LIMIT,
+    })
+  })
+
+  it('waits for Retry-After after the main drain and between serial second attempts', async () => {
+    await db.crawls.saveSettings(domainId, {
+      ...(await db.crawls.settings(domainId)),
+      maxRetries: 0,
+    })
+    const first: number[] = []
+    const second: number[] = []
+    const more = `${SITE}/more`
+    const site = fakeSite({
+      [`${SITE}/`]: html('<a href="/blog">Blog</a><a href="/more">More</a>'),
+      [blog]: () => {
+        first.push(Date.now())
+        return { statusCode: 502, headers: { 'retry-after': '1' } }
+      },
+      [more]: () => {
+        second.push(Date.now())
+        return { statusCode: 502, headers: {} }
+      },
+    })
+
+    const { crawl } = await crawlWith(site, 'full', { secondPassWaitMs: 50 })
+    expect(crawl.secondPass).toMatchObject({ state: 'done', failed: 2 })
+    expect(first).toHaveLength(2)
+    expect(second).toHaveLength(2)
+    expect(first[1]! - second[0]!).toBeGreaterThanOrEqual(48)
+    expect(first[1]! - first[0]!).toBeGreaterThanOrEqual(995)
+    expect(second[1]! - first[1]!).toBeGreaterThanOrEqual(995)
   })
 })
 
