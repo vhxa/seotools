@@ -215,6 +215,7 @@ import type {
   UserTokenKind,
   Database,
   NewCrawlUrl,
+  SecondAttemptCandidate,
   NewVerificationUrl,
   SitemapHreflang,
   VerifiedUrl,
@@ -437,6 +438,20 @@ export function createSqliteDatabase(options: {
             )
             .where(and(eq(crawlUrlRenders.crawlId, crawlId), inArray(renderState, [...states]))),
   })
+
+  function insertSitemapHreflang(
+    executor: Pick<typeof db, 'insert'>,
+    crawlId: string,
+    entries: SitemapHreflang[],
+  ) {
+    for (const batch of chunk(entries)) {
+      executor
+        .insert(crawlSitemapHreflang)
+        .values(batch.map((entry) => sitemapHreflangRow(crawlId, entry)))
+        .onConflictDoNothing()
+        .run()
+    }
+  }
 
   /** The URL of a render, to read whether its served HTML was cut. */
   const renderedUrls = alias(crawlUrls, 'rendered_urls')
@@ -2502,6 +2517,7 @@ export function createSqliteDatabase(options: {
           eq(crawlUrls.scope, 'internal'),
           eq(crawlUrls.state, 'done'),
           eq(crawlUrls.kind, 'page'),
+          isNull(crawlUrls.secondAttempt),
           gte(crawlUrls.statusCode, 200),
           ne(crawlUrls.statusCode, 206),
           lt(crawlUrls.statusCode, 300),
@@ -2593,10 +2609,157 @@ export function createSqliteDatabase(options: {
           })
           .from(crawlUrls)
           .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.state, 'queued')))
-          .orderBy(asc(crawlUrls.depth))
+          .orderBy(
+            asc(crawlUrls.depth),
+            asc(isNull(crawlUrls.seq)),
+            asc(crawlUrls.seq),
+            asc(crawlUrls.urlHash),
+          )
           .limit(limit)
           .all()
         return rows as NewCrawlUrl[]
+      },
+
+      async transientFailureCandidates({ crawlId, ref, guessSources, after, limit }) {
+        return db
+          .select({ urlHash: crawlUrls.urlHash, error: crawlUrls.error })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'internal'),
+              eq(crawlUrls.state, 'done'),
+              gt(crawlUrls.urlHash, after),
+              or(
+                eq(crawlUrls.statusCode, 429),
+                and(gte(crawlUrls.statusCode, 500), lt(crawlUrls.statusCode, 600)),
+                and(isNull(crawlUrls.statusCode), isNotNull(crawlUrls.error)),
+              ),
+              guessSources.length === 0
+                ? undefined
+                : or(
+                    notInArray(crawlUrls.source, [...guessSources]),
+                    exists(
+                      db
+                        .select({ source: crawlUrlLinks.source })
+                        .from(crawlUrlLinks)
+                        .where(
+                          and(
+                            eq(crawlUrlLinks.crawlRef, ref ?? -1),
+                            eq(crawlUrlLinks.target, crawlUrls.seq),
+                            ne(crawlUrlLinks.source, crawlUrls.seq),
+                            ne(crawlUrlLinks.kind, 'redirect'),
+                          ),
+                        ),
+                    ),
+                  ),
+            ),
+          )
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+          .all()
+      },
+
+      async planSecondPass(crawlId, pass, hashes) {
+        return db.transaction((tx) => {
+          const claimed = tx
+            .update(crawls)
+            .set({ secondPass: JSON.stringify(pass) })
+            .where(
+              and(eq(crawls.id, crawlId), eq(crawls.status, 'running'), isNull(crawls.secondPass)),
+            )
+            .returning({ id: crawls.id })
+            .all()
+          if (claimed.length === 0) return false
+          for (const batch of chunk(hashes)) {
+            tx.update(crawlUrls)
+              .set({ secondAttempt: 'queued' })
+              .where(and(eq(crawlUrls.crawlId, crawlId), inArray(crawlUrls.urlHash, batch)))
+              .run()
+          }
+          return true
+        })
+      },
+
+      async nextSecondAttempt(crawlId, limit) {
+        const rows = db
+          .select()
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.secondAttempt, 'queued')))
+          .orderBy(
+            asc(crawlUrls.depth),
+            asc(isNull(crawlUrls.seq)),
+            asc(crawlUrls.seq),
+            asc(crawlUrls.urlHash),
+          )
+          .limit(limit)
+          .all()
+        return rows.map((row): SecondAttemptCandidate => {
+          const { data, ...url } = toCrawlUrl(row)
+          return { ...url, seq: url.seq ?? 0, firstRequestFailure: data?.firstRequestFailure }
+        })
+      },
+
+      async claimSecondAttempt(crawlId, urlHash) {
+        const rows = db
+          .update(crawlUrls)
+          .set({ secondAttempt: 'started' })
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.urlHash, urlHash),
+              eq(crawlUrls.secondAttempt, 'queued'),
+              exists(
+                db
+                  .select({ id: crawls.id })
+                  .from(crawls)
+                  .where(and(eq(crawls.id, crawlId), eq(crawls.status, 'running'))),
+              ),
+            ),
+          )
+          .returning({ hash: crawlUrls.urlHash })
+          .all()
+        return rows.length > 0
+      },
+
+      async finishSecondPass(crawlId, skip) {
+        db.transaction((tx) => {
+          const rows = tx
+            .select({ state: crawlUrls.secondAttempt, count: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .where(and(eq(crawlUrls.crawlId, crawlId), isNotNull(crawlUrls.secondAttempt)))
+            .groupBy(crawlUrls.secondAttempt)
+            .all()
+          const counts = new Map(rows.map(({ state, count }) => [state, Number(count)]))
+          if (counts.has('queued') && !skip) return
+          const totals = {
+            answered: counts.get('answered') ?? 0,
+            failed: counts.get('failed') ?? 0,
+            unconfirmed: counts.get('started') ?? 0,
+          }
+          const pass = skip
+            ? { state: 'skipped', reason: skip, ...totals }
+            : { state: 'done', ...totals }
+          tx.update(crawls)
+            .set({ secondPass: JSON.stringify(pass) })
+            .where(and(eq(crawls.id, crawlId), eq(crawls.status, 'running')))
+            .run()
+          if (skip) {
+            tx.update(crawlUrls)
+              .set({ secondAttempt: null })
+              .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.secondAttempt, 'queued')))
+              .run()
+          }
+        })
+      },
+
+      async secondAttemptedUrls(crawlId) {
+        const rows = db
+          .select({ url: crawlUrls.url })
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), isNotNull(crawlUrls.secondAttempt)))
+          .all()
+        return rows.map(({ url }) => url)
       },
 
       async knownUrls(crawlId) {
@@ -2768,7 +2931,17 @@ export function createSqliteDatabase(options: {
         })
       },
 
-      async recordResult({ crawlId, urlHash, result, render, urls = [], links = [] }) {
+      async recordResult({
+        crawlId,
+        urlHash,
+        result,
+        render,
+        secondAttempt,
+        robots,
+        sitemapHreflang = [],
+        urls = [],
+        links = [],
+      }) {
         const columns = crawlResultColumns(result, new Date())
         db.transaction((tx) => {
           for (const batch of chunk(urls)) {
@@ -2799,6 +2972,13 @@ export function createSqliteDatabase(options: {
               tx.insert(crawlUrlLinks).values(batch).onConflictDoNothing().run()
             }
           }
+          if (robots) {
+            tx.update(crawls)
+              .set({ robots: crawlRobotsColumn(robots) })
+              .where(eq(crawls.id, crawlId))
+              .run()
+          }
+          insertSitemapHreflang(tx, crawlId, sitemapHreflang)
           if (render) {
             const values = { crawlId, ...render, data: JSON.stringify(render.data) }
             tx.insert(crawlUrlRenders)
@@ -2810,7 +2990,7 @@ export function createSqliteDatabase(options: {
               .run()
           }
           tx.update(crawlUrls)
-            .set(columns)
+            .set({ ...columns, secondAttempt })
             .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, urlHash)))
             .run()
         })
@@ -3241,12 +3421,7 @@ export function createSqliteDatabase(options: {
       },
 
       async addSitemapHreflang(crawlId, entries) {
-        for (const batch of chunk(entries)) {
-          db.insert(crawlSitemapHreflang)
-            .values(batch.map((entry) => sitemapHreflangRow(crawlId, entry)))
-            .onConflictDoNothing()
-            .run()
-        }
+        insertSitemapHreflang(db, crawlId, entries)
       },
 
       async sitemapHreflangOf(crawlId, pageHashes) {

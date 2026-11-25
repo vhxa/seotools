@@ -1369,6 +1369,116 @@ export function describeDatabaseContract(
         expect(await db.crawls.knownUrls(id)).toHaveLength(3)
       })
 
+      it('breaks queue depth ties by discovery sequence, with unnumbered rows last', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const early = newUrl('https://acme.com/z')
+        const late = newUrl('https://acme.com/a')
+        const legacy = newUrl('https://acme.com/b', { seq: undefined })
+        await db.crawls.addUrls(id, [legacy, late, early])
+
+        expect((await db.crawls.nextQueued(id, 10)).map(({ url }) => url)).toEqual([
+          early.url,
+          late.url,
+          legacy.url,
+        ])
+      })
+
+      it('claims delayed retries once and keeps only confirmed outcomes in the second-pass totals', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        await db.crawls.markRunning(id)
+        const home = newUrl('https://acme.com/')
+        const other = newUrl('https://acme.com/other')
+        const guessed = newUrl('https://www.acme.com/', { source: 'seed' })
+        await db.crawls.addUrls(id, [other, home, guessed])
+        for (const { urlHash } of [home, other, guessed]) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash,
+            result: result('page', { statusCode: 502 }),
+          })
+        }
+        const found = await db.crawls.transientFailureCandidates({
+          crawlId: id,
+          ref: (await db.crawls.get(id))!.ref,
+          guessSources: ['seed'],
+          after: '',
+          limit: 10,
+        })
+        expect(found.map(({ urlHash }) => urlHash).sort()).toEqual(
+          [home.urlHash, other.urlHash].sort(),
+        )
+        const pass = { state: 'pending', notBefore: 0 } as const
+        expect(await db.crawls.planSecondPass(id, pass, [other.urlHash, home.urlHash])).toBe(true)
+        expect(await db.crawls.planSecondPass(id, pass, [guessed.urlHash])).toBe(false)
+        expect((await db.crawls.nextSecondAttempt(id, 10)).map(({ url }) => url)).toEqual([
+          home.url,
+          other.url,
+        ])
+        expect(await db.crawls.claimSecondAttempt(id, home.urlHash)).toBe(true)
+        expect(await db.crawls.claimSecondAttempt(id, home.urlHash)).toBe(false)
+        await db.crawls.recordResult({
+          crawlId: id,
+          urlHash: home.urlHash,
+          result: result('page'),
+          secondAttempt: 'answered',
+        })
+        expect(await db.crawls.claimSecondAttempt(id, other.urlHash)).toBe(true)
+        expect(await db.crawls.nextSecondAttempt(id, 10)).toEqual([])
+        await db.crawls.finishSecondPass(id)
+        expect((await db.crawls.get(id))?.secondPass).toEqual({
+          state: 'done',
+          answered: 1,
+          failed: 0,
+          unconfirmed: 1,
+        })
+        expect((await db.crawls.getUrl(id, other.urlHash))?.statusCode).toBe(502)
+      })
+
+      it('stores why a delayed pass stopped and leaves its unattempted URLs as they were', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        await db.crawls.markRunning(id)
+        const hub = newUrl('https://acme.com/hub')
+        const waiting = newUrl('https://acme.com/waiting')
+        await db.crawls.addUrls(id, [hub, waiting])
+        for (const { urlHash } of [hub, waiting]) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash,
+            result: result('page', { statusCode: 502 }),
+          })
+        }
+        await db.crawls.planSecondPass(id, { state: 'pending', notBefore: 0 }, [
+          hub.urlHash,
+          waiting.urlHash,
+        ])
+        expect(await db.crawls.claimSecondAttempt(id, hub.urlHash)).toBe(true)
+        await db.crawls.recordResult({
+          crawlId: id,
+          urlHash: hub.urlHash,
+          result: result('page', { statusCode: 503 }),
+          secondAttempt: 'failed',
+        })
+
+        await db.crawls.finishSecondPass(id, 'retry-after')
+        expect((await db.crawls.get(id))?.secondPass).toEqual({
+          state: 'skipped',
+          reason: 'retry-after',
+          answered: 0,
+          failed: 1,
+          unconfirmed: 0,
+        })
+        expect(await db.crawls.nextSecondAttempt(id, 10)).toEqual([])
+        expect(await db.crawls.secondAttemptedUrls(id)).toEqual([hub.url])
+        expect(await db.crawls.getUrl(id, waiting.urlHash)).toMatchObject({
+          state: 'done',
+          statusCode: 502,
+        })
+        expect(await db.crawls.claimSecondAttempt(id, waiting.urlHash)).toBe(false)
+      })
+
       it('records a result with what it discovered, atomically and idempotently', async () => {
         const domainId = await domain()
         const { id } = await startCrawl(domainId)

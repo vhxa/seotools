@@ -804,6 +804,19 @@
       "view": "View: {value}"
     }
   },
+  "CrawlRetry": {
+    "title": "Second attempt",
+    "status": "Status",
+    "skippedLimit": "Skipped because more than {limit, number} URLs had temporary failures.",
+    "skippedRetryAfter": "Skipped because the server asked for a longer wait than the crawler allows.",
+    "requested": "Requested again",
+    "answered": "Answered",
+    "failed": "Still failed",
+    "unconfirmed": "Unconfirmed after interruption",
+    "errors": "View errors",
+    "recoveredOnSecondPass": "Failed at first ({code}, {date}), answered on the second attempt.",
+    "recoveredOnRetry": "Failed at first ({code}, {date}), answered after retrying."
+  },
   "UrlDetail": {
     "back": "Back to URLs",
     "openFullScreen": "Open full screen",

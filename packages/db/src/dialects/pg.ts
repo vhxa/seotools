@@ -211,6 +211,7 @@ import type {
   UserTokenKind,
   Database,
   NewCrawlUrl,
+  SecondAttemptCandidate,
   NewVerificationUrl,
   SitemapHreflang,
   VerifiedUrl,
@@ -417,6 +418,19 @@ export function createPgDatabase(options: {
             )
             .where(and(eq(crawlUrlRenders.crawlId, crawlId), inArray(renderState, [...states]))),
   })
+
+  async function insertSitemapHreflang(
+    executor: Pick<typeof db, 'insert'>,
+    crawlId: string,
+    entries: SitemapHreflang[],
+  ) {
+    for (const batch of chunk(entries)) {
+      await executor
+        .insert(crawlSitemapHreflang)
+        .values(batch.map((entry) => sitemapHreflangRow(crawlId, entry)))
+        .onConflictDoNothing()
+    }
+  }
 
   /** The URL of a render, to read whether its served HTML was cut. */
   const renderedUrls = alias(crawlUrls, 'rendered_urls')
@@ -2429,6 +2443,7 @@ export function createPgDatabase(options: {
           eq(crawlUrls.scope, 'internal'),
           eq(crawlUrls.state, 'done'),
           eq(crawlUrls.kind, 'page'),
+          isNull(crawlUrls.secondAttempt),
           gte(crawlUrls.statusCode, 200),
           ne(crawlUrls.statusCode, 206),
           lt(crawlUrls.statusCode, 300),
@@ -2520,9 +2535,150 @@ export function createPgDatabase(options: {
           })
           .from(crawlUrls)
           .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.state, 'queued')))
-          .orderBy(asc(crawlUrls.depth))
+          .orderBy(
+            asc(crawlUrls.depth),
+            asc(isNull(crawlUrls.seq)),
+            asc(crawlUrls.seq),
+            asc(crawlUrls.urlHash),
+          )
           .limit(limit)
         return rows as NewCrawlUrl[]
+      },
+
+      async transientFailureCandidates({ crawlId, ref, guessSources, after, limit }) {
+        return db
+          .select({ urlHash: crawlUrls.urlHash, error: crawlUrls.error })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'internal'),
+              eq(crawlUrls.state, 'done'),
+              gt(crawlUrls.urlHash, after),
+              or(
+                eq(crawlUrls.statusCode, 429),
+                and(gte(crawlUrls.statusCode, 500), lt(crawlUrls.statusCode, 600)),
+                and(isNull(crawlUrls.statusCode), isNotNull(crawlUrls.error)),
+              ),
+              guessSources.length === 0
+                ? undefined
+                : or(
+                    notInArray(crawlUrls.source, [...guessSources]),
+                    exists(
+                      db
+                        .select({ source: crawlUrlLinks.source })
+                        .from(crawlUrlLinks)
+                        .where(
+                          and(
+                            eq(crawlUrlLinks.crawlRef, ref ?? -1),
+                            eq(crawlUrlLinks.target, crawlUrls.seq),
+                            ne(crawlUrlLinks.source, crawlUrls.seq),
+                            ne(crawlUrlLinks.kind, 'redirect'),
+                          ),
+                        ),
+                    ),
+                  ),
+            ),
+          )
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+      },
+
+      async planSecondPass(crawlId, pass, hashes) {
+        return db.transaction(async (tx) => {
+          const claimed = await tx
+            .update(crawls)
+            .set({ secondPass: JSON.stringify(pass) })
+            .where(
+              and(eq(crawls.id, crawlId), eq(crawls.status, 'running'), isNull(crawls.secondPass)),
+            )
+            .returning({ id: crawls.id })
+          if (claimed.length === 0) return false
+          for (const batch of chunk(hashes)) {
+            await tx
+              .update(crawlUrls)
+              .set({ secondAttempt: 'queued' })
+              .where(and(eq(crawlUrls.crawlId, crawlId), inArray(crawlUrls.urlHash, batch)))
+          }
+          return true
+        })
+      },
+
+      async nextSecondAttempt(crawlId, limit) {
+        const rows = await db
+          .select()
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.secondAttempt, 'queued')))
+          .orderBy(
+            asc(crawlUrls.depth),
+            asc(isNull(crawlUrls.seq)),
+            asc(crawlUrls.seq),
+            asc(crawlUrls.urlHash),
+          )
+          .limit(limit)
+        return rows.map((row): SecondAttemptCandidate => {
+          const { data, ...url } = toCrawlUrl(row)
+          return { ...url, seq: url.seq ?? 0, firstRequestFailure: data?.firstRequestFailure }
+        })
+      },
+
+      async claimSecondAttempt(crawlId, urlHash) {
+        const rows = await db
+          .update(crawlUrls)
+          .set({ secondAttempt: 'started' })
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.urlHash, urlHash),
+              eq(crawlUrls.secondAttempt, 'queued'),
+              exists(
+                db
+                  .select({ id: crawls.id })
+                  .from(crawls)
+                  .where(and(eq(crawls.id, crawlId), eq(crawls.status, 'running'))),
+              ),
+            ),
+          )
+          .returning({ hash: crawlUrls.urlHash })
+        return rows.length > 0
+      },
+
+      async finishSecondPass(crawlId, skip) {
+        await db.transaction(async (tx) => {
+          const rows = await tx
+            .select({ state: crawlUrls.secondAttempt, count: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .where(and(eq(crawlUrls.crawlId, crawlId), isNotNull(crawlUrls.secondAttempt)))
+            .groupBy(crawlUrls.secondAttempt)
+          const counts = new Map(rows.map(({ state, count }) => [state, Number(count)]))
+          if (counts.has('queued') && !skip) return
+          const totals = {
+            answered: counts.get('answered') ?? 0,
+            failed: counts.get('failed') ?? 0,
+            unconfirmed: counts.get('started') ?? 0,
+          }
+          const pass = skip
+            ? { state: 'skipped', reason: skip, ...totals }
+            : { state: 'done', ...totals }
+          await tx
+            .update(crawls)
+            .set({ secondPass: JSON.stringify(pass) })
+            .where(and(eq(crawls.id, crawlId), eq(crawls.status, 'running')))
+          if (skip) {
+            await tx
+              .update(crawlUrls)
+              .set({ secondAttempt: null })
+              .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.secondAttempt, 'queued')))
+          }
+        })
+      },
+
+      async secondAttemptedUrls(crawlId) {
+        const rows = await db
+          .select({ url: crawlUrls.url })
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), isNotNull(crawlUrls.secondAttempt)))
+        return rows.map(({ url }) => url)
       },
 
       async knownUrls(crawlId) {
@@ -2687,7 +2843,17 @@ export function createPgDatabase(options: {
         })
       },
 
-      async recordResult({ crawlId, urlHash, result, render, urls = [], links = [] }) {
+      async recordResult({
+        crawlId,
+        urlHash,
+        result,
+        render,
+        secondAttempt,
+        robots,
+        sitemapHreflang = [],
+        urls = [],
+        links = [],
+      }) {
         const columns = crawlResultColumns(result, new Date())
         await db.transaction(async (tx) => {
           for (const batch of chunk(urls)) {
@@ -2717,6 +2883,13 @@ export function createPgDatabase(options: {
               await tx.insert(crawlUrlLinks).values(batch).onConflictDoNothing()
             }
           }
+          if (robots) {
+            await tx
+              .update(crawls)
+              .set({ robots: crawlRobotsColumn(robots) })
+              .where(eq(crawls.id, crawlId))
+          }
+          await insertSitemapHreflang(tx, crawlId, sitemapHreflang)
           if (render) {
             const values = { crawlId, ...render, data: JSON.stringify(render.data) }
             await tx
@@ -2729,7 +2902,7 @@ export function createPgDatabase(options: {
           }
           await tx
             .update(crawlUrls)
-            .set(columns)
+            .set({ ...columns, secondAttempt })
             .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, urlHash)))
         })
       },
@@ -3149,12 +3322,7 @@ export function createPgDatabase(options: {
       },
 
       async addSitemapHreflang(crawlId, entries) {
-        for (const batch of chunk(entries)) {
-          await db
-            .insert(crawlSitemapHreflang)
-            .values(batch.map((entry) => sitemapHreflangRow(crawlId, entry)))
-            .onConflictDoNothing()
-        }
+        await insertSitemapHreflang(db, crawlId, entries)
       },
 
       async sitemapHreflangOf(crawlId, pageHashes) {

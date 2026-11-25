@@ -97,6 +97,88 @@ it('discovers and follows the rendered menu, retains HTML checks and both graph 
   expect(homeInput.allowedByRobots('https://unseen.test/a')).toBe('unknown')
   expect((await db.crawls.get(crawl.id))?.auditSnapshot?.rendersUnobserved).toBe(0)
 })
+it('renders a page recovered by the delayed retry and drains links found in its render', async () => {
+  const crawl = await start()
+  let calls = 0
+  const site = fakeSite(
+    {
+      [SITE + '/']: page('/', { links: '<a href="/hub">Hub</a>' }),
+      [SITE + '/hub']: () =>
+        ++calls === 1 ? { statusCode: 502, headers: {} } : page('/hub', { links: '' }),
+      [SITE + '/child']: page('/child'),
+    },
+    0,
+  )
+  await runCrawl(
+    crawl.id,
+    options({
+      createFetcher: site.createFetcher,
+      secondPassWaitMs: 0,
+      renderService: {
+        check: ready,
+        render: async (input) =>
+          renderedOutcome(input, input.url === SITE + '/hub' ? '<a href="/child">Child</a>' : ''),
+      },
+    }),
+  )
+
+  expect(calls).toBe(2)
+  expect((await db.crawls.get(crawl.id))?.secondPass).toMatchObject({ state: 'done', answered: 1 })
+  expect(await db.crawls.renderOf(crawl.id, hash('/hub'))).toMatchObject({ status: 'rendered' })
+  expect(await db.crawls.linksFrom(crawl.id, [hash('/hub')])).toContainEqual(
+    expect.objectContaining({ targetHash: hash('/child'), rendered: 1 }),
+  )
+  expect(await db.crawls.renderOf(crawl.id, hash('/child'))).toMatchObject({ status: 'rendered' })
+})
+
+it('repairs a missing render on a page discovered after resuming the planned second pass', async () => {
+  const crawl = await start()
+  const stop = new AbortController()
+  let calls = 0
+  const site = fakeSite(
+    {
+      [SITE + '/']: page('/', { links: '<a href="/hub">Hub</a>' }),
+      [SITE + '/hub']: () =>
+        ++calls === 1
+          ? { statusCode: 502, headers: {} }
+          : page('/hub', { links: '<a href="/child">Child</a>' }),
+      [SITE + '/child']: page('/child'),
+    },
+    0,
+  )
+  const plan = db.crawls.planSecondPass.bind(db.crawls)
+  const planned = vi.spyOn(db.crawls, 'planSecondPass').mockImplementation(async (...args) => {
+    const saved = await plan(...args)
+    stop.abort()
+    return saved
+  })
+  let loseRender = true
+  const record = db.crawls.recordResult.bind(db.crawls)
+  vi.spyOn(db.crawls, 'recordResult').mockImplementation(async (input) => {
+    if (input.urlHash === hash('/child') && input.render && loseRender) {
+      loseRender = false
+      await record({ ...input, render: undefined })
+    } else await record(input)
+  })
+  const fixture = options({
+    createFetcher: site.createFetcher,
+    renderService: { check: ready, render: async (input) => renderedOutcome(input) },
+    secondPassWaitMs: 0,
+    signal: stop.signal,
+  })
+
+  await expect(runCrawl(crawl.id, fixture)).rejects.toBeInstanceOf(JobInterruptedError)
+  expect((await db.crawls.get(crawl.id))?.secondPass?.state).toBe('pending')
+  await runCrawl(crawl.id, { ...fixture, signal: new AbortController().signal })
+
+  expect(planned).toHaveBeenCalledTimes(1)
+  expect(calls).toBe(2)
+  expect(loseRender).toBe(false)
+  expect(await db.crawls.renderOf(crawl.id, hash('/child'))).toMatchObject({ status: 'rendered' })
+  expect(await db.crawls.unrenderedPages(crawl.id, 10)).toEqual([])
+  expect((await db.crawls.get(crawl.id))?.status).toBe('completed')
+})
+
 it('never flags a stable served answer when the rendered menu rotates between crawls', async () => {
   for (const target of ['/only-js', '/orphan']) {
     const crawl = await start()
