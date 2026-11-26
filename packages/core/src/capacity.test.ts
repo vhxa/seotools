@@ -56,6 +56,7 @@ describe('capacity recommendations', () => {
     ['3g', 3072 * MIB],
     ['1536m', 1536 * MIB],
     ['256MB', 256 * MIB],
+    ['1GiB', 1024 * MIB],
     ['4k', 4096],
     ['123b', 123],
     ['123', 123],
@@ -63,7 +64,7 @@ describe('capacity recommendations', () => {
     ['0', null],
     ['-4m', null],
     ['wat', null],
-    ['1.5g', null],
+    ['1.5g', 1536 * MIB],
     ['9007199254740992', null],
   ])('parses Docker size %s', (value, bytes) => {
     expect(dockerSize(value)).toBe(bytes)

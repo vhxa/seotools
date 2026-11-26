@@ -23,10 +23,10 @@ export type CapacityHardware = z.infer<typeof capacityHardwareSchema>
 export const minimumCapacity: Capacity = { renders: 1, crawls: 1 }
 
 export function dockerSize(value?: string): number | null {
-  const match = /^(\d+)\s*(b|[kmg]b?)?$/i.exec(value?.trim() ?? '')
+  const match = /^(\d+(?:\.\d+)?)\s*(b|[kmgtp](?:i?b)?)?$/i.exec(value?.trim() ?? '')
   if (!match) return null
-  const power = ['', 'k', 'm', 'g'].indexOf(match[2]?.[0]?.toLowerCase() ?? '')
-  const bytes = Number(match[1]) * 1024 ** Math.max(0, power)
+  const power = ['', 'k', 'm', 'g', 't', 'p'].indexOf(match[2]?.[0]?.toLowerCase() ?? '')
+  const bytes = Math.floor(Number(match[1]) * 1024 ** Math.max(0, power))
   return Number.isSafeInteger(bytes) && bytes > 0 ? bytes : null
 }
 

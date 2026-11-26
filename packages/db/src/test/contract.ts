@@ -272,6 +272,86 @@ export function describeDatabaseContract(
       expect((await db.crawls.get(crawl.id))?.rendering).toEqual(crawl.rendering)
     })
 
+    it('retains measured capacity and slot observations after pruning', async () => {
+      const created = await createCompany(db, {
+        name: 'Measured',
+        domain: 'example.com',
+        crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, renderingMode: 'headless' },
+      })
+      if (!created.ok) throw new Error('setup failed')
+      const domainId = created.domain.id
+      const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      await db.crawls.markRunning(crawl.id, undefined, 2)
+      const url = 'https://example.com/'
+      const urlHash = crawlUrlHash(url)
+      await db.crawls.addUrls(crawl.id, [
+        { url, urlHash, seq: 1, depth: 0, source: 'seed', scope: 'internal' },
+      ])
+      await db.crawls.recordSlowdown(crawl.id)
+      await db.crawls.recordResult({
+        crawlId: crawl.id,
+        urlHash,
+        result: {
+          kind: 'page',
+          statusCode: 200,
+          contentType: 'text/html',
+          redirectTo: null,
+          title: null,
+          metaRobots: null,
+          xRobotsTag: null,
+          canonical: null,
+          responseTimeMs: 24,
+          bytes: 100,
+          error: null,
+          data: null,
+        },
+        render: {
+          urlHash,
+          status: 'rendered',
+          settled: false,
+          truncated: false,
+          finalUrl: url,
+          durationMs: 5100,
+          failure: null,
+          data: {
+            facts: null,
+            capture: { pending: 1, afterMs: 5050, delayMs: 50 },
+            jsHeapBytes: 1536 * 1024,
+            renderSlots: 4,
+            requests: {},
+            scriptErrors: { count: 0, first: [] },
+          },
+        },
+      })
+      const capacity = await db.crawls.measureCapacity(crawl.id, true)
+      expect(capacity).toEqual({
+        slots: [4],
+        metrics: {
+          urls: 1,
+          medianResponseMs: 24,
+          renderCount: 1,
+          medianRenderMs: 5100,
+          heapP95: 2 * 1024 ** 2,
+          captures: 1,
+          unsettled: 1,
+          delayP95Ms: 50,
+          slowed: true,
+        },
+      })
+      await db.crawls.finish(crawl.id, { status: 'completed', capacity })
+      await db.crawls.saveSettings(domainId, DEFAULT_CRAWL_SETTINGS)
+      const next = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      await db.crawls.finish(next.id, { status: 'completed' })
+      await db.crawls.prune({ domainId, type: 'full', keep: 1 })
+      expect(await db.crawls.latestWithResults(domainId, 'full', 'rendered')).toMatchObject({
+        id: crawl.id,
+        pruned: true,
+        capacityMetrics: capacity.metrics,
+        rendering: { slots: [2, 4] },
+      })
+      expect(await db.crawls.latestMeasuredRender()).toEqual(capacity.metrics)
+    })
+
     it('classifies renders in SQL as renderStateOf does, filters and counts by state', async () => {
       const created = await createCompany(db, {
         name: 'States',

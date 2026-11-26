@@ -377,7 +377,7 @@ The domain’s estimate uses the latest finished full crawl in the selected mode
 slowest of the document pace, the work occupying domain request slots, and the work occupying render
 slots, using the observed URL count and median timings. The real elapsed time calibrates that model
 at the settings recorded for the crawl. A lower URL limit scales down the modeled URL count.
-Settings such as timeout, retries and scope can change what is observed. The estimate cannot
+Settings such as the capture window, timeout, retries and scope can change what is observed. The estimate cannot
 predict those changes or calibrate against a rendered crawl with unknown or changing render slots.
 For context, the measured 0.8.0 production crawls took about 20 minutes for 1,500 served-HTML pages
 and 98–228 minutes for about 1,900 rendered pages.
