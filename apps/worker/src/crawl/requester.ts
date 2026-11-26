@@ -41,6 +41,7 @@ export function createRequester(options: {
   signal: AbortSignal
   retryAfterUntil?: number
   persistRetryAfter?: (until: number) => Promise<void>
+  onResponse?: (url: string, status: number) => Promise<void> | undefined
   retryBaseMs: number
   log: Logger
 }) {
@@ -109,6 +110,8 @@ export function createRequester(options: {
       })
       // Alternate fetchers may report only a completed body. Never miss those bytes.
       if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
+      const observation = options.onResponse?.(url, response.statusCode)
+      if (observation) await observation
       const at = new Date().toISOString()
       const delay = parseRetryAfter(response.headers['retry-after'], Infinity)
       if (delay !== null && delay > MAX_RETRY_AFTER_MS)

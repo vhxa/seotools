@@ -1,4 +1,7 @@
 'use client'
+import type { CapacityHardware, CrawlCapacitySample } from '@seotools/core/capacity'
+import { CrawlCapacityEstimate } from '@/components/crawl/crawl-capacity-estimate'
+import { NumericSlider } from '@/components/numeric-slider'
 import type { RenderStatus } from '@seotools/core/render-status'
 import { extractorsText } from '@/lib/crawl-extractors'
 
@@ -15,7 +18,6 @@ import {
 import { useTranslations } from 'next-intl'
 import { useState, type ReactNode } from 'react'
 import { saveCrawlSettingsAction, type ActionState } from '@/app/(protected)/domains/[host]/actions'
-import { InfoHelp } from '@/components/help'
 import { useCanEdit } from '@/components/domain-access'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,52 +34,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { useFormActionState } from '@/hooks/use-form-action-state'
 
-type Retention = 'latest' | 'current' | 'all'
+const urlStops = [
+  1, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000,
+  1_000_000, 2_500_000, 5_000_000, 10_000_000,
+]
 
-const retentionOf = (retainCrawls: number | null): Retention =>
-  retainCrawls === null ? 'all' : retainCrawls === 1 ? 'current' : 'latest'
-
-function NumberField({
-  name,
-  label,
-  hint,
-  defaultValue,
-  min,
-  max,
-  required = true,
-  disabled,
-}: {
-  name: string
-  label: string
-  hint: string
-  defaultValue: number | string
-  min: number
-  max: number
-  required?: boolean
-  disabled: boolean
-}) {
-  return (
-    <div className="grid content-start gap-2">
-      {/* One height for every label row, with or without a help button, so fields line up. */}
-      <div className="flex h-6 items-center gap-1">
-        <Label htmlFor={name}>{label}</Label>
-        <InfoHelp label={label} compact>
-          {hint}
-        </InfoHelp>
-      </div>
-      <Input
-        id={name}
-        name={name}
-        type="number"
-        min={min}
-        max={max}
-        step={1}
-        defaultValue={defaultValue}
-        required={required}
-        disabled={disabled}
-      />
-    </div>
-  )
+function includeSavedStop(stops: number[], saved: number | null) {
+  return saved === null || stops.includes(saved) ? stops : [...stops, saved].sort((a, b) => a - b)
 }
 
 /** One titled group of the form: the fields are all part of the same form and the same save. */
@@ -109,12 +72,18 @@ export function CrawlSettingsForm({
   defaultUserAgent,
   secretsSaved,
   browserState,
+  samples,
+  renderSlots,
+  hardware,
 }: {
   host: string
   settings: CrawlSettings
   defaultUserAgent: string
   secretsSaved: boolean
   browserState: RenderStatus['state'] | 'unknown'
+  samples: Record<'html' | 'rendered', CrawlCapacitySample | null>
+  renderSlots: number
+  hardware: CapacityHardware | null
 }) {
   const browser = useTranslations('RenderBrowser')
   const v = useTranslations('Vitals')
@@ -126,19 +95,26 @@ export function CrawlSettingsForm({
   )
   // Controlled: what a choice shows (the hint, the count, the key field) follows it.
   const [mode, setMode] = useState<string>(settings.renderingMode)
-  const [renderWait, setRenderWait] = useState(String(settings.renderWaitMs))
+  const capacity = useTranslations('Capacity')
   const [renderOmitted, setRenderOmitted] = useState(settings.renderOmittedHosts.join('\n'))
-  const [retention, setRetention] = useState<Retention>(retentionOf(settings.retainCrawls))
+  const [numbers, setNumbers] = useState({
+    concurrency: settings.concurrency,
+    requestsPerSecond: settings.requestsPerSecond,
+    timeoutSeconds: Math.round(settings.timeoutMs / 1000),
+    maxRetries: settings.maxRetries,
+    renderWaitMs: settings.renderWaitMs,
+    maxDepth: settings.maxDepth,
+    maxUrls: settings.maxUrls,
+    retainCrawls: settings.retainCrawls,
+    historyDays: settings.historyDays,
+  })
+  const setNumber = <K extends keyof typeof numbers>(key: K, value: (typeof numbers)[K]) =>
+    setNumbers((previous) => ({ ...previous, [key]: value }))
   const [files, setFiles] = useState<readonly ExtraCrawlFileKind[]>(enabledExtraFiles(settings))
 
   const modes = CRAWL_RENDERING_AVAILABLE.map((value) => ({
     value,
     label: t(`rendering.modes.${value}`),
-  }))
-
-  const retentions = (['latest', 'current', 'all'] as const).map((value) => ({
-    value,
-    label: t(`retention.modes.${value}`),
   }))
 
   return (
@@ -160,7 +136,7 @@ export function CrawlSettingsForm({
         description={t('sections.requests.description')}
       >
         {modes.length > 1 ? (
-          <div className="grid gap-3">
+          <>
             <div className="grid gap-2">
               <Label htmlFor="renderingMode">{t('rendering.label')}</Label>
               <Select
@@ -189,18 +165,6 @@ export function CrawlSettingsForm({
                   ))}
                 </SelectContent>
               </Select>
-              {/* What each choice costs, always both: the choice never changes the layout. */}
-              <ul className="grid gap-1 text-xs text-muted-foreground">
-                {CRAWL_RENDERING_AVAILABLE.map((value) => (
-                  <li key={value} className={mode === value ? 'text-foreground' : undefined}>
-                    <span className="font-medium">{t(`rendering.modes.${value}`)}:</span>{' '}
-                    {t(`rendering.cost.${value}`)}
-                  </li>
-                ))}
-              </ul>
-              {browserState === 'ready' && settings.renderingMode === 'http' && (
-                <p className="text-xs text-muted-foreground">{t('rendering.available')}</p>
-              )}
               {browserState !== 'ready' && (
                 <p className="text-xs text-muted-foreground">
                   {t('rendering.unavailable', { reason: browser(browserState) })}{' '}
@@ -225,6 +189,54 @@ export function CrawlSettingsForm({
                 </p>
               </div>
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <NumericSlider
+                name="concurrency"
+                label={t('concurrency.label')}
+                hint={t('concurrency.hint')}
+                value={numbers.concurrency}
+                onChange={(value) => setNumber('concurrency', value!)}
+                disabled={!canEdit}
+                {...limits.concurrency}
+              />
+              <NumericSlider
+                name="requestsPerSecond"
+                label={t('requestsPerSecond.label')}
+                hint={t('requestsPerSecond.hint')}
+                value={numbers.requestsPerSecond}
+                onChange={(value) => setNumber('requestsPerSecond', value!)}
+                disabled={!canEdit}
+                {...limits.requestsPerSecond}
+              />
+              <NumericSlider
+                name="timeoutSeconds"
+                label={t('timeout.label')}
+                hint={t('timeout.hint')}
+                value={numbers.timeoutSeconds}
+                onChange={(value) => setNumber('timeoutSeconds', value!)}
+                disabled={!canEdit}
+                display={(value) => capacity('seconds', { count: value })}
+                {...limits.timeoutSeconds}
+              />
+              <NumericSlider
+                name="maxRetries"
+                label={t('maxRetries.label')}
+                hint={t('maxRetries.hint')}
+                value={numbers.maxRetries}
+                onChange={(value) => setNumber('maxRetries', value!)}
+                disabled={!canEdit}
+                {...limits.maxRetries}
+              />
+            </div>
+            <CrawlCapacityEstimate
+              samples={samples}
+              mode={mode === 'headless' ? 'rendered' : 'html'}
+              concurrency={numbers.concurrency}
+              requestsPerSecond={numbers.requestsPerSecond}
+              maxUrls={numbers.maxUrls}
+              slots={renderSlots}
+              hardware={hardware}
+            />
             {/*
               Part of the Rendered choice: shown in both so nothing moves, disabled under HTML. A
               disabled field is not submitted, so the saved values travel in hidden fields and an
@@ -240,30 +252,25 @@ export function CrawlSettingsForm({
               </p>
               {mode !== 'headless' && (
                 <>
-                  <input type="hidden" name="renderWaitMs" value={renderWait} />
+                  <input type="hidden" name="renderWaitMs" value={numbers.renderWaitMs} />
                   <input type="hidden" name="renderOmittedHosts" value={renderOmitted} />
                 </>
               )}
-              <div className="grid content-start gap-2">
-                <div className="flex h-6 items-center gap-1">
-                  <Label htmlFor="renderWaitMs">{t('rendering.wait')}</Label>
-                  <InfoHelp label={t('rendering.wait')} compact>
-                    {t('rendering.waitHint')}
-                  </InfoHelp>
-                </div>
-                <Input
-                  id="renderWaitMs"
-                  {...(mode === 'headless' ? { name: 'renderWaitMs' } : {})}
-                  type="number"
-                  min={1000}
-                  max={30000}
-                  step={1}
-                  value={renderWait}
-                  onChange={(event) => setRenderWait(event.target.value)}
-                  required
-                  disabled={!canEdit || mode !== 'headless'}
-                />
-              </div>
+              <NumericSlider
+                name="renderWaitMs"
+                label={t('rendering.wait')}
+                hint={t('rendering.waitHint')}
+                min={1000}
+                max={30000}
+                stops={includeSavedStop(
+                  Array.from({ length: 30 }, (_, n) => (n + 1) * 1000),
+                  settings.renderWaitMs,
+                )}
+                value={numbers.renderWaitMs}
+                onChange={(value) => setNumber('renderWaitMs', value!)}
+                display={(value) => capacity('milliseconds', { count: value })}
+                disabled={!canEdit || mode !== 'headless'}
+              />
               <div className="grid gap-2">
                 <Label htmlFor="renderOmittedHosts">{t('rendering.omitted')}</Label>
                 <Textarea
@@ -276,7 +283,7 @@ export function CrawlSettingsForm({
                 <p className="text-xs text-muted-foreground">{t('rendering.omittedHint')}</p>
               </div>
             </div>
-          </div>
+          </>
         ) : (
           <input type="hidden" name="renderingMode" value={modes[0]?.value ?? mode} />
         )}
@@ -299,41 +306,6 @@ export function CrawlSettingsForm({
             {t('userAgent.hint')}
           </p>
         </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <NumberField
-            name="concurrency"
-            label={t('concurrency.label')}
-            hint={t('concurrency.hint')}
-            defaultValue={settings.concurrency}
-            disabled={!canEdit}
-            {...limits.concurrency}
-          />
-          <NumberField
-            name="requestsPerSecond"
-            label={t('requestsPerSecond.label')}
-            hint={t('requestsPerSecond.hint')}
-            defaultValue={settings.requestsPerSecond}
-            disabled={!canEdit}
-            {...limits.requestsPerSecond}
-          />
-          <NumberField
-            name="timeoutSeconds"
-            label={t('timeout.label')}
-            hint={t('timeout.hint')}
-            defaultValue={settings.timeoutMs / 1000}
-            disabled={!canEdit}
-            {...limits.timeoutSeconds}
-          />
-          <NumberField
-            name="maxRetries"
-            label={t('maxRetries.label')}
-            hint={t('maxRetries.hint')}
-            defaultValue={settings.maxRetries}
-            disabled={!canEdit}
-            {...limits.maxRetries}
-          />
-        </div>
       </Section>
 
       <Section
@@ -353,24 +325,27 @@ export function CrawlSettingsForm({
             <p className="text-xs text-muted-foreground">{t(`${name}.hint`)}</p>
           </div>
         ))}
-        <NumberField
+        <NumericSlider
           name="maxDepth"
           label={t('maxDepth.label')}
           hint={t('maxDepth.hint')}
-          defaultValue={settings.maxDepth ?? ''}
+          value={numbers.maxDepth}
+          onChange={(value) => setNumber('maxDepth', value)}
           min={1}
           max={100}
-          required={false}
+          unlimited
           disabled={!canEdit}
         />
 
-        <NumberField
+        <NumericSlider
           name="maxUrls"
           label={t('maxUrls.label')}
           hint={t('maxUrls.hint')}
-          defaultValue={settings.maxUrls ?? ''}
-          required={false}
+          value={numbers.maxUrls}
+          onChange={(value) => setNumber('maxUrls', value)}
+          unlimited
           disabled={!canEdit}
+          stops={includeSavedStop(urlStops, settings.maxUrls)}
           {...limits.maxUrls}
         />
       </Section>
@@ -401,47 +376,30 @@ export function CrawlSettingsForm({
         description={t('sections.retention.description')}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid content-start gap-2">
-            <div className="flex h-6 items-center">
-              <Label htmlFor="retention">{t('retention.label')}</Label>
-            </div>
-            <Select
-              name="retention"
-              items={retentions}
-              value={retention}
-              disabled={!canEdit}
-              onValueChange={(value) => value && setRetention(value as Retention)}
-            >
-              <SelectTrigger id="retention" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                {retentions.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">{t(`retention.hints.${retention}`)}</p>
-          </div>
-          {retention === 'latest' && (
-            <NumberField
-              name="retainCrawls"
-              label={t('retention.countLabel')}
-              hint={t('retention.countHint')}
-              defaultValue={settings.retainCrawls ?? 2}
-              disabled={!canEdit}
-              {...limits.retainCrawls}
-            />
-          )}
-          <NumberField
+          <input
+            type="hidden"
+            name="retention"
+            value={numbers.retainCrawls === null ? 'all' : 'latest'}
+            disabled={!canEdit}
+          />
+          <NumericSlider
+            name="retainCrawls"
+            label={t('retention.countLabel')}
+            hint={t('retention.countHint')}
+            value={numbers.retainCrawls}
+            onChange={(value) => setNumber('retainCrawls', value)}
+            disabled={!canEdit}
+            unlimited
+            {...limits.retainCrawls}
+          />
+          <NumericSlider
             name="historyDays"
             label={t('retention.historyLabel')}
             hint={t('retention.historyHint')}
-            defaultValue={settings.historyDays ?? ''}
+            value={numbers.historyDays}
+            onChange={(value) => setNumber('historyDays', value)}
             disabled={!canEdit}
-            required={false}
+            unlimited
             {...limits.historyDays}
           />
         </div>

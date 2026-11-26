@@ -20,6 +20,8 @@ services:
     environment:
       # The container always listens on 3000; PORT above only picks the host port.
       PORT: 3000
+      RENDER_BROWSER_MEMORY: ${RENDER_BROWSER_MEMORY:-3g}
+      RENDER_BROWSER_SHM: ${RENDER_BROWSER_SHM:-1g}
       # Compose database setting: set DATABASE_URL_DOCKER in .env for an external database.
       # DATABASE_URL in .env is for local development and is deliberately overridden.
       DATABASE_URL: ${DATABASE_URL_DOCKER:-file:/data/seotools.db}
@@ -60,10 +62,9 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    # Memory for the browser and its shared memory: raise them to render more pages at once
-    # (RENDER_CONCURRENCY), see docs/rendering.md. Set them in .env; these are the defaults.
-    shm_size: ${RENDER_BROWSER_SHM:-256m}
-    mem_limit: ${RENDER_BROWSER_MEMORY:-1536m}
+    # Browser ceilings, also passed to seotools for the Capacity page. See docs/rendering.md.
+    shm_size: ${RENDER_BROWSER_SHM:-1g}
+    mem_limit: ${RENDER_BROWSER_MEMORY:-3g}
     pids_limit: 256
     networks: [render]
 

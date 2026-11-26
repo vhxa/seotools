@@ -5,10 +5,10 @@ import { expect, it } from 'vitest'
 it('keeps shared memory and every non-intercepted transport restriction in the browser service', () => {
   const compose = readFileSync(new URL('../../../../docker-compose.yml', import.meta.url), 'utf8')
   const browser = compose.split('\n  browser:\n')[1]?.split('\nvolumes:')[0] ?? ''
-  // Overridable from .env, with the defaults the budget test measured.
-  expect(browser).toContain('shm_size: ${RENDER_BROWSER_SHM:-256m}')
+  // Overridable from .env, with the shipped defaults.
+  expect(browser).toContain('shm_size: ${RENDER_BROWSER_SHM:-1g}')
   expect(browser).toContain('pids_limit: 256')
-  expect(browser).toContain('mem_limit: ${RENDER_BROWSER_MEMORY:-1536m}')
+  expect(browser).toContain('mem_limit: ${RENDER_BROWSER_MEMORY:-3g}')
   for (const flag of [
     'user:',
     'init: true',
@@ -60,6 +60,11 @@ it('deploys the same browser on Dokploy, with no published port, build or databa
   expect(browserOf(dokploy)).not.toBe('')
   expect(browserOf(dokploy)).toBe(browserOf(root))
   const app = dokploy.split('\n  seotools:\n')[1]?.split('\n  browser:\n')[0] ?? ''
+  for (const compose of [root, dokploy]) {
+    const service = compose.split('\n  seotools:\n')[1]?.split('\n  browser:')[0] ?? ''
+    expect(service).toContain('RENDER_BROWSER_MEMORY: ${RENDER_BROWSER_MEMORY:-3g}')
+    expect(service).toContain('RENDER_BROWSER_SHM: ${RENDER_BROWSER_SHM:-1g}')
+  }
   expect(app).toContain('pull_policy: always')
   expect(app).toContain('networks: [dokploy-network, render]')
   for (const forbidden of ['ports:', 'build:', 'DATABASE_URL']) expect(app).not.toContain(forbidden)

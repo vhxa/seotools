@@ -14,6 +14,14 @@ describeDatabaseContract('sqlite', async () => {
       raw.prepare('delete from user where id = ?').run(id)
     },
     legacy: {
+      domainBeforeCapacity: async (id: string) => {
+        const raw = (
+          db.orm.db as {
+            $client: { prepare: (sql: string) => { run: (id: string) => unknown } }
+          }
+        ).$client
+        raw.prepare('update domains set capacity_generation = null where id = ?').run(id)
+      },
       urlAcceptedNofollow: async (crawlId: string, urlHash: string) => {
         const raw = (
           db.orm.db as {

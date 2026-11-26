@@ -1,3 +1,5 @@
+import { CAPACITY_KEY } from '@seotools/core/capacity'
+import { readCapacitySettings } from '../capacity'
 import {
   renderStateOf,
   type RenderFilter,
@@ -51,6 +53,7 @@ const minutes = (n: number) => n * 60_000
  */
 /** What only an older version of the code wrote, put into the database as it was. */
 export interface LegacyWrites {
+  domainBeforeCapacity(id: string): Promise<void>
   /** Sets the flag that accepted the page's own `nofollow` on a rule, retired with semantics 3. */
   acceptNofollow(ruleId: string, accept: boolean): Promise<void>
   /** Marks a URL of an analysis as it was stored when it had accepted the page's own `nofollow`. */
@@ -61,6 +64,7 @@ export function describeDatabaseContract(
   name: string,
   setup: () => Promise<{
     db: Database
+    capacityPeer?: () => Promise<Database>
     reset: () => Promise<void>
     legacy: LegacyWrites
     deleteUser: (id: string) => Promise<void>
@@ -73,6 +77,7 @@ export function describeDatabaseContract(
 ) {
   describe.skipIf(options.skip)(`database contract: ${name}`, () => {
     let db: Database
+    let capacityPeer: (() => Promise<Database>) | undefined
     let reset: () => Promise<void>
     let deleteUser: (id: string) => Promise<void>
     let legacy: LegacyWrites
@@ -80,7 +85,7 @@ export function describeDatabaseContract(
     let sessions: RawSessions | undefined
 
     beforeAll(async () => {
-      ;({ db, reset, legacy, countRows, deleteUser, sessions } = await setup())
+      ;({ db, reset, legacy, countRows, deleteUser, sessions, capacityPeer } = await setup())
     })
     afterAll(async () => {
       await db?.close()
@@ -95,6 +100,75 @@ export function describeDatabaseContract(
       (id) => legacy.acceptNofollow(id, true),
     )
     describeIncidents(() => db)
+
+    describe('capacity initialization', () => {
+      const recommended = { renders: 4, crawls: 2 }
+
+      it('resets existing domains atomically once, even when workers start together', async () => {
+        const first = await createCompany(db, {
+          name: 'Legacy',
+          domain: 'legacy.test',
+          crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, concurrency: 9, requestsPerSecond: 3 },
+        })
+        const second = await createCompany(db, {
+          name: 'Defaults',
+          domain: 'defaults.test',
+          crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, concurrency: 2 },
+        })
+        if (!first.ok || !second.ok) throw new Error('setup failed')
+        await legacy.domainBeforeCapacity(first.domain.id)
+        await legacy.domainBeforeCapacity(second.domain.id)
+        await db.crawls.saveRequestSecrets(first.domain.id, 'encrypted-settings')
+        const other = await capacityPeer?.()
+        try {
+          await Promise.all([
+            db.capacity.initialize(recommended),
+            (other ?? db).capacity.initialize(recommended),
+          ])
+        } finally {
+          await other?.close()
+        }
+        expect(await db.crawls.settings(first.domain.id)).toMatchObject({
+          concurrency: 4,
+          requestsPerSecond: 3,
+        })
+        expect((await db.crawls.settings(second.domain.id)).concurrency).toBe(4)
+        expect(await db.crawls.requestSecrets(first.domain.id)).toBe('encrypted-settings')
+        const notice = {
+          from: null,
+          to: recommended,
+          domains: [
+            { host: 'defaults.test', from: 2, to: 4 },
+            { host: 'legacy.test', from: 9, to: 4 },
+          ],
+        }
+        expect(await readCapacitySettings(db)).toMatchObject({
+          capacity: recommended,
+          upgrade: notice,
+        })
+        const custom = { renders: 3, crawls: 1 }
+        await db.settings.set(CAPACITY_KEY, JSON.stringify(custom), false)
+        await db.crawls.saveSettings(first.domain.id, { ...DEFAULT_CRAWL_SETTINGS, concurrency: 7 })
+        await db.capacity.initialize({ renders: 1, crawls: 1 })
+        expect(await readCapacitySettings(db)).toMatchObject({ capacity: custom, upgrade: notice })
+        expect((await db.crawls.settings(first.domain.id)).concurrency).toBe(7)
+      })
+
+      it('sets instance defaults without touching a fresh domain or showing a notice', async () => {
+        const created = await createCompany(db, { name: 'Fresh', domain: 'fresh.test' })
+        if (!created.ok) throw new Error('setup failed')
+        await db.crawls.saveSettings(created.domain.id, {
+          ...DEFAULT_CRAWL_SETTINGS,
+          concurrency: 7,
+        })
+        await db.capacity.initialize(recommended)
+        expect(await readCapacitySettings(db)).toMatchObject({
+          capacity: recommended,
+          upgrade: null,
+        })
+        expect((await db.crawls.settings(created.domain.id)).concurrency).toBe(7)
+      })
+    })
 
     it('snapshots rendering transactionally, keeps atomic URL/render records and prunes them together', async () => {
       const created = await createCompany(db, {

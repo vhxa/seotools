@@ -1,3 +1,4 @@
+import { capacityLimits } from '@seotools/core/capacity'
 import { getWorkerBuildInfo } from '../build-info'
 import { createHmac, createHash } from 'node:crypto'
 import { repeatAnswers } from './paired'
@@ -87,7 +88,8 @@ export const SECOND_PASS_LIMIT = 2000
 const EXTERNAL_BODY_BYTES = 1
 
 export interface CrawlEngineOptions {
-  renderService?: Pick<RenderService, 'check' | 'render'> & { concurrency?: number }
+  renderService?: Pick<RenderService, 'check' | 'render'> &
+    Partial<Pick<RenderService, 'concurrency' | 'trackResources'>>
   browserMaxWaitMs?: number
   browserPollMs?: number
   settingsSecret?: string
@@ -142,7 +144,11 @@ export async function runCrawl(
   const { db, log: parentLog, signal } = options
   const retryBaseMs = options.retryBaseMs ?? RETRY_BASE_MS
 
-  const crawl = await db.crawls.markRunning(crawlId, getWorkerBuildInfo())
+  const crawl = await db.crawls.markRunning(
+    crawlId,
+    getWorkerBuildInfo(),
+    options.renderService?.concurrency,
+  )
   // Cancelled before it got to run. Its job has nothing left to do.
   if (!crawl) return null
   const domain = await db.domains.get(crawl.domainId)
@@ -191,7 +197,7 @@ export async function runCrawl(
     timeoutMs: settings.timeoutMs,
     concurrency:
       settings.concurrency +
-      (rendered ? RENDER_LIMITS.pageResources * (options.renderService?.concurrency ?? 1) : 0),
+      (rendered ? RENDER_LIMITS.pageResources * capacityLimits.renders.max : 0),
   })
 
   /** Stops every request and wait at once: shutdown, a cancellation or a fatal error. */
@@ -309,11 +315,16 @@ export async function runCrawl(
     await db.crawls.addUrls(crawlId, urls)
   }
 
+  let slowdown: Promise<void> | undefined
   const requester = createRequester({
     fetcher,
     settings,
     signal: stopSignal,
     retryAfterUntil: crawl.retryAfterUntil?.getTime(),
+    onResponse: (url, status) => {
+      if ((status === 429 || status === 503) && isInternalUrl(url, host))
+        return (slowdown ??= db.crawls.recordSlowdown(crawlId))
+    },
     persistRetryAfter: (until) => db.crawls.extendRetryAfter(crawlId, new Date(until)),
     retryBaseMs,
     log,
@@ -879,6 +890,9 @@ export async function runCrawl(
   }
 
   let observations: Awaited<ReturnType<typeof repeatAnswers>>
+  const untrackResources = rendered
+    ? options.renderService?.trackResources?.(resourceSlots)
+    : undefined
   try {
     if (rendered) await recovery.start()
     await seed()
@@ -942,6 +956,7 @@ export async function runCrawl(
     if (error instanceof BrowserWaitExpiredError) fatal = error
     else if (!stopSignal.aborted) throw error
   } finally {
+    untrackResources?.()
     resourcesDone.abort()
     fetcher.close()
   }
@@ -972,7 +987,10 @@ export async function runCrawl(
 
   // A cancellation can also arrive after the last URL: `finish` then reports nothing changed.
   const status = truncated ? 'incomplete' : 'completed'
-  const finished = !cancelled && (await db.crawls.finish(crawlId, { status, observations }))
+  const capacity =
+    !cancelled && followLinks ? await db.crawls.measureCapacity(crawlId, rendered) : undefined
+  const finished =
+    !cancelled && (await db.crawls.finish(crawlId, { status, observations, capacity }))
   if (finished && !followLinks) {
     await db.crawlFiles
       .save(crawl.domainId, [...observedFiles.values()])

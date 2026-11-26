@@ -18,7 +18,7 @@ export interface RenderInput {
   waitMs?: number
   /** For tests: how long the DOM may take to be parsed. */
   loadGraceMs?: number
-  /** Subresource fetches the whole crawl may have at once (`6 × RENDER_CONCURRENCY`). */
+  /** Subresource fetches the whole crawl may have at once (six times the instance render slots). */
   resourceSlots?: Slots
   /**
    * Ends fetches shared through the cache. They outlive the page that started them (another page
@@ -38,6 +38,8 @@ export interface RenderOutcome {
   captureMs: number | null
   /** Browser snapshot delay beyond the chosen cutoff; null if no DOM was captured. */
   captureDelayMs: number | null
+  jsHeapBytes?: number
+  renderSlots?: number
   /** A main-frame navigation to a different crawl identity ended this observation. */
   redirected: boolean
   finalUrl: string

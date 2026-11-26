@@ -19,7 +19,7 @@ const formOf = (values: Record<string, string | undefined>) => {
 const validSettings = {
   renderingMode: 'http',
   userAgent: '',
-  concurrency: '2',
+  concurrency: String(DEFAULT_CRAWL_SETTINGS.concurrency),
   requestsPerSecond: '5',
   timeoutSeconds: '30',
   maxRetries: '2',

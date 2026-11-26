@@ -27,6 +27,8 @@ export const user = pgTable('user', {
   disabledAt: ts('disabled_at'),
   /** The last time a password email was asked for, to answer only one in a while. */
   resetRequestedAt: ts('reset_requested_at'),
+  // Null identifies users present before the capacity upgrade migration.
+  capacityGeneration: text('capacity_generation').$defaultFn(() => 'v090'),
   createdAt: ts('created_at').notNull().$defaultFn(now),
   updatedAt: ts('updated_at').notNull().$defaultFn(now).$onUpdateFn(now),
 })
@@ -139,6 +141,8 @@ export const domains = pgTable(
       .references(() => companies.id, { onDelete: 'cascade' }),
     /** Normalized by `normalizeDomain` in @seotools/core: `example.com`, never a URL. */
     host: text('host').notNull().unique(),
+    // Null identifies domains present before the capacity upgrade migration.
+    capacityGeneration: text('capacity_generation').$defaultFn(() => 'v090'),
     createdAt: ts('created_at').notNull().$defaultFn(now),
     /**
      * Set while the domain is archived: it keeps all its data and stays readable, but nothing
@@ -250,6 +254,8 @@ export const crawls = pgTable(
     seedUrls: text('seed_urls'),
     startedBuild: text('started_build'),
     runBuilds: text('run_builds'),
+    capacityMetrics: text('capacity_metrics'),
+    siteSlowdown: boolean('site_slowdown'),
     analysisBuild: text('analysis_build'),
     discoverySettings: text('discovery_settings'),
     ignoredParameters: text('ignored_parameters'),

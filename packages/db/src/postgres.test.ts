@@ -12,10 +12,14 @@ describeDatabaseContract(
     const sql = postgres(url!, { max: 1, onnotice: () => {} })
     return {
       db,
+      capacityPeer: () => createDatabase({ url: url!, dialect: 'pg' }),
       deleteUser: async (id: string) => {
         await sql`delete from "user" where id = ${id}`
       },
       legacy: {
+        domainBeforeCapacity: async (id: string) => {
+          await sql`update domains set capacity_generation = null where id = ${id}`
+        },
         urlAcceptedNofollow: async (crawlId: string, urlHash: string) => {
           await sql`update crawl_url_audit set accept_nofollow = true where crawl_id = ${crawlId} and url_hash = ${urlHash}`
         },

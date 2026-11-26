@@ -16,7 +16,9 @@ import {
   parseWorkerEnv,
   settingsKeyFrom,
 } from '@seotools/core'
-import { createDatabase } from '@seotools/db'
+import { minimumCapacity, recommendedCapacity } from '@seotools/core/capacity'
+import { createDatabase, publishCapacityHardware, readCapacity } from '@seotools/db'
+import { detectCapacity, warnLegacyCapacity } from './capacity'
 import { getWorkerBuildInfo } from './build-info'
 import { createMigrationCheck } from './migration-check'
 import { createHttpFetcher } from './crawl/fetcher'
@@ -49,6 +51,7 @@ const FAILED_JOBS_MAX_AGE_MS = 90 * 24 * 60 * 60_000
 async function main() {
   const env = parseWorkerEnv()
   const log = createLogger('worker', env.LOG_LEVEL)
+  warnLegacyCapacity(log, env.legacyCapacityVariables)
   const db = await createDatabase({ url: env.DATABASE_URL, dialect: env.DATABASE_DIALECT })
   const build = getWorkerBuildInfo()
   const migrationCheck = createMigrationCheck(db, log)
@@ -63,9 +66,28 @@ async function main() {
     )
   }
 
+  const hardware = detectCapacity(env)
+  let capacity = minimumCapacity
+  let initialized = false
+  let capacityRead: Promise<void> | undefined
+  function refreshCapacity() {
+    return (capacityRead ??= (async () => {
+      if (!(await migrationCheck.canStart())) return
+      if (!initialized) {
+        await db.capacity.initialize(recommendedCapacity(hardware))
+        await publishCapacityHardware(db, hardware)
+        initialized = true
+      }
+      capacity = (await readCapacity(db)) ?? capacity
+    })().finally(() => {
+      capacityRead = undefined
+    }))
+  }
+  await refreshCapacity()
+
   const rendering = await startRenderRuntime({
     browserUrl: env.RENDER_BROWSER_URL,
-    concurrency: env.RENDER_CONCURRENCY,
+    concurrency: capacity.renders,
     settings,
     paused,
     canStart: migrationCheck.canStart,
@@ -86,7 +108,7 @@ async function main() {
   const shared = {
     db,
     workerId,
-    canStart: migrationCheck.canStart,
+    canStart: async () => initialized && (await migrationCheck.canStart()),
     getMailer: async () =>
       paused ? unavailableMailer(MAIL_PAUSED, { retry: false }) : getMailer(settings),
     pollIntervalMs: env.WORKER_POLL_INTERVAL_MS,
@@ -140,7 +162,7 @@ async function main() {
         settingsSecret: settingsKeyFrom(env),
       }),
     },
-    concurrency: env.CRAWL_CONCURRENCY,
+    concurrency: capacity.crawls,
     types: crawlTypes,
   })
   const vitalsRunner = createRunner({
@@ -150,6 +172,14 @@ async function main() {
     concurrency: 1,
     types: [JOB_TYPES.cwvCollect],
   })
+  const capacityTimer = setInterval(() => {
+    void refreshCapacity()
+      .then(() => {
+        rendering.service?.resize(capacity.renders)
+        crawlRunner.resize(capacity.crawls)
+      })
+      .catch((err) => log.error({ err }, 'could not refresh capacity'))
+  }, 15_000)
   vitalsRunner.start()
   runner.start()
   crawlRunner.start()
@@ -243,6 +273,8 @@ async function main() {
     stopping = true
     log.info({ signal }, 'shutting down')
     clearInterval(heartbeat)
+    clearInterval(capacityTimer)
+    await capacityRead?.catch(() => {})
     clearInterval(scheduler)
     clearInterval(deliveriesTimer)
     clearInterval(faviconTimer)

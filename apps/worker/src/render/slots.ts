@@ -3,10 +3,24 @@
  * without taking a slot, so a finished page never holds one up.
  */
 export function createSlots(limit: number) {
-  if (!Number.isInteger(limit) || limit < 1) throw new Error('Invalid slot limit')
+  function validate(value: number) {
+    if (!Number.isInteger(value) || value < 1) throw new Error('Invalid slot limit')
+  }
+  validate(limit)
   let active = 0
   const waiting: (() => void)[] = []
+  function admit() {
+    while (active < limit && waiting.length) {
+      active++
+      waiting.shift()!()
+    }
+  }
   return {
+    resize(value: number) {
+      validate(value)
+      limit = value
+      admit()
+    },
     get active() {
       return active
     },
@@ -33,11 +47,9 @@ export function createSlots(limit: number) {
         signal.addEventListener('abort', cancel, { once: true })
       })
     },
-    /** Hands the slot to the next waiter, who then holds it: `active` does not change. */
     release() {
-      const next = waiting.shift()
-      if (next) next()
-      else active--
+      active--
+      admit()
     },
   }
 }

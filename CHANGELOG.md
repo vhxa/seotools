@@ -20,7 +20,20 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Breaking
+
+- Set simultaneous renders and crawls in **Administration → Capacity**. The worker ignores
+  `RENDER_CONCURRENCY` and `CRAWL_CONCURRENCY` and warns once at startup if either is still set.
+
+### Added
+
+- Capacity and domain crawl settings use sliders with live estimates for server memory, crawl duration,
+  and site load. Rendered crawls record the render slots they used and the JavaScript heap at capture.
+
 ### Changed
+
+- Domains start with four simultaneous requests. Worker capacity defaults to the detected server’s
+  recommendation. Docker Compose gives the browser a `3g` memory ceiling and `1g` of shared memory.
 
 - The overview tiles show no difference when the crawl before did not measure the same thing (a different rendering mode, ignored parameters, crawl settings, issue checks or audit rules): they say "Not comparable", with what changed in the tooltip, in the same words as the trend, and link to the comparison of both crawls.
 - On the Issues page, when none of the issues can be compared with the previous crawl for the same reason, one notice above the list says why instead of repeating "Cannot be compared" on every row; with different reasons, only the rows affected keep the label.
@@ -34,7 +47,15 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ### Upgrade notes
 
-- This version adds migrations to store crawl retry outcomes. Going back requires restoring the backup taken before updating.
+- This version adds migrations for crawl retry outcomes and capacity. Going back requires restoring
+  the backup taken before updating.
+- On its first startup after an update, the worker sets both capacity limits to the recommendation
+  for its server and resets simultaneous requests to four for every existing domain. Administrators
+  can review the changes in **Administration → Capacity** and customize both sets of limits again.
+  For a domain whose pace changed, the first new crawl can show “Not comparable” against the
+  previous one because simultaneous requests are part of the comparison basis.
+- On small servers such as a 2 GiB Raspberry Pi, set `RENDER_BROWSER_MEMORY=1536m` and
+  `RENDER_BROWSER_SHM=256m` in Compose.
 
 ## [0.8.0] - 2026-11-22
 

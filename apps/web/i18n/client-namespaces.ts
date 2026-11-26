@@ -13,6 +13,7 @@ export const CLIENT_NAMESPACES: readonly string[] = [
   'AuditStatements',
   'AuditTemplates',
   'BotTest',
+  'Capacity',
   'Common',
   'Companies',
   'CompanyFields',

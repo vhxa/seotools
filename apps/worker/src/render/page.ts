@@ -464,6 +464,7 @@ export async function renderPage(
     await Promise.all([
       cdp.send('Network.enable', { maxPostDataSize: 0 }),
       cdp.send('Runtime.enable'),
+      cdp.send('Performance.enable').catch(() => {}),
     ])
     const syntaxErrors = new Set<string>()
     let syntaxErrorOverflow = false
@@ -590,15 +591,21 @@ export async function renderPage(
     if (result.redirected) return result
     // Evaluate inside the browser; cap UTF-8 bytes there before sending the DOM over CDP.
     try {
+      let heap: Promise<number | undefined> | undefined
       const serialize = async () => {
         const { executionContextId } = await world
-        return cdp.send('Runtime.evaluate', {
+        const capture = cdp.send('Runtime.evaluate', {
           contextId: executionContextId,
           returnByValue: true,
           timeout: RENDER_LIMITS.waitMs,
           awaitPromise: true,
           expression: serializeDocument(cutoffMs),
         })
+        heap = cdp
+          .send('Performance.getMetrics')
+          .then(({ metrics }) => metrics.find(({ name }) => name === 'JSHeapTotalSize')?.value)
+          .catch(() => undefined)
+        return capture
       }
       const serialized = await untilAborted(
         Promise.race([interrupted, ceilingReached, serialize()]),
@@ -666,6 +673,11 @@ export async function renderPage(
       if (dom.overflow || syntaxErrorOverflow) recordFailure(input.url, 'SCRIPT_FAILURE_LIMIT')
       result.html = dom.html
       result.truncated ||= dom.truncated
+      if (heap) {
+        const bytes = await untilAborted(Promise.race([heap, ceilingReached]), input.signal)
+        if (typeof bytes === 'number' && Number.isSafeInteger(bytes) && bytes > 0)
+          result.jsHeapBytes = bytes
+      }
     } catch {
       input.signal.throwIfAborted()
       if (crashed || !browser.connected) throw new RenderInterruptedError('Browser or page crashed')

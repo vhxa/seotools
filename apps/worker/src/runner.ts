@@ -29,11 +29,12 @@ export interface RunnerOptions {
 }
 
 export function createRunner(options: RunnerOptions) {
-  const { db, handlers, workerId, log, concurrency, pollIntervalMs, lockTimeoutMs } = options
+  const { db, handlers, workerId, log, pollIntervalMs, lockTimeoutMs } = options
   const staleCheckIntervalMs = options.staleCheckIntervalMs ?? 30_000
   const renewIntervalMs = lockTimeoutMs / 3
   const inFlight = new Map<string, Promise<void>>()
   const abort = new AbortController()
+  let concurrency = options.concurrency
   let running = false
   let lastStaleCheck = 0
   let lastRenewal = Date.now()
@@ -138,10 +139,10 @@ export function createRunner(options: RunnerOptions) {
       try {
         const started = await tick()
         // Nothing new, or all slots busy: wait for the next poll or for a job to finish.
-        if (started === 0 || inFlight.size >= concurrency) await sleep()
+        if (running && (started === 0 || inFlight.size >= concurrency)) await sleep()
       } catch (error) {
         log.error({ err: error }, 'job polling failed')
-        await sleep()
+        if (running) await sleep()
       }
     }
   }
@@ -150,6 +151,12 @@ export function createRunner(options: RunnerOptions) {
 
   return {
     tick,
+    resize(value: number) {
+      if (!Number.isInteger(value) || value < 1) throw new Error('Invalid runner concurrency')
+      if (concurrency === value) return
+      concurrency = value
+      wake?.()
+    },
     /** Resolves when every job started so far has finished. */
     async idle() {
       while (inFlight.size > 0) await Promise.allSettled([...inFlight.values()])
