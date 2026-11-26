@@ -1871,7 +1871,7 @@
         "current": "The lightest option. Comparing crawls URL by URL will not be possible.",
         "all": "Keeps all completed and incomplete crawl results; the database grows without limit."
       },
-      "countLabel": "How many of each type",
+      "countLabel": "Crawls to keep of each type",
       "countHint": "Older crawls keep totals only; their URL results, links and evidence are removed.",
       "historyLabel": "Days of URL history",
       "historyHint": "After its full results are removed, what each URL was in an older crawl (its answer and findings) is kept this long. Leave it empty to keep it always."

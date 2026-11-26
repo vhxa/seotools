@@ -330,7 +330,7 @@ test('the crawl settings show the rendering mode, and Rendered is disabled witho
 
 test('crawl retention explains and saves one, two or unlimited results', async ({ page }) => {
   await page.goto(`${domain}/settings/crawl`)
-  const slider = page.getByRole('slider', { name: 'How many of each type' })
+  const slider = page.getByRole('slider', { name: 'Crawls to keep of each type' })
   const save = page.getByRole('button', { name: 'Save settings' })
   for (const [keys, value, hint] of [
     [['Home'], '1', 'Comparing crawls URL by URL will not be possible.'],
