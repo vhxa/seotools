@@ -2188,9 +2188,7 @@ export function createPgDatabase(options: {
                 eq(crawls.type, type),
                 mode ? like(crawls.rendering, `%"mode":"${mode}"%`) : undefined,
                 inArray(crawls.status, ['completed', 'incomplete']),
-                mode
-                  ? or(eq(crawls.pruned, false), isNotNull(crawls.capacityMetrics))
-                  : eq(crawls.pruned, false),
+                mode ? undefined : eq(crawls.pruned, false),
               ),
             )
             .orderBy(desc(crawls.createdAt))

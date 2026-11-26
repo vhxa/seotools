@@ -56,7 +56,7 @@ export function CrawlCapacityEstimate({
             {t('resources', { count: load.resources, renders: load.renders })}
           </p>
         )}
-        {sample?.metrics.slowed && <p className="text-xs font-medium">{t('slowdown')}</p>}
+        {sample?.metrics?.slowed && <p className="text-xs font-medium">{t('slowdown')}</p>}
       </EstimateItem>
       {mode === 'rendered' && (
         <MemoryEstimate

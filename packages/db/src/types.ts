@@ -798,7 +798,7 @@ export interface CrawlRepository {
   active(domainId: string): Promise<Crawl | null>
   /** Newest first. Every type unless told otherwise. */
   list(domainId: string, options?: { limit?: number; type?: CrawlType }): Promise<Crawl[]>
-  /** The newest crawl of a type that finished with usable results. */
+  /** The newest usable crawl of a type. With a mode, include pruned crawls for capacity history. */
   latestWithResults(
     domainId: string,
     type: CrawlType,

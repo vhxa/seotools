@@ -101,7 +101,7 @@ export interface CrawlCapacityMetrics {
 }
 
 export interface CrawlCapacitySample {
-  metrics: CrawlCapacityMetrics
+  metrics: CrawlCapacityMetrics | null
   elapsedMs: number
   pace: Pace | null
   renderSlots: number | null
@@ -113,7 +113,7 @@ export function estimateDuration(
   settings: Pace & { maxUrls: number | null },
   renderSlots: number,
 ): number | null {
-  if (!sample?.pace || !sample.metrics.urls || !sample.elapsedMs) return null
+  if (!sample?.pace || !sample.metrics?.urls || !sample.elapsedMs) return null
   const { metrics, pace } = sample
   if (metrics.medianResponseMs === null) return null
   if (

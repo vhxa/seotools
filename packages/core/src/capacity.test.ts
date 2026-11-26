@@ -74,6 +74,7 @@ describe('capacity recommendations', () => {
 describe('capacity estimates', () => {
   it('cannot estimate duration without a crawl or the historical render limit', () => {
     expect(estimateDuration(null, 'html', settings, 4)).toBeNull()
+    expect(estimateDuration({ ...sample, metrics: null }, 'html', settings, 4)).toBeNull()
     expect(estimateDuration({ ...sample, renderSlots: null }, 'rendered', settings, 4)).toBeNull()
   })
   it('calibrates the HTML model and respects the rate and URL limit', () => {

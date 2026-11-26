@@ -7,13 +7,16 @@ export async function lastCapacitySample(
   mode: CrawlRendering['mode'],
 ): Promise<CrawlCapacitySample | null> {
   const crawl = await db.crawls.latestWithResults(domainId, 'full', mode)
-  if (!crawl || !crawl.finishedAt || !crawl.startedAt) return null
+  if (!crawl) return null
   const metrics =
     crawl.capacityMetrics ??
-    (await db.crawls.measureCapacity(crawl.id, mode === 'rendered')).metrics
+    (crawl.pruned ? null : (await db.crawls.measureCapacity(crawl.id, mode === 'rendered')).metrics)
   return {
     metrics,
-    elapsedMs: crawl.finishedAt.getTime() - crawl.startedAt.getTime(),
+    elapsedMs:
+      crawl.finishedAt && crawl.startedAt
+        ? crawl.finishedAt.getTime() - crawl.startedAt.getTime()
+        : 0,
     pace: crawl.discoverySettings,
     renderSlots: crawl.rendering?.slots?.length === 1 ? crawl.rendering.slots[0]! : null,
   }
