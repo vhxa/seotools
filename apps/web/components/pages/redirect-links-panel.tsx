@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { RedirectLinksPage } from '@/lib/redirect-links'
 import { applyHref, type HrefPattern } from '@/lib/url-links'
+import { displayUrl } from '@/lib/url-display'
 
 type Failure = 'unavailable' | 'pruned' | 'failed'
 
@@ -99,7 +100,7 @@ export function RedirectLinksPanel({
                   className="block min-w-0 truncate font-mono text-xs hover:underline"
                   title={redirecting.url}
                 >
-                  {redirecting.url}
+                  {displayUrl(redirecting.url, host)}
                 </OpenUrlLink>
               </div>
               {redirecting.links === 0 ? (
@@ -117,7 +118,7 @@ export function RedirectLinksPanel({
                         className="block min-w-0 truncate font-mono hover:underline"
                         title={source.url}
                       >
-                        {source.url}
+                        {displayUrl(source.url, host)}
                       </OpenUrlLink>
                       <Badge variant="outline" className="whitespace-nowrap">
                         {tKinds(source.kind)}

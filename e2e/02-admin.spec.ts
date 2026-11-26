@@ -42,9 +42,7 @@ test('the issues page lists what the crawl found, and each issue opens the URLs 
 
   await page.getByRole('link', { name: /Client error 4xx \(internal\)/ }).click()
   await expect(page).toHaveURL(/issue=client-error/)
-  await expect(
-    page.getByRole('link', { name: 'https://example.com/missing', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('link', { name: '/missing', exact: true })).toBeVisible()
 })
 
 test('the URLs table has its views, and a search among its filters', async ({ page }) => {
@@ -57,9 +55,7 @@ test('the URLs table has its views, and a search among its filters', async ({ pa
 
   await views.getByRole('link', { name: /^Redirects/ }).click()
   await expect(page).toHaveURL(/view=redirects/)
-  await expect(
-    page.getByRole('link', { name: 'https://example.com/old', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('link', { name: '/old', exact: true })).toBeVisible()
 
   await views.getByRole('link', { name: /^Pages/ }).click()
   await expect(page).not.toHaveURL(/view=redirects/)
@@ -67,17 +63,13 @@ test('the URLs table has its views, and a search among its filters', async ({ pa
   await page.getByRole('dialog').getByRole('searchbox').fill('products')
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/q=products/)
-  await expect(
-    page.getByRole('link', { name: 'https://example.com/products', exact: true }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('link', { name: 'https://example.com/about', exact: true }),
-  ).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '/products', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: '/about', exact: true })).toHaveCount(0)
 })
 
 test('a URL opens in a drawer and as a full page, with how it was found', async ({ page }) => {
   await page.goto(`${domain}/urls`)
-  await page.getByRole('link', { name: 'https://example.com/products?sort=price' }).first().click()
+  await page.getByRole('link', { name: '/products?sort=price' }).first().click()
 
   const drawer = page.getByRole('dialog')
   await expect(drawer).toBeVisible()

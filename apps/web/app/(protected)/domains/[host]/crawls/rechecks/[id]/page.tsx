@@ -20,6 +20,7 @@ import { RecheckStatusBadge } from '@/components/verification/status-badge'
 import { getDb } from '@/lib/db'
 import { viewRecheck } from '@/lib/recheck'
 import { requireDomain } from '@/lib/workspace'
+import { displayUrl } from '@/lib/url-display'
 
 export const dynamic = 'force-dynamic'
 
@@ -193,7 +194,7 @@ export default async function RecheckPage({
                         title={url.url}
                         className="block truncate font-mono text-xs hover:underline"
                       >
-                        {url.url}
+                        {displayUrl(url.url, domain.host)}
                       </Link>
                       {excluded && (
                         <span className="text-xs text-muted-foreground">{t('excluded')}</span>

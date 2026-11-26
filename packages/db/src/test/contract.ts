@@ -2882,6 +2882,56 @@ export function describeDatabaseContract(
           expect(await db.crawls.issueCounts(id)).toEqual([])
         })
 
+        it('counts the URLs of a category once, whatever the issues each has', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const [a, b, c] = ['a', 'b', 'c'].map((path) =>
+            crawlUrlHash(`https://acme.com/${path}`),
+          ) as [string, string, string]
+          const audited = (urlHash: string, indexability: 'indexable' | 'not-indexable') => ({
+            urlHash,
+            participation: 'audited' as const,
+            participationRule: null,
+            intent: 'indexable' as const,
+            intentRule: null,
+            conditions: {},
+            indexability,
+            blockers: [],
+          })
+          await saveIssues({
+            crawlId: id,
+            issues: [
+              // Two issues of one category on one URL: the URL counts once.
+              { urlHash: a, issue: 'title-missing' },
+              { urlHash: a, issue: 'title-multiple' },
+              // Secondary on a URL that cannot be indexed: not counted, as in `issueCounts`.
+              { urlHash: b, issue: 'title-missing' },
+              { urlHash: b, issue: 'client-error' },
+              // A URL the audit has no row for is not secondary.
+              { urlHash: c, issue: 'title-missing' },
+            ],
+            pages: { issue: 0, warning: 3, opportunity: 0 },
+            withType: { issue: 1, warning: 3, opportunity: 0 },
+            catalog: 'v1',
+            audit: { urls: [audited(a, 'indexable'), audited(b, 'not-indexable')] },
+          })
+
+          const byCategory = (await db.crawls.issueCategoryCounts(id)).sort((x, y) =>
+            x.category.localeCompare(y.category),
+          )
+          expect(byCategory).toEqual([
+            { category: 'response-codes', pages: 1 },
+            { category: 'title', pages: 2 },
+          ])
+          // The rows add up to more than the URLs: that is the point of counting them apart.
+          const rows = await db.crawls.issueCounts(id)
+          expect(rows.find((row) => row.issue === 'title-missing')).toMatchObject({
+            pages: 2,
+            secondary: 1,
+          })
+          expect(await db.crawls.issueCategoryCounts('missing')).toEqual([])
+        })
+
         it('keeps what rules accept apart from what is pending, and lists it', async () => {
           const domainId = await domain()
           const { id } = await startCrawl(domainId)

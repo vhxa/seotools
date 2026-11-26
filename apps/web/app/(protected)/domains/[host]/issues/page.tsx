@@ -9,6 +9,7 @@ import {
   ISSUE_GROUPS,
   ISSUE_IMPORTANCES,
   PAGE_ISSUES,
+  type PageIssueId,
 } from '@seotools/core/crawl/issues'
 import { compareWithPrevious } from '@seotools/db'
 import { SearchIcon } from 'lucide-react'
@@ -24,7 +25,7 @@ import { Input } from '@/components/ui/input'
 import { siteFindings } from '@/lib/crawl-files'
 import { compareHref, parseCompareQuery } from '@/lib/compare-query'
 import { getDb } from '@/lib/db'
-import { rankIssueCounts } from '@/lib/pages-issues'
+import { rankIssueCounts, sharedIncomparable } from '@/lib/pages-issues'
 import { isRenderedCrawl } from '@/lib/rendering'
 import { detailHref, parseDetailQuery } from '@/lib/pages-query'
 import { requireDomain } from '@/lib/workspace'
@@ -133,6 +134,21 @@ export default async function IssuesPage({
           state: 'in-progress',
         }),
       )
+  // Why a row cannot be compared with the previous crawl, in words; `null` when it can. The reason
+  // is never dropped: a row with its own reasons keeps its label, whatever the others say.
+  const incomparable = (issue: PageIssueId): string[] | null => {
+    if (!comparison?.base) return null
+    if (comparison.cut) return [t('changes.cut')]
+    const own = comparison.byIssue.get(issue)
+    const pair = issuePairReasons(comparison.notes, issue)
+    if (comparison.findings && pair.length === 0 && !own?.unverified) return null
+    const reasons = own?.reasons.length ? own.reasons : pair
+    return reasons.map((reason) => compareText(`reasons.${reason}`))
+  }
+  const reasonsByIssue = new Map(issues.map(({ issue }) => [issue, incomparable(issue)] as const))
+  // One notice when no row can be compared and all say the same; otherwise only the rows that
+  // cannot keep a label.
+  const sharedReasons = sharedIncomparable([...reasonsByIssue.values()])
   const query = parseDetailQuery({})
 
   return (
@@ -271,6 +287,18 @@ export default async function IssuesPage({
         <p className="text-sm text-muted-foreground">{t('notChecked')}</p>
       ) : (
         <>
+          {sharedReasons && (
+            <div className="grid gap-1 rounded-xl bg-card px-4 py-3 text-sm text-muted-foreground shadow-card ring-1 ring-foreground/10">
+              <p className="font-medium text-foreground">{t('changes.noneComparable')}</p>
+              {sharedReasons.length > 0 && (
+                <ul className="list-disc pl-5">
+                  {[...new Set(sharedReasons)].map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {ISSUE_IMPORTANCES.map((importance) => {
             // What only non-indexable pages have goes after what is pending, keeping the rank.
             const found = issues
@@ -330,46 +358,37 @@ export default async function IssuesPage({
                               {t('template.label')}
                             </span>
                           )}
-                        {comparison?.base && (
-                          <span className="text-xs tabular-nums">
-                            {comparison.cut ? (
-                              <span title={t('changes.cut')}>{t('changes.unavailable')}</span>
-                            ) : !comparison.findings ||
-                              issuePairReasons(comparison.notes, issue).length > 0 ||
-                              comparison.byIssue.get(issue)?.unverified ? (
-                              <span
-                                title={
-                                  comparison.byIssue
-                                    .get(issue)
-                                    ?.reasons.map((reason) => compareText(`reasons.${reason}`))
-                                    .join(', ') ||
-                                  issuePairReasons(comparison.notes, issue)
-                                    .map((reason) => compareText(`reasons.${reason}`))
-                                    .join(' ')
-                                }
-                              >
-                                {t('changes.unavailable')}
+                        {comparison?.base &&
+                          (() => {
+                            const reasons = reasonsByIssue.get(issue)
+                            if (reasons) {
+                              return sharedReasons ? null : (
+                                <span className="text-xs tabular-nums" title={reasons.join(' ')}>
+                                  {t('changes.unavailable')}
+                                </span>
+                              )
+                            }
+                            return (
+                              <span className="text-xs tabular-nums">
+                                {(['fresh', 'resolved'] as const).map((kind) => (
+                                  <Link
+                                    key={kind}
+                                    className="mx-1 underline"
+                                    href={compareHref(domain.host, parseCompareQuery({}), {
+                                      from: comparison.base!.id,
+                                      to: latest.id,
+                                      issue,
+                                      change: kind === 'fresh' ? 'gained' : 'lost',
+                                    })}
+                                  >
+                                    {t(`changes.${kind}`, {
+                                      count: comparison.byIssue.get(issue)?.[kind] ?? 0,
+                                    })}
+                                  </Link>
+                                ))}
                               </span>
-                            ) : (
-                              (['fresh', 'resolved'] as const).map((kind) => (
-                                <Link
-                                  key={kind}
-                                  className="mx-1 underline"
-                                  href={compareHref(domain.host, parseCompareQuery({}), {
-                                    from: comparison.base!.id,
-                                    to: latest.id,
-                                    issue,
-                                    change: kind === 'fresh' ? 'gained' : 'lost',
-                                  })}
-                                >
-                                  {t(`changes.${kind}`, {
-                                    count: comparison.byIssue.get(issue)?.[kind] ?? 0,
-                                  })}
-                                </Link>
-                              ))
-                            )}
-                          </span>
-                        )}
+                            )
+                          })()}
                       </>
                     )}
                     rows={found}

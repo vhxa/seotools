@@ -482,7 +482,7 @@
       "baseCrawled": "of {count, number} pages crawled",
       "baseAudited": "of {count, number} pages audited",
       "baseNone": "Not available for this crawl",
-      "unknownIndexability": "{count, plural, one {# page has} other {# pages have}} too little data to tell."
+      "unknownIndexability": "{count, plural, one {# page has too little data to tell if it is indexable} other {# pages have too little data to tell if they are indexable}}."
     },
     "chart": {
       "ariaLabel": "Pages by what they have, after each full crawl",
@@ -579,8 +579,7 @@
     "responseTime": "{value, number} ms",
     "issueList": {
       "all": "All pages",
-      "units": "Each issue counts affected URLs. Category totals count findings; one URL can contribute several.",
-      "findings": "{count, number} findings",
+      "units": "Each number counts URLs. A URL with several issues of a category counts once in it.",
       "urls": "{count, number} URLs"
     },
     "actionsMenu": {
@@ -2050,23 +2049,23 @@
           "description": "It answers 200 with something else, usually a web page. Crawlers cannot find any rules in that."
         },
         "site-blocked": {
-          "title": "The whole site is blocked for crawlers",
+          "title": "robots.txt blocks the whole site for crawlers",
           "description": "The rules for every user agent disallow /. Unless a group names a crawler, it will not request anything."
         },
         "too-large": {
-          "title": "The file is over 500 KiB",
+          "title": "robots.txt is over 500 KiB",
           "description": "Google ignores whatever comes after that point, including any rules there."
         },
         "no-sitemaps": {
-          "title": "It does not declare any sitemap",
+          "title": "robots.txt does not declare any sitemap",
           "description": "A Sitemap line is how crawlers that are not told otherwise find the sitemaps of a site."
         },
         "origins-differ": {
-          "title": "Variants of the site serve different files",
+          "title": "Variants of the site serve different robots.txt files",
           "description": "Rules apply per origin, so the same URL may be allowed on one variant and not on another. Compare them below."
         },
         "syntax-issues": {
-          "title": "Some lines have problems",
+          "title": "Some lines of robots.txt have problems",
           "description": "Crawlers ignore what they cannot understand, so these lines probably do not do what was meant."
         }
       },
@@ -2202,15 +2201,15 @@
           "description": "It answers 200 with something else, usually a web page."
         },
         "no-title": {
-          "title": "It has no title",
+          "title": "llms.txt has no title",
           "description": "The format starts with a level 1 heading naming the site or project."
         },
         "no-summary": {
-          "title": "It has no summary",
+          "title": "llms.txt has no summary",
           "description": "The format has a blockquote under the title, with a short summary."
         },
         "no-links": {
-          "title": "It has no links",
+          "title": "llms.txt has no links",
           "description": "The format lists links to read further, under level 2 headings."
         }
       },
@@ -2288,19 +2287,19 @@
       "security": {
         "findings": {
           "no-contact": {
-            "title": "It has no Contact field",
+            "title": "security.txt has no Contact field",
             "description": "RFC 9116 requires it: it is the point of the file."
           },
           "no-expiry": {
-            "title": "It has no valid Expires field",
+            "title": "security.txt has no valid Expires field",
             "description": "RFC 9116 requires one, so outdated information is not trusted forever."
           },
           "expired": {
-            "title": "It has expired",
+            "title": "security.txt has expired",
             "description": "Past its Expires date, the file should no longer be trusted."
           },
           "wrong-location": {
-            "title": "It is not where it should be",
+            "title": "security.txt is not where it should be",
             "description": "RFC 9116 places it at /.well-known/security.txt."
           }
         }
@@ -3792,8 +3791,11 @@
       "opportunities": "With opportunities"
     },
     "notChecked": "Not checked yet",
+    "notComparable": "Not comparable",
+    "notComparableTitle": "Not comparable with the previous crawl",
+    "notComparableLink": "See the comparison of both crawls",
     "notAvailable": "Not available for this crawl",
-    "unknownIndexability": "{count, plural, one {# page has} other {# pages have}} too little data to tell if it is indexable.",
+    "unknownIndexability": "{count, plural, one {# page has too little data to tell if it is indexable} other {# pages have too little data to tell if they are indexable}}.",
     "trendFindings": "Pages with findings",
     "trendFindingsHelp": "Audited pages that have something of each type after every full crawl. A page can be in several.",
     "trendIndexable": "Indexable pages",
@@ -3906,6 +3908,7 @@
       "unavailable": "Cannot be compared",
       "fresh": "{count} new",
       "resolved": "{count} resolved",
+      "noneComparable": "These issues cannot be compared with the previous crawl.",
       "cut": "Too many URLs changed to count them here: open the comparison to see them."
     },
     "summary": "Summary",

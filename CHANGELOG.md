@@ -20,9 +20,17 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+### Changed
+
+- The overview tiles show no difference when the crawl before did not measure the same thing (a different rendering mode, ignored parameters, crawl settings, issue checks or audit rules): they say "Not comparable", with what changed in the tooltip, in the same words as the trend, and link to the comparison of both crawls.
+- On the Issues page, when none of the issues can be compared with the previous crawl for the same reason, one notice above the list says why instead of repeating "Cannot be compared" on every row; with different reasons, only the rows affected keep the label.
+- The category badges of the issue list on the URLs page count the URLs that have at least one issue of the category, not the sum of its issues, so a URL with several counts once.
+- URL columns (pages table, comparison, links of a URL, rechecks) show the path and query of a URL on the site's `https://<host>` address and keep the full address for any other variant (`http`, `www`, other hosts); the tooltip and the links keep the full URL. In the URLs table, the URL column takes the width the other columns leave free.
+
 ### Fixed
 
 - A page that fails briefly no longer makes the pages it links to look unlinked. Crawls retry temporary failures and show the outcome in the crawl and URL details. Like Google, the crawler ignores the content and links of 429 and 5xx error responses.
+- "Pages with too little data to tell if they are indexable" reads correctly in both languages for one page and for several, and the findings about `robots.txt`, `llms.txt` and `security.txt` name their file ("llms.txt has no summary").
 
 ### Upgrade notes
 

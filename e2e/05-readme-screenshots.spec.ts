@@ -41,10 +41,7 @@ test('capture README screenshots from fake data', async ({ page }) => {
     await page.evaluate(() => document.fonts.ready)
     await page.screenshot({ path: resolve(output, `${name}.png`), animations: 'disabled' })
   }
-  await page
-    .getByRole('link', { name: 'https://example.com/products', exact: true })
-    .first()
-    .click()
+  await page.getByRole('link', { name: '/products', exact: true }).first().click()
   const drawer = page.getByRole('dialog')
   await expect(drawer).toBeVisible()
   await drawer.getByRole('link', { name: 'Open full screen' }).click()

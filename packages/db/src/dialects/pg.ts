@@ -170,6 +170,7 @@ import {
   historyTrace,
   type LinkScope,
   foldIssueCounts,
+  issueCategorySplit,
   toLinkContext,
   foldPortfolio,
   compareSearch,
@@ -3451,6 +3452,41 @@ export function createPgDatabase(options: {
           .where(eq(crawlUrlIssues.crawlId, crawlId))
           .groupBy(crawlUrlIssues.issue, crawlUrlAudit.indexability)
         return foldIssueCounts(rows)
+      },
+
+      async issueCategoryCounts(crawlId) {
+        const found: { category: string; pages: number }[] = []
+        for (const { category, always, unlessNotIndexable } of issueCategorySplit()) {
+          const matching = [
+            ...(always.length > 0 ? [inArray(crawlUrlIssues.issue, always)] : []),
+            ...(unlessNotIndexable.length > 0
+              ? [
+                  and(
+                    inArray(crawlUrlIssues.issue, unlessNotIndexable),
+                    or(
+                      isNull(crawlUrlAudit.indexability),
+                      ne(crawlUrlAudit.indexability, 'not-indexable'),
+                    ),
+                  ),
+                ]
+              : []),
+          ]
+          if (matching.length === 0) continue
+          const [row] = await db
+            .select({ pages: countDistinct(crawlUrlIssues.urlHash) })
+            .from(crawlUrlIssues)
+            .leftJoin(
+              crawlUrlAudit,
+              and(
+                eq(crawlUrlAudit.crawlId, crawlUrlIssues.crawlId),
+                eq(crawlUrlAudit.urlHash, crawlUrlIssues.urlHash),
+              ),
+            )
+            .where(and(eq(crawlUrlIssues.crawlId, crawlId), or(...matching)))
+          const pages = Number(row?.pages ?? 0)
+          if (pages > 0) found.push({ category, pages })
+        }
+        return found
       },
 
       async issuesOf(crawlId, urlHashes) {

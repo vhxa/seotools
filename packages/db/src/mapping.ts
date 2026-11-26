@@ -37,8 +37,10 @@ import {
   crawlUrlHash,
   enabledExtraFiles,
   extractorsSchema,
+  ISSUE_GROUPS,
   isPageIssueId,
   isSecondaryFinding,
+  issuesOfCategory,
   parseAuditSnapshot,
   parseRenderObservation,
   parseIssueEvidence,
@@ -1126,6 +1128,26 @@ export function foldIssueCounts(
     counts.set(row.issue, entry)
   }
   return [...counts.values()]
+}
+
+/**
+ * The issues of each category, split by how a URL that cannot be indexed treats them: the ones it
+ * always counts for and the secondary ones (`isSecondaryFinding`), which it does not. A URL counts
+ * for a category by the same rule `foldIssueCounts` applies to each issue.
+ */
+export function issueCategorySplit(): {
+  category: string
+  always: string[]
+  unlessNotIndexable: string[]
+}[] {
+  return ISSUE_GROUPS.flatMap((group) => group.categories).map((category) => {
+    const issues = issuesOfCategory(category)
+    return {
+      category,
+      always: issues.filter((issue) => !isSecondaryFinding(issue, 'not-indexable')),
+      unlessNotIndexable: issues.filter((issue) => isSecondaryFinding(issue, 'not-indexable')),
+    }
+  })
 }
 
 /** Issues by URL, as the history keeps them. */
