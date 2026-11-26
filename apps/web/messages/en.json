@@ -3949,7 +3949,7 @@
     "riskLow": "Within the estimated memory and processor limits.",
     "riskUnknown": "Available limits are incomplete, so some risks are unknown.",
     "unsettled": "In the last crawl, {share} of captures did not settle within the capture window.",
-    "delay": "In the last crawl, 95% of measured capture delays were at most {ms} ms.",
+    "delay": "In the last crawl, at least 95% of measured capture delays were at most {ms} ms.",
     "duration": "Estimated duration",
     "durationEstimate": "About {time}",
     "durationBasis": "Based on {time} with {count, plural, one {# simultaneous request} other {# simultaneous requests}} in the last crawl of this mode.",

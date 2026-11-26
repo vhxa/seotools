@@ -73,10 +73,12 @@ function record(histogram: Histogram, value: number | null | undefined, count = 
     histogram.set(value, (histogram.get(value) ?? 0) + count)
 }
 
-function percentile(histogram: Histogram, fraction: number): number | null {
+function percentile(histogram: Histogram, fraction: 0.5 | 0.95): number | null {
   const count = [...histogram.values()].reduce((sum, n) => sum + n, 0)
   if (!count) return null
-  const position = (count - 1) * fraction
+  // Average the two middle observations for a median. Use the upper rank for p95 so at
+  // least 95% of the measured values are at or below the value we report.
+  const position = fraction === 0.5 ? (count - 1) / 2 : Math.ceil(count * fraction) - 1
   let end = 0
   let lower: number | undefined
   for (const [value, n] of [...histogram].sort(([a], [b]) => a - b)) {

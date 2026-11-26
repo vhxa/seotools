@@ -3949,7 +3949,7 @@
     "riskLow": "Dentro de los límites estimados de memoria y procesador.",
     "riskUnknown": "Faltan datos sobre los límites, así que hay riesgos que no se pueden evaluar.",
     "unsettled": "En el último rastreo, el {share} de las capturas no se estabilizó dentro del plazo.",
-    "delay": "En el último rastreo, el 95 % de los retrasos de captura medidos fue de {ms} ms o menos.",
+    "delay": "En el último rastreo, al menos el 95 % de los retrasos de captura medidos fue de {ms} ms o menos.",
     "duration": "Duración estimada",
     "durationEstimate": "Unos {time}",
     "durationBasis": "Se basa en {time} con {count, plural, one {# petición simultánea} other {# peticiones simultáneas}} en el último rastreo de este modo.",
