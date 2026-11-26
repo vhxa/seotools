@@ -693,6 +693,9 @@ export function PagesTable({
   const widthOf = (id: string) => widths[id] ?? 40
   const resize = (id: string, width: number) =>
     saveWidths(JSON.stringify({ ...widths, [id]: Math.max(80, Math.min(800, width)) }))
+  // Resizing starts from the width on screen: the URL column can be wider than its saved width.
+  const shownWidth = (handle: HTMLElement) =>
+    Math.round(handle.parentElement?.getBoundingClientRect().width ?? 0)
 
   const mark = (marked: boolean) =>
     startTransition(async () => {
@@ -881,13 +884,19 @@ export function PagesTable({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           {status && <div className="shrink-0">{status}</div>}
           <ResultsTable footer={footer} fill overlay={selected.length > 0 ? selectionBar : null}>
+            {/* The URL column takes the room the others leave, never less than its own width. */}
             <table
-              className="w-full table-fixed text-sm"
-              style={{ width: visibleColumns.reduce((sum, column) => sum + widthOf(column.id), 0) }}
+              className="table-fixed text-sm"
+              style={{
+                width: `max(100%, ${visibleColumns.reduce((sum, column) => sum + widthOf(column.id), 0)}px)`,
+              }}
             >
               <colgroup>
                 {visibleColumns.map((column) => (
-                  <col key={column.id} style={{ width: widthOf(column.id) }} />
+                  <col
+                    key={column.id}
+                    style={column.id === 'url' ? undefined : { width: widthOf(column.id) }}
+                  />
                 ))}
               </colgroup>
               <TableHeader>
@@ -951,7 +960,8 @@ export function PagesTable({
                                 event.preventDefault()
                                 resize(
                                   column.id,
-                                  widthOf(column.id) + (event.key === 'ArrowRight' ? 20 : -20),
+                                  shownWidth(event.currentTarget) +
+                                    (event.key === 'ArrowRight' ? 20 : -20),
                                 )
                               } else if (event.key === 'Home') {
                                 event.preventDefault()
@@ -964,7 +974,7 @@ export function PagesTable({
                               handle.focus()
                               handle.setPointerCapture(event.pointerId)
                               handle.dataset.startX = String(event.clientX)
-                              handle.dataset.startWidth = String(widthOf(column.id))
+                              handle.dataset.startWidth = String(shownWidth(handle))
                             }}
                             onPointerMove={(event) => {
                               if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
