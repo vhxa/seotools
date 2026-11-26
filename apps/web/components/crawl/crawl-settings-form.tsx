@@ -39,6 +39,10 @@ const urlStops = [
   1_000_000, 2_500_000, 5_000_000, 10_000_000,
 ]
 
+const requestsPerSecondStops = [1, 2, 3, 4, 5, 8, 10, 15, 20, 30, 50, 75, 100]
+const retainCrawlsStops = [1, 2, 3, 4, 5, 10, 20, 50, 100, 250, 500, 1000]
+const historyDaysStops = [7, 14, 30, 60, 90, 180, 365, 730, 1825, 3650]
+
 function includeSavedStop(stops: number[], saved: number | null) {
   return saved === null || stops.includes(saved) ? stops : [...stops, saved].sort((a, b) => a - b)
 }
@@ -112,6 +116,8 @@ export function CrawlSettingsForm({
     setNumbers((previous) => ({ ...previous, [key]: value }))
   const [files, setFiles] = useState<readonly ExtraCrawlFileKind[]>(enabledExtraFiles(settings))
 
+  const retention =
+    numbers.retainCrawls === null ? 'all' : numbers.retainCrawls === 1 ? 'current' : 'latest'
   const modes = CRAWL_RENDERING_AVAILABLE.map((value) => ({
     value,
     label: t(`rendering.modes.${value}`),
@@ -165,6 +171,18 @@ export function CrawlSettingsForm({
                   ))}
                 </SelectContent>
               </Select>
+              {/* What each choice costs, always both: the choice never changes the layout. */}
+              <ul className="grid gap-1 text-xs text-muted-foreground">
+                {CRAWL_RENDERING_AVAILABLE.map((value) => (
+                  <li key={value} className={mode === value ? 'text-foreground' : undefined}>
+                    <span className="font-medium">{t(`rendering.modes.${value}`)}:</span>{' '}
+                    {t(`rendering.cost.${value}`)}
+                  </li>
+                ))}
+              </ul>
+              {browserState === 'ready' && settings.renderingMode === 'http' && (
+                <p className="text-xs text-muted-foreground">{t('rendering.available')}</p>
+              )}
               {browserState !== 'ready' && (
                 <p className="text-xs text-muted-foreground">
                   {t('rendering.unavailable', { reason: browser(browserState) })}{' '}
@@ -206,6 +224,7 @@ export function CrawlSettingsForm({
                 value={numbers.requestsPerSecond}
                 onChange={(value) => setNumber('requestsPerSecond', value!)}
                 disabled={!canEdit}
+                stops={includeSavedStop(requestsPerSecondStops, settings.requestsPerSecond)}
                 {...limits.requestsPerSecond}
               />
               <NumericSlider
@@ -376,22 +395,31 @@ export function CrawlSettingsForm({
         description={t('sections.retention.description')}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <input
-            type="hidden"
-            name="retention"
-            value={numbers.retainCrawls === null ? 'all' : 'latest'}
-            disabled={!canEdit}
-          />
-          <NumericSlider
-            name="retainCrawls"
-            label={t('retention.countLabel')}
-            hint={t('retention.countHint')}
-            value={numbers.retainCrawls}
-            onChange={(value) => setNumber('retainCrawls', value)}
-            disabled={!canEdit}
-            unlimited
-            {...limits.retainCrawls}
-          />
+          <input type="hidden" name="retention" value={retention} disabled={!canEdit} />
+          <div className="grid content-start gap-2">
+            <NumericSlider
+              name="retainCrawls"
+              label={t('retention.countLabel')}
+              hint={t('retention.countHint')}
+              value={numbers.retainCrawls}
+              onChange={(value) => setNumber('retainCrawls', value)}
+              disabled={!canEdit}
+              unlimited
+              stops={includeSavedStop(retainCrawlsStops, settings.retainCrawls)}
+              {...limits.retainCrawls}
+            />
+            <div className="grid text-xs text-muted-foreground [&>*]:col-start-1 [&>*]:row-start-1">
+              {(['current', 'latest', 'all'] as const).map((choice) => (
+                <p
+                  key={choice}
+                  aria-hidden={choice !== retention}
+                  className={choice === retention ? undefined : 'invisible'}
+                >
+                  {t(`retention.hints.${choice}`)}
+                </p>
+              ))}
+            </div>
+          </div>
           <NumericSlider
             name="historyDays"
             label={t('retention.historyLabel')}
@@ -400,6 +428,7 @@ export function CrawlSettingsForm({
             onChange={(value) => setNumber('historyDays', value)}
             disabled={!canEdit}
             unlimited
+            stops={includeSavedStop(historyDaysStops, settings.historyDays)}
             {...limits.historyDays}
           />
         </div>

@@ -43,6 +43,9 @@ describe('parseCrawlSettingsForm', () => {
   })
 
   it.each([
+    ['current', '1', 1],
+    ['latest', '2', 2],
+    ['all', '', null],
     ['latest', '3', 3],
     ['current', 'ignored', 1],
     ['all', 'ignored', null],

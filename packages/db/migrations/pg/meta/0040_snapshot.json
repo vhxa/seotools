@@ -1,5 +1,5 @@
 {
-  "id": "457cc07a-5bd2-41b3-aefb-748293807fe8",
+  "id": "65aa43d0-7030-414d-b218-1cec79ee4deb",
   "prevId": "6376c471-e8f9-4c97-a3d6-bac9b4dde09c",
   "version": "7",
   "dialect": "postgresql",
@@ -3514,12 +3514,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "capacity_generation": {
-          "name": "capacity_generation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4673,12 +4667,6 @@
         "reset_requested_at": {
           "name": "reset_requested_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "capacity_generation": {
-          "name": "capacity_generation",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

@@ -1531,14 +1531,20 @@ export function createSqliteDatabase(options: {
         db.transaction(
           (tx) => {
             const updatedAt = new Date()
-            // The unique key serializes two starting workers and rolls back with the domain writes.
+            // Claim the migration marker and commit it with the domain writes and notice.
             const claimed = tx
-              .insert(settings)
-              .values({ key: CAPACITY_UPGRADE_KEY, value: 'null', encrypted: false, updatedAt })
-              .onConflictDoNothing()
+              .update(settings)
+              .set({ value: 'null', updatedAt })
+              .where(and(eq(settings.key, CAPACITY_UPGRADE_KEY), eq(settings.value, 'pending')))
               .returning({ key: settings.key })
               .all()
-            if (!claimed.length) return
+            const existing = claimed.length > 0
+            const values = { value: JSON.stringify(recommended), encrypted: false, updatedAt }
+            const saveCapacity = tx.insert(settings).values({ key: CAPACITY_KEY, ...values })
+            if (!existing) {
+              saveCapacity.onConflictDoNothing().run()
+              return
+            }
 
             const legacyDomains = tx
               .select({
@@ -1548,28 +1554,14 @@ export function createSqliteDatabase(options: {
               })
               .from(domains)
               .leftJoin(crawlSettings, eq(crawlSettings.domainId, domains.id))
-              .where(isNull(domains.capacityGeneration))
               .orderBy(asc(domains.host))
-              .all()
-            const legacyUsers = tx
-              .select({ id: user.id })
-              .from(user)
-              .where(isNull(user.capacityGeneration))
-              .limit(1)
               .all()
             const priorCapacity = tx
               .select({ value: settings.value })
               .from(settings)
               .where(eq(settings.key, CAPACITY_KEY))
               .get()
-            const values = { value: JSON.stringify(recommended), encrypted: false, updatedAt }
-            const existing = legacyDomains.length > 0 || legacyUsers.length > 0
-            const saveCapacity = tx.insert(settings).values({ key: CAPACITY_KEY, ...values })
-            if (existing)
-              saveCapacity.onConflictDoUpdate({ target: settings.key, set: values }).run()
-            else saveCapacity.onConflictDoNothing().run()
-
-            if (!existing) return
+            saveCapacity.onConflictDoUpdate({ target: settings.key, set: values }).run()
             const concurrency = DEFAULT_CRAWL_SETTINGS.concurrency
             for (const domain of legacyDomains) {
               tx.insert(crawlSettings)

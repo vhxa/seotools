@@ -1866,12 +1866,6 @@
       "hint": "Most URLs of the site a full crawl requests. Past it, the crawl ends as incomplete. Leave it empty for no limit, at the risk of a site with endless URLs."
     },
     "retention": {
-      "label": "Crawl results to keep",
-      "modes": {
-        "latest": "The latest crawls",
-        "current": "Only the current one",
-        "all": "All of them"
-      },
       "hints": {
         "latest": "Allows comparing crawls, with a bounded database size.",
         "current": "The lightest option. Comparing crawls URL by URL will not be possible.",
@@ -3949,7 +3943,7 @@
     "riskLow": "Within the estimated memory and processor limits.",
     "riskUnknown": "Available limits are incomplete, so some risks are unknown.",
     "unsettled": "In the last crawl, {share} of captures did not settle within the capture window.",
-    "delay": "In the last crawl, at least 95% of measured capture delays were at most {ms} ms.",
+    "delay": "In the last crawl, 95% of measured captures had a delay of {ms} ms or less.",
     "duration": "Estimated duration",
     "durationEstimate": "About {time}",
     "durationBasis": "Based on {time} with {count, plural, one {# simultaneous request} other {# simultaneous requests}} in the last crawl of this mode.",

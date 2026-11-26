@@ -1479,13 +1479,19 @@ export function createPgDatabase(options: {
       async initialize(recommended) {
         await db.transaction(async (tx) => {
           const updatedAt = new Date()
-          // The unique key serializes two starting workers and rolls back with the domain writes.
+          // Claim the migration marker and commit it with the domain writes and notice.
           const claimed = await tx
-            .insert(settings)
-            .values({ key: CAPACITY_UPGRADE_KEY, value: 'null', encrypted: false, updatedAt })
-            .onConflictDoNothing()
+            .update(settings)
+            .set({ value: 'null', updatedAt })
+            .where(and(eq(settings.key, CAPACITY_UPGRADE_KEY), eq(settings.value, 'pending')))
             .returning({ key: settings.key })
-          if (!claimed.length) return
+          const existing = claimed.length > 0
+          const values = { value: JSON.stringify(recommended), encrypted: false, updatedAt }
+          const saveCapacity = tx.insert(settings).values({ key: CAPACITY_KEY, ...values })
+          if (!existing) {
+            await saveCapacity.onConflictDoNothing()
+            return
+          }
 
           const legacyDomains = await tx
             .select({
@@ -1495,24 +1501,12 @@ export function createPgDatabase(options: {
             })
             .from(domains)
             .leftJoin(crawlSettings, eq(crawlSettings.domainId, domains.id))
-            .where(isNull(domains.capacityGeneration))
             .orderBy(asc(domains.host))
-          const legacyUsers = await tx
-            .select({ id: user.id })
-            .from(user)
-            .where(isNull(user.capacityGeneration))
-            .limit(1)
           const [priorCapacity] = await tx
             .select({ value: settings.value })
             .from(settings)
             .where(eq(settings.key, CAPACITY_KEY))
-          const values = { value: JSON.stringify(recommended), encrypted: false, updatedAt }
-          const existing = legacyDomains.length > 0 || legacyUsers.length > 0
-          const saveCapacity = tx.insert(settings).values({ key: CAPACITY_KEY, ...values })
-          if (existing) await saveCapacity.onConflictDoUpdate({ target: settings.key, set: values })
-          else await saveCapacity.onConflictDoNothing()
-
-          if (!existing) return
+          await saveCapacity.onConflictDoUpdate({ target: settings.key, set: values })
           const concurrency = DEFAULT_CRAWL_SETTINGS.concurrency
           for (const domain of legacyDomains) {
             await tx

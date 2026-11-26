@@ -1866,12 +1866,6 @@
       "hint": "Máximo de URLs de la web que pide un rastreo completo. Al alcanzarlo, el rastreo termina como incompleto. Déjalo vacío para no poner límite, con el riesgo de una web con URLs infinitas."
     },
     "retention": {
-      "label": "Resultados de rastreos que se conservan",
-      "modes": {
-        "latest": "Los últimos rastreos",
-        "current": "Solo el actual",
-        "all": "Todos"
-      },
       "hints": {
         "latest": "Permite comparar rastreos, con un tamaño de base de datos acotado.",
         "current": "La opción más ligera. No se podrán comparar rastreos URL a URL.",
@@ -3949,7 +3943,7 @@
     "riskLow": "Dentro de los límites estimados de memoria y procesador.",
     "riskUnknown": "Faltan datos sobre los límites, así que hay riesgos que no se pueden evaluar.",
     "unsettled": "En el último rastreo, el {share} de las capturas no se estabilizó dentro del plazo.",
-    "delay": "En el último rastreo, al menos el 95 % de los retrasos de captura medidos fue de {ms} ms o menos.",
+    "delay": "En el último rastreo, el 95 % de las capturas con datos de tiempo se hizo con un retraso de {ms} ms o menos.",
     "duration": "Duración estimada",
     "durationEstimate": "Unos {time}",
     "durationBasis": "Se basa en {time} con {count, plural, one {# petición simultánea} other {# peticiones simultáneas}} en el último rastreo de este modo.",

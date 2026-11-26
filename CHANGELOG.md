@@ -34,7 +34,6 @@ which moves the entries of `[Unreleased]` into the new version.
 
 - Domains start with four simultaneous requests. Worker capacity defaults to the detected server’s
   recommendation. Docker Compose gives the browser a `3g` memory ceiling and `1g` of shared memory.
-
 - The overview tiles show no difference when the crawl before did not measure the same thing (a different rendering mode, ignored parameters, crawl settings, issue checks or audit rules): they say "Not comparable", with what changed in the tooltip, in the same words as the trend, and link to the comparison of both crawls.
 - On the Issues page, when none of the issues can be compared with the previous crawl for the same reason, one notice above the list says why instead of repeating "Cannot be compared" on every row; with different reasons, only the rows affected keep the label.
 - The category badges of the issue list on the URLs page count the URLs that have at least one issue of the category, not the sum of its issues, so a URL with several counts once.

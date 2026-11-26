@@ -46,7 +46,10 @@ export async function readCapacitySettings(db: Pick<Database, 'settings'>) {
   ])
   return {
     ...context,
-    upgrade: dismissed ? null : (parseJson(upgrade?.value ?? null) as CapacityUpgrade | null),
+    upgrade:
+      dismissed || upgrade?.value === 'pending'
+        ? null
+        : (parseJson(upgrade?.value ?? null) as CapacityUpgrade | null),
   }
 }
 

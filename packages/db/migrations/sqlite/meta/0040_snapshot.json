@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "713676f5-cbd6-4c8d-9993-149377f3bd52",
+  "id": "6b91cd30-6218-4e3e-bec8-bcd7781042d5",
   "prevId": "1e5766b2-cf1d-43e2-bbf3-e65ccb5306c3",
   "tables": {
     "account": {
@@ -3434,13 +3434,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "capacity_generation": {
-          "name": "capacity_generation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -4528,13 +4521,6 @@
         "reset_requested_at": {
           "name": "reset_requested_at",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "capacity_generation": {
-          "name": "capacity_generation",
-          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

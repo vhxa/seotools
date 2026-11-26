@@ -285,8 +285,15 @@
     {
       "idx": 40,
       "version": "6",
-      "when": 1795720060250,
+      "when": 1795722342207,
       "tag": "0040_capacity",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1795722342856,
+      "tag": "0041_capacity_upgrade",
       "breakpoints": true
     }
   ]

@@ -10,7 +10,7 @@ export async function lastCapacitySample(
   if (!crawl) return null
   const metrics =
     crawl.capacityMetrics ??
-    (crawl.pruned ? null : (await db.crawls.measureCapacity(crawl.id, mode === 'rendered')).metrics)
+    (crawl.pruned ? null : (await db.crawls.measureCapacity(crawl.id, false)).metrics)
   return {
     metrics,
     elapsedMs:

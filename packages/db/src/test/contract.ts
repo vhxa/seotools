@@ -1,4 +1,4 @@
-import { CAPACITY_KEY } from '@seotools/core/capacity'
+import { CAPACITY_KEY, CAPACITY_UPGRADE_KEY } from '@seotools/core/capacity'
 import { readCapacitySettings } from '../capacity'
 import {
   renderStateOf,
@@ -53,7 +53,8 @@ const minutes = (n: number) => n * 60_000
  */
 /** What only an older version of the code wrote, put into the database as it was. */
 export interface LegacyWrites {
-  domainBeforeCapacity(id: string): Promise<void>
+  markCapacityUpgrade(): Promise<void>
+  failCapacityWrite(): Promise<() => Promise<void>>
   /** Sets the flag that accepted the page's own `nofollow` on a rule, retired with semantics 3. */
   acceptNofollow(ruleId: string, accept: boolean): Promise<void>
   /** Marks a URL of an analysis as it was stored when it had accepted the page's own `nofollow`. */
@@ -116,8 +117,24 @@ export function describeDatabaseContract(
           crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, concurrency: 2 },
         })
         if (!first.ok || !second.ok) throw new Error('setup failed')
-        await legacy.domainBeforeCapacity(first.domain.id)
-        await legacy.domainBeforeCapacity(second.domain.id)
+        await db.admin.create({
+          id: 'legacy-admin',
+          name: 'Admin',
+          email: 'admin@legacy.test',
+          passwordHash: 'fixture',
+        })
+        await legacy.markCapacityUpgrade()
+        expect((await readCapacitySettings(db)).upgrade).toBeNull()
+        expect((await db.settings.get(CAPACITY_UPGRADE_KEY))?.value).toBe('pending')
+        const undoFailure = await legacy.failCapacityWrite()
+        try {
+          await expect(db.capacity.initialize(recommended)).rejects.toThrow()
+          expect((await db.crawls.settings(second.domain.id)).concurrency).toBe(2)
+          expect(await db.settings.get(CAPACITY_KEY)).toBeNull()
+          expect((await db.settings.get(CAPACITY_UPGRADE_KEY))?.value).toBe('pending')
+        } finally {
+          await undoFailure()
+        }
         await db.crawls.saveRequestSecrets(first.domain.id, 'encrypted-settings')
         const other = await capacityPeer?.()
         try {
@@ -155,6 +172,14 @@ export function describeDatabaseContract(
       })
 
       it('sets instance defaults without touching a fresh domain or showing a notice', async () => {
+        await legacy.markCapacityUpgrade()
+        expect(await db.settings.get(CAPACITY_UPGRADE_KEY)).toBeNull()
+        await db.admin.create({
+          id: 'fresh-admin',
+          name: 'Admin',
+          email: 'admin@fresh.test',
+          passwordHash: 'fixture',
+        })
         const created = await createCompany(db, { name: 'Fresh', domain: 'fresh.test' })
         if (!created.ok) throw new Error('setup failed')
         await db.crawls.saveSettings(created.domain.id, {

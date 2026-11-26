@@ -316,6 +316,7 @@ test('the crawl settings show the rendering mode, and Rendered is disabled witho
     'aria-valuetext',
     '4',
   )
+  await expect(page.getByText(/Several times slower/)).toBeVisible()
   await expect(page.getByText(/Rendered mode is unavailable/)).toBeVisible()
   // The options of the Rendered choice are in the page, disabled while HTML is chosen.
   await expect(page.getByRole('slider', { name: 'Capture window (ms)' })).toBeDisabled()
@@ -325,6 +326,25 @@ test('the crawl settings show the rendering mode, and Rendered is disabled witho
     'true',
   )
   await page.keyboard.press('Escape')
+})
+
+test('crawl retention explains and saves one, two or unlimited results', async ({ page }) => {
+  await page.goto(`${domain}/settings/crawl`)
+  const slider = page.getByRole('slider', { name: 'How many of each type' })
+  const save = page.getByRole('button', { name: 'Save settings' })
+  for (const [keys, value, hint] of [
+    [['Home'], '1', 'Comparing crawls URL by URL will not be possible.'],
+    [['End'], 'No limit', 'the database grows without limit.'],
+    [['Home', 'ArrowRight'], '2', 'Allows comparing crawls, with a bounded database size.'],
+  ] as const) {
+    for (const key of keys) await slider.press(key)
+    await expect(slider).toHaveAttribute('aria-valuetext', value)
+    await expect(page.getByText(hint, { exact: false })).toBeVisible()
+    await save.click()
+    await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+    await page.reload()
+    await expect(slider).toHaveAttribute('aria-valuetext', value)
+  }
 })
 
 test('capacity sliders show the recommendation and live risk, and save keyboard changes', async ({
