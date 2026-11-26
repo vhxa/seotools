@@ -61,7 +61,9 @@ export function NumericSlider({
           {displayValue(value)}
         </span>
       </div>
+      {/* The edge preset emits an inline pre-hydration script to measure the thumb. */}
       <Slider
+        thumbAlignment="center"
         aria-labelledby={labelId}
         getAriaValueText={(_, n) => displayValue(valueAt(n))}
         className="flex min-h-6 items-center"
