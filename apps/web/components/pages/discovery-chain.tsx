@@ -1,7 +1,8 @@
 import { isLinkKind } from '@seotools/core/crawl/links'
 import type { DiscoveryStep } from '@seotools/db'
 import { getTranslations } from 'next-intl/server'
-import { discoverySentences, shortUrl } from '@/lib/discovery-chain'
+import { discoverySentences } from '@/lib/discovery-chain'
+import { displayUrl } from '@/lib/url-display'
 
 /**
  * "How it was found": the steps from where the crawl started to the URL, each a sentence about what
@@ -30,7 +31,7 @@ export async function DiscoveryChain({
       href={hrefFor(step.urlHash)}
       title={step.url}
     >
-      {shortUrl(step.url, host)}
+      {displayUrl(step.url, host)}
     </a>
   )
   return (

@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { applyHref, type HrefPattern, type UrlLinksPage } from '@/lib/url-links'
+import { displayUrl } from '@/lib/url-display'
 
 const ALL_TYPES = 'all-types'
 const SEARCH_DELAY_MS = 300
@@ -243,7 +244,7 @@ export function UrlLinksPanel({
                       className="block min-w-0 truncate font-mono text-xs hover:underline"
                       title={link.url}
                     >
-                      {link.url}
+                      {displayUrl(link.url, host)}
                     </OpenUrlLink>
                     <span className="flex flex-nowrap items-center justify-end gap-1">
                       {link.scope === 'external' && (

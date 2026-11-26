@@ -10,7 +10,8 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from '@/components/ui/chart'
-import type { BasisChange, SegmentedPoint } from '@/lib/dashboard'
+import type { SegmentedPoint } from '@/lib/dashboard'
+import { useDescribeBasisChange } from './basis-change'
 
 export type TrendSeries = 'indexable' | 'issues' | 'warnings' | 'opportunities'
 
@@ -94,27 +95,7 @@ export function TrendChart({
       ]),
     ),
   ) satisfies ChartConfig
-  const describe = (change: BasisChange): string => {
-    switch (change.kind) {
-      case 'rendering':
-        return t(`basis.rendering.${change.to}`)
-      case 'ignoredAdded':
-      case 'ignoredRemoved':
-        return t(`basis.${change.kind}`, {
-          count: change.parameters.length,
-          parameters: format.list(change.parameters.slice(0, 4)),
-          more: Math.max(0, change.parameters.length - 4),
-        })
-      case 'settings':
-        return t('basis.settings', {
-          settings: format.list(change.settings.map((setting) => t(`basis.setting.${setting}`))),
-        })
-      case 'catalog':
-        return t('basis.catalog')
-      case 'rules':
-        return t('basis.rules')
-    }
-  }
+  const describe = useDescribeBasisChange()
   const marked = points.some((point) => point.changes.length > 0)
   const dotOf = (id: TrendSeries, segment: number) => {
     const plain = points.length <= MARKER_LIMIT

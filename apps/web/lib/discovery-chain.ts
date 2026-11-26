@@ -28,15 +28,3 @@ export function discoverySentences(steps: readonly DiscoveryStep[]): {
   }))
   return { sentences, earlierMissing: steps.length > 0 && steps[0]?.foundKind != null }
 }
-
-/** An address of the site without its origin, which every step of the chain shares. */
-export function shortUrl(url: string, host: string): string {
-  try {
-    const parsed = new URL(url)
-    return parsed.hostname.replace(/^www\./, '') === host
-      ? `${parsed.pathname}${parsed.search}`
-      : url
-  } catch {
-    return url
-  }
-}

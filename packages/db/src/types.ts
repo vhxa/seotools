@@ -1038,6 +1038,12 @@ export interface CrawlRepository {
    * search-result finding on a URL the crawl saw as not indexable), counted apart in `secondary`.
    */
   issueCounts(crawlId: string): Promise<{ issue: string; pages: number; secondary: number }[]>
+  /**
+   * How many distinct URLs have at least one issue of each category, counting the same findings as
+   * `issueCounts().pages` (a secondary finding does not count). A URL with two issues of a category
+   * counts once, so the figure is never the sum of its rows. Categories nothing has are left out.
+   */
+  issueCategoryCounts(crawlId: string): Promise<{ category: string; pages: number }[]>
   /** The issues of these URLs of a crawl. URLs without issues have no entry. */
   issuesOf(crawlId: string, urlHashes: string[]): Promise<CrawlUrlIssue[]>
   /** For each issue a rule accepts in a crawl, how many URLs it accepts it on. */

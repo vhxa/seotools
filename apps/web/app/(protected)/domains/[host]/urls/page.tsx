@@ -132,6 +132,7 @@ export default async function PagesDetailsPage({
 
   let rows: PageRow[] = []
   let issueCounts: { issue: string; pages: number }[] = []
+  let categoryCounts: { category: string; pages: number }[] = []
   let hasAccepted = false
   let viewCounts: Awaited<ReturnType<typeof db.crawls.viewCounts>> | null = null
   let total = 0
@@ -140,7 +141,10 @@ export default async function PagesDetailsPage({
   if (browsable) {
     const listing = { crawlId: browsable.id, ...listingOf(query, unapplied) }
     if (browsable.pagesByWorstIssue !== null)
-      issueCounts = await db.crawls.issueCounts(browsable.id)
+      [issueCounts, categoryCounts] = await Promise.all([
+        db.crawls.issueCounts(browsable.id),
+        db.crawls.issueCategoryCounts(browsable.id),
+      ])
     hasAccepted = (await db.crawls.acceptedCounts(browsable.id)).length > 0
     viewCounts = await db.crawls.viewCounts(browsable.id)
     total = await db.crawls.countListed(listing)
@@ -411,6 +415,7 @@ export default async function PagesDetailsPage({
                   query={{ ...query, page }}
                   pages={browsable.pagesCount}
                   counts={issueCounts}
+                  categoryCounts={categoryCounts}
                   hasAccepted={hasAccepted}
                   checked={browsable.pagesByWorstIssue !== null}
                   rendered={isRenderedCrawl(browsable)}

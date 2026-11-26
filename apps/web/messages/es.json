@@ -482,7 +482,7 @@
       "baseCrawled": "de {count, number} páginas rastreadas",
       "baseAudited": "de {count, number} páginas auditadas",
       "baseNone": "No disponible para este crawl",
-      "unknownIndexability": "{count, plural, one {# página tiene} other {# páginas tienen}} pocos datos para decirlo."
+      "unknownIndexability": "{count, plural, one {# página tiene pocos datos para saber si se puede indexar} other {# páginas tienen pocos datos para saber si se pueden indexar}}."
     },
     "chart": {
       "ariaLabel": "Páginas según lo que tienen, tras cada rastreo completo",
@@ -579,8 +579,7 @@
     "responseTime": "{value, number} ms",
     "issueList": {
       "all": "Todas las páginas",
-      "units": "Cada incidencia cuenta las URLs afectadas. Los totales de categoría cuentan hallazgos; una URL puede aportar varios.",
-      "findings": "{count, number} hallazgos",
+      "units": "Cada número cuenta URLs. Una URL con varios problemas de una categoría cuenta una sola vez en ella.",
       "urls": "{count, number} URLs"
     },
     "actionsMenu": {
@@ -2050,23 +2049,23 @@
           "description": "Responde 200 con otra cosa, normalmente una página web. Los rastreadores no encuentran reglas ahí."
         },
         "site-blocked": {
-          "title": "Todo el sitio está bloqueado para los rastreadores",
+          "title": "robots.txt bloquea todo el sitio a los rastreadores",
           "description": "Las reglas para todos los user agents prohíben /. Salvo que un grupo nombre a un rastreador, este no pedirá nada."
         },
         "too-large": {
-          "title": "El archivo supera los 500 KiB",
+          "title": "robots.txt supera los 500 KiB",
           "description": "Google ignora lo que venga a partir de ahí, incluidas las reglas."
         },
         "no-sitemaps": {
-          "title": "No declara ningún sitemap",
+          "title": "robots.txt no declara ningún sitemap",
           "description": "La línea Sitemap es la forma en que los rastreadores encuentran los sitemaps del sitio por su cuenta."
         },
         "origins-differ": {
-          "title": "Las variantes del sitio sirven archivos distintos",
+          "title": "Las variantes del sitio sirven robots.txt distintos",
           "description": "Las reglas se aplican por origen, así que una misma URL puede estar permitida en una variante y en otra no. Compáralas abajo."
         },
         "syntax-issues": {
-          "title": "Algunas líneas tienen problemas",
+          "title": "Algunas líneas de robots.txt tienen problemas",
           "description": "Los rastreadores ignoran lo que no entienden, así que estas líneas probablemente no hacen lo que se pretendía."
         }
       },
@@ -2202,15 +2201,15 @@
           "description": "Responde 200 con otra cosa, normalmente una página web."
         },
         "no-title": {
-          "title": "No tiene título",
+          "title": "llms.txt no tiene título",
           "description": "El formato empieza con un encabezado de nivel 1 con el nombre del sitio o proyecto."
         },
         "no-summary": {
-          "title": "No tiene resumen",
+          "title": "llms.txt no tiene resumen",
           "description": "El formato incluye una cita bajo el título, con un resumen breve."
         },
         "no-links": {
-          "title": "No tiene enlaces",
+          "title": "llms.txt no tiene enlaces",
           "description": "El formato lista enlaces para seguir leyendo, bajo encabezados de nivel 2."
         }
       },
@@ -2288,19 +2287,19 @@
       "security": {
         "findings": {
           "no-contact": {
-            "title": "No tiene campo Contact",
+            "title": "security.txt no tiene campo Contact",
             "description": "RFC 9116 lo exige: es la razón de ser del archivo."
           },
           "no-expiry": {
-            "title": "No tiene un campo Expires válido",
+            "title": "security.txt no tiene un campo Expires válido",
             "description": "RFC 9116 lo exige, para que no se confíe para siempre en información desfasada."
           },
           "expired": {
-            "title": "Ha caducado",
+            "title": "security.txt ha caducado",
             "description": "Pasada su fecha Expires, ya no se debe confiar en el archivo."
           },
           "wrong-location": {
-            "title": "No está donde debería",
+            "title": "security.txt no está donde debería",
             "description": "RFC 9116 lo sitúa en /.well-known/security.txt."
           }
         }
@@ -3792,8 +3791,11 @@
       "opportunities": "Con oportunidades"
     },
     "notChecked": "Aún sin comprobar",
+    "notComparable": "No comparable",
+    "notComparableTitle": "No comparable con el rastreo anterior",
+    "notComparableLink": "Ver la comparación de ambos rastreos",
     "notAvailable": "No disponible para este rastreo",
-    "unknownIndexability": "{count, plural, one {# página tiene} other {# páginas tienen}} pocos datos para saber si se puede indexar.",
+    "unknownIndexability": "{count, plural, one {# página tiene pocos datos para saber si se puede indexar} other {# páginas tienen pocos datos para saber si se pueden indexar}}.",
     "trendFindings": "Páginas con hallazgos",
     "trendFindingsHelp": "Páginas auditadas que tienen algo de cada tipo tras cada rastreo completo. Una página puede estar en varios.",
     "trendIndexable": "Páginas indexables",
@@ -3906,6 +3908,7 @@
       "unavailable": "No se puede comparar",
       "fresh": "{count} nuevos",
       "resolved": "{count} resueltos",
+      "noneComparable": "Estos problemas no se pueden comparar con el rastreo anterior.",
       "cut": "Han cambiado demasiadas URL para contarlas aquí: abre la comparación para verlas."
     },
     "summary": "Resumen",

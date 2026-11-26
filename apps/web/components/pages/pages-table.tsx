@@ -108,6 +108,7 @@ import type { RuleRef } from '@/lib/audit-rules'
 import { formatBytes } from '@/lib/format'
 import { detailHref, nextSort, type DetailQuery } from '@/lib/pages-query'
 import { cn } from '@/lib/utils'
+import { displayUrl } from '@/lib/url-display'
 
 /** What the table needs of a URL. Plain data: it crosses from the server to this component. */
 export interface PageRow {
@@ -374,7 +375,7 @@ function Cell({
             title={row.url}
             className="min-w-0 truncate font-mono text-xs hover:underline"
           >
-            {row.url}
+            {displayUrl(row.url, host)}
           </OpenUrlLink>
           <a
             href={row.url}

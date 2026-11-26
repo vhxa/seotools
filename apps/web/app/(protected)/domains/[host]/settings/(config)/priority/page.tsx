@@ -77,7 +77,7 @@ export default async function PrioritySettingsPage({
               return (
                 <TableRow key={urlHash}>
                   <TableCell>
-                    <UrlLink url={url} />
+                    <UrlLink url={url} host={domain.host} />
                   </TableCell>
                   <TableCell>
                     <StatusCell row={result} />
