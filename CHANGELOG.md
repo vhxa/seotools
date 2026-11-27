@@ -20,6 +20,8 @@ which moves the entries of `[Unreleased]` into the new version.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-27
+
 ### Breaking
 
 - Set simultaneous renders and crawls in **Administration → Capacity**. The worker ignores
