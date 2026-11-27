@@ -15,7 +15,9 @@ export type RequestOptions = Omit<Parameters<Fetcher['fetch']>[1], 'signal'> & {
   signal?: AbortSignal
   /** Rechecked before every attempt, after pacing. */
   beforeAttempt?: () => void | Promise<void>
-  /** Each paired observation permits exactly one wire attempt. */
+  /** Observe the first failure if it is about to be retried. */
+  onFirstRetry?: (code: number | string, at: string) => void
+  /** One observation permits exactly one wire attempt. */
   singleAttempt?: boolean
   stopOnExcessiveDelay?: boolean
   /**
@@ -39,6 +41,7 @@ export function createRequester(options: {
   signal: AbortSignal
   retryAfterUntil?: number
   persistRetryAfter?: (until: number) => Promise<void>
+  onResponse?: (url: string, status: number) => Promise<void> | undefined
   retryBaseMs: number
   log: Logger
 }) {
@@ -84,6 +87,7 @@ export function createRequester(options: {
       singleAttempt = false,
       beforeAttempt,
       stopOnExcessiveDelay,
+      onFirstRetry,
       ...fetchOptions
     }: RequestOptions,
   ): Promise<FetchedResponse | FetchError> {
@@ -106,6 +110,9 @@ export function createRequester(options: {
       })
       // Alternate fetchers may report only a completed body. Never miss those bytes.
       if (reported === 0) fetchOptions.onBodyBytes?.(response.body?.length ?? 0)
+      const observation = options.onResponse?.(url, response.statusCode)
+      if (observation) await observation
+      const at = new Date().toISOString()
       const delay = parseRetryAfter(response.headers['retry-after'], Infinity)
       if (delay !== null && delay > MAX_RETRY_AFTER_MS)
         unsupportedUntil = Math.max(unsupportedUntil, Date.now() + delay)
@@ -119,13 +126,13 @@ export function createRequester(options: {
           await options.persistRetryAfter?.(until)
         }
       }
-      return { response, delay }
+      return { response, delay, at }
     }
 
     for (let attempt = 0; ; attempt++) {
       const backoff = retryBaseMs * 2 ** attempt
       try {
-        const { response, delay } = await dispatch(
+        const { response, delay, at } = await dispatch(
           send,
           signal,
           paced,
@@ -133,6 +140,7 @@ export function createRequester(options: {
           stopOnExcessiveDelay,
         )
         if (!RETRYABLE_STATUS.has(response.statusCode) || attempt >= maxRetries) return response
+        if (attempt === 0) onFirstRetry?.(response.statusCode, at)
         // The server asked to slow down: every request of the domain waits, not just this one.
         const wait = delay === null ? backoff : Math.min(delay, MAX_RETRY_AFTER_MS)
         pausedUntil = Math.max(pausedUntil, Date.now() + wait)
@@ -140,6 +148,7 @@ export function createRequester(options: {
       } catch (error) {
         if (!(error instanceof FetchError)) throw error
         if (PERMANENT_ERRORS.has(error.code) || attempt >= maxRetries) return error
+        if (attempt === 0) onFirstRetry?.(error.code, new Date().toISOString())
         await abortableSleep(backoff, signal)
       }
     }

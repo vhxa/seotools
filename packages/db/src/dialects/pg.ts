@@ -1,3 +1,5 @@
+import { CAPACITY_KEY, CAPACITY_UPGRADE_KEY } from '@seotools/core/capacity'
+import { recordRenderSlots, summarizeCapacity, type CapacityUpgrade } from '../capacity'
 import type { AnswerPair } from '@seotools/core/crawl/paired'
 import type { FindingStateRecord } from '../types'
 import type { BotTestResult } from '../types'
@@ -30,6 +32,8 @@ import {
 import type { AlertKind } from '@seotools/core'
 import {
   and,
+  count,
+  notLike,
   asc,
   countDistinct,
   desc,
@@ -146,6 +150,7 @@ import {
   newestVerifiedPerUrl,
   newVerificationUrlRows,
   priorityUrlRow,
+  parseJson,
   toCrawl,
   toHeartbeat,
   crawlStartColumns,
@@ -170,6 +175,7 @@ import {
   historyTrace,
   type LinkScope,
   foldIssueCounts,
+  issueCategorySplit,
   toLinkContext,
   foldPortfolio,
   compareSearch,
@@ -211,6 +217,7 @@ import type {
   UserTokenKind,
   Database,
   NewCrawlUrl,
+  SecondAttemptCandidate,
   NewVerificationUrl,
   SitemapHreflang,
   VerifiedUrl,
@@ -417,6 +424,19 @@ export function createPgDatabase(options: {
             )
             .where(and(eq(crawlUrlRenders.crawlId, crawlId), inArray(renderState, [...states]))),
   })
+
+  async function insertSitemapHreflang(
+    executor: Pick<typeof db, 'insert'>,
+    crawlId: string,
+    entries: SitemapHreflang[],
+  ) {
+    for (const batch of chunk(entries)) {
+      await executor
+        .insert(crawlSitemapHreflang)
+        .values(batch.map((entry) => sitemapHreflangRow(crawlId, entry)))
+        .onConflictDoNothing()
+    }
+  }
 
   /** The URL of a render, to read whether its served HTML was cut. */
   const renderedUrls = alias(crawlUrls, 'rendered_urls')
@@ -1455,6 +1475,67 @@ export function createPgDatabase(options: {
           .onConflictDoUpdate({ target: schema.userPreferences.userId, set: { locale } })
       },
     },
+    capacity: {
+      async initialize(recommended) {
+        await db.transaction(async (tx) => {
+          const updatedAt = new Date()
+          // Claim the migration marker and commit it with the domain writes and notice.
+          const claimed = await tx
+            .update(settings)
+            .set({ value: 'null', updatedAt })
+            .where(and(eq(settings.key, CAPACITY_UPGRADE_KEY), eq(settings.value, 'pending')))
+            .returning({ key: settings.key })
+          const existing = claimed.length > 0
+          const values = { value: JSON.stringify(recommended), encrypted: false, updatedAt }
+          const saveCapacity = tx.insert(settings).values({ key: CAPACITY_KEY, ...values })
+          if (!existing) {
+            await saveCapacity.onConflictDoNothing()
+            return
+          }
+
+          const legacyDomains = await tx
+            .select({
+              id: domains.id,
+              host: domains.host,
+              concurrency: crawlSettings.concurrency,
+            })
+            .from(domains)
+            .leftJoin(crawlSettings, eq(crawlSettings.domainId, domains.id))
+            .orderBy(asc(domains.host))
+          const [priorCapacity] = await tx
+            .select({ value: settings.value })
+            .from(settings)
+            .where(eq(settings.key, CAPACITY_KEY))
+          await saveCapacity.onConflictDoUpdate({ target: settings.key, set: values })
+          const concurrency = DEFAULT_CRAWL_SETTINGS.concurrency
+          for (const domain of legacyDomains) {
+            await tx
+              .insert(crawlSettings)
+              .values({
+                domainId: domain.id,
+                ...crawlSettingsColumns(DEFAULT_CRAWL_SETTINGS),
+                updatedAt,
+              })
+              .onConflictDoUpdate({
+                target: crawlSettings.domainId,
+                set: { concurrency, updatedAt },
+              })
+          }
+          const notice: CapacityUpgrade = {
+            from: parseJson(priorCapacity?.value ?? null) as CapacityUpgrade['from'],
+            to: recommended,
+            domains: legacyDomains
+              .filter((domain) => (domain.concurrency ?? 2) !== concurrency)
+              .map(({ host, concurrency: from }) => ({ host, from: from ?? 2, to: concurrency })),
+          }
+          await tx
+            .update(settings)
+            .set({ value: JSON.stringify(notice), updatedAt })
+            .where(eq(settings.key, CAPACITY_UPGRADE_KEY))
+        })
+      },
+    },
+
     settings: {
       async get(key) {
         const [row] = await db.select().from(settings).where(eq(settings.key, key))
@@ -2090,7 +2171,7 @@ export function createPgDatabase(options: {
         return rows.map(toCrawl)
       },
 
-      async latestWithResults(domainId, type) {
+      async latestWithResults(domainId, type, mode) {
         const row = (
           await db
             .select()
@@ -2099,14 +2180,88 @@ export function createPgDatabase(options: {
               and(
                 eq(crawls.domainId, domainId),
                 eq(crawls.type, type),
+                mode ? like(crawls.rendering, `%"mode":"${mode}"%`) : undefined,
                 inArray(crawls.status, ['completed', 'incomplete']),
-                eq(crawls.pruned, false),
+                mode ? undefined : eq(crawls.pruned, false),
               ),
             )
             .orderBy(desc(crawls.createdAt))
             .limit(1)
         )[0]
         return row ? toCrawl(row) : null
+      },
+
+      async latestMeasuredRender() {
+        const [row] = await db
+          .select({ metrics: crawls.capacityMetrics })
+          .from(crawls)
+          .where(
+            and(
+              eq(crawls.type, 'full'),
+              inArray(crawls.status, ['completed', 'incomplete']),
+              notLike(crawls.capacityMetrics, '%"heapP95":null%'),
+            ),
+          )
+          .orderBy(desc(crawls.finishedAt))
+          .limit(1)
+        return parseJson(row?.metrics ?? null) as Awaited<
+          ReturnType<Database['crawls']['latestMeasuredRender']>
+        >
+      },
+
+      async recordSlowdown(crawlId) {
+        await db
+          .update(crawls)
+          .set({ siteSlowdown: true })
+          .where(and(eq(crawls.id, crawlId), isNotNull(crawls.activeKey)))
+      },
+
+      async measureCapacity(crawlId, rendered) {
+        const responses = await db
+          .select({
+            ms: crawlUrls.responseTimeMs,
+            status: crawlUrls.statusCode,
+            count: count(),
+          })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'internal'),
+              isNotNull(crawlUrls.fetchedAt),
+            ),
+          )
+          .groupBy(crawlUrls.responseTimeMs, crawlUrls.statusCode)
+        const [crawl] = await db
+          .select({ slowed: crawls.siteSlowdown })
+          .from(crawls)
+          .where(eq(crawls.id, crawlId))
+        const summary = summarizeCapacity(
+          responses,
+          crawl?.slowed === true ||
+            responses.some(({ status }) => status === 429 || status === 503),
+        )
+        if (rendered) {
+          let after = ''
+          for (;;) {
+            const batch = await db
+              .select({
+                hash: crawlUrlRenders.urlHash,
+                status: crawlUrlRenders.status,
+                durationMs: crawlUrlRenders.durationMs,
+                settled: crawlUrlRenders.settled,
+                data: crawlUrlRenders.data,
+              })
+              .from(crawlUrlRenders)
+              .where(and(eq(crawlUrlRenders.crawlId, crawlId), gt(crawlUrlRenders.urlHash, after)))
+              .orderBy(asc(crawlUrlRenders.urlHash))
+              .limit(200)
+            if (!batch.length) break
+            for (const row of batch) summary.render(row)
+            after = batch.at(-1)!.hash
+          }
+        }
+        return summary.result()
       },
 
       async portfolio({ recent = 8 } = {}) {
@@ -2185,7 +2340,7 @@ export function createPgDatabase(options: {
         return rows.map(toCrawl)
       },
 
-      async markRunning(id, build) {
+      async markRunning(id, build, renderSlots) {
         return db.transaction(async (tx) => {
           const active = and(eq(crawls.id, id), isNotNull(crawls.activeKey))
           const [current] = await tx.select().from(crawls).where(active).for('update')
@@ -2194,6 +2349,10 @@ export function createPgDatabase(options: {
             .update(crawls)
             .set({
               status: 'running',
+              rendering:
+                renderSlots === undefined
+                  ? undefined
+                  : recordRenderSlots(current.rendering, [renderSlots]),
               startedAt: current.startedAt ?? new Date(),
               runBuilds: build
                 ? recordRunBuild(current.runBuilds, build, current.startedAt !== null)
@@ -2219,12 +2378,12 @@ export function createPgDatabase(options: {
           .where(eq(crawls.id, id))
       },
 
-      async finish(id, { status, error, observations }) {
+      async finish(id, { status, error, observations, capacity }) {
         const counts = await this.countUrls(id)
         return db.transaction(async (tx) => {
           const crawl = (
             await tx
-              .select({ type: crawls.type, domainId: crawls.domainId })
+              .select({ type: crawls.type, domainId: crawls.domainId, rendering: crawls.rendering })
               .from(crawls)
               .where(eq(crawls.id, id))
           )[0]
@@ -2232,6 +2391,9 @@ export function createPgDatabase(options: {
             .update(crawls)
             .set({
               ...counts,
+              capacityMetrics: capacity ? JSON.stringify(capacity.metrics) : undefined,
+              rendering:
+                crawl && capacity ? recordRenderSlots(crawl.rendering, capacity.slots) : undefined,
               pairedSummary: observations ? JSON.stringify(observations.summary) : null,
               status,
               error: error === undefined ? null : truncateError(error),
@@ -2429,6 +2591,7 @@ export function createPgDatabase(options: {
           eq(crawlUrls.scope, 'internal'),
           eq(crawlUrls.state, 'done'),
           eq(crawlUrls.kind, 'page'),
+          isNull(crawlUrls.secondAttempt),
           gte(crawlUrls.statusCode, 200),
           ne(crawlUrls.statusCode, 206),
           lt(crawlUrls.statusCode, 300),
@@ -2520,9 +2683,150 @@ export function createPgDatabase(options: {
           })
           .from(crawlUrls)
           .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.state, 'queued')))
-          .orderBy(asc(crawlUrls.depth))
+          .orderBy(
+            asc(crawlUrls.depth),
+            asc(isNull(crawlUrls.seq)),
+            asc(crawlUrls.seq),
+            asc(crawlUrls.urlHash),
+          )
           .limit(limit)
         return rows as NewCrawlUrl[]
+      },
+
+      async transientFailureCandidates({ crawlId, ref, guessSources, after, limit }) {
+        return db
+          .select({ urlHash: crawlUrls.urlHash, error: crawlUrls.error })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'internal'),
+              eq(crawlUrls.state, 'done'),
+              gt(crawlUrls.urlHash, after),
+              or(
+                eq(crawlUrls.statusCode, 429),
+                and(gte(crawlUrls.statusCode, 500), lt(crawlUrls.statusCode, 600)),
+                and(isNull(crawlUrls.statusCode), isNotNull(crawlUrls.error)),
+              ),
+              guessSources.length === 0
+                ? undefined
+                : or(
+                    notInArray(crawlUrls.source, [...guessSources]),
+                    exists(
+                      db
+                        .select({ source: crawlUrlLinks.source })
+                        .from(crawlUrlLinks)
+                        .where(
+                          and(
+                            eq(crawlUrlLinks.crawlRef, ref ?? -1),
+                            eq(crawlUrlLinks.target, crawlUrls.seq),
+                            ne(crawlUrlLinks.source, crawlUrls.seq),
+                            ne(crawlUrlLinks.kind, 'redirect'),
+                          ),
+                        ),
+                    ),
+                  ),
+            ),
+          )
+          .orderBy(asc(crawlUrls.urlHash))
+          .limit(limit)
+      },
+
+      async planSecondPass(crawlId, pass, hashes) {
+        return db.transaction(async (tx) => {
+          const claimed = await tx
+            .update(crawls)
+            .set({ secondPass: JSON.stringify(pass) })
+            .where(
+              and(eq(crawls.id, crawlId), eq(crawls.status, 'running'), isNull(crawls.secondPass)),
+            )
+            .returning({ id: crawls.id })
+          if (claimed.length === 0) return false
+          for (const batch of chunk(hashes)) {
+            await tx
+              .update(crawlUrls)
+              .set({ secondAttempt: 'queued' })
+              .where(and(eq(crawlUrls.crawlId, crawlId), inArray(crawlUrls.urlHash, batch)))
+          }
+          return true
+        })
+      },
+
+      async nextSecondAttempt(crawlId, limit) {
+        const rows = await db
+          .select()
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.secondAttempt, 'queued')))
+          .orderBy(
+            asc(crawlUrls.depth),
+            asc(isNull(crawlUrls.seq)),
+            asc(crawlUrls.seq),
+            asc(crawlUrls.urlHash),
+          )
+          .limit(limit)
+        return rows.map((row): SecondAttemptCandidate => {
+          const { data, ...url } = toCrawlUrl(row)
+          return { ...url, seq: url.seq ?? 0, firstRequestFailure: data?.firstRequestFailure }
+        })
+      },
+
+      async claimSecondAttempt(crawlId, urlHash) {
+        const rows = await db
+          .update(crawlUrls)
+          .set({ secondAttempt: 'started' })
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.urlHash, urlHash),
+              eq(crawlUrls.secondAttempt, 'queued'),
+              exists(
+                db
+                  .select({ id: crawls.id })
+                  .from(crawls)
+                  .where(and(eq(crawls.id, crawlId), eq(crawls.status, 'running'))),
+              ),
+            ),
+          )
+          .returning({ hash: crawlUrls.urlHash })
+        return rows.length > 0
+      },
+
+      async finishSecondPass(crawlId, skip) {
+        await db.transaction(async (tx) => {
+          const rows = await tx
+            .select({ state: crawlUrls.secondAttempt, count: sql<number>`count(*)` })
+            .from(crawlUrls)
+            .where(and(eq(crawlUrls.crawlId, crawlId), isNotNull(crawlUrls.secondAttempt)))
+            .groupBy(crawlUrls.secondAttempt)
+          const counts = new Map(rows.map(({ state, count }) => [state, Number(count)]))
+          if (counts.has('queued') && !skip) return
+          const totals = {
+            answered: counts.get('answered') ?? 0,
+            failed: counts.get('failed') ?? 0,
+            unconfirmed: counts.get('started') ?? 0,
+          }
+          const pass = skip
+            ? { state: 'skipped', reason: skip, ...totals }
+            : { state: 'done', ...totals }
+          await tx
+            .update(crawls)
+            .set({ secondPass: JSON.stringify(pass) })
+            .where(and(eq(crawls.id, crawlId), eq(crawls.status, 'running')))
+          if (skip) {
+            await tx
+              .update(crawlUrls)
+              .set({ secondAttempt: null })
+              .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.secondAttempt, 'queued')))
+          }
+        })
+      },
+
+      async secondAttemptedUrls(crawlId) {
+        const rows = await db
+          .select({ url: crawlUrls.url })
+          .from(crawlUrls)
+          .where(and(eq(crawlUrls.crawlId, crawlId), isNotNull(crawlUrls.secondAttempt)))
+        return rows.map(({ url }) => url)
       },
 
       async knownUrls(crawlId) {
@@ -2687,7 +2991,17 @@ export function createPgDatabase(options: {
         })
       },
 
-      async recordResult({ crawlId, urlHash, result, render, urls = [], links = [] }) {
+      async recordResult({
+        crawlId,
+        urlHash,
+        result,
+        render,
+        secondAttempt,
+        robots,
+        sitemapHreflang = [],
+        urls = [],
+        links = [],
+      }) {
         const columns = crawlResultColumns(result, new Date())
         await db.transaction(async (tx) => {
           for (const batch of chunk(urls)) {
@@ -2717,6 +3031,13 @@ export function createPgDatabase(options: {
               await tx.insert(crawlUrlLinks).values(batch).onConflictDoNothing()
             }
           }
+          if (robots) {
+            await tx
+              .update(crawls)
+              .set({ robots: crawlRobotsColumn(robots) })
+              .where(eq(crawls.id, crawlId))
+          }
+          await insertSitemapHreflang(tx, crawlId, sitemapHreflang)
           if (render) {
             const values = { crawlId, ...render, data: JSON.stringify(render.data) }
             await tx
@@ -2729,7 +3050,7 @@ export function createPgDatabase(options: {
           }
           await tx
             .update(crawlUrls)
-            .set(columns)
+            .set({ ...columns, secondAttempt })
             .where(and(eq(crawlUrls.crawlId, crawlId), eq(crawlUrls.urlHash, urlHash)))
         })
       },
@@ -3149,12 +3470,7 @@ export function createPgDatabase(options: {
       },
 
       async addSitemapHreflang(crawlId, entries) {
-        for (const batch of chunk(entries)) {
-          await db
-            .insert(crawlSitemapHreflang)
-            .values(batch.map((entry) => sitemapHreflangRow(crawlId, entry)))
-            .onConflictDoNothing()
-        }
+        await insertSitemapHreflang(db, crawlId, entries)
       },
 
       async sitemapHreflangOf(crawlId, pageHashes) {
@@ -3283,6 +3599,41 @@ export function createPgDatabase(options: {
           .where(eq(crawlUrlIssues.crawlId, crawlId))
           .groupBy(crawlUrlIssues.issue, crawlUrlAudit.indexability)
         return foldIssueCounts(rows)
+      },
+
+      async issueCategoryCounts(crawlId) {
+        const found: { category: string; pages: number }[] = []
+        for (const { category, always, unlessNotIndexable } of issueCategorySplit()) {
+          const matching = [
+            ...(always.length > 0 ? [inArray(crawlUrlIssues.issue, always)] : []),
+            ...(unlessNotIndexable.length > 0
+              ? [
+                  and(
+                    inArray(crawlUrlIssues.issue, unlessNotIndexable),
+                    or(
+                      isNull(crawlUrlAudit.indexability),
+                      ne(crawlUrlAudit.indexability, 'not-indexable'),
+                    ),
+                  ),
+                ]
+              : []),
+          ]
+          if (matching.length === 0) continue
+          const [row] = await db
+            .select({ pages: countDistinct(crawlUrlIssues.urlHash) })
+            .from(crawlUrlIssues)
+            .leftJoin(
+              crawlUrlAudit,
+              and(
+                eq(crawlUrlAudit.crawlId, crawlUrlIssues.crawlId),
+                eq(crawlUrlAudit.urlHash, crawlUrlIssues.urlHash),
+              ),
+            )
+            .where(and(eq(crawlUrlIssues.crawlId, crawlId), or(...matching)))
+          const pages = Number(row?.pages ?? 0)
+          if (pages > 0) found.push({ category, pages })
+        }
+        return found
       },
 
       async issuesOf(crawlId, urlHashes) {

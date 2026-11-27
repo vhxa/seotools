@@ -44,8 +44,7 @@ repository's file, which a test checks.
    # JavaScript rendering
    COMPOSE_PROFILES=rendering
    RENDER_BROWSER_URL=http://browser:9222
-   # For an 8 GB server; leave them out for the defaults (2 pages, 1536m, 256m)
-   RENDER_CONCURRENCY=4
+   # Compose defaults. On a 2 GiB Raspberry Pi use 1536m and 256m.
    RENDER_BROWSER_MEMORY=3g
    RENDER_BROWSER_SHM=1g
    ```
@@ -55,6 +54,7 @@ repository's file, which a test checks.
 
 6. **Domain**: on the `seotools` service, container port **3000**. Never a domain for `browser`.
 7. **Deploy**, then open **System → Integrations** in seotools: the browser must say **Ready**.
+   Use **Administration → Capacity** to review the worker’s recommended crawl and render limits.
    Also check on the server that the browser is attached only to the internal network:
    `docker inspect <browser container> --format '{{json .NetworkSettings.Networks}}'` must list one
    network, the one whose name ends in `_render`.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { discoverySentences, shortUrl } from './discovery-chain'
+import { discoverySentences } from './discovery-chain'
 
 const step = (url: string, foundKind: 'anchor' | 'redirect' | 'sitemap' | null) => ({
   url,
@@ -39,12 +39,5 @@ describe('discoverySentences', () => {
       step('https://a.test/z', null),
     ])
     expect(sentences[0]?.kind).toBeNull()
-  })
-})
-
-describe('shortUrl', () => {
-  it('drops the origin of the site only', () => {
-    expect(shortUrl('https://www.a.test/es/x?y=1', 'a.test')).toBe('/es/x?y=1')
-    expect(shortUrl('https://b.test/es', 'a.test')).toBe('https://b.test/es')
   })
 })

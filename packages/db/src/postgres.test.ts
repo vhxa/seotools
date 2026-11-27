@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import postgres from 'postgres'
 import { createDatabase } from './client'
 import { describeDatabaseContract } from './test/contract'
@@ -12,10 +13,25 @@ describeDatabaseContract(
     const sql = postgres(url!, { max: 1, onnotice: () => {} })
     return {
       db,
+      capacityPeer: () => createDatabase({ url: url!, dialect: 'pg' }),
       deleteUser: async (id: string) => {
         await sql`delete from "user" where id = ${id}`
       },
       legacy: {
+        markCapacityUpgrade: async () => {
+          await sql.unsafe(
+            readFileSync(
+              new URL('../migrations/pg/0041_capacity_upgrade.sql', import.meta.url),
+              'utf8',
+            ),
+          )
+        },
+        failCapacityWrite: async () => {
+          await sql`ALTER TABLE crawl_settings ADD CONSTRAINT fail_capacity_write CHECK (requests_per_second <> 3 OR concurrency <> 4)`
+          return async () => {
+            await sql`ALTER TABLE crawl_settings DROP CONSTRAINT fail_capacity_write`
+          }
+        },
         urlAcceptedNofollow: async (crawlId: string, urlHash: string) => {
           await sql`update crawl_url_audit set accept_nofollow = true where crawl_id = ${crawlId} and url_hash = ${urlHash}`
         },

@@ -4,7 +4,7 @@ import { createTestDatabase, type Database } from '@seotools/db/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runCrawl } from './engine'
 import { requestLatestExplanations } from './explain'
-import { fakeSite } from './fake-site'
+import { fakeSite, type Answer } from './fake-site'
 import { SITE, page } from './test-site'
 
 const log = createLogger('test', 'silent')
@@ -31,7 +31,7 @@ const site = (links: string[]) => ({
   ...Object.fromEntries(links.map((path) => [`${SITE}${path}`, page(path)])),
 })
 
-async function crawl(answers: ReturnType<typeof site>) {
+async function crawl(answers: Record<string, Answer>) {
   await new Promise((resolve) => setTimeout(resolve, 5))
   const started = await db.crawls.start({ domainId, type: 'full', trigger: 'manual' })
   if (!started) throw new Error('crawl did not start')
@@ -41,6 +41,7 @@ async function crawl(answers: ReturnType<typeof site>) {
     signal: new AbortController().signal,
     createFetcher: fakeSite(answers, 0).createFetcher,
     retryBaseMs: 1,
+    secondPassWaitMs: 0,
   })
   return started.id
 }
@@ -49,6 +50,29 @@ const explainJobs = async () =>
   (await db.jobs.list({ limit: 100 })).filter((job) => job.type === JOB_TYPES.compareExplain)
 
 describe('explaining the pair of a crawl that ends', () => {
+  it('treats a recovered source as a whole observation of a removed link', async () => {
+    const first = await crawl(site(['/a', '/b']))
+    let calls = 0
+    const second = await crawl({
+      ...site(['/a']),
+      [SITE + '/']: () =>
+        ++calls === 1
+          ? { statusCode: 502, headers: {} }
+          : page('/', { links: '<a href="/a">x</a>' }),
+    })
+    const [row] = await db.crawls.compareUrls({
+      domainId,
+      baseId: first,
+      targetId: second,
+      change: 'missing',
+      view: 'pages',
+      limit: 10,
+      offset: 0,
+    })
+    expect(calls).toBe(2)
+    expect(row).toMatchObject({ url: SITE + '/b', explanation: { reason: 'unlinked' } })
+  })
+
   it('works out the reasons inside the crawl job, after the analysis', async () => {
     const first = await crawl(site(['/a', '/b']))
     const second = await crawl(site(['/a']))

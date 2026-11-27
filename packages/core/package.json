@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./capacity": "./src/capacity.ts",
     "./access": "./src/access.ts",
     "./alerts": "./src/alerts.ts",
     "./crawl/acceptance": "./src/crawl/acceptance.ts",

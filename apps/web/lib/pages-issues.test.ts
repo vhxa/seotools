@@ -1,6 +1,11 @@
 import { PAGE_ISSUE_IDS } from '@seotools/core/crawl/issues'
 import { describe, expect, it } from 'vitest'
-import { rankIssueCounts, summariseIssues, zeroFindingState } from './pages-issues'
+import {
+  rankIssueCounts,
+  sharedIncomparable,
+  summariseIssues,
+  zeroFindingState,
+} from './pages-issues'
 
 describe('rankIssueCounts', () => {
   it('puts the most important first, then the worst type, then the most widespread', () => {
@@ -35,13 +40,21 @@ describe('rankIssueCounts', () => {
 })
 
 describe('summariseIssues', () => {
-  const summary = summariseIssues([
-    { issue: 'title-too-long', pages: 40 },
-    { issue: 'title-missing', pages: 2 },
-    { issue: 'canonical-missing', pages: 7 },
-    { issue: 'noindex', pages: 3 },
-    { issue: 'retired-check', pages: 9 },
-  ])
+  const summary = summariseIssues(
+    [
+      { issue: 'title-too-long', pages: 40 },
+      { issue: 'title-missing', pages: 2 },
+      { issue: 'canonical-missing', pages: 7 },
+      { issue: 'noindex', pages: 3 },
+      { issue: 'retired-check', pages: 9 },
+    ],
+    [
+      // Fewer URLs than rows: one URL can have several issues of a category.
+      { category: 'title', pages: 41 },
+      { category: 'canonicals', pages: 7 },
+      { category: 'directives', pages: 3 },
+    ],
+  )
   const category = (id: string) =>
     summary.flatMap((group) => group.categories).find((row) => row.id === id)
 
@@ -56,8 +69,8 @@ describe('summariseIssues', () => {
     ])
   })
 
-  it('adds up what each category found', () => {
-    expect(category('title')?.total).toBe(42)
+  it('counts the URLs of a category, not the sum of its rows', () => {
+    expect(category('title')?.total).toBe(41)
     expect(category('canonicals')?.total).toBe(7)
     expect(category('html')?.total).toBe(0)
   })
@@ -79,5 +92,25 @@ describe('zeroFindingState', () => {
     for (const issue of PAGE_ISSUE_IDS.filter((id) => id !== 'indexed-not-in-sitemap')) {
       expect(zeroFindingState(issue)).toBe('noFindings')
     }
+  })
+})
+
+describe('sharedIncomparable', () => {
+  it('is the one reason every row shares when none can be compared', () => {
+    expect(sharedIncomparable([['a'], ['a'], ['a']])).toEqual(['a'])
+    expect(sharedIncomparable([[], []])).toEqual([])
+  })
+
+  it('leaves the labels on the rows when only some cannot be compared', () => {
+    expect(sharedIncomparable([['a'], null, ['a']])).toBeNull()
+  })
+
+  it('never merges rows with different reasons', () => {
+    expect(sharedIncomparable([['a'], ['b']])).toBeNull()
+    expect(sharedIncomparable([['a'], ['a', 'b']])).toBeNull()
+  })
+
+  it('has nothing to say without rows', () => {
+    expect(sharedIncomparable([])).toBeNull()
   })
 })

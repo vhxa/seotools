@@ -12,6 +12,7 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/compon
 import { compareHref, isOneSidedChange, type CompareQuery } from '@/lib/compare-query'
 import type { ExplanationState } from '@/lib/compare-summary'
 import type { ComparisonRow } from '@/lib/crawl-compare'
+import { displayUrl } from '@/lib/url-display'
 
 const FIELD_CHANGES: readonly CrawlChange[] = ['status', 'title', 'canonical', 'robots']
 
@@ -61,7 +62,7 @@ export function CompareTable({
     >
       {oneSided ? (
         <span title={row.url} className="block font-mono text-xs break-all whitespace-normal">
-          {row.url}
+          {displayUrl(row.url, host)}
         </span>
       ) : (
         <Link
@@ -69,7 +70,7 @@ export function CompareTable({
           title={row.url}
           className="block font-mono text-xs break-all whitespace-normal hover:underline"
         >
-          {row.url}
+          {displayUrl(row.url, host)}
         </Link>
       )}
     </TableCell>

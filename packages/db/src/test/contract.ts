@@ -1,3 +1,5 @@
+import { CAPACITY_KEY, CAPACITY_UPGRADE_KEY } from '@seotools/core/capacity'
+import { readCapacitySettings } from '../capacity'
 import {
   renderStateOf,
   type RenderFilter,
@@ -51,6 +53,8 @@ const minutes = (n: number) => n * 60_000
  */
 /** What only an older version of the code wrote, put into the database as it was. */
 export interface LegacyWrites {
+  markCapacityUpgrade(): Promise<void>
+  failCapacityWrite(): Promise<() => Promise<void>>
   /** Sets the flag that accepted the page's own `nofollow` on a rule, retired with semantics 3. */
   acceptNofollow(ruleId: string, accept: boolean): Promise<void>
   /** Marks a URL of an analysis as it was stored when it had accepted the page's own `nofollow`. */
@@ -61,6 +65,7 @@ export function describeDatabaseContract(
   name: string,
   setup: () => Promise<{
     db: Database
+    capacityPeer?: () => Promise<Database>
     reset: () => Promise<void>
     legacy: LegacyWrites
     deleteUser: (id: string) => Promise<void>
@@ -73,6 +78,7 @@ export function describeDatabaseContract(
 ) {
   describe.skipIf(options.skip)(`database contract: ${name}`, () => {
     let db: Database
+    let capacityPeer: (() => Promise<Database>) | undefined
     let reset: () => Promise<void>
     let deleteUser: (id: string) => Promise<void>
     let legacy: LegacyWrites
@@ -80,7 +86,7 @@ export function describeDatabaseContract(
     let sessions: RawSessions | undefined
 
     beforeAll(async () => {
-      ;({ db, reset, legacy, countRows, deleteUser, sessions } = await setup())
+      ;({ db, reset, legacy, countRows, deleteUser, sessions, capacityPeer } = await setup())
     })
     afterAll(async () => {
       await db?.close()
@@ -95,6 +101,99 @@ export function describeDatabaseContract(
       (id) => legacy.acceptNofollow(id, true),
     )
     describeIncidents(() => db)
+
+    describe('capacity initialization', () => {
+      const recommended = { renders: 4, crawls: 2 }
+
+      it('resets existing domains atomically once, even when workers start together', async () => {
+        const first = await createCompany(db, {
+          name: 'Legacy',
+          domain: 'legacy.test',
+          crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, concurrency: 9, requestsPerSecond: 3 },
+        })
+        const second = await createCompany(db, {
+          name: 'Defaults',
+          domain: 'defaults.test',
+          crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, concurrency: 2 },
+        })
+        if (!first.ok || !second.ok) throw new Error('setup failed')
+        await db.admin.create({
+          id: 'legacy-admin',
+          name: 'Admin',
+          email: 'admin@legacy.test',
+          passwordHash: 'fixture',
+        })
+        await legacy.markCapacityUpgrade()
+        expect((await readCapacitySettings(db)).upgrade).toBeNull()
+        expect((await db.settings.get(CAPACITY_UPGRADE_KEY))?.value).toBe('pending')
+        const undoFailure = await legacy.failCapacityWrite()
+        try {
+          await expect(db.capacity.initialize(recommended)).rejects.toThrow()
+          expect((await db.crawls.settings(second.domain.id)).concurrency).toBe(2)
+          expect(await db.settings.get(CAPACITY_KEY)).toBeNull()
+          expect((await db.settings.get(CAPACITY_UPGRADE_KEY))?.value).toBe('pending')
+        } finally {
+          await undoFailure()
+        }
+        await db.crawls.saveRequestSecrets(first.domain.id, 'encrypted-settings')
+        const other = await capacityPeer?.()
+        try {
+          await Promise.all([
+            db.capacity.initialize(recommended),
+            (other ?? db).capacity.initialize(recommended),
+          ])
+        } finally {
+          await other?.close()
+        }
+        expect(await db.crawls.settings(first.domain.id)).toMatchObject({
+          concurrency: 4,
+          requestsPerSecond: 3,
+        })
+        expect((await db.crawls.settings(second.domain.id)).concurrency).toBe(4)
+        expect(await db.crawls.requestSecrets(first.domain.id)).toBe('encrypted-settings')
+        const notice = {
+          from: null,
+          to: recommended,
+          domains: [
+            { host: 'defaults.test', from: 2, to: 4 },
+            { host: 'legacy.test', from: 9, to: 4 },
+          ],
+        }
+        expect(await readCapacitySettings(db)).toMatchObject({
+          capacity: recommended,
+          upgrade: notice,
+        })
+        const custom = { renders: 3, crawls: 1 }
+        await db.settings.set(CAPACITY_KEY, JSON.stringify(custom), false)
+        await db.crawls.saveSettings(first.domain.id, { ...DEFAULT_CRAWL_SETTINGS, concurrency: 7 })
+        await db.capacity.initialize({ renders: 1, crawls: 1 })
+        expect(await readCapacitySettings(db)).toMatchObject({ capacity: custom, upgrade: notice })
+        expect((await db.crawls.settings(first.domain.id)).concurrency).toBe(7)
+      })
+
+      it('sets instance defaults without touching a fresh domain or showing a notice', async () => {
+        await legacy.markCapacityUpgrade()
+        expect(await db.settings.get(CAPACITY_UPGRADE_KEY)).toBeNull()
+        await db.admin.create({
+          id: 'fresh-admin',
+          name: 'Admin',
+          email: 'admin@fresh.test',
+          passwordHash: 'fixture',
+        })
+        const created = await createCompany(db, { name: 'Fresh', domain: 'fresh.test' })
+        if (!created.ok) throw new Error('setup failed')
+        await db.crawls.saveSettings(created.domain.id, {
+          ...DEFAULT_CRAWL_SETTINGS,
+          concurrency: 7,
+        })
+        await db.capacity.initialize(recommended)
+        expect(await readCapacitySettings(db)).toMatchObject({
+          capacity: recommended,
+          upgrade: null,
+        })
+        expect((await db.crawls.settings(created.domain.id)).concurrency).toBe(7)
+      })
+    })
 
     it('snapshots rendering transactionally, keeps atomic URL/render records and prunes them together', async () => {
       const created = await createCompany(db, {
@@ -196,6 +295,86 @@ export function describeDatabaseContract(
       await db.crawls.prune({ domainId, type: 'full', keep: 1 })
       expect(await db.crawls.renders(crawl.id)).toEqual([])
       expect((await db.crawls.get(crawl.id))?.rendering).toEqual(crawl.rendering)
+    })
+
+    it('retains measured capacity and slot observations after pruning', async () => {
+      const created = await createCompany(db, {
+        name: 'Measured',
+        domain: 'example.com',
+        crawlSettings: { ...DEFAULT_CRAWL_SETTINGS, renderingMode: 'headless' },
+      })
+      if (!created.ok) throw new Error('setup failed')
+      const domainId = created.domain.id
+      const crawl = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      await db.crawls.markRunning(crawl.id, undefined, 2)
+      const url = 'https://example.com/'
+      const urlHash = crawlUrlHash(url)
+      await db.crawls.addUrls(crawl.id, [
+        { url, urlHash, seq: 1, depth: 0, source: 'seed', scope: 'internal' },
+      ])
+      await db.crawls.recordSlowdown(crawl.id)
+      await db.crawls.recordResult({
+        crawlId: crawl.id,
+        urlHash,
+        result: {
+          kind: 'page',
+          statusCode: 200,
+          contentType: 'text/html',
+          redirectTo: null,
+          title: null,
+          metaRobots: null,
+          xRobotsTag: null,
+          canonical: null,
+          responseTimeMs: 24,
+          bytes: 100,
+          error: null,
+          data: null,
+        },
+        render: {
+          urlHash,
+          status: 'rendered',
+          settled: false,
+          truncated: false,
+          finalUrl: url,
+          durationMs: 5100,
+          failure: null,
+          data: {
+            facts: null,
+            capture: { pending: 1, afterMs: 5050, delayMs: 50 },
+            jsHeapBytes: 1536 * 1024,
+            renderSlots: 4,
+            requests: {},
+            scriptErrors: { count: 0, first: [] },
+          },
+        },
+      })
+      const capacity = await db.crawls.measureCapacity(crawl.id, true)
+      expect(capacity).toEqual({
+        slots: [4],
+        metrics: {
+          urls: 1,
+          medianResponseMs: 24,
+          renderCount: 1,
+          medianRenderMs: 5100,
+          heapP95: 2 * 1024 ** 2,
+          captures: 1,
+          unsettled: 1,
+          delayP95Ms: 50,
+          slowed: true,
+        },
+      })
+      await db.crawls.finish(crawl.id, { status: 'completed', capacity })
+      await db.crawls.saveSettings(domainId, DEFAULT_CRAWL_SETTINGS)
+      const next = (await db.crawls.start({ domainId, type: 'full', trigger: 'manual' }))!
+      await db.crawls.finish(next.id, { status: 'completed' })
+      await db.crawls.prune({ domainId, type: 'full', keep: 1 })
+      expect(await db.crawls.latestWithResults(domainId, 'full', 'rendered')).toMatchObject({
+        id: crawl.id,
+        pruned: true,
+        capacityMetrics: capacity.metrics,
+        rendering: { slots: [2, 4] },
+      })
+      expect(await db.crawls.latestMeasuredRender()).toEqual(capacity.metrics)
     })
 
     it('classifies renders in SQL as renderStateOf does, filters and counts by state', async () => {
@@ -1367,6 +1546,116 @@ export function describeDatabaseContract(
         expect(queued[0]).toMatchObject({ depth: 0, source: 'seed', scope: 'internal' })
         expect(await db.crawls.nextQueued(id, 1)).toHaveLength(1)
         expect(await db.crawls.knownUrls(id)).toHaveLength(3)
+      })
+
+      it('breaks queue depth ties by discovery sequence, with unnumbered rows last', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        const early = newUrl('https://acme.com/z')
+        const late = newUrl('https://acme.com/a')
+        const legacy = newUrl('https://acme.com/b', { seq: undefined })
+        await db.crawls.addUrls(id, [legacy, late, early])
+
+        expect((await db.crawls.nextQueued(id, 10)).map(({ url }) => url)).toEqual([
+          early.url,
+          late.url,
+          legacy.url,
+        ])
+      })
+
+      it('claims delayed retries once and keeps only confirmed outcomes in the second-pass totals', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        await db.crawls.markRunning(id)
+        const home = newUrl('https://acme.com/')
+        const other = newUrl('https://acme.com/other')
+        const guessed = newUrl('https://www.acme.com/', { source: 'seed' })
+        await db.crawls.addUrls(id, [other, home, guessed])
+        for (const { urlHash } of [home, other, guessed]) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash,
+            result: result('page', { statusCode: 502 }),
+          })
+        }
+        const found = await db.crawls.transientFailureCandidates({
+          crawlId: id,
+          ref: (await db.crawls.get(id))!.ref,
+          guessSources: ['seed'],
+          after: '',
+          limit: 10,
+        })
+        expect(found.map(({ urlHash }) => urlHash).sort()).toEqual(
+          [home.urlHash, other.urlHash].sort(),
+        )
+        const pass = { state: 'pending', notBefore: 0 } as const
+        expect(await db.crawls.planSecondPass(id, pass, [other.urlHash, home.urlHash])).toBe(true)
+        expect(await db.crawls.planSecondPass(id, pass, [guessed.urlHash])).toBe(false)
+        expect((await db.crawls.nextSecondAttempt(id, 10)).map(({ url }) => url)).toEqual([
+          home.url,
+          other.url,
+        ])
+        expect(await db.crawls.claimSecondAttempt(id, home.urlHash)).toBe(true)
+        expect(await db.crawls.claimSecondAttempt(id, home.urlHash)).toBe(false)
+        await db.crawls.recordResult({
+          crawlId: id,
+          urlHash: home.urlHash,
+          result: result('page'),
+          secondAttempt: 'answered',
+        })
+        expect(await db.crawls.claimSecondAttempt(id, other.urlHash)).toBe(true)
+        expect(await db.crawls.nextSecondAttempt(id, 10)).toEqual([])
+        await db.crawls.finishSecondPass(id)
+        expect((await db.crawls.get(id))?.secondPass).toEqual({
+          state: 'done',
+          answered: 1,
+          failed: 0,
+          unconfirmed: 1,
+        })
+        expect((await db.crawls.getUrl(id, other.urlHash))?.statusCode).toBe(502)
+      })
+
+      it('stores why a delayed pass stopped and leaves its unattempted URLs as they were', async () => {
+        const domainId = await domain()
+        const { id } = await startCrawl(domainId)
+        await db.crawls.markRunning(id)
+        const hub = newUrl('https://acme.com/hub')
+        const waiting = newUrl('https://acme.com/waiting')
+        await db.crawls.addUrls(id, [hub, waiting])
+        for (const { urlHash } of [hub, waiting]) {
+          await db.crawls.recordResult({
+            crawlId: id,
+            urlHash,
+            result: result('page', { statusCode: 502 }),
+          })
+        }
+        await db.crawls.planSecondPass(id, { state: 'pending', notBefore: 0 }, [
+          hub.urlHash,
+          waiting.urlHash,
+        ])
+        expect(await db.crawls.claimSecondAttempt(id, hub.urlHash)).toBe(true)
+        await db.crawls.recordResult({
+          crawlId: id,
+          urlHash: hub.urlHash,
+          result: result('page', { statusCode: 503 }),
+          secondAttempt: 'failed',
+        })
+
+        await db.crawls.finishSecondPass(id, 'retry-after')
+        expect((await db.crawls.get(id))?.secondPass).toEqual({
+          state: 'skipped',
+          reason: 'retry-after',
+          answered: 0,
+          failed: 1,
+          unconfirmed: 0,
+        })
+        expect(await db.crawls.nextSecondAttempt(id, 10)).toEqual([])
+        expect(await db.crawls.secondAttemptedUrls(id)).toEqual([hub.url])
+        expect(await db.crawls.getUrl(id, waiting.urlHash)).toMatchObject({
+          state: 'done',
+          statusCode: 502,
+        })
+        expect(await db.crawls.claimSecondAttempt(id, waiting.urlHash)).toBe(false)
       })
 
       it('records a result with what it discovered, atomically and idempotently', async () => {
@@ -2770,6 +3059,56 @@ export function describeDatabaseContract(
             opportunity: 0,
           })
           expect(await db.crawls.issueCounts(id)).toEqual([])
+        })
+
+        it('counts the URLs of a category once, whatever the issues each has', async () => {
+          const domainId = await domain()
+          const { id } = await startCrawl(domainId)
+          const [a, b, c] = ['a', 'b', 'c'].map((path) =>
+            crawlUrlHash(`https://acme.com/${path}`),
+          ) as [string, string, string]
+          const audited = (urlHash: string, indexability: 'indexable' | 'not-indexable') => ({
+            urlHash,
+            participation: 'audited' as const,
+            participationRule: null,
+            intent: 'indexable' as const,
+            intentRule: null,
+            conditions: {},
+            indexability,
+            blockers: [],
+          })
+          await saveIssues({
+            crawlId: id,
+            issues: [
+              // Two issues of one category on one URL: the URL counts once.
+              { urlHash: a, issue: 'title-missing' },
+              { urlHash: a, issue: 'title-multiple' },
+              // Secondary on a URL that cannot be indexed: not counted, as in `issueCounts`.
+              { urlHash: b, issue: 'title-missing' },
+              { urlHash: b, issue: 'client-error' },
+              // A URL the audit has no row for is not secondary.
+              { urlHash: c, issue: 'title-missing' },
+            ],
+            pages: { issue: 0, warning: 3, opportunity: 0 },
+            withType: { issue: 1, warning: 3, opportunity: 0 },
+            catalog: 'v1',
+            audit: { urls: [audited(a, 'indexable'), audited(b, 'not-indexable')] },
+          })
+
+          const byCategory = (await db.crawls.issueCategoryCounts(id)).sort((x, y) =>
+            x.category.localeCompare(y.category),
+          )
+          expect(byCategory).toEqual([
+            { category: 'response-codes', pages: 1 },
+            { category: 'title', pages: 2 },
+          ])
+          // The rows add up to more than the URLs: that is the point of counting them apart.
+          const rows = await db.crawls.issueCounts(id)
+          expect(rows.find((row) => row.issue === 'title-missing')).toMatchObject({
+            pages: 2,
+            secondary: 1,
+          })
+          expect(await db.crawls.issueCategoryCounts('missing')).toEqual([])
         })
 
         it('keeps what rules accept apart from what is pending, and lists it', async () => {

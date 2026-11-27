@@ -16,7 +16,16 @@ import { isRenderedCrawl } from '@/lib/rendering'
 import { IssueLabel, IssueMark } from '@/components/pages/issue-mark'
 import { TrendCard } from '@/components/pages/trend-card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { dashboardDifference, trendFigures, trendNow, trendPoints } from '@/lib/dashboard'
+import {
+  basisChanges,
+  dashboardDifference,
+  trendBasisOf,
+  trendFigures,
+  trendNow,
+  trendPoints,
+} from '@/lib/dashboard'
+import { NotComparable } from '@/components/pages/basis-change'
+import { compareHref, parseCompareQuery } from '@/lib/compare-query'
 import { crawlActivity } from '@/lib/crawl-activity'
 import { getDb } from '@/lib/db'
 import { homePriorities } from '@/lib/domain-home'
@@ -59,6 +68,12 @@ export default async function DomainDashboardPage({
       ? await compareWithPrevious({ db, target: latest, findings: false })
       : null
   const previousFigures = comparison?.base ? trendFigures(comparison.base) : null
+  // Two crawls that did not measure the same thing have no difference: the tiles say so, the way
+  // the trend does, instead of a figure that only reflects the change.
+  const changes =
+    latest && comparison?.base
+      ? basisChanges(trendBasisOf(comparison.base), trendBasisOf(latest))
+      : []
   const delta = (
     key: 'crawled' | 'indexable' | 'issues' | 'warnings' | 'opportunities',
     value: number | null,
@@ -147,26 +162,36 @@ export default async function DomainDashboardPage({
         </h2>
         <div className="grid grid-cols-2 gap-4 @2xl:grid-cols-3 @4xl:grid-cols-5">
           {tiles.map(({ key, value }) => {
-            const change = delta(key, value)
+            const change = changes.length > 0 ? null : delta(key, value)
             return (
               <Stat
                 key={key}
                 label={t(`tiles.${key}`)}
                 value={number(value)}
                 change={
-                  change !== null && (
-                    <dd
-                      className={cn(
-                        'text-sm tabular-nums',
-                        key === 'crawled' || key === 'indexable' || change === 0
-                          ? 'text-muted-foreground'
-                          : change < 0
-                            ? 'text-green-700 dark:text-green-400'
-                            : 'text-destructive',
-                      )}
-                    >
-                      {format.number(change, { signDisplay: 'exceptZero' })}
-                    </dd>
+                  changes.length > 0 && latest && comparison?.base ? (
+                    <NotComparable
+                      changes={changes}
+                      href={compareHref(domain.host, parseCompareQuery({}), {
+                        from: comparison.base.id,
+                        to: latest.id,
+                      })}
+                    />
+                  ) : (
+                    change !== null && (
+                      <dd
+                        className={cn(
+                          'text-sm tabular-nums',
+                          key === 'crawled' || key === 'indexable' || change === 0
+                            ? 'text-muted-foreground'
+                            : change < 0
+                              ? 'text-green-700 dark:text-green-400'
+                              : 'text-destructive',
+                        )}
+                      >
+                        {format.number(change, { signDisplay: 'exceptZero' })}
+                      </dd>
+                    )
                   )
                 }
                 hint={

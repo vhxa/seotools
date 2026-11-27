@@ -74,10 +74,11 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
   const { host } = await params
   const { domain, canEdit } = await requireDomain(host)
   const pairedTitle = (await getTranslations('PairedAnswers'))('title')
-  const [t, tCrawl, tStamp, format] = await Promise.all([
+  const [t, tCrawl, tStamp, tRetry, format] = await Promise.all([
     getTranslations('Crawls'),
     getTranslations('Crawl'),
     getTranslations('CrawlHistory.stamp'),
+    getTranslations('CrawlRetry'),
     getFormatter(),
   ])
   const db = await getDb()
@@ -218,6 +219,7 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                   format.dateTime(value, { dateStyle: 'medium', timeStyle: 'short' })
                 const error = crawlError(crawl)
                 const opportunities = crawl.pagesWithType?.opportunity
+                const retry = crawl.secondPass
                 return (
                   <CrawlRow
                     key={crawl.id}
@@ -345,6 +347,51 @@ export default async function CrawlsPage({ params }: { params: Promise<{ host: s
                             </Item>
                           )}
                         </Section>
+                        {retry && retry.state !== 'pending' && (
+                          <Section title={tRetry('title')}>
+                            {retry.state === 'skipped' && (
+                              <Item label={tRetry('status')}>
+                                {retry.reason === 'limit'
+                                  ? tRetry('skippedLimit', { limit: retry.limit })
+                                  : tRetry('skippedRetryAfter')}
+                              </Item>
+                            )}
+                            {(retry.state === 'done' ||
+                              (retry.reason === 'retry-after' &&
+                                retry.answered + retry.failed + retry.unconfirmed > 0)) && (
+                              <>
+                                <Item label={tRetry('requested')}>
+                                  {format.number(retry.answered + retry.failed)}
+                                </Item>
+                                <Item label={tRetry('answered')}>
+                                  {format.number(retry.answered)}
+                                </Item>
+                                <Item label={tRetry('failed')}>
+                                  {format.number(retry.failed)}
+                                  {retry.failed > 0 && isBrowsable && !crawl.pruned && (
+                                    <>
+                                      {' '}
+                                      <Link
+                                        href={detailHref(domain.host, detail, {
+                                          crawl: crawl.id,
+                                          view: 'errors',
+                                        })}
+                                        className="underline"
+                                      >
+                                        {tRetry('errors')}
+                                      </Link>
+                                    </>
+                                  )}
+                                </Item>
+                                {retry.unconfirmed > 0 && (
+                                  <Item label={tRetry('unconfirmed')}>
+                                    {format.number(retry.unconfirmed)}
+                                  </Item>
+                                )}
+                              </>
+                            )}
+                          </Section>
+                        )}
                         {!cancelled && crawl.type === 'full' && (
                           <Section title={t('sections.analysis')}>
                             <Item label={t('details.rules')}>{rulesLabel(version)}</Item>

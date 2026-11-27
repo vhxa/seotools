@@ -1,4 +1,3 @@
-import type { RenderService } from '../render/service'
 import { crawlRunPayload } from '@seotools/core'
 import type { Database } from '@seotools/db'
 import { runCrawl } from '../crawl/engine'
@@ -6,7 +5,7 @@ import { createHttpFetcher } from '../crawl/fetcher'
 import { PermanentJobError, type JobHandler } from '../types'
 
 export function createCrawlRunHandler(options: {
-  renderService?: Pick<RenderService, 'check' | 'render'>
+  renderService?: Parameters<typeof runCrawl>[1]['renderService']
   db: Database
   allowPrivateNetworks: boolean
   appVersion?: string

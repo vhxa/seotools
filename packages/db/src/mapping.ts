@@ -37,8 +37,10 @@ import {
   crawlUrlHash,
   enabledExtraFiles,
   extractorsSchema,
+  ISSUE_GROUPS,
   isPageIssueId,
   isSecondaryFinding,
+  issuesOfCategory,
   parseAuditSnapshot,
   parseRenderObservation,
   parseIssueEvidence,
@@ -138,7 +140,7 @@ export interface JobRow {
   updatedAt: Date
 }
 
-function parseJson(raw: string | null): unknown {
+export function parseJson(raw: string | null): unknown {
   if (raw === null) return null
   try {
     return JSON.parse(raw)
@@ -295,7 +297,9 @@ export type CrawlRow = Omit<
   | 'analysisBuild'
   | 'discoverySettings'
   | 'pairedSummary'
+  | 'secondPass'
   | 'rendering'
+  | 'capacityMetrics'
   | 'ignoredParameters'
   | 'seedUrls'
   | 'robots'
@@ -310,7 +314,10 @@ export type CrawlRow = Omit<
   analysisBuild: string | null
   discoverySettings: string | null
   pairedSummary?: string | null
+  secondPass?: string | null
   rendering: string | null
+  capacityMetrics?: string | null
+  siteSlowdown?: boolean | null
   ignoredParameters: string | null
   seedUrls: string | null
   robots: string | null
@@ -346,7 +353,10 @@ export const toCrawl = ({
   analysisBuild,
   discoverySettings,
   pairedSummary,
+  secondPass,
   rendering,
+  capacityMetrics,
+  siteSlowdown: _siteSlowdown,
   ignoredParameters,
   seedUrls,
   robots,
@@ -369,7 +379,11 @@ export const toCrawl = ({
   analysisBuild: parseJson(analysisBuild) as Crawl['analysisBuild'],
   discoverySettings: parseJson(discoverySettings) as Crawl['discoverySettings'],
   pairedSummary: parseJson(pairedSummary ?? null) as Crawl['pairedSummary'],
+  secondPass: parseJson(secondPass ?? null) as Crawl['secondPass'],
   rendering: parseJson(rendering) as Crawl['rendering'],
+  ...(capacityMetrics
+    ? { capacityMetrics: parseJson(capacityMetrics) as Crawl['capacityMetrics'] }
+    : {}),
   ...row,
   pagesByWorstIssue:
     issue === null || warning === null || opportunity === null
@@ -1122,6 +1136,26 @@ export function foldIssueCounts(
     counts.set(row.issue, entry)
   }
   return [...counts.values()]
+}
+
+/**
+ * The issues of each category, split by how a URL that cannot be indexed treats them: the ones it
+ * always counts for and the secondary ones (`isSecondaryFinding`), which it does not. A URL counts
+ * for a category by the same rule `foldIssueCounts` applies to each issue.
+ */
+export function issueCategorySplit(): {
+  category: string
+  always: string[]
+  unlessNotIndexable: string[]
+}[] {
+  return ISSUE_GROUPS.flatMap((group) => group.categories).map((category) => {
+    const issues = issuesOfCategory(category)
+    return {
+      category,
+      always: issues.filter((issue) => !isSecondaryFinding(issue, 'not-indexable')),
+      unlessNotIndexable: issues.filter((issue) => isSecondaryFinding(issue, 'not-indexable')),
+    }
+  })
 }
 
 /** Issues by URL, as the history keeps them. */

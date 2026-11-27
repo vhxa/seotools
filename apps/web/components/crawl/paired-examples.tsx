@@ -8,6 +8,7 @@ import {
   type PairedExamplesResult,
 } from '@/app/(protected)/domains/[host]/crawl-details-actions'
 import { Skeleton } from '@/components/ui/skeleton'
+import { displayUrl } from '@/lib/url-display'
 
 /**
  * The URLs a crawl's paired check found answering differently. They are read when the details of the
@@ -49,7 +50,7 @@ export function PairedExamples({ host, crawlId }: { host: string; crawlId: strin
               className="font-mono text-xs break-all underline"
               href={`/domains/${host}/urls/${example.urlHash}?crawl=${crawlId}`}
             >
-              {example.url}
+              {displayUrl(example.url, host)}
             </Link>
           </li>
         ))}

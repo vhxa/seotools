@@ -36,6 +36,7 @@ export async function IssuesFilter({
   query,
   pages,
   counts,
+  categoryCounts,
   hasAccepted = false,
   checked,
   rendered = true,
@@ -47,6 +48,8 @@ export async function IssuesFilter({
   /** Pages of the crawl, which is what "all pages" counts. */
   pages: number
   counts: { issue: string; pages: number }[]
+  /** The distinct URLs with an issue of each category, which is what its badge counts. */
+  categoryCounts: { category: string; pages: number }[]
   /** Whether a rule accepts any finding of the crawl: only then is there a list of them to open. */
   hasAccepted?: boolean
   /** Whether the crawl was checked for issues at all. */
@@ -136,7 +139,7 @@ export async function IssuesFilter({
               </SidebarGroupContent>
             </SidebarGroup>
 
-            {summariseIssues(counts).map((group) => (
+            {summariseIssues(counts, categoryCounts).map((group) => (
               <SidebarGroup key={group.id} className="p-0">
                 <SidebarGroupLabel className="mb-1 px-2 text-[13px] font-normal">
                   {tCatalog(`groups.${group.id}`)}
@@ -158,7 +161,7 @@ export async function IssuesFilter({
                               </span>
                             ) : category.worst ? (
                               <Badge
-                                aria-label={tDetails('issueList.findings', {
+                                aria-label={tDetails('issueList.urls', {
                                   count: category.total,
                                 })}
                                 className={cn(

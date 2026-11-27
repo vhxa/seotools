@@ -32,9 +32,8 @@ describe('render browser contract', () => {
       false,
     )
   })
-  it('defaults to no browser and two pages, and bounds endpoint and concurrency', () => {
+  it('defaults to no browser and validates the endpoint', () => {
     const base = { BETTER_AUTH_SECRET: 'x'.repeat(32) }
-    expect(parseWorkerEnv(base)).toMatchObject({ RENDER_CONCURRENCY: 2 })
     expect(parseWorkerEnv(base).RENDER_BROWSER_URL).toBeUndefined()
     for (const RENDER_BROWSER_URL of ['http://browser:9222', 'https://browser:9222/'])
       expect(parseWorkerEnv({ ...base, RENDER_BROWSER_URL }).RENDER_BROWSER_URL).toBe(
@@ -48,7 +47,5 @@ describe('render browser contract', () => {
       'http://browser:9222?token=x',
     ])
       expect(() => parseWorkerEnv({ ...base, RENDER_BROWSER_URL })).toThrow()
-    for (const RENDER_CONCURRENCY of ['0', '9', '-1', '1.5'])
-      expect(() => parseWorkerEnv({ ...base, RENDER_CONCURRENCY })).toThrow()
   })
 })

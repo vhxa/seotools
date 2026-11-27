@@ -52,7 +52,7 @@ export const DEFAULT_CRAWL_SETTINGS: CrawlSettings = {
   renderWaitMs: 5000,
   renderOmittedHosts: [],
   userAgent: null,
-  concurrency: 2,
+  concurrency: 4,
   requestsPerSecond: 5,
   timeoutMs: 30_000,
   maxRetries: 2,

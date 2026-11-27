@@ -17,7 +17,7 @@ test('opens the paired answers from a completed crawl', async ({ page }) => {
   await page.getByRole('button', { name: 'Details' }).click()
   await expect(page.getByRole('dialog').getByText('Paired requests', { exact: true })).toBeVisible()
   const link = page.getByRole('dialog').getByRole('link', {
-    name: 'https://example.com/products?sort=price',
+    name: '/products?sort=price',
     exact: true,
   })
   await expect(link).toBeVisible()

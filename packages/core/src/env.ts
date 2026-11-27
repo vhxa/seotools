@@ -1,3 +1,4 @@
+import { dockerSize } from './capacity'
 import { z } from './zod'
 import { BUILD_CHANNELS, type BuildInfo } from './version'
 
@@ -61,13 +62,12 @@ export const workerEnvSchema = commonEnvSchema.extend({
       )
     }, 'must be an http(s) browser endpoint without credentials, path or query')
     .optional(),
-  RENDER_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(2),
+  RENDER_BROWSER_MEMORY: z.string().optional().transform(dockerSize),
+  RENDER_BROWSER_SHM: z.string().optional().transform(dockerSize),
   WORKER_CONCURRENCY: int(2),
   WORKER_POLL_INTERVAL_MS: int(1000, 50),
   /** A job `running` for longer than this is considered abandoned and re-queued. */
   JOB_LOCK_TIMEOUT_MS: int(5 * 60_000, 1000),
-  /** Crawls running in parallel. They have their own slots, so they never starve other jobs. */
-  CRAWL_CONCURRENCY: int(2),
   /** Lets the crawler reach loopback and private addresses, to audit sites on an intranet. */
   CRAWLER_ALLOW_PRIVATE_NETWORKS: bool.default(false),
   /** The public URL of the app, for the links of the emails the worker sends. */
@@ -118,7 +118,12 @@ type Source = Record<string, string | undefined>
 
 export const parseCommonEnv = (source: Source = process.env) => parse(commonEnvSchema, source)
 export const parseWebEnv = (source: Source = process.env) => parse(webEnvSchema, source)
-export const parseWorkerEnv = (source: Source = process.env) => parse(workerEnvSchema, source)
+export function parseWorkerEnv(source: Source = process.env) {
+  const legacyCapacityVariables = (['RENDER_CONCURRENCY', 'CRAWL_CONCURRENCY'] as const).filter(
+    (key) => source[key] !== undefined,
+  )
+  return { ...parse(workerEnvSchema, source), legacyCapacityVariables }
+}
 export const parseBootstrapEnv = (source: Source = process.env) => parse(bootstrapEnvSchema, source)
 
 /** The version comes from the code (`package.json`); the channel and the commit from the image. */

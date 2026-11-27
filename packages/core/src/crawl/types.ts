@@ -340,7 +340,14 @@ export type IssueEvidence =
     }
 
 /** Data extracted from a page that has no column of its own. */
+export interface FirstRequestFailure {
+  code: number | string
+  at: string
+  recoveredOn?: 'retry' | 'second-pass'
+}
+
 export interface CrawlPageData {
+  firstRequestFailure?: FirstRequestFailure
   notRequested?: 'excluded' | 'depth'
   /** What the domain's custom extractors read from the page, by extractor key. */
   extracted?: Extracted

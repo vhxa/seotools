@@ -5,6 +5,7 @@ import { getTranslations } from 'next-intl/server'
 import { setPriorityUrlAction } from '@/app/(protected)/domains/[host]/actions'
 import { StatusCell } from '@/components/crawl/status-cell'
 import { Button } from '@/components/ui/button'
+import { displayUrl } from '@/lib/url-display'
 
 /** The pieces of a table of URLs, shared by the pages list and the priority pages settings. */
 
@@ -13,7 +14,8 @@ export { StatusCell }
 export const detailOf = (row: CrawlUrl | undefined) =>
   row?.error ?? row?.title ?? (row?.redirectTo && `→ ${row.redirectTo}`) ?? row?.contentType ?? '—'
 
-export function UrlLink({ url }: { url: string }) {
+/** An external link to a URL; with `host` it reads as a path when it is on the domain's origin. */
+export function UrlLink({ url, host }: { url: string; host?: string }) {
   return (
     <a
       href={url}
@@ -22,7 +24,7 @@ export function UrlLink({ url }: { url: string }) {
       title={url}
       className="block max-w-md truncate font-mono text-xs hover:underline"
     >
-      {url}
+      {host ? displayUrl(url, host) : url}
     </a>
   )
 }

@@ -87,13 +87,15 @@ export async function UrlDetail({
   data: UrlDetailData
   hrefFor: (urlHash: string) => string
 }) {
-  const [t, tIssues, format] = await Promise.all([
+  const [t, tIssues, tRetry, format] = await Promise.all([
     getTranslations('UrlDetail'),
     getTranslations('PageIssues'),
+    getTranslations('CrawlRetry'),
     getFormatter(),
   ])
   const basis = await getTranslations('AuditBasis')
   const { url, crawl, audit } = data
+  const firstFailure = url.data?.firstRequestFailure
   const documentState = documentFindingsState({
     documentBasis: crawl.auditSnapshot?.documentBasis,
     observation: audit?.documentObservation,
@@ -128,6 +130,22 @@ export async function UrlDetail({
   return (
     <div className="@container/url-detail grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 [overflow-wrap:anywhere] [&_[data-slot=badge]]:max-w-full [&_[data-slot=select-trigger]]:max-w-full [&_[data-slot=select-trigger]]:min-w-0 [&_[data-slot=select-value]]:min-w-0">
       {pair && <PairedDetail pair={pair} />}
+      {firstFailure?.recoveredOn && (
+        <p className="text-sm text-muted-foreground">
+          {tRetry(
+            firstFailure.recoveredOn === 'second-pass'
+              ? 'recoveredOnSecondPass'
+              : 'recoveredOnRetry',
+            {
+              code: firstFailure.code,
+              date: format.dateTime(new Date(firstFailure.at), {
+                dateStyle: 'medium',
+                timeStyle: 'medium',
+              }),
+            },
+          )}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-muted-foreground">{t(`kinds.${url.kind}`)}</span>
         {data.recheck.available && (

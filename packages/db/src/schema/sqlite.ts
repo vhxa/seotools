@@ -248,6 +248,8 @@ export const crawls = sqliteTable(
     seedUrls: text('seed_urls'),
     startedBuild: text('started_build'),
     runBuilds: text('run_builds'),
+    capacityMetrics: text('capacity_metrics'),
+    siteSlowdown: integer('site_slowdown', { mode: 'boolean' }),
     analysisBuild: text('analysis_build'),
     discoverySettings: text('discovery_settings'),
     ignoredParameters: text('ignored_parameters'),
@@ -256,6 +258,7 @@ export const crawls = sqliteTable(
     urlsCount: integer('urls_count').notNull().default(0),
     pairedSummary: text('paired_summary'),
     retryAfterUntil: ts('retry_after_until'),
+    secondPass: text('second_pass'),
     admissionDropped: integer('admission_dropped', { mode: 'boolean' }),
     urlsDoneCount: integer('urls_done_count').notNull().default(0),
     externalCount: integer('external_count').notNull().default(0),
@@ -338,6 +341,7 @@ export const crawlUrls = sqliteTable(
     /** JSON (`CrawlPageData`): everything extracted that has no column of its own. */
     data: text('data'),
     fetchedAt: ts('fetched_at'),
+    secondAttempt: text('second_attempt', { enum: ['queued', 'started', 'answered', 'failed'] }),
     /** Its number in the crawl, in the order it was found: what the rows of links refer to. */
     seq: integer('seq'),
     /**

@@ -45,6 +45,14 @@ test.describe('a member with a viewer grant on one domain', () => {
     await expect(page.getByRole('button', { name: 'Mark as priority' })).toHaveCount(0)
   })
 
+  test('shows the crawl sliders as read-only', async ({ page }) => {
+    await page.goto(`${domain}/settings/crawl`)
+    const sliders = page.locator('input[type="range"]')
+    await expect(sliders).toHaveCount(9)
+    for (const slider of await sliders.all()) await expect(slider).toBeDisabled()
+    await expect(page.getByText('Save settings', { exact: true })).toHaveCount(0)
+  })
+
   test('reads the Crawls area without being offered to run anything', async ({ page }) => {
     await page.goto(`${domain}/crawls`)
     await expect(page.getByRole('heading', { name: 'Crawls', level: 1 })).toBeVisible()
@@ -70,6 +78,8 @@ test.describe('a member with a viewer grant on one domain', () => {
 
     const integrations = await page.goto('/system/integrations')
     expect(integrations?.status()).toBe(404)
+    const capacity = await page.goto('/system/capacity')
+    expect(capacity?.status()).toBe(404)
     const system = await page.goto('/system')
     expect(system?.status()).toBe(404)
   })

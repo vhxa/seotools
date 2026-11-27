@@ -482,7 +482,7 @@
       "baseCrawled": "de {count, number} páginas rastreadas",
       "baseAudited": "de {count, number} páginas auditadas",
       "baseNone": "No disponible para este crawl",
-      "unknownIndexability": "{count, plural, one {# página tiene} other {# páginas tienen}} pocos datos para decirlo."
+      "unknownIndexability": "{count, plural, one {# página tiene pocos datos para saber si se puede indexar} other {# páginas tienen pocos datos para saber si se pueden indexar}}."
     },
     "chart": {
       "ariaLabel": "Páginas según lo que tienen, tras cada rastreo completo",
@@ -579,8 +579,7 @@
     "responseTime": "{value, number} ms",
     "issueList": {
       "all": "Todas las páginas",
-      "units": "Cada incidencia cuenta las URLs afectadas. Los totales de categoría cuentan hallazgos; una URL puede aportar varios.",
-      "findings": "{count, number} hallazgos",
+      "units": "Cada número cuenta URLs. Una URL con varios problemas de una categoría cuenta una sola vez en ella.",
       "urls": "{count, number} URLs"
     },
     "actionsMenu": {
@@ -803,6 +802,19 @@
     "filters": {
       "view": "Vista: {value}"
     }
+  },
+  "CrawlRetry": {
+    "title": "Segundo intento",
+    "status": "Estado",
+    "skippedLimit": "Se omitió porque hubo fallos temporales en más de {limit, number} URL.",
+    "skippedRetryAfter": "Se omitió porque el servidor pidió esperar más tiempo del que permite el rastreo.",
+    "requested": "Solicitadas de nuevo",
+    "answered": "Respondieron",
+    "failed": "Siguieron fallando",
+    "unconfirmed": "Sin confirmar tras la interrupción",
+    "errors": "Ver errores",
+    "recoveredOnSecondPass": "Falló al principio ({code}, {date}) y respondió en el segundo intento.",
+    "recoveredOnRetry": "Falló al principio ({code}, {date}) y respondió tras reintentar la solicitud."
   },
   "UrlDetail": {
     "back": "Volver a URLs",
@@ -1854,18 +1866,12 @@
       "hint": "Máximo de URLs de la web que pide un rastreo completo. Al alcanzarlo, el rastreo termina como incompleto. Déjalo vacío para no poner límite, con el riesgo de una web con URLs infinitas."
     },
     "retention": {
-      "label": "Resultados de rastreos que se conservan",
-      "modes": {
-        "latest": "Los últimos rastreos",
-        "current": "Solo el actual",
-        "all": "Todos"
-      },
       "hints": {
         "latest": "Permite comparar rastreos, con un tamaño de base de datos acotado.",
         "current": "La opción más ligera. No se podrán comparar rastreos URL a URL.",
         "all": "Conserva los resultados de todos los rastreos completados e incompletos; la base de datos crece sin límite."
       },
-      "countLabel": "Cuántos de cada tipo",
+      "countLabel": "Crawls que se conservan de cada tipo",
       "countHint": "Los rastreos antiguos solo conservan totales; se eliminan sus resultados por URL, enlaces y evidencias.",
       "historyLabel": "Días de historial de URLs",
       "historyHint": "Cuando se borran los resultados completos de un rastreo antiguo, lo que fue cada URL (su respuesta y sus hallazgos) se guarda este tiempo. Déjalo vacío para guardarlo siempre."
@@ -2037,23 +2043,23 @@
           "description": "Responde 200 con otra cosa, normalmente una página web. Los rastreadores no encuentran reglas ahí."
         },
         "site-blocked": {
-          "title": "Todo el sitio está bloqueado para los rastreadores",
+          "title": "robots.txt bloquea todo el sitio a los rastreadores",
           "description": "Las reglas para todos los user agents prohíben /. Salvo que un grupo nombre a un rastreador, este no pedirá nada."
         },
         "too-large": {
-          "title": "El archivo supera los 500 KiB",
+          "title": "robots.txt supera los 500 KiB",
           "description": "Google ignora lo que venga a partir de ahí, incluidas las reglas."
         },
         "no-sitemaps": {
-          "title": "No declara ningún sitemap",
+          "title": "robots.txt no declara ningún sitemap",
           "description": "La línea Sitemap es la forma en que los rastreadores encuentran los sitemaps del sitio por su cuenta."
         },
         "origins-differ": {
-          "title": "Las variantes del sitio sirven archivos distintos",
+          "title": "Las variantes del sitio sirven robots.txt distintos",
           "description": "Las reglas se aplican por origen, así que una misma URL puede estar permitida en una variante y en otra no. Compáralas abajo."
         },
         "syntax-issues": {
-          "title": "Algunas líneas tienen problemas",
+          "title": "Algunas líneas de robots.txt tienen problemas",
           "description": "Los rastreadores ignoran lo que no entienden, así que estas líneas probablemente no hacen lo que se pretendía."
         }
       },
@@ -2189,15 +2195,15 @@
           "description": "Responde 200 con otra cosa, normalmente una página web."
         },
         "no-title": {
-          "title": "No tiene título",
+          "title": "llms.txt no tiene título",
           "description": "El formato empieza con un encabezado de nivel 1 con el nombre del sitio o proyecto."
         },
         "no-summary": {
-          "title": "No tiene resumen",
+          "title": "llms.txt no tiene resumen",
           "description": "El formato incluye una cita bajo el título, con un resumen breve."
         },
         "no-links": {
-          "title": "No tiene enlaces",
+          "title": "llms.txt no tiene enlaces",
           "description": "El formato lista enlaces para seguir leyendo, bajo encabezados de nivel 2."
         }
       },
@@ -2275,19 +2281,19 @@
       "security": {
         "findings": {
           "no-contact": {
-            "title": "No tiene campo Contact",
+            "title": "security.txt no tiene campo Contact",
             "description": "RFC 9116 lo exige: es la razón de ser del archivo."
           },
           "no-expiry": {
-            "title": "No tiene un campo Expires válido",
+            "title": "security.txt no tiene un campo Expires válido",
             "description": "RFC 9116 lo exige, para que no se confíe para siempre en información desfasada."
           },
           "expired": {
-            "title": "Ha caducado",
+            "title": "security.txt ha caducado",
             "description": "Pasada su fecha Expires, ya no se debe confiar en el archivo."
           },
           "wrong-location": {
-            "title": "No está donde debería",
+            "title": "security.txt no está donde debería",
             "description": "RFC 9116 lo sitúa en /.well-known/security.txt."
           }
         }
@@ -3779,8 +3785,11 @@
       "opportunities": "Con oportunidades"
     },
     "notChecked": "Aún sin comprobar",
+    "notComparable": "No comparable",
+    "notComparableTitle": "No comparable con el rastreo anterior",
+    "notComparableLink": "Ver la comparación de ambos rastreos",
     "notAvailable": "No disponible para este rastreo",
-    "unknownIndexability": "{count, plural, one {# página tiene} other {# páginas tienen}} pocos datos para saber si se puede indexar.",
+    "unknownIndexability": "{count, plural, one {# página tiene pocos datos para saber si se puede indexar} other {# páginas tienen pocos datos para saber si se pueden indexar}}.",
     "trendFindings": "Páginas con hallazgos",
     "trendFindingsHelp": "Páginas auditadas que tienen algo de cada tipo tras cada rastreo completo. Una página puede estar en varios.",
     "trendIndexable": "Páginas indexables",
@@ -3893,12 +3902,71 @@
       "unavailable": "No se puede comparar",
       "fresh": "{count} nuevos",
       "resolved": "{count} resueltos",
+      "noneComparable": "Estos problemas no se pueden comparar con el rastreo anterior.",
       "cut": "Han cambiado demasiadas URL para contarlas aquí: abre la comparación para verlas."
     },
     "summary": "Resumen",
     "summaryHint": "{count, plural, one {# URL afectada} other {# URLs afectadas}}"
   },
+  "Capacity": {
+    "title": "Capacidad",
+    "description": "Elige cuántos rastreos y renderizados puede ejecutar el servicio a la vez. Los límites se aplican en unos 30 segundos. Las tareas en curso pueden terminar.",
+    "noLimit": "Sin límite",
+    "unknown": "Desconocido",
+    "gib": "{amount} GiB",
+    "seconds": "{count, plural, one {# s} other {# s}}",
+    "minutes": "{count, plural, one {# min} other {# min}}",
+    "milliseconds": "{count, number} ms",
+    "renders": "Renderizados simultáneos",
+    "crawls": "Rastreos simultáneos",
+    "recommended": "Recomendado para este servidor · {renders, number} renderizados y {crawls, number} rastreos a la vez",
+    "waiting": "Esperando a que el servicio de rastreo publique los ajustes de capacidad.",
+    "save": "Guardar capacidad",
+    "saving": "Guardando…",
+    "saved": "Capacidad guardada.",
+    "invalid": "Elige de 1 a 8 renderizados y de 1 a 4 rastreos.",
+    "detected": "Servidor y navegador",
+    "processors": "Procesadores disponibles",
+    "ram": "RAM disponible",
+    "ceiling": "Límite de memoria del navegador",
+    "shared": "Memoria compartida del navegador",
+    "memory": "Memoria estimada del navegador",
+    "memoryUsage": "Unos {memory} de los {ceiling} que puede usar el navegador.",
+    "memoryUnknownCeiling": "Unos {memory}. Se desconoce el límite de memoria del navegador.",
+    "serverBudget": "Memoria asignada a seotools en este servidor · {budget}",
+    "memoryMeasured": "Se basa en los mayores consumos de memoria de JavaScript del último rastreo medido, con margen para el resto del navegador.",
+    "memoryDefault": "Se basa en páginas de prueba, con margen para páginas más pesadas.",
+    "risk": "Riesgo",
+    "browserRisk": "Algunas páginas podrían no renderizarse. El consumo estimado supera el 85 % del límite de memoria del navegador.",
+    "serverRisk": "El navegador y la aplicación podrían superar la memoria asignada a seotools.",
+    "processorRisk": "Los renderizados compiten por el procesador. Algunas páginas aún podrían estar cargando cuando se capturen y los resultados pueden variar entre rastreos.",
+    "riskLow": "Dentro de los límites estimados de memoria y procesador.",
+    "riskUnknown": "Faltan datos sobre los límites, así que hay riesgos que no se pueden evaluar.",
+    "unsettled": "En el último rastreo, el {share} de las capturas no se estabilizó dentro del plazo.",
+    "delay": "En el último rastreo, el 95 % de las capturas con datos de tiempo se hizo con un retraso de {ms} ms o menos.",
+    "duration": "Duración estimada",
+    "durationEstimate": "Unos {time}",
+    "durationBasis": "Se basa en {time} con {count, plural, one {# petición simultánea} other {# peticiones simultáneas}} en el último rastreo de este modo.",
+    "missingMeasurements": "El último rastreo de este modo tiene pocos datos de tiempo o capacidad para estimar la duración.",
+    "noCrawl": "Aún no hay un rastreo en el que basar la estimación",
+    "load": "Carga para el sitio",
+    "documents": "{count, plural, one {# documento} other {# documentos}} a la vez, con hasta {rate, number} peticiones de documentos por segundo.",
+    "resources": "{renders, plural, one {# renderizado puede} other {# renderizados pueden}} solicitar hasta {count, number} recursos a la vez. Los recursos tienen su propio límite.",
+    "slowdown": "El sitio pidió reducir el ritmo en el último rastreo (HTTP 429 o 503).",
+    "upgradeTitle": "La capacidad cambió con esta actualización",
+    "upgradeFromEnv": "Antes, los límites se definían en el entorno del servicio. La actualización fijó {renders, number} renderizados y {crawls, number} rastreos a la vez.",
+    "upgradeFrom": "Los renderizados pasaron de {oldRenders, number} a {renders, number} y los rastreos, de {oldCrawls, number} a {crawls, number}.",
+    "upgradeComparison": "Si cambió el número de peticiones simultáneas de un dominio, al comparar el primer rastreo tras la actualización con el anterior puede aparecer «No comparable».",
+    "upgradeDomains": "{count, plural, one {# dominio pasó a 4 peticiones simultáneas} other {# dominios pasaron a 4 peticiones simultáneas}}",
+    "domain": "Dominio",
+    "before": "Antes",
+    "after": "Después",
+    "dismiss": "Cerrar aviso",
+    "renderSlotsUsed": "Límites de renderizados simultáneos durante este rastreo · {slots}",
+    "renderSlotsUnknown": "No se registró el límite de renderizados simultáneos."
+  },
   "SystemNav": {
+    "capacity": "Capacidad",
     "status": "Estado",
     "companies": "Empresas",
     "users": "Usuarios",

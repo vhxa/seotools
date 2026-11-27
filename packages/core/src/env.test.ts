@@ -129,13 +129,24 @@ describe('readBuildInfo', () => {
   })
 })
 
-it('bounds render concurrency at four pages', () => {
+it('ignores legacy capacity values and detects browser limits without requiring them', () => {
   const base = { BETTER_AUTH_SECRET: 'x'.repeat(32) }
-  expect(parseWorkerEnv(base).RENDER_CONCURRENCY).toBe(2)
-  for (const value of [1, 2, 3, 4])
-    expect(parseWorkerEnv({ ...base, RENDER_CONCURRENCY: String(value) }).RENDER_CONCURRENCY).toBe(
-      value,
-    )
-  for (const value of [0, 5, 8])
-    expect(() => parseWorkerEnv({ ...base, RENDER_CONCURRENCY: String(value) })).toThrow(EnvError)
+  expect(parseWorkerEnv(base)).toMatchObject({
+    legacyCapacityVariables: [],
+    RENDER_BROWSER_MEMORY: null,
+    RENDER_BROWSER_SHM: null,
+  })
+  expect(
+    parseWorkerEnv({
+      ...base,
+      RENDER_CONCURRENCY: 'bad',
+      CRAWL_CONCURRENCY: '-1',
+      RENDER_BROWSER_MEMORY: '3g',
+      RENDER_BROWSER_SHM: '1g',
+    }),
+  ).toMatchObject({
+    legacyCapacityVariables: ['RENDER_CONCURRENCY', 'CRAWL_CONCURRENCY'],
+    RENDER_BROWSER_MEMORY: 3 * 1024 ** 3,
+    RENDER_BROWSER_SHM: 1024 ** 3,
+  })
 })

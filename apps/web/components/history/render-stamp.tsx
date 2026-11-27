@@ -1,5 +1,5 @@
 import type { Crawl } from '@seotools/db'
-import { useTranslations } from 'next-intl'
+import { useFormatter, useTranslations } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
 import { coverageGapOf, isRenderedCrawl, renderCoverageOf } from '@/lib/rendering'
 
@@ -20,6 +20,9 @@ export function RenderStamp({
   showMode?: boolean
 }) {
   const t = useTranslations('RenderingSummary.stamp')
+  const capacity = useTranslations('Capacity')
+  const format = useFormatter()
+  const slots = crawl.rendering?.slots
   const rendered = isRenderedCrawl(crawl)
   const coverage = renderCoverageOf(crawl)
   return (
@@ -47,6 +50,15 @@ export function RenderStamp({
           </span>
         )}
       </span>
+      {rendered && detailed && (
+        <span className="text-xs text-muted-foreground">
+          {slots?.length
+            ? capacity('renderSlotsUsed', {
+                slots: format.list(slots.map((value) => format.number(value))),
+              })
+            : capacity('renderSlotsUnknown')}
+        </span>
+      )}
       {rendered && detailed && coverage && coverage.unobserved > 0 && (
         <span className="text-xs text-muted-foreground">
           {coverage.causes &&

@@ -38,7 +38,7 @@ export interface IssueCategorySummary {
   id: IssueCategoryId
   /** Every issue of the category in its order, the ones nothing has with 0. */
   issues: IssueCount[]
-  /** What the rows below it add up to. A URL with two of them counts twice. */
+  /** The distinct URLs with at least one issue of the category (never the sum of its rows). */
   total: number
   /** The worst type that was actually found. `null` if nothing was. */
   worst: IssueType | null
@@ -50,8 +50,13 @@ export interface IssueGroupSummary {
 }
 
 /** Every issue there is, in its group and category, with what a crawl found of it. */
-export function summariseIssues(counts: { issue: string; pages: number }[]): IssueGroupSummary[] {
+export function summariseIssues(
+  counts: { issue: string; pages: number }[],
+  /** URLs with an issue of each category (`issueCategoryCounts`); a category left out has none. */
+  urlsByCategory: { category: string; pages: number }[],
+): IssueGroupSummary[] {
   const found = new Map(counts.map(({ issue, pages }) => [issue, pages]))
+  const urls = new Map(urlsByCategory.map(({ category, pages }) => [category, pages]))
   return ISSUE_GROUPS.map((group) => ({
     id: group.id,
     categories: group.categories.map((id) => {
@@ -62,7 +67,7 @@ export function summariseIssues(counts: { issue: string; pages: number }[]): Iss
       return {
         id,
         issues,
-        total: issues.reduce((sum, row) => sum + row.pages, 0),
+        total: urls.get(id) ?? 0,
         worst: worstIssueType(issues.filter((row) => row.pages > 0).map((row) => row.issue)),
       }
     }),
@@ -73,4 +78,17 @@ export function summariseIssues(counts: { issue: string; pages: number }[]): Iss
 export function zeroFindingState(issue: PageIssueId): 'unavailable' | 'noFindings' {
   // No indexing source is collected yet; keep this distinct from crawl indexability.
   return issue === 'indexed-not-in-sitemap' ? 'unavailable' : 'noFindings'
+}
+
+/**
+ * The reasons shared by every row when none of them can be compared with the previous crawl and
+ * all say the same (one notice then replaces a label on each row); `null` otherwise, and then only
+ * the rows that cannot be compared keep their label. A row's entry is `null` when it can be
+ * compared. Reasons are never dropped: rows that differ keep theirs.
+ */
+export function sharedIncomparable(rows: (string[] | null)[]): string[] | null {
+  const first = rows[0]
+  if (!first) return null
+  const key = JSON.stringify(first)
+  return rows.every((reasons) => reasons !== null && JSON.stringify(reasons) === key) ? first : null
 }

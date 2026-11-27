@@ -262,7 +262,7 @@ describe('createCrawlFileRefresher', () => {
     let attempts = 0
     site = {
       'https://example.com/robots.txt': () =>
-        ++attempts === 1 ? { statusCode: 503, headers: {} } : text('User-agent: *'),
+        ++attempts === 1 ? { statusCode: 500, headers: {} } : text('User-agent: *'),
       'https://example.com/llms.txt': new FetchError('ECONNRESET', 'reset'),
     }
     await refresher().tick()

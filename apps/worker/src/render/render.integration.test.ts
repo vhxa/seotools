@@ -299,6 +299,7 @@ describe.skipIf(!available)('isolated Chromium rendering', () => {
     expect(result.status).toBe('rendered')
     expect(result.redirected).toBe(false)
     expect(result.captureDelayMs).not.toBeNull()
+    expect(result.jsHeapBytes).toBeGreaterThan(0)
     expect(result.settled).toBe(result.captureDelayMs! <= CAPTURE_DELAY_TOLERANCE_MS)
     expect(result.html).toContain('<title>Fragment</title>')
     expect(result.requests.omitted.some((item) => item.reason === 'redirect')).toBe(false)

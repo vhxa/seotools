@@ -871,6 +871,7 @@ async function crawl(
     signal: new AbortController().signal,
     createFetcher: fakeSite(site, 0).createFetcher,
     retryBaseMs: 1,
+    secondPassWaitMs: 0,
     renderService: {
       check: async () => ({ state: 'ready', checkedAt: new Date().toISOString() }),
       render: async (input) =>
