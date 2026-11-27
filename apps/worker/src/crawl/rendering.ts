@@ -152,6 +152,8 @@ export function renderObservation(
     failure: outcome.failure?.code ?? null,
     data: {
       facts,
+      jsHeapBytes: outcome.jsHeapBytes,
+      renderSlots: outcome.renderSlots,
       capture: {
         pending: outcome.pending,
         afterMs: outcome.captureMs,

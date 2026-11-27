@@ -281,6 +281,20 @@
       "when": 1795648110006,
       "tag": "0039_crawl_second_attempt",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795722342534,
+      "tag": "0040_capacity",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795722343143,
+      "tag": "0041_capacity_upgrade",
+      "breakpoints": true
     }
   ]
 }

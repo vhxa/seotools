@@ -175,6 +175,33 @@ describe('runner', () => {
     expect(peak).toBe(2)
   })
 
+  it('wakes a running lane when it grows and drains naturally when it shrinks', async () => {
+    const releases: (() => void)[] = []
+    const handler = vi.fn(() => new Promise<void>((resolve) => releases.push(resolve)))
+    const runner = runnerWith({ crawl: handler }, { concurrency: 1, pollIntervalMs: 30_000 })
+    for (let i = 0; i < 3; i++) await db.jobs.enqueue({ type: 'crawl' })
+
+    runner.start()
+    try {
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1))
+      runner.resize(2)
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(2))
+      runner.resize(1)
+      releases.shift()!()
+      await vi.waitFor(async () => expect((await db.jobs.countByStatus()).completed).toBe(1))
+      expect(handler).toHaveBeenCalledTimes(2)
+      expect((await db.jobs.countByStatus()).running).toBe(1)
+      releases.shift()!()
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(3))
+      releases.shift()!()
+      await runner.idle()
+      expect((await db.jobs.countByStatus()).completed).toBe(3)
+    } finally {
+      for (const release of releases) release()
+      await runner.stop(0)
+    }
+  })
+
   it('recovers jobs orphaned by a dead worker', async () => {
     const runner = runnerWith({ ok: async () => 'done' }, { lockTimeoutMs: 1000 })
     const job = await db.jobs.enqueue({ type: 'ok', runAt: new Date(Date.now() - 60_000) })

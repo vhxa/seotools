@@ -140,7 +140,7 @@ export interface JobRow {
   updatedAt: Date
 }
 
-function parseJson(raw: string | null): unknown {
+export function parseJson(raw: string | null): unknown {
   if (raw === null) return null
   try {
     return JSON.parse(raw)
@@ -299,6 +299,7 @@ export type CrawlRow = Omit<
   | 'pairedSummary'
   | 'secondPass'
   | 'rendering'
+  | 'capacityMetrics'
   | 'ignoredParameters'
   | 'seedUrls'
   | 'robots'
@@ -315,6 +316,8 @@ export type CrawlRow = Omit<
   pairedSummary?: string | null
   secondPass?: string | null
   rendering: string | null
+  capacityMetrics?: string | null
+  siteSlowdown?: boolean | null
   ignoredParameters: string | null
   seedUrls: string | null
   robots: string | null
@@ -352,6 +355,8 @@ export const toCrawl = ({
   pairedSummary,
   secondPass,
   rendering,
+  capacityMetrics,
+  siteSlowdown: _siteSlowdown,
   ignoredParameters,
   seedUrls,
   robots,
@@ -376,6 +381,9 @@ export const toCrawl = ({
   pairedSummary: parseJson(pairedSummary ?? null) as Crawl['pairedSummary'],
   secondPass: parseJson(secondPass ?? null) as Crawl['secondPass'],
   rendering: parseJson(rendering) as Crawl['rendering'],
+  ...(capacityMetrics
+    ? { capacityMetrics: parseJson(capacityMetrics) as Crawl['capacityMetrics'] }
+    : {}),
   ...row,
   pagesByWorstIssue:
     issue === null || warning === null || opportunity === null

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { detectDialect, sqlitePathFromUrl } from './dialect'
 import { describeDatabaseContract } from './test/contract'
@@ -14,6 +15,24 @@ describeDatabaseContract('sqlite', async () => {
       raw.prepare('delete from user where id = ?').run(id)
     },
     legacy: {
+      markCapacityUpgrade: async () => {
+        const raw = (db.orm.db as { $client: { exec: (sql: string) => void } }).$client
+        raw.exec(
+          readFileSync(
+            new URL('../migrations/sqlite/0041_capacity_upgrade.sql', import.meta.url),
+            'utf8',
+          ),
+        )
+      },
+      failCapacityWrite: async () => {
+        const raw = (db.orm.db as { $client: { exec: (sql: string) => void } }).$client
+        raw.exec(`CREATE TRIGGER fail_capacity_write BEFORE UPDATE ON crawl_settings
+          WHEN NEW.requests_per_second = 3 AND NEW.concurrency = 4
+          BEGIN SELECT RAISE(ABORT, 'capacity write interrupted'); END`)
+        return async () => {
+          raw.exec('DROP TRIGGER fail_capacity_write')
+        }
+      },
       urlAcceptedNofollow: async (crawlId: string, urlHash: string) => {
         const raw = (
           db.orm.db as {

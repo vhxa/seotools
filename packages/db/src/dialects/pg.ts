@@ -1,3 +1,5 @@
+import { CAPACITY_KEY, CAPACITY_UPGRADE_KEY } from '@seotools/core/capacity'
+import { recordRenderSlots, summarizeCapacity, type CapacityUpgrade } from '../capacity'
 import type { AnswerPair } from '@seotools/core/crawl/paired'
 import type { FindingStateRecord } from '../types'
 import type { BotTestResult } from '../types'
@@ -30,6 +32,8 @@ import {
 import type { AlertKind } from '@seotools/core'
 import {
   and,
+  count,
+  notLike,
   asc,
   countDistinct,
   desc,
@@ -146,6 +150,7 @@ import {
   newestVerifiedPerUrl,
   newVerificationUrlRows,
   priorityUrlRow,
+  parseJson,
   toCrawl,
   toHeartbeat,
   crawlStartColumns,
@@ -1470,6 +1475,67 @@ export function createPgDatabase(options: {
           .onConflictDoUpdate({ target: schema.userPreferences.userId, set: { locale } })
       },
     },
+    capacity: {
+      async initialize(recommended) {
+        await db.transaction(async (tx) => {
+          const updatedAt = new Date()
+          // Claim the migration marker and commit it with the domain writes and notice.
+          const claimed = await tx
+            .update(settings)
+            .set({ value: 'null', updatedAt })
+            .where(and(eq(settings.key, CAPACITY_UPGRADE_KEY), eq(settings.value, 'pending')))
+            .returning({ key: settings.key })
+          const existing = claimed.length > 0
+          const values = { value: JSON.stringify(recommended), encrypted: false, updatedAt }
+          const saveCapacity = tx.insert(settings).values({ key: CAPACITY_KEY, ...values })
+          if (!existing) {
+            await saveCapacity.onConflictDoNothing()
+            return
+          }
+
+          const legacyDomains = await tx
+            .select({
+              id: domains.id,
+              host: domains.host,
+              concurrency: crawlSettings.concurrency,
+            })
+            .from(domains)
+            .leftJoin(crawlSettings, eq(crawlSettings.domainId, domains.id))
+            .orderBy(asc(domains.host))
+          const [priorCapacity] = await tx
+            .select({ value: settings.value })
+            .from(settings)
+            .where(eq(settings.key, CAPACITY_KEY))
+          await saveCapacity.onConflictDoUpdate({ target: settings.key, set: values })
+          const concurrency = DEFAULT_CRAWL_SETTINGS.concurrency
+          for (const domain of legacyDomains) {
+            await tx
+              .insert(crawlSettings)
+              .values({
+                domainId: domain.id,
+                ...crawlSettingsColumns(DEFAULT_CRAWL_SETTINGS),
+                updatedAt,
+              })
+              .onConflictDoUpdate({
+                target: crawlSettings.domainId,
+                set: { concurrency, updatedAt },
+              })
+          }
+          const notice: CapacityUpgrade = {
+            from: parseJson(priorCapacity?.value ?? null) as CapacityUpgrade['from'],
+            to: recommended,
+            domains: legacyDomains
+              .filter((domain) => (domain.concurrency ?? 2) !== concurrency)
+              .map(({ host, concurrency: from }) => ({ host, from: from ?? 2, to: concurrency })),
+          }
+          await tx
+            .update(settings)
+            .set({ value: JSON.stringify(notice), updatedAt })
+            .where(eq(settings.key, CAPACITY_UPGRADE_KEY))
+        })
+      },
+    },
+
     settings: {
       async get(key) {
         const [row] = await db.select().from(settings).where(eq(settings.key, key))
@@ -2105,7 +2171,7 @@ export function createPgDatabase(options: {
         return rows.map(toCrawl)
       },
 
-      async latestWithResults(domainId, type) {
+      async latestWithResults(domainId, type, mode) {
         const row = (
           await db
             .select()
@@ -2114,14 +2180,88 @@ export function createPgDatabase(options: {
               and(
                 eq(crawls.domainId, domainId),
                 eq(crawls.type, type),
+                mode ? like(crawls.rendering, `%"mode":"${mode}"%`) : undefined,
                 inArray(crawls.status, ['completed', 'incomplete']),
-                eq(crawls.pruned, false),
+                mode ? undefined : eq(crawls.pruned, false),
               ),
             )
             .orderBy(desc(crawls.createdAt))
             .limit(1)
         )[0]
         return row ? toCrawl(row) : null
+      },
+
+      async latestMeasuredRender() {
+        const [row] = await db
+          .select({ metrics: crawls.capacityMetrics })
+          .from(crawls)
+          .where(
+            and(
+              eq(crawls.type, 'full'),
+              inArray(crawls.status, ['completed', 'incomplete']),
+              notLike(crawls.capacityMetrics, '%"heapP95":null%'),
+            ),
+          )
+          .orderBy(desc(crawls.finishedAt))
+          .limit(1)
+        return parseJson(row?.metrics ?? null) as Awaited<
+          ReturnType<Database['crawls']['latestMeasuredRender']>
+        >
+      },
+
+      async recordSlowdown(crawlId) {
+        await db
+          .update(crawls)
+          .set({ siteSlowdown: true })
+          .where(and(eq(crawls.id, crawlId), isNotNull(crawls.activeKey)))
+      },
+
+      async measureCapacity(crawlId, rendered) {
+        const responses = await db
+          .select({
+            ms: crawlUrls.responseTimeMs,
+            status: crawlUrls.statusCode,
+            count: count(),
+          })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'internal'),
+              isNotNull(crawlUrls.fetchedAt),
+            ),
+          )
+          .groupBy(crawlUrls.responseTimeMs, crawlUrls.statusCode)
+        const [crawl] = await db
+          .select({ slowed: crawls.siteSlowdown })
+          .from(crawls)
+          .where(eq(crawls.id, crawlId))
+        const summary = summarizeCapacity(
+          responses,
+          crawl?.slowed === true ||
+            responses.some(({ status }) => status === 429 || status === 503),
+        )
+        if (rendered) {
+          let after = ''
+          for (;;) {
+            const batch = await db
+              .select({
+                hash: crawlUrlRenders.urlHash,
+                status: crawlUrlRenders.status,
+                durationMs: crawlUrlRenders.durationMs,
+                settled: crawlUrlRenders.settled,
+                data: crawlUrlRenders.data,
+              })
+              .from(crawlUrlRenders)
+              .where(and(eq(crawlUrlRenders.crawlId, crawlId), gt(crawlUrlRenders.urlHash, after)))
+              .orderBy(asc(crawlUrlRenders.urlHash))
+              .limit(200)
+            if (!batch.length) break
+            for (const row of batch) summary.render(row)
+            after = batch.at(-1)!.hash
+          }
+        }
+        return summary.result()
       },
 
       async portfolio({ recent = 8 } = {}) {
@@ -2200,7 +2340,7 @@ export function createPgDatabase(options: {
         return rows.map(toCrawl)
       },
 
-      async markRunning(id, build) {
+      async markRunning(id, build, renderSlots) {
         return db.transaction(async (tx) => {
           const active = and(eq(crawls.id, id), isNotNull(crawls.activeKey))
           const [current] = await tx.select().from(crawls).where(active).for('update')
@@ -2209,6 +2349,10 @@ export function createPgDatabase(options: {
             .update(crawls)
             .set({
               status: 'running',
+              rendering:
+                renderSlots === undefined
+                  ? undefined
+                  : recordRenderSlots(current.rendering, [renderSlots]),
               startedAt: current.startedAt ?? new Date(),
               runBuilds: build
                 ? recordRunBuild(current.runBuilds, build, current.startedAt !== null)
@@ -2234,12 +2378,12 @@ export function createPgDatabase(options: {
           .where(eq(crawls.id, id))
       },
 
-      async finish(id, { status, error, observations }) {
+      async finish(id, { status, error, observations, capacity }) {
         const counts = await this.countUrls(id)
         return db.transaction(async (tx) => {
           const crawl = (
             await tx
-              .select({ type: crawls.type, domainId: crawls.domainId })
+              .select({ type: crawls.type, domainId: crawls.domainId, rendering: crawls.rendering })
               .from(crawls)
               .where(eq(crawls.id, id))
           )[0]
@@ -2247,6 +2391,9 @@ export function createPgDatabase(options: {
             .update(crawls)
             .set({
               ...counts,
+              capacityMetrics: capacity ? JSON.stringify(capacity.metrics) : undefined,
+              rendering:
+                crawl && capacity ? recordRenderSlots(crawl.rendering, capacity.slots) : undefined,
               pairedSummary: observations ? JSON.stringify(observations.summary) : null,
               status,
               error: error === undefined ? null : truncateError(error),

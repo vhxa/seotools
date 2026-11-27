@@ -1,3 +1,5 @@
+import { CAPACITY_KEY, CAPACITY_UPGRADE_KEY } from '@seotools/core/capacity'
+import { recordRenderSlots, summarizeCapacity, type CapacityUpgrade } from '../capacity'
 import type { AnswerPair } from '@seotools/core/crawl/paired'
 import type { FindingStateRecord } from '../types'
 import type { BotTestResult } from '../types'
@@ -32,6 +34,8 @@ import type { AlertKind } from '@seotools/core'
 import BetterSqlite3 from 'better-sqlite3'
 import {
   and,
+  count,
+  notLike,
   asc,
   countDistinct,
   desc,
@@ -157,6 +161,7 @@ import {
   newestVerifiedPerUrl,
   newVerificationUrlRows,
   priorityUrlRow,
+  parseJson,
   toCrawl,
   toHeartbeat,
   crawlStartColumns,
@@ -1521,6 +1526,73 @@ export function createSqliteDatabase(options: {
           .run()
       },
     },
+    capacity: {
+      async initialize(recommended) {
+        db.transaction(
+          (tx) => {
+            const updatedAt = new Date()
+            // Claim the migration marker and commit it with the domain writes and notice.
+            const claimed = tx
+              .update(settings)
+              .set({ value: 'null', updatedAt })
+              .where(and(eq(settings.key, CAPACITY_UPGRADE_KEY), eq(settings.value, 'pending')))
+              .returning({ key: settings.key })
+              .all()
+            const existing = claimed.length > 0
+            const values = { value: JSON.stringify(recommended), encrypted: false, updatedAt }
+            const saveCapacity = tx.insert(settings).values({ key: CAPACITY_KEY, ...values })
+            if (!existing) {
+              saveCapacity.onConflictDoNothing().run()
+              return
+            }
+
+            const legacyDomains = tx
+              .select({
+                id: domains.id,
+                host: domains.host,
+                concurrency: crawlSettings.concurrency,
+              })
+              .from(domains)
+              .leftJoin(crawlSettings, eq(crawlSettings.domainId, domains.id))
+              .orderBy(asc(domains.host))
+              .all()
+            const priorCapacity = tx
+              .select({ value: settings.value })
+              .from(settings)
+              .where(eq(settings.key, CAPACITY_KEY))
+              .get()
+            saveCapacity.onConflictDoUpdate({ target: settings.key, set: values }).run()
+            const concurrency = DEFAULT_CRAWL_SETTINGS.concurrency
+            for (const domain of legacyDomains) {
+              tx.insert(crawlSettings)
+                .values({
+                  domainId: domain.id,
+                  ...crawlSettingsColumns(DEFAULT_CRAWL_SETTINGS),
+                  updatedAt,
+                })
+                .onConflictDoUpdate({
+                  target: crawlSettings.domainId,
+                  set: { concurrency, updatedAt },
+                })
+                .run()
+            }
+            const notice: CapacityUpgrade = {
+              from: parseJson(priorCapacity?.value ?? null) as CapacityUpgrade['from'],
+              to: recommended,
+              domains: legacyDomains
+                .filter((domain) => (domain.concurrency ?? 2) !== concurrency)
+                .map(({ host, concurrency: from }) => ({ host, from: from ?? 2, to: concurrency })),
+            }
+            tx.update(settings)
+              .set({ value: JSON.stringify(notice), updatedAt })
+              .where(eq(settings.key, CAPACITY_UPGRADE_KEY))
+              .run()
+          },
+          { behavior: 'immediate' },
+        )
+      },
+    },
+
     settings: {
       async get(key) {
         const row = db.select().from(settings).where(eq(settings.key, key)).get()
@@ -2173,7 +2245,7 @@ export function createSqliteDatabase(options: {
         return rows.map(toCrawl)
       },
 
-      async latestWithResults(domainId, type) {
+      async latestWithResults(domainId, type, mode) {
         const row = db
           .select()
           .from(crawls)
@@ -2181,14 +2253,92 @@ export function createSqliteDatabase(options: {
             and(
               eq(crawls.domainId, domainId),
               eq(crawls.type, type),
+              mode ? like(crawls.rendering, `%"mode":"${mode}"%`) : undefined,
               inArray(crawls.status, ['completed', 'incomplete']),
-              eq(crawls.pruned, false),
+              mode ? undefined : eq(crawls.pruned, false),
             ),
           )
           .orderBy(desc(crawls.createdAt))
           .limit(1)
           .get()
         return row ? toCrawl(row) : null
+      },
+
+      async latestMeasuredRender() {
+        const row = db
+          .select({ metrics: crawls.capacityMetrics })
+          .from(crawls)
+          .where(
+            and(
+              eq(crawls.type, 'full'),
+              inArray(crawls.status, ['completed', 'incomplete']),
+              notLike(crawls.capacityMetrics, '%"heapP95":null%'),
+            ),
+          )
+          .orderBy(desc(crawls.finishedAt))
+          .limit(1)
+          .get()
+        return parseJson(row?.metrics ?? null) as Awaited<
+          ReturnType<Database['crawls']['latestMeasuredRender']>
+        >
+      },
+
+      async recordSlowdown(crawlId) {
+        db.update(crawls)
+          .set({ siteSlowdown: true })
+          .where(and(eq(crawls.id, crawlId), isNotNull(crawls.activeKey)))
+          .run()
+      },
+
+      async measureCapacity(crawlId, rendered) {
+        const responses = db
+          .select({
+            ms: crawlUrls.responseTimeMs,
+            status: crawlUrls.statusCode,
+            count: count(),
+          })
+          .from(crawlUrls)
+          .where(
+            and(
+              eq(crawlUrls.crawlId, crawlId),
+              eq(crawlUrls.scope, 'internal'),
+              isNotNull(crawlUrls.fetchedAt),
+            ),
+          )
+          .groupBy(crawlUrls.responseTimeMs, crawlUrls.statusCode)
+          .all()
+        const crawl = db
+          .select({ slowed: crawls.siteSlowdown })
+          .from(crawls)
+          .where(eq(crawls.id, crawlId))
+          .get()
+        const summary = summarizeCapacity(
+          responses,
+          crawl?.slowed === true ||
+            responses.some(({ status }) => status === 429 || status === 503),
+        )
+        if (rendered) {
+          let after = ''
+          for (;;) {
+            const batch = db
+              .select({
+                hash: crawlUrlRenders.urlHash,
+                status: crawlUrlRenders.status,
+                durationMs: crawlUrlRenders.durationMs,
+                settled: crawlUrlRenders.settled,
+                data: crawlUrlRenders.data,
+              })
+              .from(crawlUrlRenders)
+              .where(and(eq(crawlUrlRenders.crawlId, crawlId), gt(crawlUrlRenders.urlHash, after)))
+              .orderBy(asc(crawlUrlRenders.urlHash))
+              .limit(200)
+              .all()
+            if (!batch.length) break
+            for (const row of batch) summary.render(row)
+            after = batch.at(-1)!.hash
+          }
+        }
+        return summary.result()
       },
 
       async portfolio({ recent = 8 } = {}) {
@@ -2271,7 +2421,7 @@ export function createSqliteDatabase(options: {
         return rows.map(toCrawl)
       },
 
-      async markRunning(id, build) {
+      async markRunning(id, build, renderSlots) {
         return db.transaction(
           (tx) => {
             const active = and(eq(crawls.id, id), isNotNull(crawls.activeKey))
@@ -2281,6 +2431,10 @@ export function createSqliteDatabase(options: {
               .update(crawls)
               .set({
                 status: 'running',
+                rendering:
+                  renderSlots === undefined
+                    ? undefined
+                    : recordRenderSlots(current.rendering, [renderSlots]),
                 startedAt: current.startedAt ?? new Date(),
                 runBuilds: build
                   ? recordRunBuild(current.runBuilds, build, current.startedAt !== null)
@@ -2309,11 +2463,11 @@ export function createSqliteDatabase(options: {
           .run()
       },
 
-      async finish(id, { status, error, observations }) {
+      async finish(id, { status, error, observations, capacity }) {
         const counts = await this.countUrls(id)
         return db.transaction((tx) => {
           const crawl = tx
-            .select({ type: crawls.type, domainId: crawls.domainId })
+            .select({ type: crawls.type, domainId: crawls.domainId, rendering: crawls.rendering })
             .from(crawls)
             .where(eq(crawls.id, id))
             .get()
@@ -2321,6 +2475,9 @@ export function createSqliteDatabase(options: {
             .update(crawls)
             .set({
               ...counts,
+              capacityMetrics: capacity ? JSON.stringify(capacity.metrics) : undefined,
+              rendering:
+                crawl && capacity ? recordRenderSlots(crawl.rendering, capacity.slots) : undefined,
               pairedSummary: observations ? JSON.stringify(observations.summary) : null,
               status,
               error: error === undefined ? null : truncateError(error),

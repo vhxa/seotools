@@ -248,6 +248,8 @@ export const crawls = sqliteTable(
     seedUrls: text('seed_urls'),
     startedBuild: text('started_build'),
     runBuilds: text('run_builds'),
+    capacityMetrics: text('capacity_metrics'),
+    siteSlowdown: integer('site_slowdown', { mode: 'boolean' }),
     analysisBuild: text('analysis_build'),
     discoverySettings: text('discovery_settings'),
     ignoredParameters: text('ignored_parameters'),

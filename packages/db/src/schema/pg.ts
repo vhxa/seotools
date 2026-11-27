@@ -250,6 +250,8 @@ export const crawls = pgTable(
     seedUrls: text('seed_urls'),
     startedBuild: text('started_build'),
     runBuilds: text('run_builds'),
+    capacityMetrics: text('capacity_metrics'),
+    siteSlowdown: boolean('site_slowdown'),
     analysisBuild: text('analysis_build'),
     discoverySettings: text('discovery_settings'),
     ignoredParameters: text('ignored_parameters'),

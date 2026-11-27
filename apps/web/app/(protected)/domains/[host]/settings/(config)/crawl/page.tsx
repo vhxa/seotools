@@ -1,3 +1,6 @@
+import { readCapacityContext } from '@seotools/db'
+import { minimumCapacity } from '@seotools/core/capacity'
+import { lastCapacitySample } from '@/lib/capacity'
 import { renderBrowserStatus } from '@/lib/render-browser'
 import { getBuildInfo } from '@/lib/build-info'
 import { defaultCrawlerUserAgent } from '@seotools/core'
@@ -18,7 +21,15 @@ export default async function CrawlSettingsPage({ params }: { params: Promise<{ 
   const { host } = await params
   const { domain } = await requireDomain(host)
   const t = await getTranslations('CrawlSettings')
-  const settings = await (await getDb()).crawls.settings(domain.id)
+  const db = await getDb()
+  const [settings, capacity, html, rendered, secrets, browser] = await Promise.all([
+    db.crawls.settings(domain.id),
+    readCapacityContext(db),
+    lastCapacitySample(db, domain.id, 'html'),
+    lastCapacitySample(db, domain.id, 'rendered'),
+    db.crawls.requestSecrets(domain.id),
+    renderBrowserStatus(),
+  ])
 
   return (
     <>
@@ -27,10 +38,13 @@ export default async function CrawlSettingsPage({ params }: { params: Promise<{ 
         <p className="text-sm text-muted-foreground">{t('description', { host: domain.host })}</p>
       </div>
       <CrawlSettingsForm
-        browserState={(await renderBrowserStatus())?.state ?? 'unknown'}
+        browserState={browser?.state ?? 'unknown'}
+        renderSlots={(capacity.capacity ?? minimumCapacity).renders}
+        hardware={capacity.hardware}
+        samples={{ html, rendered }}
         host={domain.host}
         settings={settings}
-        secretsSaved={Boolean(await (await getDb()).crawls.requestSecrets(domain.id))}
+        secretsSaved={Boolean(secrets)}
         defaultUserAgent={defaultCrawlerUserAgent(getBuildInfo().version)}
       />
     </>

@@ -19,7 +19,7 @@ const formOf = (values: Record<string, string | undefined>) => {
 const validSettings = {
   renderingMode: 'http',
   userAgent: '',
-  concurrency: '2',
+  concurrency: String(DEFAULT_CRAWL_SETTINGS.concurrency),
   requestsPerSecond: '5',
   timeoutSeconds: '30',
   maxRetries: '2',
@@ -43,6 +43,9 @@ describe('parseCrawlSettingsForm', () => {
   })
 
   it.each([
+    ['current', '1', 1],
+    ['latest', '2', 2],
+    ['all', '', null],
     ['latest', '3', 3],
     ['current', 'ignored', 1],
     ['all', 'ignored', null],

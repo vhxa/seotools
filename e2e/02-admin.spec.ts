@@ -1,4 +1,5 @@
-import { createDatabase } from '@seotools/db'
+import { MIB, recommendedCapacity } from '@seotools/core/capacity'
+import { createDatabase, publishCapacityHardware } from '@seotools/db'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -301,7 +302,7 @@ test('the crawl settings are grouped in sections with one save always in reach',
 }) => {
   await page.goto(`${domain}/settings/crawl`)
   for (const name of ['Requests', 'Scope', 'Extraction', 'Retention', 'Request credentials']) {
-    await expect(page.getByRole('group', { name })).toBeVisible()
+    await expect(page.getByRole('group', { name, exact: true })).toBeVisible()
   }
   await expect(page.getByRole('button', { name: 'Save settings' })).toBeInViewport()
 })
@@ -311,16 +312,74 @@ test('the crawl settings show the rendering mode, and Rendered is disabled witho
 }) => {
   await page.goto(`${domain}/settings/crawl`)
   await expect(page.getByLabel('Page rendering')).toContainText('HTML')
+  await expect(page.getByRole('slider', { name: 'Simultaneous requests' })).toHaveAttribute(
+    'aria-valuetext',
+    '4',
+  )
   await expect(page.getByText(/Several times slower/)).toBeVisible()
   await expect(page.getByText(/Rendered mode is unavailable/)).toBeVisible()
   // The options of the Rendered choice are in the page, disabled while HTML is chosen.
-  await expect(page.getByRole('spinbutton', { name: 'Capture window (ms)' })).toBeDisabled()
+  await expect(page.getByRole('slider', { name: 'Capture window (ms)' })).toBeDisabled()
   await page.getByLabel('Page rendering').click()
   await expect(page.getByRole('option', { name: 'Rendered' })).toHaveAttribute(
     'aria-disabled',
     'true',
   )
   await page.keyboard.press('Escape')
+})
+
+test('crawl retention explains and saves one, two or unlimited results', async ({ page }) => {
+  await page.goto(`${domain}/settings/crawl`)
+  const slider = page.getByRole('slider', { name: 'Crawls to keep of each type' })
+  const save = page.getByRole('button', { name: 'Save settings' })
+  for (const [keys, value, hint] of [
+    [['Home'], '1', 'Comparing crawls URL by URL will not be possible.'],
+    [['End'], 'No limit', 'the database grows without limit.'],
+    [['Home', 'ArrowRight'], '2', 'Allows comparing crawls, with a bounded database size.'],
+  ] as const) {
+    for (const key of keys) await slider.press(key)
+    await expect(slider).toHaveAttribute('aria-valuetext', value)
+    await expect(page.getByText(hint, { exact: false })).toBeVisible()
+    await save.click()
+    await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+    await page.reload()
+    await expect(slider).toHaveAttribute('aria-valuetext', value)
+  }
+})
+
+test('capacity sliders show the recommendation and live risk, and save keyboard changes', async ({
+  page,
+}) => {
+  const hardware = {
+    processors: 4,
+    memory: 8192 * MIB,
+    browserMemory: 3072 * MIB,
+    browserShm: 1024 * MIB,
+  }
+  const db = await createDatabase({ url: DATABASE_URL, dialect: 'sqlite' })
+  try {
+    await db.capacity.initialize(recommendedCapacity(hardware))
+    await publishCapacityHardware(db, hardware)
+  } finally {
+    await db.close()
+  }
+
+  await page.goto('/system/capacity')
+  const renders = page.getByRole('slider', { name: 'Renders at the same time' })
+  const crawls = page.getByRole('slider', { name: 'Crawls at the same time' })
+  await expect(renders).toHaveAttribute('aria-valuetext', '4')
+  await expect(crawls).toHaveAttribute('aria-valuetext', '2')
+  await renders.press('Home')
+  await expect(renders).toHaveAttribute('aria-valuetext', '1')
+  await renders.press('End')
+  await expect(renders).toHaveAttribute('aria-valuetext', '8')
+  await expect(
+    page.getByRole('paragraph').filter({ hasText: /Pages may fail to render/ }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Save capacity' }).click()
+  await expect(page.getByText('Capacity saved.', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(renders).toHaveAttribute('aria-valuetext', '8')
 })
 
 test('the addresses of earlier versions still work, and keep their query', async ({ page }) => {

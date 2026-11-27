@@ -1,3 +1,5 @@
+import { capacityLimits } from '@seotools/core/capacity'
+import { createSlots } from './slots'
 import type { Browser } from 'puppeteer-core'
 import type { RenderStatus } from '@seotools/core'
 import { bestEffort } from './cleanup'
@@ -14,50 +16,62 @@ export function createRenderService(options: {
   /** Capture-rule benchmark override. Production uses the default in renderPage. */
   minQuietCaptureMs?: number
 }) {
-  if (!Number.isInteger(options.concurrency) || options.concurrency < 1 || options.concurrency > 4)
-    throw new Error('Invalid render concurrency')
-  const connection = createBrowserConnection(options.browserUrl, options.writeStatus)
-  let active = 0
-  const queue: (() => void)[] = []
-  async function acquire(signal: AbortSignal) {
-    signal.throwIfAborted()
-    if (active < options.concurrency) {
-      active++
-      return
-    }
-    await new Promise<void>((resolve, reject) => {
-      const ready = () => {
-        signal.removeEventListener('abort', cancel)
-        resolve()
-      }
-      const cancel = () => {
-        const index = queue.indexOf(ready)
-        if (index >= 0) queue.splice(index, 1)
-        reject(new DOMException('Render stopped', 'AbortError'))
-      }
-      queue.push(ready)
-      signal.addEventListener('abort', cancel, { once: true })
-    })
+  let concurrency = options.concurrency
+  function validate(value: number) {
+    if (
+      !Number.isInteger(value) ||
+      value < capacityLimits.renders.min ||
+      value > capacityLimits.renders.max
+    )
+      throw new Error('Invalid render concurrency')
   }
+  validate(concurrency)
+  const connection = createBrowserConnection(options.browserUrl, options.writeStatus)
+  const slots = createSlots(concurrency)
+  const resourceBudgets = new Set<ReturnType<typeof createSlots>>()
   return {
     check: connection.check,
-    /** Pages rendered at the same time (`RENDER_CONCURRENCY`). */
-    concurrency: options.concurrency,
+    get concurrency() {
+      return concurrency
+    },
+    resize(value: number) {
+      validate(value)
+      if (concurrency === value) return
+      concurrency = value
+      for (const budget of resourceBudgets) budget.resize(value * RENDER_LIMITS.pageResources)
+      slots.resize(value)
+    },
+    trackResources(budget: ReturnType<typeof createSlots>) {
+      budget.resize(concurrency * RENDER_LIMITS.pageResources)
+      resourceBudgets.add(budget)
+      return () => {
+        resourceBudgets.delete(budget)
+      }
+    },
     async render(input: RenderInput): Promise<RenderOutcome> {
-      await acquire(input.signal)
+      await slots.acquire(input.signal)
+      const renderSlots = concurrency
       try {
+        input.signal.throwIfAborted()
         for (let attempt = 0; ; attempt++) {
           let browser: Browser | undefined
           try {
             const lease = await connection.get()
             browser = lease.browser
-            return await renderPage(browser, input, lease.context, options.minQuietCaptureMs)
+            const outcome = await renderPage(
+              browser,
+              input,
+              lease.context,
+              options.minQuietCaptureMs,
+            )
+            return { ...outcome, renderSlots }
           } catch (error) {
             input.signal.throwIfAborted()
             if (!(error instanceof RenderInterruptedError)) throw error
             if (attempt === 0) continue
             return {
               status: 'failed',
+              renderSlots,
               failure: { code: 'crashed', message: 'The browser or page crashed twice.' },
               settled: false,
               pending: 0,
@@ -87,9 +101,7 @@ export function createRenderService(options: {
           }
         }
       } finally {
-        const next = queue.shift()
-        if (next) next()
-        else active--
+        slots.release()
       }
     },
     close: connection.close,

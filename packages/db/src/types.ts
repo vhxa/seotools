@@ -1,3 +1,5 @@
+import type { CrawlCapacityMetrics } from '@seotools/core/capacity'
+import type { CapacityRepository } from './capacity'
 import type { CrawlDiscoverySettings } from '@seotools/core/crawl/discovery'
 import type { AnswerPair, PairSummary } from '@seotools/core/crawl/paired'
 import type { AcceptanceKind } from '@seotools/core/crawl/acceptance'
@@ -357,6 +359,8 @@ export interface CrawlRendering {
   mode: 'html' | 'rendered'
   waitMs: number
   omittedHosts: string[]
+  /** Instance render limits observed during the crawl. Absent for older runs. */
+  slots?: number[]
 }
 
 export interface CrawlUrlRender {
@@ -370,6 +374,8 @@ export interface CrawlUrlRender {
   failure: string | null
   data: {
     facts: CrawlPageFacts | null
+    jsHeapBytes?: number
+    renderSlots?: number
     /**
      * When the DOM was captured: requests still in flight (`settled` false: at the window's end) and
      * milliseconds after the DOM was parsed (`null`: it never was). Absent on rows before 0.6.0-rc.2.
@@ -435,6 +441,7 @@ export interface Crawl {
   analysisBuild: BuildInfo | null
   discoverySettings: CrawlDiscoverySettings | null
   rendering: CrawlRendering | null
+  capacityMetrics?: CrawlCapacityMetrics | null
   admissionDropped?: boolean | null
   retryAfterUntil?: Date | null
   pairedSummary?: PairSummary | null
@@ -791,8 +798,20 @@ export interface CrawlRepository {
   active(domainId: string): Promise<Crawl | null>
   /** Newest first. Every type unless told otherwise. */
   list(domainId: string, options?: { limit?: number; type?: CrawlType }): Promise<Crawl[]>
-  /** The newest crawl of a type that finished with usable results. */
-  latestWithResults(domainId: string, type: CrawlType): Promise<Crawl | null>
+  /** The newest usable crawl of a type. With a mode, include pruned crawls for capacity history. */
+  latestWithResults(
+    domainId: string,
+    type: CrawlType,
+    mode?: CrawlRendering['mode'],
+  ): Promise<Crawl | null>
+  /** Latest full render with a recorded heap, for the instance estimate. */
+  latestMeasuredRender(): Promise<CrawlCapacityMetrics | null>
+  /** Compute from retained observations, also for crawls made before metrics were stored. */
+  measureCapacity(
+    crawlId: string,
+    rendered: boolean,
+  ): Promise<{ metrics: CrawlCapacityMetrics; slots: number[] }>
+  recordSlowdown(crawlId: string): Promise<void>
   /**
    * What the portfolio home needs of every domain at once, in a fixed number of queries whatever the
    * number of domains: its last `recent` (8 by default) finished full crawls and whether a crawl is
@@ -810,7 +829,7 @@ export interface CrawlRepository {
     page: { after: string | null; limit: number },
   ): Promise<StructureUrl[]>
   /** Moves an active crawl to `running`. `null` when it is no longer active (e.g. cancelled). */
-  markRunning(id: string, build?: BuildInfo): Promise<Crawl | null>
+  markRunning(id: string, build?: BuildInfo, renderSlots?: number): Promise<Crawl | null>
   updateCounts(id: string, counts: CrawlCounts): Promise<void>
   saveRobots(id: string, robots: CrawlRobotsFiles): Promise<void>
   /** Ends an active crawl, recounting its URLs. `false` if it had already ended. */
@@ -820,6 +839,7 @@ export interface CrawlRepository {
       status: 'completed' | 'incomplete' | 'failed'
       error?: string
       observations?: { summary: PairSummary; pairs: AnswerPair[] }
+      capacity?: { metrics: CrawlCapacityMetrics; slots: number[] }
     },
   ): Promise<boolean>
   /** `false` if the crawl had already ended. */
@@ -1878,6 +1898,7 @@ export interface Database {
   readonly dialect: Dialect
   readonly jobs: JobRepository
   readonly heartbeats: HeartbeatRepository
+  readonly capacity: CapacityRepository
   readonly settings: SettingsStore
   readonly admin: AdminRepository
   readonly users: UserRepository

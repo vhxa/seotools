@@ -1,3 +1,4 @@
+import { RESOURCES_PER_RENDER } from '@seotools/core/capacity'
 import { MAX_BODY_BYTES } from '../crawl/fetcher'
 
 export const RENDER_LIMITS = {
@@ -5,7 +6,7 @@ export const RENDER_LIMITS = {
   /** Bound interception bookkeeping independently of the subresource budget. */
   interceptions: 10_000,
   /** Subresources of one page fetched at the same time, like a browser's connections to a host. */
-  pageResources: 6,
+  pageResources: RESOURCES_PER_RENDER,
   urlChars: 2048,
   connectionMs: 10_000,
   protocolMs: 35_000,

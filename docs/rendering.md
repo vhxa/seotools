@@ -120,7 +120,6 @@ In `.env`, set:
 ```dotenv
 COMPOSE_PROFILES=rendering
 RENDER_BROWSER_URL=http://browser:9222
-RENDER_CONCURRENCY=2
 ```
 
 Run `docker compose --profile rendering up -d`. Without this profile the browser is not started;
@@ -204,7 +203,7 @@ the tracked host apply as usual.
 **Pacing.** The domain's requests per second limits the crawl's own URLs (the documents it audits),
 as in an HTML crawl. What a rendered page loads (scripts, stylesheets, fetch/XHR) is not held to
 it: like a browser, the worker fetches a page's resources in parallel, at most **6 at a time per
-page** and at most **6 × `RENDER_CONCURRENCY`** for the whole crawl, and a script or stylesheet two
+page** and at most **6 × the current render slots** for the whole crawl, and a script or stylesheet two
 pages ask for at the same time is fetched once (the per-crawl cache also shares requests in
 flight). The fetcher's connections per host are raised by the same amount for a rendered crawl so
 they do not hold resources up. A slow server therefore receives at most that many resource requests
@@ -335,32 +334,56 @@ Sources checked for this guide:
 
 ## Sizing: concurrency and memory
 
-`RENDER_CONCURRENCY` accepts **1–4**, default **2**: how many pages are rendered at the same time,
-across all crawls. A crawl renders a page while it holds one of the domain's **simultaneous
-requests**, so set that crawl setting to at least `RENDER_CONCURRENCY` for renders to run in
-parallel. Each rendered page fetches up to 6 resources at once, and a crawl up to
-6 × `RENDER_CONCURRENCY`.
+Open **Administration → Capacity** to see the worker’s processors, available RAM and the browser
+limits. Choose **1–8** simultaneous renders and **1–4** simultaneous crawls. The worker refreshes the
+saved limits every 15 seconds. Work already running can finish after a reduction. In the standard
+deployment one worker serves the instance. These limits apply per worker when running several.
 
-The browser container's memory ceiling and shared memory come from `.env`, with the defaults in
-`docker-compose.yml`: `RENDER_BROWSER_MEMORY` (default `1536m`) and `RENDER_BROWSER_SHM` (default
-`256m`). The process limit stays at 256.
+A rendered page holds one of the domain’s **simultaneous requests**. The default of **4** lets a
+single crawl use four render slots when available, at the same document rate of **5 requests per
+second**. Each page can fetch six resources at once. The whole crawl can fetch at most six times the
+worker’s current render slots. The document rate applies to document requests.
 
-| Server                            | `RENDER_CONCURRENCY` | `RENDER_BROWSER_MEMORY` | `RENDER_BROWSER_SHM` | Simultaneous requests |
-| --------------------------------- | -------------------: | ----------------------: | -------------------: | --------------------: |
-| VPS with 8 GB (3–4 GB for Chrome) |                    4 |                    `3g` |                 `1g` |                   4–6 |
-| Default                           |                    2 |                 `1536m` |               `256m` |                     2 |
-| Small Raspberry Pi                |                    1 |                 `1536m` |               `256m` |                     1 |
+The recommendation uses 75% of the detected memory as the seotools budget. On Linux a lower
+cgroup memory limit takes precedence over host RAM. The recommendation first reserves 512 MiB for
+the app and its database. It then budgets 320 MiB for the browser and 512 MiB per render. It fits as
+many slots as the remaining budget, the browser memory ceiling, and one slot per available processor
+allow. The minimum is one even if the model cannot fit it. An unknown browser ceiling leaves only
+the server budget and processors as constraints. The recommended crawl limit budgets two processors
+and 1.5 GiB of the seotools budget per crawl, with a minimum of one.
 
-```dotenv
-COMPOSE_PROFILES=rendering
-RENDER_BROWSER_URL=http://browser:9222
-RENDER_CONCURRENCY=4
-RENDER_BROWSER_MEMORY=3g
-RENDER_BROWSER_SHM=1g
-```
+| Server RAM | Processors | Browser memory / shared memory | seotools budget | Renders | Crawls |
+| ---------- | ---------- | ------------------------------ | --------------- | ------- | ------ |
+| 2 GiB (Pi) | 4          | `1536m` / `256m`               | 1.5 GiB         | 1       | 1      |
+| 4 GiB      | 2          | `3g` / `1g`                    | 3 GiB           | 2       | 1      |
+| 8 GiB      | 4          | `3g` / `1g`                    | 6 GiB           | 4       | 2      |
+| 16 GiB     | 8          | `3g` / `1g`                    | 12 GiB          | 5       | 4      |
 
-Measured for 0.6.0-rc.2 on Docker Desktop arm64 with the pinned image under the **default**
-ceilings, rendering pages of the Nuxt-like test site (about 75 scripts and stylesheets each, 200–800
+Both Compose files set `RENDER_BROWSER_MEMORY=3g` and `RENDER_BROWSER_SHM=1g` by default. The browser
+process limit stays at 256. Outside Compose, pass the actual ceilings to the worker for the page
+to show them. Unset ceilings display as unknown.
+
+The browser’s 320 MiB base and 160 MiB renderer base are rounded planning allowances from the
+summed RSS envelope below, which includes shared mappings. The initial 512 MiB per render adds
+352 MiB over the renderer base for heavier pages. After a measured crawl, the live memory estimate
+uses the renderer base plus twice the 95th percentile of the allocated JavaScript heap read through
+CDP when the DOM was captured and rounded up to a MiB. The second heap’s worth is an allowance for native allocations,
+images and other memory the JavaScript metric misses. This is an estimate of browser memory, and
+the server-risk check includes the 512 MiB app and database reserve. An estimate above 85% of the
+browser limit warns of possible failures. More renders than processors warns of late captures.
+Measured capture delays and unsettled captures help interpret those warnings.
+
+The domain’s estimate uses the latest finished full crawl in the selected mode. It models the
+slowest of the document pace, the work occupying domain request slots, and the work occupying render
+slots, using the observed URL count and median timings. The real elapsed time calibrates that model
+at the settings recorded for the crawl. A lower URL limit scales down the modeled URL count.
+Settings such as the capture window, timeout, retries and scope can change what is observed. The estimate cannot
+predict those changes or calibrate against a rendered crawl with unknown or changing render slots.
+For context, the measured 0.8.0 production crawls took about 20 minutes for 1,500 served-HTML pages
+and 98–228 minutes for about 1,900 rendered pages.
+
+Measured for 0.6.0-rc.2 on Docker Desktop arm64 with the pinned image under the then-default
+`1536m` / `256m` ceilings, rendering pages of the Nuxt-like test site (about 75 scripts and stylesheets each, 200–800
 ms per answer, a request that never ends, 5-second window), `3 × concurrency + 1` pages per run
 (`apps/worker/src/render/memory.integration.test.ts`, `RENDER_BENCH=1`):
 
@@ -370,15 +393,13 @@ ms per answer, a request that never ends, 5-second window), `3 × concurrency + 
 |                  2 |         91 |                   514 |                      153 |          0 |
 |                  4 |        117 |                   746 |                      220 |          0 |
 
-Four renders fit the default ceilings with these pages, and gave the same figures with `3g`/`1g`.
-Real pages with large JavaScript heaps take more: the 8 GB row leaves room for that; measure your
-own pages before lowering it.
+Four renders fit those ceilings with these pages and gave the same figures with `3g` / `1g`.
+Pages with larger JavaScript heaps can require more memory.
 
 ## Raspberry Pi and verification
 
-Use `RENDER_CONCURRENCY=1` on a small Pi. The browser image is approximately 540 MB uncompressed on
-arm64. Compose sets a ceiling of **1,536 MiB** and **256 processes/threads**, with **256 MiB**
-shared memory by default. Keep spare memory for the app, database
+On a 2 GiB Pi use one render slot and set `RENDER_BROWSER_MEMORY=1536m` and
+`RENDER_BROWSER_SHM=256m`. The browser image is approximately 540 MB uncompressed on arm64. Keep spare memory for the app, database
 and operating system. A memory-exhausted page is a failed render, never a successful audit of an
 empty page; no finite limit guarantees every hostile page succeeds.
 
@@ -399,7 +420,7 @@ at a time. All cgroup PID/memory limit-hit and OOM counters stayed at zero.
 | 4                              |        133 |                 864.7 |                    269.2 |
 
 An initial measurement pass used a temporary ceiling of 512 tasks / 2 GiB. The table is the
-repeat under the shipped 256-task / 1,536-MiB ceilings, exceeding its four-render task peak by
+repeat under the then-default 256-task / 1,536-MiB ceilings, exceeding its four-render task peak by
 92% and conservative summed-RSS peak by 78%. RSS and cgroup peaks occur at different instants;
 cgroup memory accounts shared pages once. Size a Pi using the row for its concurrency and at least 50% headroom, and measure
 its real pages before reducing limits. Earlier original-spike hostile-page runs peaked at 340.4
