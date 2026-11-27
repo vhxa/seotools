@@ -53,6 +53,13 @@ which moves the entries of `[Unreleased]` into the new version.
   can review the changes in **Administration → Capacity** and customize both sets of limits again.
   For a domain whose pace changed, the first new crawl can show “Not comparable” against the
   previous one because simultaneous requests are part of the comparison basis.
+- With rendering, take the Compose file of this version again (`docker-compose.yml`, or
+  `deploy/dokploy/docker-compose.yml`; on Dokploy with **Raw**, paste it again). It gives the
+  browser `3g` of memory and `1g` of shared memory, and tells seotools the browser's limits. With
+  an older file, **Administration → Capacity** shows the browser's memory limit as unknown and
+  recommends renders from the server's memory alone, which can be more than the browser holds:
+  lower the renders there, or set `RENDER_BROWSER_MEMORY` and `RENDER_BROWSER_SHM` on the
+  seotools service too.
 - On small servers such as a 2 GiB Raspberry Pi, set `RENDER_BROWSER_MEMORY=1536m` and
   `RENDER_BROWSER_SHM=256m` in Compose.
 

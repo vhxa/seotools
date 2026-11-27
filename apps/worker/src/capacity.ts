@@ -42,5 +42,7 @@ export function detectCapacity(env: WorkerEnv): CapacityHardware {
 
 export function warnLegacyCapacity(log: Pick<Logger, 'warn'>, variables: readonly string[]) {
   if (variables.length)
-    log.warn(`${variables.join(' and ')} have moved to Administration → Capacity and are ignored`)
+    log.warn(
+      `Ignoring ${variables.join(' and ')}: set renders and crawls at the same time in Administration → Capacity`,
+    )
 }

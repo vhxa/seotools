@@ -12,6 +12,6 @@ it('warns once about both obsolete variables regardless of their values', () => 
   warnLegacyCapacity({ warn }, [])
   warnLegacyCapacity({ warn }, env.legacyCapacityVariables)
   expect(warn).toHaveBeenCalledExactlyOnceWith(
-    'RENDER_CONCURRENCY and CRAWL_CONCURRENCY have moved to Administration → Capacity and are ignored',
+    'Ignoring RENDER_CONCURRENCY and CRAWL_CONCURRENCY: set renders and crawls at the same time in Administration → Capacity',
   )
 })
