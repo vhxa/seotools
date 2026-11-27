@@ -5,6 +5,8 @@ const BROWSER_BASE = 320 * MIB
 const RENDERER_BASE = 160 * MIB
 const DEFAULT_RENDER_MEMORY = 512 * MIB
 const APP_RESERVE = 512 * MIB
+// Above this share of the browser's memory limit, the estimate warns that pages may fail to render.
+const BROWSER_RISK_SHARE = 0.85
 export const RESOURCES_PER_RENDER = 6
 
 export const capacityLimits = { renders: { min: 1, max: 8 }, crawls: { min: 1, max: 4 } }
@@ -34,7 +36,11 @@ export const serverBudget = (memory: number) => Math.floor(memory * 0.75)
 
 export function recommendedCapacity(hardware: CapacityHardware): Capacity {
   const budget = serverBudget(hardware.memory)
-  const browserBudget = Math.min(budget - APP_RESERVE, hardware.browserMemory ?? Infinity)
+  // Never recommend what the memory estimate would warn about.
+  const browserBudget = Math.min(
+    budget - APP_RESERVE,
+    (hardware.browserMemory ?? Infinity) * BROWSER_RISK_SHARE,
+  )
   return {
     renders: Math.max(
       1,
@@ -70,7 +76,7 @@ export function estimateMemory(
     ceiling,
     budget,
     measuredHeap: heapP95 !== null,
-    browserRisk: ceiling !== null && browser > 0.85 * ceiling,
+    browserRisk: ceiling !== null && browser > BROWSER_RISK_SHARE * ceiling,
     serverRisk: budget !== null && browser + APP_RESERVE > budget,
     processorRisk: hardware !== null && renders > hardware.processors,
   }

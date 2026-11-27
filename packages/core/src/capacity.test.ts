@@ -50,7 +50,15 @@ describe('capacity recommendations', () => {
       renders: 1,
       crawls: 1,
     })
-    expect(recommendedCapacity({ ...server, browserMemory: 1536 * MIB }).renders).toBe(2)
+    expect(recommendedCapacity({ ...server, browserMemory: 1536 * MIB }).renders).toBe(1)
+  })
+  it.each([
+    ['8 GiB, 4 processors, 3g', server],
+    ['16 GiB, 8 processors, 3g', { ...server, processors: 8, memory: 16384 * MIB }],
+    ['8 GiB, 8 processors, 1536m', { ...server, processors: 8, browserMemory: 1536 * MIB }],
+  ])('never recommends renders the memory estimate warns about (%s)', (_, hardware) => {
+    const { renders } = recommendedCapacity(hardware)
+    expect(estimateMemory(renders, hardware, null).browserRisk).toBe(false)
   })
   it.each([
     ['3g', 3072 * MIB],

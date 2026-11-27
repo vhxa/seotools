@@ -347,8 +347,8 @@ worker’s current render slots. The document rate applies to document requests.
 The recommendation uses 75% of the detected memory as the seotools budget. On Linux a lower
 cgroup memory limit takes precedence over host RAM. The recommendation first reserves 512 MiB for
 the app and its database. It then budgets 320 MiB for the browser and 512 MiB per render. It fits as
-many slots as the remaining budget, the browser memory ceiling, and one slot per available processor
-allow. The minimum is one even if the model cannot fit it. An unknown browser ceiling leaves only
+many slots as the remaining budget, 85% of the browser memory ceiling (where the memory estimate
+starts to warn), and one slot per available processor allow. The minimum is one even if the model cannot fit it. An unknown browser ceiling leaves only
 the server budget and processors as constraints. The recommended crawl limit budgets two processors
 and 1.5 GiB of the seotools budget per crawl, with a minimum of one.
 
@@ -357,7 +357,7 @@ and 1.5 GiB of the seotools budget per crawl, with a minimum of one.
 | 2 GiB (Pi) | 4          | `1536m` / `256m`               | 1.5 GiB         | 1       | 1      |
 | 4 GiB      | 2          | `3g` / `1g`                    | 3 GiB           | 2       | 1      |
 | 8 GiB      | 4          | `3g` / `1g`                    | 6 GiB           | 4       | 2      |
-| 16 GiB     | 8          | `3g` / `1g`                    | 12 GiB          | 5       | 4      |
+| 16 GiB     | 8          | `3g` / `1g`                    | 12 GiB          | 4       | 4      |
 
 Both Compose files set `RENDER_BROWSER_MEMORY=3g` and `RENDER_BROWSER_SHM=1g` by default. The browser
 process limit stays at 256. Outside Compose, pass the actual ceilings to the worker for the page
